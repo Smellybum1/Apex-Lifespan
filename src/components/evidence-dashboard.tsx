@@ -1927,7 +1927,7 @@ function ClinicalTrialsPreviewCard({ study }: { study: ClinicalTrialSearchItem }
           </p>
         </div>
         <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
-          {study.triageScore}/100
+          Triage {study.triageScore}/100
         </span>
       </div>
 
