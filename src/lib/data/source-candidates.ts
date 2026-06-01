@@ -19,6 +19,19 @@ export interface SourceCandidateUpsertSummary {
   upserted: number;
 }
 
+export interface SourceCandidateBacklogSummaryGroup {
+  count: number;
+  decision: SourceCandidateDecision;
+  region: string;
+  reviewStatus: ReviewStatus;
+  source: SourceCandidateSource;
+}
+
+export interface SourceCandidateBacklogSummary {
+  groups: SourceCandidateBacklogSummaryGroup[];
+  total: number;
+}
+
 export interface SourceCandidateReviewQueueOptions {
   decision?: SourceCandidateDecision;
   limit?: number;
@@ -99,6 +112,27 @@ export async function listSourceCandidateReviewQueue(
   return candidates.map(mapDbSourceCandidate);
 }
 
+export async function summarizeSourceCandidateBacklog(): Promise<SourceCandidateBacklogSummary> {
+  const groups = await prisma.sourceCandidate.groupBy({
+    by: ["source", "region", "decision", "reviewStatus"],
+    _count: {
+      _all: true
+    },
+    orderBy: [
+      { source: "asc" },
+      { region: "asc" },
+      { decision: "asc" },
+      { reviewStatus: "asc" }
+    ]
+  });
+  const mappedGroups = groups.map(mapDbSourceCandidateBacklogGroup);
+
+  return {
+    groups: mappedGroups,
+    total: mappedGroups.reduce((total, group) => total + group.count, 0)
+  };
+}
+
 export async function recordSourceCandidateDecision({
   dedupeKey,
   decision,
@@ -172,6 +206,24 @@ function normaliseReviewQueueLimit(limit: number | undefined) {
   }
 
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_REVIEW_QUEUE_LIMIT);
+}
+
+function mapDbSourceCandidateBacklogGroup(group: {
+  _count: {
+    _all: number;
+  };
+  decision: DbSourceCandidateDecision;
+  region: string;
+  reviewStatus: DbReviewStatus;
+  source: DbSourceKind;
+}): SourceCandidateBacklogSummaryGroup {
+  return {
+    count: group._count._all,
+    decision: decisionFromDb(group.decision),
+    region: group.region,
+    reviewStatus: reviewStatusFromDb(group.reviewStatus),
+    source: sourceFromDb(group.source)
+  };
 }
 
 function mapDbSourceCandidate(candidate: DbSourceCandidate): SourceCandidate {

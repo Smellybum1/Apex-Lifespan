@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMocks = vi.hoisted(() => ({
   sourceCandidateFindMany: vi.fn(),
+  sourceCandidateGroupBy: vi.fn(),
   sourceCandidateUpdate: vi.fn(),
   sourceCandidateUpsert: vi.fn(),
   transaction: vi.fn()
@@ -11,6 +12,7 @@ vi.mock("@/lib/db/prisma", () => ({
   prisma: {
     sourceCandidate: {
       findMany: prismaMocks.sourceCandidateFindMany,
+      groupBy: prismaMocks.sourceCandidateGroupBy,
       update: prismaMocks.sourceCandidateUpdate,
       upsert: prismaMocks.sourceCandidateUpsert
     },
@@ -21,6 +23,7 @@ vi.mock("@/lib/db/prisma", () => ({
 import {
   listSourceCandidateReviewQueue,
   recordSourceCandidateDecision,
+  summarizeSourceCandidateBacklog,
   upsertSourceCandidateDrafts
 } from "@/lib/data/source-candidates";
 import type { SourceCandidate } from "@/lib/types";
@@ -185,6 +188,73 @@ describe("listSourceCandidateReviewQueue", () => {
       },
       orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
       take: 1
+    });
+  });
+});
+
+describe("summarizeSourceCandidateBacklog", () => {
+  it("summarizes source-candidate backlog groups with domain labels", async () => {
+    prismaMocks.sourceCandidateGroupBy.mockResolvedValue([
+      {
+        source: "PUBMED",
+        region: "AU",
+        decision: "PENDING_REVIEW",
+        reviewStatus: "UNREVIEWED_AI_DRAFT",
+        _count: {
+          _all: 3
+        }
+      },
+      {
+        source: "CLINICALTRIALS_GOV",
+        region: "AU",
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        _count: {
+          _all: 1
+        }
+      }
+    ]);
+
+    await expect(summarizeSourceCandidateBacklog()).resolves.toEqual({
+      total: 4,
+      groups: [
+        {
+          source: "PubMed",
+          region: "AU",
+          decision: "Pending review",
+          reviewStatus: "Unreviewed AI draft",
+          count: 3
+        },
+        {
+          source: "ClinicalTrials.gov",
+          region: "AU",
+          decision: "Accepted",
+          reviewStatus: "Human reviewed",
+          count: 1
+        }
+      ]
+    });
+
+    expect(prismaMocks.sourceCandidateGroupBy).toHaveBeenCalledWith({
+      by: ["source", "region", "decision", "reviewStatus"],
+      _count: {
+        _all: true
+      },
+      orderBy: [
+        { source: "asc" },
+        { region: "asc" },
+        { decision: "asc" },
+        { reviewStatus: "asc" }
+      ]
+    });
+  });
+
+  it("returns an empty total when there are no source candidates", async () => {
+    prismaMocks.sourceCandidateGroupBy.mockResolvedValue([]);
+
+    await expect(summarizeSourceCandidateBacklog()).resolves.toEqual({
+      total: 0,
+      groups: []
     });
   });
 });

@@ -75,9 +75,11 @@ npm run ingest:sources -- --limit 5
 npm run ingest:sources -- --job-id <ingestion-job-id>
 npm run ingest:sources -- --pubmed-retmax 10
 npm run ingest:sources -- --clinical-trial-page-size 10
+npm run ingest:sources -- --summary
 ```
 
 The command reports job status, records found, and records changed. These are ingestion-operation counts, not evidence-quality scores.
+The `--summary` option is read-only and reports source-candidate workflow counts by source, region, decision, and review status.
 
 ## Australia regulatory lens
 

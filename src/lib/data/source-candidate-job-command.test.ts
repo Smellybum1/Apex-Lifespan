@@ -10,7 +10,8 @@ describe("parseSourceCandidateJobCommandArgs", () => {
   it("uses bounded defaults for the local ingestion command", () => {
     expect(parseSourceCandidateJobCommandArgs([])).toEqual({
       help: false,
-      limit: 1
+      limit: 1,
+      summary: false
     });
   });
 
@@ -27,6 +28,7 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     ).toEqual({
       help: false,
       limit: 25,
+      summary: false,
       pubMedRetmax: 20,
       clinicalTrialPageSize: 3
     });
@@ -34,7 +36,16 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     expect(parseSourceCandidateJobCommandArgs(["--job-id", "job-pubmed"])).toEqual({
       help: false,
       jobId: "job-pubmed",
-      limit: 1
+      limit: 1,
+      summary: false
+    });
+  });
+
+  it("parses read-only summary mode", () => {
+    expect(parseSourceCandidateJobCommandArgs(["--summary"])).toEqual({
+      help: false,
+      limit: 1,
+      summary: true
     });
   });
 
@@ -55,6 +66,15 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       parseSourceCandidateJobCommandArgs(["--job-id", "job-pubmed", "--limit", "2"])
     ).toThrow("--job-id runs exactly one job and cannot be combined with --limit.");
   });
+
+  it("does not combine read-only summary mode with run options", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--summary", "--limit", "2"])
+    ).toThrow("--summary is read-only and cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--summary", "--job-id", "job-pubmed"])
+    ).toThrow("--summary is read-only and cannot be combined with run options.");
+  });
 });
 
 describe("runSourceCandidateJobCommand", () => {
@@ -68,6 +88,62 @@ describe("runSourceCandidateJobCommand", () => {
 
     expect(stdout).toHaveBeenCalledWith(commandUsage());
     expect(runNextJob).not.toHaveBeenCalled();
+  });
+
+  it("prints read-only backlog summary without running jobs", async () => {
+    const stdout = vi.fn();
+    const runNextJob = vi.fn();
+    const summarizeBacklog = vi.fn().mockResolvedValue({
+      total: 4,
+      groups: [
+        {
+          source: "PubMed",
+          region: "AU",
+          decision: "Pending review",
+          reviewStatus: "Unreviewed AI draft",
+          count: 3
+        },
+        {
+          source: "ClinicalTrials.gov",
+          region: "AU",
+          decision: "Accepted",
+          reviewStatus: "Human reviewed",
+          count: 1
+        }
+      ]
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--summary"],
+        { stdout },
+        { runNextJob, summarizeBacklog }
+      )
+    ).resolves.toBe(0);
+
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(summarizeBacklog).toHaveBeenCalledTimes(1);
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate backlog: total=4",
+        "- PubMed AU Pending review / Unreviewed AI draft: 3",
+        "- ClinicalTrials.gov AU Accepted / Human reviewed: 1"
+      ].join("\n")
+    );
+  });
+
+  it("prints an empty backlog summary", async () => {
+    const stdout = vi.fn();
+    const summarizeBacklog = vi.fn().mockResolvedValue({
+      total: 0,
+      groups: []
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(["--summary"], { stdout }, { summarizeBacklog })
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith("Source-candidate backlog: total=0");
   });
 
   it("runs one queued job by default", async () => {

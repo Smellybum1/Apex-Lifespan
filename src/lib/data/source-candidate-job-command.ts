@@ -4,12 +4,17 @@ import {
   type SourceCandidateIngestionJobOptions,
   type SourceCandidateIngestionJobRunResult
 } from "@/lib/data/source-candidate-jobs";
+import {
+  summarizeSourceCandidateBacklog,
+  type SourceCandidateBacklogSummary
+} from "@/lib/data/source-candidates";
 
 export interface SourceCandidateJobCommandOptions
   extends SourceCandidateIngestionJobOptions {
   help: boolean;
   jobId?: string;
   limit: number;
+  summary: boolean;
 }
 
 export interface SourceCandidateJobCommandIo {
@@ -25,6 +30,7 @@ export interface SourceCandidateJobCommandRunners {
   runNextJob?: (
     options: SourceCandidateIngestionJobOptions
   ) => Promise<SourceCandidateIngestionJobRunResult | null>;
+  summarizeBacklog?: () => Promise<SourceCandidateBacklogSummary>;
 }
 
 const DEFAULT_JOB_LIMIT = 1;
@@ -39,6 +45,7 @@ export async function runSourceCandidateJobCommand(
   const stderr = io.stderr ?? console.error;
   const runJobById = runners.runJobById ?? runSourceCandidateIngestionJob;
   const runNextJob = runners.runNextJob ?? runNextSourceCandidateIngestionJob;
+  const summarizeBacklog = runners.summarizeBacklog ?? summarizeSourceCandidateBacklog;
 
   let options: SourceCandidateJobCommandOptions;
 
@@ -52,6 +59,13 @@ export async function runSourceCandidateJobCommand(
 
   if (options.help) {
     stdout(commandUsage());
+    return 0;
+  }
+
+  if (options.summary) {
+    const summary = await summarizeBacklog();
+
+    stdout(formatSourceCandidateBacklogSummary(summary));
     return 0;
   }
 
@@ -83,7 +97,8 @@ export function parseSourceCandidateJobCommandArgs(
 ): SourceCandidateJobCommandOptions {
   const options: SourceCandidateJobCommandOptions = {
     help: false,
-    limit: DEFAULT_JOB_LIMIT
+    limit: DEFAULT_JOB_LIMIT,
+    summary: false
   };
   let limitProvided = false;
 
@@ -98,6 +113,11 @@ export function parseSourceCandidateJobCommandArgs(
     if (arg === "--job-id") {
       options.jobId = readRequiredValue(args, index, arg);
       index += 1;
+      continue;
+    }
+
+    if (arg === "--summary") {
+      options.summary = true;
       continue;
     }
 
@@ -127,6 +147,10 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--job-id runs exactly one job and cannot be combined with --limit.");
   }
 
+  if (options.summary && (options.jobId || limitProvided)) {
+    throw new Error("--summary is read-only and cannot be combined with run options.");
+  }
+
   return options;
 }
 
@@ -139,6 +163,7 @@ export function commandUsage() {
     "  --limit <count>                   Run up to count queued jobs (default 1, max 25).",
     "  --pubmed-retmax <count>           PubMed result limit passed to NCBI (max 20).",
     "  --clinical-trial-page-size <count> ClinicalTrials.gov page size (max 20).",
+    "  --summary                         Print read-only source-candidate backlog counts.",
     "  --help                            Show this help."
   ].join("\n");
 }
@@ -188,6 +213,20 @@ function formatSourceCandidateJobResult(result: SourceCandidateIngestionJobRunRe
   }
 
   return parts.join(" ");
+}
+
+function formatSourceCandidateBacklogSummary(summary: SourceCandidateBacklogSummary) {
+  if (summary.total === 0) {
+    return "Source-candidate backlog: total=0";
+  }
+
+  return [
+    `Source-candidate backlog: total=${summary.total}`,
+    ...summary.groups.map(
+      (group) =>
+        `- ${group.source} ${group.region} ${group.decision} / ${group.reviewStatus}: ${group.count}`
+    )
+  ].join("\n");
 }
 
 function readRequiredValue(args: readonly string[], index: number, option: string) {
