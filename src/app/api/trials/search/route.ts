@@ -1,18 +1,20 @@
 import { searchClinicalTrials } from "@/lib/integrations/clinical-trials";
+import { parseLiveSourceSearchRequest } from "@/lib/live-source-request";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const term = url.searchParams.get("term")?.trim();
-  const pageSize = Number(url.searchParams.get("pageSize") ?? 10);
+  const searchRequest = parseLiveSourceSearchRequest(request.url, {
+    defaultLimit: 10,
+    limitParam: "pageSize"
+  });
 
-  if (!term) {
-    return Response.json({ error: "Missing term query parameter." }, { status: 400 });
+  if (!searchRequest.ok) {
+    return Response.json({ error: searchRequest.error }, { status: searchRequest.status });
   }
 
   try {
-    const result = await searchClinicalTrials(term, pageSize);
+    const result = await searchClinicalTrials(searchRequest.term, searchRequest.limit);
     return Response.json(result);
   } catch (error) {
     return Response.json(

@@ -23,6 +23,7 @@
   - PubMed search is surfaced as a read-only triage preview in the Sources panel; it shows live citation candidates and metadata but does not persist them yet.
   - Live PubMed and ClinicalTrials.gov preview results should be labeled as unreviewed leads, and `/100` values should be described as triage scores rather than evidence quality.
   - ClinicalTrials.gov search is surfaced as a read-only preview in the Sources panel; keep it separate from the curated Trial Watcher until live records are reviewed/persisted.
+  - Public live-source API routes share request parsing that normalises whitespace and rejects missing or overlong search terms before calling external integrations.
   - Live source previews start idle and only fetch after an explicit form submit or suggested-search click; do not auto-refetch live sources on initial load or every evidence-card selection.
   - The Sources panel shows an active-card source packet first: linked curated references, extracted study records, extraction-pending references, unresolved reference IDs, and a tested completeness summary stay distinct from live preview results.
   - Evidence cards use a consumer summary by default with expandable research detail for study context, applicability, score-change rationale, and source links.

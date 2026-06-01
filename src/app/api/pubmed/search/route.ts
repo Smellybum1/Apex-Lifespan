@@ -1,18 +1,20 @@
 import { searchPubMed } from "@/lib/integrations/pubmed";
+import { parseLiveSourceSearchRequest } from "@/lib/live-source-request";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const term = url.searchParams.get("term")?.trim();
-  const retmax = Number(url.searchParams.get("retmax") ?? 10);
+  const searchRequest = parseLiveSourceSearchRequest(request.url, {
+    defaultLimit: 10,
+    limitParam: "retmax"
+  });
 
-  if (!term) {
-    return Response.json({ error: "Missing term query parameter." }, { status: 400 });
+  if (!searchRequest.ok) {
+    return Response.json({ error: searchRequest.error }, { status: searchRequest.status });
   }
 
   try {
-    const result = await searchPubMed(term, retmax);
+    const result = await searchPubMed(searchRequest.term, searchRequest.limit);
     return Response.json(result);
   } catch (error) {
     return Response.json(
