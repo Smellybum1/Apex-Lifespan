@@ -971,7 +971,7 @@ function LabelAnalyzer({
       <div className="mt-4 grid gap-3">
         {findings.length === 0 ? (
           <div className="rounded-lg border border-line bg-mist p-3 text-sm text-slate-600">
-            No label warnings detected in the current text.
+            No local label-risk warnings from these checks. Verify product-level AUST/ARTG status and claim citations before treating the label as Australia-ready.
           </div>
         ) : (
           findings.map((finding) => (
