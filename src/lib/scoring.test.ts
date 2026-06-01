@@ -51,4 +51,35 @@ describe("analyzeLabel", () => {
       expect.arrayContaining(["peptide-guardrail", "hype-language"])
     );
   });
+
+  it("adds AU/TGA caution for research-use injectable peptides", () => {
+    const findings = analyzeLabel(
+      "BPC-157 peptide vial, lyophilized, research use only, not for human consumption"
+    );
+
+    expect(findings.map((finding) => finding.id)).toEqual(
+      expect.arrayContaining(["peptide-guardrail", "research-use-or-injectable-peptide"])
+    );
+    expect(findings.find((finding) => finding.id === "research-use-or-injectable-peptide"))
+      .toMatchObject({
+        level: "high",
+        sourceLabel: "TGA peptide warning"
+      });
+  });
+
+  it("flags unresolved AUST status without flagging visible AUST numbers as missing", () => {
+    expect(analyzeLabel("Joint repair therapeutic capsules - AUST number pending").map((finding) => finding.id))
+      .toEqual(expect.arrayContaining(["aust-number-unresolved"]));
+
+    expect(analyzeLabel("Joint support medicine AUST L 123456").map((finding) => finding.id))
+      .not.toContain("aust-number-not-visible");
+  });
+
+  it("distinguishes TGA approval overclaims from approval negation", () => {
+    expect(analyzeLabel("TGA approved peptide for injury repair").map((finding) => finding.id))
+      .toEqual(expect.arrayContaining(["tga-approval-overclaim"]));
+
+    expect(analyzeLabel("This product is not TGA approved").map((finding) => finding.id))
+      .not.toContain("tga-approval-overclaim");
+  });
 });

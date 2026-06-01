@@ -81,10 +81,28 @@ export interface LabelFinding {
   level: "low" | "moderate" | "high";
   title: string;
   detail: string;
+  sourceLabel?: string;
+  sourceUrl?: string;
 }
 
 const peptidePattern =
   /\b(bpc[-\s]?157|tb[-\s]?500|thymosin|cjc[-\s]?1295|ipamorelin|tesamorelin|semaglutide|mots[-\s]?c|epitalon|aod[-\s]?9604)\b/i;
+const austNumberPattern = /\bAUST\s+(?:L(?:\(A\))?|R)\s*\d{3,}\b/i;
+const therapeuticClaimPattern =
+  /\b(treats?|cures?|heals?|repairs?|prevents?|reverses?|regenerates?|therapeutic|medicine|clinical grade|prescription strength)\b/i;
+const missingAustPattern =
+  /\b(no\s+AUST|without\s+(?:an?\s+)?AUST|AUST\s+(?:number\s+)?pending|AUST\s+(?:number\s+)?not\s+(?:required|available|shown|listed|verified))\b/i;
+const tgaApprovalOverclaimPattern =
+  /\b(?:TGA|ARTG)\s+(?:approved|registered|listed|endorsed|certified)\b/i;
+const tgaApprovalNegationPattern =
+  /\b(?:not|isn['’]?t|not\s+yet|never|no)\s+(?:TGA|ARTG)\s+(?:approved|registered|listed|endorsed|certified)\b/i;
+const researchUsePeptidePattern =
+  /\b(research\s+use\s+only|not\s+for\s+human\s+consumption|reconstitute|reconstitution|injectable|injection|vial|lyophili[sz]ed|sterile\s+water|bac\s+water|bacteriostatic)\b/i;
+
+const tgaAustNumbersUrl =
+  "https://www.tga.gov.au/products/medicines/labelling-and-advertising/medicines-and-biologicals-labelling-and-packaging/aust-numbers-medicine-labels";
+const tgaPeptideSafetyUrl =
+  "https://www.tga.gov.au/safety/safety-monitoring-and-information/safety-alerts/tga-warning-risks-importing-unapproved-peptide-products";
 
 export function analyzeLabel(labelText: string): LabelFinding[] {
   const text = labelText.trim();
@@ -113,7 +131,58 @@ export function analyzeLabel(labelText: string): LabelFinding[] {
       level: "high",
       title: "Therapeutic peptide detected",
       detail:
-        "Route, sourcing, reconstitution, cycling, and self-administration guidance are out of scope; regulatory and clinician-review checks are required."
+        "AU/TGA caution: peptide products promoted online may be unapproved therapeutic goods. Route, sourcing, reconstitution, cycling, and self-administration guidance are out of scope; regulatory and clinician-review checks are required.",
+      sourceLabel: "TGA peptide warning",
+      sourceUrl: tgaPeptideSafetyUrl
+    });
+  }
+
+  if (peptidePattern.test(text) && researchUsePeptidePattern.test(text)) {
+    findings.push({
+      id: "research-use-or-injectable-peptide",
+      level: "high",
+      title: "Research-use or injectable peptide language",
+      detail:
+        "Labels mentioning research use, vials, injections, or reconstitution near peptides are major AU/TGA red flags. Treat as a regulatory/safety review item, not consumer self-use guidance.",
+      sourceLabel: "TGA peptide warning",
+      sourceUrl: tgaPeptideSafetyUrl
+    });
+  }
+
+  if (
+    tgaApprovalOverclaimPattern.test(text) &&
+    !tgaApprovalNegationPattern.test(text)
+  ) {
+    findings.push({
+      id: "tga-approval-overclaim",
+      level: "high",
+      title: "Possible TGA approval overclaim",
+      detail:
+        "Australian status is product-specific. Do not treat broad phrases like TGA approved as proof of efficacy or supply status without checking the exact AUST number and ARTG record.",
+      sourceLabel: "TGA AUST numbers",
+      sourceUrl: tgaAustNumbersUrl
+    });
+  }
+
+  if (missingAustPattern.test(text)) {
+    findings.push({
+      id: "aust-number-unresolved",
+      level: "moderate",
+      title: "AUST number unresolved",
+      detail:
+        "A missing, pending, or unverified AUST number means Australian supply status is unresolved. Verify the product-level ARTG/AUST record before treating label claims as Australia-ready.",
+      sourceLabel: "TGA AUST numbers",
+      sourceUrl: tgaAustNumbersUrl
+    });
+  } else if (therapeuticClaimPattern.test(text) && !austNumberPattern.test(text)) {
+    findings.push({
+      id: "aust-number-not-visible",
+      level: "moderate",
+      title: "No AUST number visible",
+      detail:
+        "Therapeutic-style claims should be checked against product-level ARTG/AUST status. An intervention evidence score or quality certification is not Australian market authorisation.",
+      sourceLabel: "TGA AUST numbers",
+      sourceUrl: tgaAustNumbersUrl
     });
   }
 

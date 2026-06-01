@@ -907,6 +907,17 @@ function LabelAnalyzer({
             >
               <h3 className="text-sm font-semibold text-ink">{finding.title}</h3>
               <p className="mt-1 text-sm leading-6 text-slate-700">{finding.detail}</p>
+              {finding.sourceUrl ? (
+                <a
+                  href={finding.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
+                >
+                  {finding.sourceLabel ?? "Source"}{" "}
+                  <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                </a>
+              ) : null}
             </article>
           ))
         )}
