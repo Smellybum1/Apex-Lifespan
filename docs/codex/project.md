@@ -19,6 +19,7 @@
   - `prisma/seed.ts` runs a seed integrity check after upserts so missing required IDs or stale seed-owned IDs fail loudly.
   - Dashboard reads through `src/lib/data/dashboard.ts`; it prefers Prisma when PostgreSQL is reachable and falls back to seed data unless `APEX_DATA_SOURCE=database`.
   - Australia/TGA regulatory status is structured in `AustraliaRegulatoryStatus` records and surfaced as active-card detail plus product chips; do not infer ARTG status from intervention evidence alone.
+  - PubMed search is surfaced as a read-only triage preview in the Sources panel; it shows live citation candidates and metadata but does not persist them yet.
   - MVP mode: public read-only.
   - Default regulatory lens: Australia/TGA.
   - UI tone: consumer-friendly by default, with expandable investor-grade research detail planned.

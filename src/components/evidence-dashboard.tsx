@@ -31,6 +31,10 @@ import {
 } from "recharts";
 
 import { projectConfig } from "@/lib/config/project";
+import type {
+  PubMedArticleSummary,
+  PubMedSearchResult
+} from "@/lib/integrations/pubmed";
 import {
   australiaRegulatoryKindDescription,
   australiaRegulatoryTone,
@@ -1007,6 +1011,53 @@ function SourceAndStudyPanel({
   referencesById: Map<string, Reference>;
   studies: Study[];
 }) {
+  const [pubMedTerm, setPubMedTerm] = useState("creatine monohydrate");
+  const [submittedPubMedTerm, setSubmittedPubMedTerm] = useState("creatine monohydrate");
+  const [pubMedResult, setPubMedResult] = useState<PubMedSearchResult | null>(null);
+  const [pubMedStatus, setPubMedStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [pubMedError, setPubMedError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadPubMedPreview() {
+      setPubMedStatus("loading");
+      setPubMedError(null);
+
+      try {
+        const response = await fetch(
+          `/api/pubmed/search?term=${encodeURIComponent(submittedPubMedTerm)}&retmax=5`,
+          { signal: controller.signal }
+        );
+        const body = (await response.json()) as PubMedSearchResult | { error?: string };
+
+        if (!response.ok) {
+          throw new Error("error" in body && body.error ? body.error : "PubMed search failed.");
+        }
+
+        if (!controller.signal.aborted) {
+          setPubMedResult(body as PubMedSearchResult);
+          setPubMedStatus("ready");
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setPubMedError(error instanceof Error ? error.message : "PubMed search failed.");
+          setPubMedStatus("error");
+        }
+      }
+    }
+
+    loadPubMedPreview();
+
+    return () => {
+      controller.abort();
+    };
+  }, [submittedPubMedTerm]);
+
+  const pubMedApiHref = `/api/pubmed/search?term=${encodeURIComponent(
+    submittedPubMedTerm
+  )}&retmax=5`;
+
   return (
     <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -1014,23 +1065,58 @@ function SourceAndStudyPanel({
           <h2 className="text-base font-semibold text-ink">Sources and Review Queue</h2>
           <p className="mt-1 text-sm text-slate-600">Seed records stay linked to primary or regulatory sources.</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+          <form
+            className="flex min-w-0 gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const nextTerm = pubMedTerm.trim();
+
+              if (nextTerm) {
+                setSubmittedPubMedTerm(nextTerm);
+              }
+            }}
+          >
+            <label className="sr-only" htmlFor="pubmed-term">
+              PubMed term
+            </label>
+            <input
+              id="pubmed-term"
+              value={pubMedTerm}
+              onChange={(event) => setPubMedTerm(event.target.value)}
+              className="h-9 w-full min-w-0 rounded-md border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-signal sm:w-56"
+            />
+            <button
+              type="submit"
+              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-line bg-mist px-3 text-xs font-semibold text-slate-700 hover:border-signal"
+            >
+              <Search aria-hidden="true" className="h-3.5 w-3.5" />
+              Search
+            </button>
+          </form>
           <a
-            href="/api/pubmed/search?term=creatine%20monohydrate"
+            href={pubMedApiHref}
             className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-mist px-3 text-xs font-semibold text-slate-700 hover:border-signal"
             target="_blank"
+            rel="noreferrer"
           >
-            PubMed <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+            Raw PubMed <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
           </a>
           <a
             href="/api/trials/search?term=omega-3"
             className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-mist px-3 text-xs font-semibold text-slate-700 hover:border-signal"
             target="_blank"
+            rel="noreferrer"
           >
             Trials <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
           </a>
         </div>
       </div>
+      <PubMedTriagePreview
+        error={pubMedError}
+        result={pubMedResult}
+        status={pubMedStatus}
+      />
       <div className="mt-4 grid gap-3">
         {studies.map((study) => {
           const reference = referencesById.get(study.referenceId);
@@ -1069,11 +1155,118 @@ function SourceAndStudyPanel({
   );
 }
 
+function PubMedTriagePreview({
+  error,
+  result,
+  status
+}: {
+  error: string | null;
+  result: PubMedSearchResult | null;
+  status: "loading" | "ready" | "error";
+}) {
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">PubMed triage</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            {result
+              ? `${result.count.toLocaleString()} records for "${result.query}"`
+              : "Citation candidates"}
+          </p>
+        </div>
+        <span className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
+          {status === "loading" ? "Loading" : status === "error" ? "Needs retry" : "Live preview"}
+        </span>
+      </div>
+
+      {status === "error" ? (
+        <p className="mt-3 rounded-md border border-danger/30 bg-red-50 p-3 text-sm text-danger">
+          {error ?? "PubMed search failed."}
+        </p>
+      ) : null}
+
+      {status === "loading" ? (
+        <p className="mt-3 rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+          Loading PubMed citations...
+        </p>
+      ) : null}
+
+      {status === "ready" && result ? (
+        <div className="mt-3 grid gap-2">
+          {result.articles.length > 0 ? (
+            result.articles.map((article) => (
+              <PubMedTriageArticle key={article.pmid} article={article} />
+            ))
+          ) : (
+            <p className="rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+              No PubMed records returned.
+            </p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PubMedTriageArticle({ article }: { article: PubMedArticleSummary }) {
+  const meta = [
+    article.journal,
+    article.publicationYear,
+    article.publicationTypes.slice(0, 2).join(", ")
+  ].filter(Boolean);
+  const authors = article.authors.slice(0, 3).join(", ");
+  const abstractStatus =
+    article.hasAbstract === null ? "Unknown" : article.hasAbstract ? "Available" : "Not flagged";
+
+  return (
+    <article className="rounded-md border border-line bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h4 className="text-sm font-semibold leading-6 text-ink">
+            {article.title ?? `PubMed PMID ${article.pmid}`}
+          </h4>
+          <p className="mt-1 text-xs text-slate-500">{meta.join(" - ") || "Metadata pending"}</p>
+        </div>
+        <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
+          {article.relevanceScore}/100
+        </span>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {article.relevanceReasons.map((reason) => (
+          <span
+            key={reason}
+            className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-600"
+          >
+            {reason}
+          </span>
+        ))}
+      </div>
+
+      <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+        <MiniStat label="Authors" value={authors || "Not listed"} />
+        <MiniStat label="Abstract" value={abstractStatus} />
+        <MiniStat label="DOI" value={article.doi ?? "Not listed"} />
+      </dl>
+
+      <a
+        href={article.url}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
+      >
+        PMID {article.pmid} <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+      </a>
+    </article>
+  );
+}
+
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-line bg-mist p-2">
       <dt className="font-semibold text-slate-500">{label}</dt>
-      <dd className="mt-1 text-slate-700">{value}</dd>
+      <dd className="mt-1 break-words text-slate-700">{value}</dd>
     </div>
   );
 }
