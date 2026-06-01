@@ -1749,6 +1749,9 @@ function PubMedTriagePreview({
         <div>
           <h3 className="text-sm font-semibold text-ink">PubMed triage</h3>
           <p className="mt-1 text-xs text-slate-500">{resultSummary}</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Live PubMed results are unreviewed citation leads, not curated evidence.
+          </p>
         </div>
         <span className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
           {livePreviewStatusLabel(status)}
@@ -1810,7 +1813,7 @@ function PubMedTriageArticle({ article }: { article: PubMedArticleSummary }) {
           <p className="mt-1 text-xs text-slate-500">{meta.join(" - ") || "Metadata pending"}</p>
         </div>
         <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
-          {article.relevanceScore}/100
+          Triage {article.relevanceScore}/100
         </span>
       </div>
 
