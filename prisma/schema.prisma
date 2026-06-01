@@ -139,6 +139,12 @@ enum IngestionStatus {
   SKIPPED
 }
 
+enum SourceCandidateDecision {
+  PENDING_REVIEW
+  ACCEPTED
+  REJECTED
+}
+
 enum AustraliaRegulatoryKind {
   AUST_L
   AUST_LA
@@ -172,6 +178,7 @@ model Intervention {
   trials                      Trial[]
   products                    Product[]
   safetyAlerts                SafetyAlert[]
+  sourceCandidates            SourceCandidate[]
   australiaRegulatoryStatuses AustraliaRegulatoryStatus[]
 
   @@index([category])
@@ -211,8 +218,9 @@ model Claim {
   createdAt               DateTime         @default(now())
   updatedAt               DateTime         @updatedAt
 
-  intervention Intervention     @relation(fields: [interventionId], references: [id], onDelete: Cascade)
-  references   ClaimReference[]
+  intervention     Intervention      @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  references       ClaimReference[]
+  sourceCandidates SourceCandidate[]
 
   @@unique([interventionId, outcome, claimText])
   @@index([outcome])
@@ -233,6 +241,7 @@ model Reference {
   claimLinks                  ClaimReference[]
   studies                     Study[]
   sourceDocuments             SourceDocument[]
+  acceptedSourceCandidates    SourceCandidate[]
   australiaRegulatoryStatuses AustraliaRegulatoryStatus[]
 
   @@unique([url])
@@ -414,20 +423,65 @@ model SourceDocument {
   @@index([reviewStatus])
 }
 
+model SourceCandidate {
+  id                  String                  @id @default(cuid())
+  dedupeKey           String                  @unique
+  source              SourceKind
+  externalId          String
+  query               String
+  region              String                  @default("AU")
+  title               String
+  url                 String
+  publishedYear       Int?
+  sourceType          String?
+  abstractAvailable   Boolean?
+  triageScore         Int                     @default(0)
+  triageReasons       String[]
+  metadata            Json?
+  decision            SourceCandidateDecision @default(PENDING_REVIEW)
+  reviewStatus        ReviewStatus            @default(UNREVIEWED_AI_DRAFT)
+  interventionId      String?
+  claimId             String?
+  ingestionJobId      String?
+  acceptedReferenceId String?
+  reviewedAt          DateTime?
+  reviewNote          String?
+  discoveredAt        DateTime                @default(now())
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  intervention      Intervention? @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+  claim             Claim?        @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  ingestionJob      IngestionJob? @relation(fields: [ingestionJobId], references: [id], onDelete: SetNull)
+  acceptedReference Reference?    @relation(fields: [acceptedReferenceId], references: [id], onDelete: SetNull)
+
+  @@index([source])
+  @@index([externalId])
+  @@index([region])
+  @@index([decision])
+  @@index([reviewStatus])
+  @@index([interventionId])
+  @@index([claimId])
+  @@index([ingestionJobId])
+  @@index([acceptedReferenceId])
+  @@index([triageScore])
+}
+
 model IngestionJob {
-  id             String          @id @default(cuid())
-  source         SourceKind
-  status         IngestionStatus @default(QUEUED)
-  query          String
-  region         String          @default("AU")
-  startedAt      DateTime?
-  completedAt    DateTime?
-  recordsFound   Int             @default(0)
-  recordsChanged Int             @default(0)
-  error          String?
-  metadata       Json?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id               String            @id @default(cuid())
+  source           SourceKind
+  status           IngestionStatus   @default(QUEUED)
+  query            String
+  region           String            @default("AU")
+  startedAt        DateTime?
+  completedAt      DateTime?
+  recordsFound     Int               @default(0)
+  recordsChanged   Int               @default(0)
+  error            String?
+  metadata         Json?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  sourceCandidates SourceCandidate[]
 
   @@unique([source, query, region])
   @@index([source])

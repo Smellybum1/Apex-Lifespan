@@ -53,6 +53,10 @@ export type ReviewStatus = "Unreviewed AI draft" | "Human reviewed";
 
 export type ConfidenceLevel = "High" | "Moderate" | "Low" | "Very low";
 
+export type SourceCandidateSource = "PubMed" | "ClinicalTrials.gov";
+
+export type SourceCandidateDecision = "Pending review" | "Accepted" | "Rejected";
+
 export type AustraliaRegulatoryKind =
   | "AUST L"
   | "AUST L(A)"
@@ -144,6 +148,30 @@ export interface Study {
   fundingConflicts: string;
   riskOfBias: string;
   referenceId: string;
+}
+
+export interface SourceCandidate {
+  dedupeKey: string;
+  source: SourceCandidateSource;
+  externalId: string;
+  query: string;
+  region: string;
+  title: string;
+  url: string;
+  publishedYear?: number;
+  sourceType?: string;
+  abstractAvailable?: boolean;
+  triageScore: number;
+  triageReasons: string[];
+  decision: SourceCandidateDecision;
+  reviewStatus: ReviewStatus;
+  interventionId?: string;
+  claimId?: string;
+  ingestionJobId?: string;
+  acceptedReferenceId?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+  metadata: Record<string, unknown>;
 }
 
 export interface TrialWatchItem {
