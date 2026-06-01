@@ -98,6 +98,8 @@ const tgaApprovalNegationPattern =
   /\b(?:not|isn['’]?t|not\s+yet|never|no)\s+(?:TGA|ARTG)\s+(?:approved|registered|listed|endorsed|certified)\b/i;
 const researchUsePeptidePattern =
   /\b(research\s+use\s+only|not\s+for\s+human\s+consumption|reconstitute|reconstitution|injectable|injection|vial|lyophili[sz]ed|sterile\s+water|bac\s+water|bacteriostatic)\b/i;
+const unicodeTgaApprovalNegationPattern =
+  /\b(?:not|isn(?:'|\u2019)?t|not\s+yet|never|no)\s+(?:TGA|ARTG)\s+(?:approved|registered|listed|endorsed|certified)\b/i;
 
 const tgaAustNumbersUrl =
   "https://www.tga.gov.au/products/medicines/labelling-and-advertising/medicines-and-biologicals-labelling-and-packaging/aust-numbers-medicine-labels";
@@ -106,6 +108,13 @@ const tgaPeptideSafetyUrl =
 const nihOdsVitaminDUrl =
   "https://ods.od.nih.gov/factsheets/VitaminD-HealthProfessional/";
 const heuristicSourceLabel = "Heuristic check";
+
+function isTgaApprovalNegation(text: string) {
+  return (
+    tgaApprovalNegationPattern.test(text) ||
+    unicodeTgaApprovalNegationPattern.test(text)
+  );
+}
 
 export function analyzeLabel(labelText: string): LabelFinding[] {
   const text = labelText.trim();
@@ -155,7 +164,7 @@ export function analyzeLabel(labelText: string): LabelFinding[] {
 
   if (
     tgaApprovalOverclaimPattern.test(text) &&
-    !tgaApprovalNegationPattern.test(text)
+    !isTgaApprovalNegation(text)
   ) {
     findings.push({
       id: "tga-approval-overclaim",

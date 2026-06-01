@@ -26,6 +26,7 @@
   - The Sources panel shows an active-card source packet first: linked curated references, extracted study records, extraction-pending references, unresolved reference IDs, and a tested completeness summary stay distinct from live preview results.
   - Evidence cards use a consumer summary by default with expandable research detail for study context, applicability, score-change rationale, and source links.
   - Product label analysis includes AU/TGA-specific cautions for unresolved AUST status, approval overclaims, and research-use/injectable peptide language; each finding should show either an official source link or a visible heuristic-check provenance label.
+  - TGA/ARTG approval-overclaim detection has regression coverage for negated phrases including ASCII and curly apostrophes, so `isn't` and `isn\u2019t` wording should not be reported as approval overclaims.
   - Product label cards show product-market context separately from AU/TGA status; seed and Prisma product regions use verification-pending wording rather than implying Australian authorisation.
   - Review-status dashboard counts use tested summary logic so human-reviewed and draft-awaiting-review claims remain separate.
   - Claim score table rows are mouse and keyboard selectable; preserve Enter/Space activation and visible focus state.

@@ -80,8 +80,19 @@ describe("analyzeLabel", () => {
     expect(analyzeLabel("TGA approved peptide for injury repair").map((finding) => finding.id))
       .toEqual(expect.arrayContaining(["tga-approval-overclaim"]));
 
-    expect(analyzeLabel("This product is not TGA approved").map((finding) => finding.id))
-      .not.toContain("tga-approval-overclaim");
+    const negatedClaims = [
+      "This product is not TGA approved",
+      "This product isn't TGA approved",
+      "This product isn\u2019t TGA approved",
+      "This product isnt TGA approved",
+      "This product is not yet ARTG listed",
+      "This product is never ARTG certified"
+    ];
+
+    for (const claim of negatedClaims) {
+      expect(analyzeLabel(claim).map((finding) => finding.id))
+        .not.toContain("tga-approval-overclaim");
+    }
   });
 
   it("shows provenance for sourced and heuristic label findings", () => {
