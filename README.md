@@ -20,6 +20,7 @@ Apex Lifespan is an evidence intelligence dashboard for supplements, peptides, a
 - Lint: `npm run lint`
 - Typecheck: `npm run typecheck`
 - Build: `npm run build`
+- Run queued source-candidate ingestion jobs locally: `npm run ingest:sources`
 - Prisma validate: `npm run db:validate`
 - Prisma generate: `npm run db:generate`
 - Apply local Prisma migrations: `npm run db:migrate`
@@ -56,6 +57,27 @@ Assumptions: Docker Desktop or Docker Compose is installed, `localhost:5432` is 
 ## Data source behavior
 
 The dashboard route is dynamic. It checks whether PostgreSQL is reachable, reads from Prisma when available, and falls back to seed data when the database is unavailable or empty. Set `APEX_DATA_SOURCE=seed` to force seed mode or `APEX_DATA_SOURCE=database` to fail instead of falling back.
+
+## Local ingestion
+
+Source-candidate ingestion is an operator-only local workflow. It writes to the configured PostgreSQL database and is not exposed through public app routes.
+
+Run one queued PubMed or ClinicalTrials.gov ingestion job:
+
+```bash
+npm run ingest:sources
+```
+
+Useful options:
+
+```bash
+npm run ingest:sources -- --limit 5
+npm run ingest:sources -- --job-id <ingestion-job-id>
+npm run ingest:sources -- --pubmed-retmax 10
+npm run ingest:sources -- --clinical-trial-page-size 10
+```
+
+The command reports job status, records found, and records changed. These are ingestion-operation counts, not evidence-quality scores.
 
 ## Australia regulatory lens
 

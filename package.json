@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "prisma generate && next typegen && tsc --noEmit",
+    "ingest:sources": "tsx scripts/run-source-candidate-jobs.ts",
     "db:validate": "prisma validate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
