@@ -26,6 +26,7 @@
   - Public live-source API routes share request parsing that normalises whitespace and rejects missing or overlong search terms before calling external integrations.
   - Live source previews start idle and only fetch after an explicit form submit or suggested-search click; do not auto-refetch live sources on initial load or every evidence-card selection.
   - `SourceCandidate` is the backend persistence target for future reviewed ingestion of live PubMed and ClinicalTrials.gov candidates; helper mapping keeps candidates unreviewed with a separate pending-review decision and preserves triage metadata without auto-persisting public preview results.
+  - `upsertSourceCandidateDrafts` is a server-side data helper for gated ingestion paths; rediscovery updates candidate metadata and triage fields without overwriting reviewer decision, accepted reference, or review status.
   - The Sources panel shows an active-card source packet first: linked curated references, extracted study records, extraction-pending references, unresolved reference IDs, and a tested completeness summary stay distinct from live preview results.
   - Current seed evidence claims have structured extraction rows for all linked curated references; pending extraction behavior is preserved with synthetic source-packet tests.
   - Evidence cards use a consumer summary by default with expandable research detail for study context, applicability, score-change rationale, and source links.
