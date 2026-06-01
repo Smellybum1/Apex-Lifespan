@@ -16,6 +16,7 @@
   - Prisma schema and seed script under `prisma/`.
   - Prisma migrations live under `prisma/migrations/`; use migrations for reproducible database state and reserve `db:push` for temporary local prototypes.
   - AU regulatory uniqueness uses hand-authored PostgreSQL partial indexes in the migration because nullable product/intervention/ARTG fields cannot be represented safely with a normal Prisma `@@unique`.
+  - `prisma/seed.ts` runs a seed integrity check after upserts so missing required IDs or stale seed-owned IDs fail loudly.
   - Dashboard reads through `src/lib/data/dashboard.ts`; it prefers Prisma when PostgreSQL is reachable and falls back to seed data unless `APEX_DATA_SOURCE=database`.
   - Australia/TGA regulatory status is structured in `AustraliaRegulatoryStatus` records and surfaced as active-card detail plus product chips; do not infer ARTG status from intervention evidence alone.
   - MVP mode: public read-only.

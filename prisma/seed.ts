@@ -23,6 +23,10 @@ import {
   studies,
   trialWatchItems
 } from "../src/lib/seed-data";
+import {
+  assertSeedIntegrity,
+  type SeedIntegrityCollection
+} from "../src/lib/seed-integrity";
 import type {
   AustraliaRegulatoryKind,
   Claim,
@@ -186,6 +190,29 @@ function australiaStatusFor(interventionId: string, fallback: string) {
 function dateOrNull(value?: string) {
   return value ? new Date(`${value}T00:00:00.000Z`) : null;
 }
+
+const seedIngestionJobs = [
+  {
+    source: PrismaSourceKind.PUBMED,
+    status: PrismaIngestionStatus.QUEUED,
+    query: "creatine monohydrate strength randomized trial meta-analysis",
+    region: "AU",
+    metadata: {
+      priority: "first-source-workflow",
+      reason: "PubMed gives the fastest path to citation-backed evidence cards."
+    }
+  },
+  {
+    source: PrismaSourceKind.TGA,
+    status: PrismaIngestionStatus.QUEUED,
+    query: "safety alerts peptides complementary medicines",
+    region: "AU",
+    metadata: {
+      priority: "regulatory-watch",
+      reason: "Australia is the first regulatory lens."
+    }
+  }
+];
 
 async function main() {
   for (const intervention of interventions) {
@@ -511,30 +538,113 @@ async function main() {
   }
 
   await prisma.ingestionJob.createMany({
-    data: [
-      {
-        source: PrismaSourceKind.PUBMED,
-        status: PrismaIngestionStatus.QUEUED,
-        query: "creatine monohydrate strength randomized trial meta-analysis",
-        region: "AU",
-        metadata: {
-          priority: "first-source-workflow",
-          reason: "PubMed gives the fastest path to citation-backed evidence cards."
-        }
-      },
-      {
-        source: PrismaSourceKind.TGA,
-        status: PrismaIngestionStatus.QUEUED,
-        query: "safety alerts peptides complementary medicines",
-        region: "AU",
-        metadata: {
-          priority: "regulatory-watch",
-          reason: "Australia is the first regulatory lens."
-        }
-      }
-    ],
+    data: seedIngestionJobs,
     skipDuplicates: true
   });
+
+  await assertDatabaseSeedIntegrity();
+}
+
+async function assertDatabaseSeedIntegrity() {
+  const [
+    dbReferences,
+    dbInterventions,
+    dbClaims,
+    dbClaimReferences,
+    dbStudies,
+    dbTrials,
+    dbSafetyAlerts,
+    dbProducts,
+    dbAustraliaRegulatoryStatuses,
+    dbIngestionJobs
+  ] = await Promise.all([
+    prisma.reference.findMany({ select: { id: true } }),
+    prisma.intervention.findMany({ select: { id: true } }),
+    prisma.claim.findMany({ select: { id: true } }),
+    prisma.claimReference.findMany({ select: { claimId: true, referenceId: true } }),
+    prisma.study.findMany({ select: { id: true } }),
+    prisma.trial.findMany({ select: { id: true } }),
+    prisma.safetyAlert.findMany({ select: { id: true } }),
+    prisma.product.findMany({ select: { id: true } }),
+    prisma.australiaRegulatoryStatus.findMany({ select: { id: true } }),
+    prisma.ingestionJob.findMany({ select: { source: true, query: true, region: true } })
+  ]);
+
+  assertSeedIntegrity([
+    seedCollection("Reference", ids(references), ids(dbReferences), [
+      "issn-",
+      "ods-",
+      "fda-",
+      "tga-",
+      "ncbi-",
+      "clinicaltrials-"
+    ]),
+    seedCollection("Intervention", ids(interventions), ids(dbInterventions)),
+    seedCollection("Claim", ids(claims), ids(dbClaims), [
+      "creatine-",
+      "vitamin-d-",
+      "omega-3-",
+      "bpc-157-"
+    ]),
+    seedCollection(
+      "ClaimReference",
+      claims.flatMap((claim) =>
+        claim.keyReferenceIds.map((referenceId) => claimReferenceKey(claim.id, referenceId))
+      ),
+      dbClaimReferences.map((reference) =>
+        claimReferenceKey(reference.claimId, reference.referenceId)
+      ),
+      ["creatine-", "vitamin-d-", "omega-3-", "bpc-157-"]
+    ),
+    seedCollection("Study", ids(studies), ids(dbStudies), ["study-"]),
+    seedCollection("Trial", ids(trialWatchItems), ids(dbTrials), ["trial-", "pubmed-"]),
+    seedCollection("SafetyAlert", ids(safetyAlerts), ids(dbSafetyAlerts), [
+      "tga-",
+      "bpc-157-",
+      "omega-3-",
+      "vitamin-d-"
+    ]),
+    seedCollection("Product", ids(productSignals), ids(dbProducts), ["seed-"]),
+    seedCollection(
+      "AustraliaRegulatoryStatus",
+      ids(australiaRegulatoryStatuses),
+      ids(dbAustraliaRegulatoryStatuses),
+      ["au-reg-"]
+    ),
+    seedCollection(
+      "IngestionJob",
+      seedIngestionJobs.map(ingestionJobKey),
+      dbIngestionJobs.map(ingestionJobKey)
+    )
+  ]);
+
+  console.log("Seed integrity verified.");
+}
+
+function seedCollection(
+  name: string,
+  expectedIds: readonly string[],
+  actualIds: readonly string[],
+  seedOwnedPrefixes?: readonly string[]
+): SeedIntegrityCollection {
+  return {
+    name,
+    expectedIds,
+    actualIds,
+    seedOwnedPrefixes
+  };
+}
+
+function ids(items: readonly { id: string }[]) {
+  return items.map((item) => item.id);
+}
+
+function claimReferenceKey(claimId: string, referenceId: string) {
+  return `${claimId}:${referenceId}`;
+}
+
+function ingestionJobKey(job: { source: string; query: string; region: string }) {
+  return `${job.source}:${job.region}:${job.query}`;
 }
 
 main()

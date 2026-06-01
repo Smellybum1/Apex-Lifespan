@@ -25,7 +25,7 @@ Apex Lifespan is an evidence intelligence dashboard for supplements, peptides, a
 - Apply local Prisma migrations: `npm run db:migrate`
 - Apply committed migrations without creating new ones: `npm run db:migrate:deploy`
 - Push schema to configured PostgreSQL without migrations: `npm run db:push`
-- Seed configured PostgreSQL: `npm run db:seed`
+- Seed configured PostgreSQL and verify seed-owned IDs: `npm run db:seed`
 
 ## Local database
 
@@ -42,10 +42,12 @@ Workflow:
 3. Confirm it is healthy: `docker compose ps`
 4. Validate and generate Prisma client: `npm run db:validate` and `npm run db:generate`
 5. Apply the committed Prisma migrations: `npm run db:migrate`
-6. Seed local data: `npm run db:seed`
+6. Seed local data and verify expected seed-owned rows: `npm run db:seed`
 7. Stop the database when done: `docker compose down`
 
 Use `npm run db:migrate:deploy` when you want to apply committed migrations without generating a new migration. Keep `npm run db:push` for temporary local prototypes only.
+
+The seed command fails if required seed records are missing after the upserts or if stale seed-owned IDs remain in guarded tables. Non-seed import rows are allowed unless they use the seed-owned ID prefixes.
 
 To reset local database state, run `docker compose down -v`, then start PostgreSQL again and repeat the migrate/seed steps.
 
