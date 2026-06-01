@@ -30,7 +30,7 @@
   - `upsertSourceCandidateDrafts` is a server-side data helper for gated ingestion paths; rediscovery updates candidate metadata and triage fields without overwriting reviewer decision, accepted reference, or review status.
   - Source-candidate ingestion helpers compose live PubMed/ClinicalTrials.gov search, candidate mapping, and gated upsert for internal jobs; public preview GET routes remain read-only and unpersisted.
   - Source-candidate review helpers can list a bounded pending queue and record human accepted/rejected decisions; accepted candidates require an existing curated reference link and still do not auto-promote into curated evidence.
-  - Source-candidate ingestion jobs can run queued PubMed/ClinicalTrials.gov jobs server-side, persist running/succeeded/failed/skipped status and counts, and safely skip unsupported sources rather than guessing.
+  - Source-candidate ingestion jobs claim queued PubMed/ClinicalTrials.gov jobs with a status-guarded update before calling external APIs, persist running/succeeded/failed/skipped status and counts, and safely skip unsupported sources rather than guessing.
   - `npm run ingest:sources` is a private/local operator command for the source-candidate job runner; default execution is bounded to one queued job and writes only to configured PostgreSQL.
   - The Sources panel shows an active-card source packet first: linked curated references, extracted study records, extraction-pending references, unresolved reference IDs, and a tested completeness summary stay distinct from live preview results.
   - Current seed evidence claims have structured extraction rows for all linked curated references; pending extraction behavior is preserved with synthetic source-packet tests.

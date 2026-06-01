@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
   findUnique: vi.fn(),
   update: vi.fn(),
+  updateMany: vi.fn(),
   ingestClinicalTrialSourceCandidates: vi.fn(),
   ingestPubMedSourceCandidates: vi.fn()
 }));
@@ -13,7 +14,8 @@ vi.mock("@/lib/db/prisma", () => ({
     ingestionJob: {
       findFirst: mocks.findFirst,
       findUnique: mocks.findUnique,
-      update: mocks.update
+      update: mocks.update,
+      updateMany: mocks.updateMany
     }
   }
 }));
@@ -34,6 +36,7 @@ const now = () => timestamp;
 describe("runNextSourceCandidateIngestionJob", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.updateMany.mockResolvedValue({ count: 1 });
   });
 
   it("returns null when there is no queued supported source-candidate job", async () => {
@@ -51,11 +54,11 @@ describe("runNextSourceCandidateIngestionJob", () => {
       orderBy: [{ createdAt: "asc" }]
     });
     expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
   });
 
   it("runs the oldest queued supported job", async () => {
     mocks.findFirst.mockResolvedValue(dbIngestionJob());
-    mocks.findUnique.mockResolvedValue(dbIngestionJob());
     mocks.ingestPubMedSourceCandidates.mockResolvedValue(sourceCandidateIngestionResult());
 
     await expect(
@@ -73,9 +76,18 @@ describe("runNextSourceCandidateIngestionJob", () => {
       recordsChanged: 1
     });
 
-    expect(mocks.findUnique).toHaveBeenCalledWith({
+    expect(mocks.updateMany).toHaveBeenCalledWith({
       where: {
-        id: "job-pubmed"
+        id: "job-pubmed",
+        status: "QUEUED"
+      },
+      data: {
+        status: "RUNNING",
+        startedAt: timestamp,
+        completedAt: null,
+        recordsFound: 0,
+        recordsChanged: 0,
+        error: null
       }
     });
     expect(mocks.ingestPubMedSourceCandidates).toHaveBeenCalledWith({
@@ -87,11 +99,24 @@ describe("runNextSourceCandidateIngestionJob", () => {
       ingestionJobId: "job-pubmed"
     });
   });
+
+  it("does not run external ingestion when a selected next job cannot be claimed", async () => {
+    mocks.findFirst.mockResolvedValueOnce(dbIngestionJob()).mockResolvedValueOnce(null);
+    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(runNextSourceCandidateIngestionJob({ now })).resolves.toBeNull();
+
+    expect(mocks.findFirst).toHaveBeenCalledTimes(2);
+    expect(mocks.ingestPubMedSourceCandidates).not.toHaveBeenCalled();
+    expect(mocks.ingestClinicalTrialSourceCandidates).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
 });
 
 describe("runSourceCandidateIngestionJob", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.updateMany.mockResolvedValue({ count: 1 });
   });
 
   it("marks PubMed jobs running and then succeeded with persisted counts", async () => {
@@ -114,9 +139,10 @@ describe("runSourceCandidateIngestionJob", () => {
       error: undefined
     });
 
-    expect(mocks.update).toHaveBeenNthCalledWith(1, {
+    expect(mocks.updateMany).toHaveBeenCalledWith({
       where: {
-        id: "job-pubmed"
+        id: "job-pubmed",
+        status: "QUEUED"
       },
       data: {
         status: "RUNNING",
@@ -127,7 +153,7 @@ describe("runSourceCandidateIngestionJob", () => {
         error: null
       }
     });
-    expect(mocks.update).toHaveBeenNthCalledWith(2, {
+    expect(mocks.update).toHaveBeenCalledWith({
       where: {
         id: "job-pubmed"
       },
@@ -262,6 +288,36 @@ describe("runSourceCandidateIngestionJob", () => {
     ).rejects.toThrow("Ingestion job not found: missing-job");
 
     expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("throws before claiming when the requested ingestion job is not queued", async () => {
+    mocks.findUnique.mockResolvedValue(
+      dbIngestionJob({
+        status: "SUCCEEDED"
+      })
+    );
+
+    await expect(
+      runSourceCandidateIngestionJob("job-pubmed", { now })
+    ).rejects.toThrow("Ingestion job is not queued: job-pubmed has status SUCCEEDED.");
+
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.ingestPubMedSourceCandidates).not.toHaveBeenCalled();
+  });
+
+  it("throws without running external ingestion when a queued job claim is lost", async () => {
+    mocks.findUnique.mockResolvedValue(dbIngestionJob());
+    mocks.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      runSourceCandidateIngestionJob("job-pubmed", { now })
+    ).rejects.toThrow("Could not claim queued ingestion job: job-pubmed.");
+
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.ingestPubMedSourceCandidates).not.toHaveBeenCalled();
+    expect(mocks.ingestClinicalTrialSourceCandidates).not.toHaveBeenCalled();
   });
 });
 

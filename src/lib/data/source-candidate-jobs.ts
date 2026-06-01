@@ -42,25 +42,36 @@ const SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES = [
   DbSourceKind.PUBMED,
   DbSourceKind.CLINICALTRIALS_GOV
 ] satisfies SupportedSourceCandidateJobSource[];
+const MAX_NEXT_JOB_CLAIM_ATTEMPTS = 3;
 
 export async function runNextSourceCandidateIngestionJob(
   options: SourceCandidateIngestionJobOptions = {}
 ): Promise<SourceCandidateIngestionJobRunResult | null> {
-  const job = await prisma.ingestionJob.findFirst({
-    where: {
-      status: DbIngestionStatus.QUEUED,
-      source: {
-        in: SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES
-      }
-    },
-    orderBy: [{ createdAt: "asc" }]
-  });
+  const now = options.now ?? (() => new Date());
 
-  if (!job) {
-    return null;
+  for (let attempt = 0; attempt < MAX_NEXT_JOB_CLAIM_ATTEMPTS; attempt += 1) {
+    const job = await prisma.ingestionJob.findFirst({
+      where: {
+        status: DbIngestionStatus.QUEUED,
+        source: {
+          in: SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES
+        }
+      },
+      orderBy: [{ createdAt: "asc" }]
+    });
+
+    if (!job) {
+      return null;
+    }
+
+    const claimed = await claimQueuedJob(job.id, now());
+
+    if (claimed) {
+      return runClaimedSourceCandidateIngestionJob(job, options, now);
+    }
   }
 
-  return runSourceCandidateIngestionJob(job.id, options);
+  return null;
 }
 
 export async function runSourceCandidateIngestionJob(
@@ -77,9 +88,25 @@ export async function runSourceCandidateIngestionJob(
     throw new Error(`Ingestion job not found: ${jobId}`);
   }
 
-  const now = options.now ?? (() => new Date());
-  await markJobRunning(job.id, now());
+  if (job.status !== DbIngestionStatus.QUEUED) {
+    throw new Error(`Ingestion job is not queued: ${jobId} has status ${job.status}.`);
+  }
 
+  const now = options.now ?? (() => new Date());
+  const claimed = await claimQueuedJob(job.id, now());
+
+  if (!claimed) {
+    throw new Error(`Could not claim queued ingestion job: ${jobId}.`);
+  }
+
+  return runClaimedSourceCandidateIngestionJob(job, options, now);
+}
+
+async function runClaimedSourceCandidateIngestionJob(
+  job: DbIngestionJob,
+  options: SourceCandidateIngestionJobOptions,
+  now: () => Date
+) {
   if (!isSupportedSourceCandidateJobSource(job.source)) {
     return completeJob({
       job,
@@ -147,10 +174,11 @@ function sourceCandidateContext(job: DbIngestionJob) {
   };
 }
 
-async function markJobRunning(jobId: string, startedAt: Date) {
-  await prisma.ingestionJob.update({
+async function claimQueuedJob(jobId: string, startedAt: Date) {
+  const result = await prisma.ingestionJob.updateMany({
     where: {
-      id: jobId
+      id: jobId,
+      status: DbIngestionStatus.QUEUED
     },
     data: {
       status: DbIngestionStatus.RUNNING,
@@ -161,6 +189,8 @@ async function markJobRunning(jobId: string, startedAt: Date) {
       error: null
     }
   });
+
+  return result.count === 1;
 }
 
 async function completeJob({
