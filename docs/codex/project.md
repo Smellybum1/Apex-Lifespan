@@ -28,6 +28,7 @@
   - `SourceCandidate` is the backend persistence target for future reviewed ingestion of live PubMed and ClinicalTrials.gov candidates; helper mapping keeps candidates unreviewed with a separate pending-review decision and preserves triage metadata without auto-persisting public preview results.
   - `upsertSourceCandidateDrafts` is a server-side data helper for gated ingestion paths; rediscovery updates candidate metadata and triage fields without overwriting reviewer decision, accepted reference, or review status.
   - Source-candidate ingestion helpers compose live PubMed/ClinicalTrials.gov search, candidate mapping, and gated upsert for internal jobs; public preview GET routes remain read-only and unpersisted.
+  - Source-candidate review helpers can list a bounded pending queue and record human accepted/rejected decisions; accepted candidates require an existing curated reference link and still do not auto-promote into curated evidence.
   - The Sources panel shows an active-card source packet first: linked curated references, extracted study records, extraction-pending references, unresolved reference IDs, and a tested completeness summary stay distinct from live preview results.
   - Current seed evidence claims have structured extraction rows for all linked curated references; pending extraction behavior is preserved with synthetic source-packet tests.
   - Evidence cards use a consumer summary by default with expandable research detail for study context, applicability, score-change rationale, and source links.
