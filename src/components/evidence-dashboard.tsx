@@ -52,6 +52,10 @@ import {
   scoreBand,
   severityTone
 } from "@/lib/scoring";
+import {
+  buildClaimSourcePacket,
+  type ClaimSourcePacket
+} from "@/lib/source-packet";
 import { buildSourceSearchQueries } from "@/lib/source-queries";
 import type {
   Claim,
@@ -1083,6 +1087,23 @@ function SourceAndStudyPanel({
       }),
     [activeClaim, activeIntervention]
   );
+  const activeSourcePacket = useMemo(
+    () =>
+      buildClaimSourcePacket({
+        claim: activeClaim,
+        referencesById,
+        studies
+      }),
+    [activeClaim, referencesById, studies]
+  );
+  const activeStudyIds = useMemo(
+    () => new Set(activeSourcePacket.studies.map((study) => study.id)),
+    [activeSourcePacket.studies]
+  );
+  const otherStudies = useMemo(
+    () => studies.filter((study) => !activeStudyIds.has(study.id)),
+    [activeStudyIds, studies]
+  );
   const [pubMedTerm, setPubMedTerm] = useState("creatine monohydrate");
   const [submittedPubMedTerm, setSubmittedPubMedTerm] = useState("creatine monohydrate");
   const [pubMedResult, setPubMedResult] = useState<PubMedSearchResult | null>(null);
@@ -1310,6 +1331,12 @@ function SourceAndStudyPanel({
           <MiniStat label="Trials" value={activeSourceQueries.trialTerm} />
         </div>
       </div>
+      <ActiveSourcePacketPanel
+        claim={activeClaim}
+        intervention={activeIntervention}
+        packet={activeSourcePacket}
+        referencesById={referencesById}
+      />
       <PubMedTriagePreview
         error={pubMedError}
         result={pubMedResult}
@@ -1320,42 +1347,198 @@ function SourceAndStudyPanel({
         result={trialResult}
         status={trialStatus}
       />
-      <div className="mt-4 grid gap-3">
-        {studies.map((study) => {
-          const reference = referencesById.get(study.referenceId);
-
-          return (
-            <article key={study.id} className="rounded-lg border border-line bg-white p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-semibold text-ink">{study.title}</h3>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {study.source} - {study.year}
-                  </p>
-                </div>
-                <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
-                  {study.studyType}
-                </span>
-              </div>
-              <p className="mt-3 text-sm leading-6 text-slate-700">
-                Outcomes: {study.outcomes.join(", ")}
-              </p>
-              {reference ? (
-                <a
-                  href={reference.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
-                >
-                  {reference.source} <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-                </a>
-              ) : null}
-            </article>
-          );
-        })}
-      </div>
+      <details className="mt-4 rounded-lg border border-line bg-white p-3">
+        <summary className="cursor-pointer text-sm font-semibold text-ink">
+          Other curated study records ({otherStudies.length})
+        </summary>
+        <div className="mt-3 grid gap-3">
+          {otherStudies.length > 0 ? (
+            otherStudies.map((study) => (
+              <CuratedStudyCard
+                key={study.id}
+                reference={referencesById.get(study.referenceId)}
+                study={study}
+              />
+            ))
+          ) : (
+            <p className="rounded-md border border-line bg-mist p-3 text-sm text-slate-600">
+              No additional curated study records outside the active evidence card.
+            </p>
+          )}
+        </div>
+      </details>
     </section>
   );
+}
+
+function ActiveSourcePacketPanel({
+  claim,
+  intervention,
+  packet,
+  referencesById
+}: {
+  claim: Claim;
+  intervention?: Intervention;
+  packet: ClaimSourcePacket;
+  referencesById: Map<string, Reference>;
+}) {
+  return (
+    <div className="mt-4 rounded-lg border border-signal/25 bg-blue-50 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-ink">Active card source packet</h3>
+          <p className="mt-1 text-xs text-slate-600">
+            {intervention?.name ?? "Selected intervention"} - {shortOutcome(claim.outcome)}
+          </p>
+          <p className="mt-1 text-sm leading-6 text-slate-700">{claim.claimText}</p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <span className={cn("rounded-md border px-2 py-1 font-semibold", labelTone(claim.finalLabel))}>
+            {claim.finalLabel}
+          </span>
+          <span className="rounded-md border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-700">
+            {claim.reviewStatus}
+          </span>
+          <span className="rounded-md border border-signal/25 bg-white px-2 py-1 font-semibold text-signal">
+            {packet.references.length} linked refs
+          </span>
+          <span className="rounded-md border border-signal/25 bg-white px-2 py-1 font-semibold text-signal">
+            {packet.studies.length} extracted studies
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3">
+        {packet.studies.length > 0 ? (
+          packet.studies.map((study) => (
+            <CuratedStudyCard
+              key={study.id}
+              reference={referencesById.get(study.referenceId)}
+              study={study}
+            />
+          ))
+        ) : (
+          <p className="rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+            No extracted study record has been attached to this active claim yet.
+          </p>
+        )}
+
+        {packet.pendingReferences.map((reference) => (
+          <article key={reference.id} className="rounded-md border border-line bg-white p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h4 className="text-sm font-semibold leading-6 text-ink">{reference.title}</h4>
+                <p className="mt-1 text-xs text-slate-500">
+                  {reference.source}
+                  {reference.year ? ` - ${reference.year}` : ""}
+                </p>
+              </div>
+              <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+                Extraction pending
+              </span>
+              <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
+                {sourceContextLabel(reference)}
+              </span>
+            </div>
+            <a
+              href={reference.url}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-3 inline-flex max-w-full items-center gap-1 break-words text-xs font-semibold text-signal hover:underline"
+            >
+              {reference.identifier ?? reference.source}
+              <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+            </a>
+          </article>
+        ))}
+
+        {packet.references.length === 0 ? (
+          <p className="rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+            No curated references are linked to this claim yet.
+          </p>
+        ) : null}
+
+        {packet.missingReferenceIds.length > 0 ? (
+          <p className="rounded-md border border-danger/30 bg-red-50 p-3 text-sm text-danger">
+            Missing source records: {packet.missingReferenceIds.join(", ")}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CuratedStudyCard({
+  reference,
+  study
+}: {
+  reference?: Reference;
+  study: Study;
+}) {
+  return (
+    <article className="rounded-lg border border-line bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold leading-6 text-ink">{study.title}</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            {study.source} - {study.year}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
+            {study.studyType}
+          </span>
+          <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
+            {sourceContextLabel(reference)}
+          </span>
+        </div>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-slate-700">
+        Outcomes: {study.outcomes.join(", ")}
+      </p>
+      <details className="mt-3">
+        <summary className="cursor-pointer text-xs font-semibold text-signal">
+          Extraction detail
+        </summary>
+        <dl className="mt-2 grid gap-2 text-xs md:grid-cols-2">
+          <MiniStat label="Sample" value={study.sampleSize} />
+          <MiniStat label="Population" value={study.population} />
+          <MiniStat label="Intervention" value={study.intervention} />
+          <MiniStat label="Risk of bias" value={study.riskOfBias} />
+          <MiniStat label="Adverse events" value={study.adverseEvents} />
+          <MiniStat label="Funding/conflicts" value={study.fundingConflicts} />
+        </dl>
+      </details>
+      {reference ? (
+        <a
+          href={reference.url}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-flex max-w-full items-center gap-1 break-words text-xs font-semibold text-signal hover:underline"
+        >
+          {reference.source}
+          {reference.identifier ? ` - ${reference.identifier}` : ""}
+          <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+        </a>
+      ) : null}
+    </article>
+  );
+}
+
+function sourceContextLabel(reference?: Reference) {
+  if (!reference) {
+    return "Source link pending";
+  }
+
+  if (["FDA", "TGA", "WADA", "LiverTox"].includes(reference.source)) {
+    return "Safety/regulatory source";
+  }
+
+  if (reference.source === "ClinicalTrials.gov") {
+    return "Trial registry source";
+  }
+
+  return "Evidence source";
 }
 
 function PubMedTriagePreview({
