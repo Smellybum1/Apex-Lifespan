@@ -4,7 +4,7 @@
 - Commands:
   - Install: `npm install`
   - Dev: `npm run dev`
-  - Test: TODO
+  - Test: `npm run test`
   - Lint/typecheck/build: `npm run lint`, `npm run typecheck`, `npm run build`
   - Database: `npm run db:validate`, `npm run db:generate`, `npm run db:push`, `npm run db:seed`
   - Local PostgreSQL: `docker compose up -d postgres`, `docker compose ps`, `docker compose down`; reset with `docker compose down -v`
@@ -20,7 +20,8 @@
   - UI tone: consumer-friendly by default, with expandable investor-grade research detail planned.
   - First ingestion workflow priority: PubMed, because citation-backed evidence cards should come before broader product or personalization workflows.
 - Validation strategy:
-  - Run `npm run db:validate`, `npm run db:generate`, `npm run lint`, `npm run typecheck`, and `npm run build` for schema or app changes.
+  - Run `npm run db:validate`, `npm run db:generate`, `npm run test`, `npm run lint`, `npm run typecheck`, and `npm run build` for schema or app changes.
+  - On Windows, stop `npm run dev` and run Prisma-generating commands such as `npm run typecheck` sequentially; concurrent dev/build processes can lock Prisma's generated query-engine DLL.
   - Run `docker compose config` after Docker Compose changes.
   - Run `npm audit` after dependency changes.
 - Local database assumptions:
@@ -35,4 +36,4 @@
   - Avoiding individualized medical advice.
   - Package advisories in the frontend toolchain.
 - Open questions:
-  - Test framework choice.
+  - First production deployment target.

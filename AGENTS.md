@@ -13,7 +13,7 @@
 ## Project commands
 - Install: `npm install`
 - Dev: `npm run dev`
-- Test: TODO
+- Test: `npm run test`
 - Lint/typecheck/build: `npm run lint`, `npm run typecheck`, `npm run build`
 - Database: `npm run db:validate`, `npm run db:generate`, `npm run db:push`, `npm run db:seed`
 

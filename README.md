@@ -16,6 +16,7 @@ Apex Lifespan is an evidence intelligence dashboard for supplements, peptides, a
 
 - Install: `npm install`
 - Dev: `npm run dev`
+- Test: `npm run test`
 - Lint: `npm run lint`
 - Typecheck: `npm run typecheck`
 - Build: `npm run build`
