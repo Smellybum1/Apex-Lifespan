@@ -33,20 +33,80 @@ describe("buildClaimSourcePacket", () => {
     });
   });
 
-  it("keeps linked references visible when study extraction is pending", () => {
+  it("keeps current seed claim source packets fully extracted", () => {
+    const incompletePackets = claims
+      .filter((claim) => claim.keyReferenceIds.length > 0)
+      .flatMap((claim) => {
+        const packet = buildClaimSourcePacket({
+          claim,
+          referencesById,
+          studies
+        });
+
+        return packet.completeness.status === "complete"
+          ? []
+          : [
+              {
+                claimId: claim.id,
+                pendingReferenceIds: packet.pendingReferences.map((reference) => reference.id),
+                missingReferenceIds: packet.missingReferenceIds
+              }
+            ];
+      });
+
+    expect(incompletePackets).toEqual([]);
+  });
+
+  it("links omega-3 and TGA seed references to structured extraction rows", () => {
     const claim = claims.find((item) => item.id === "omega-3-triglycerides");
+    const bpcClaim = claims.find((item) => item.id === "bpc-157-injury-healing");
 
     expect(claim).toBeDefined();
+    expect(bpcClaim).toBeDefined();
 
-    const packet = buildClaimSourcePacket({
+    const omegaPacket = buildClaimSourcePacket({
       claim: claim as Claim,
       referencesById,
       studies
     });
+    const bpcPacket = buildClaimSourcePacket({
+      claim: bpcClaim as Claim,
+      referencesById,
+      studies
+    });
 
-    expect(packet.references.map((reference) => reference.id)).toEqual(["ods-omega-3"]);
+    expect(omegaPacket.studies.map((study) => study.id)).toEqual(["study-omega-3-ods"]);
+    expect(omegaPacket.completeness.status).toBe("complete");
+    expect(bpcPacket.studies.map((study) => study.id).sort()).toEqual([
+      "study-fda-bpc-157",
+      "study-tga-unapproved-peptides"
+    ]);
+    expect(bpcPacket.completeness).toMatchObject({
+      status: "complete",
+      totalReferences: 2,
+      extractedReferences: 2,
+      pendingReferences: 0,
+      missingReferences: 0
+    });
+  });
+
+  it("keeps linked references visible when study extraction is pending", () => {
+    const pendingReference: Reference = {
+      id: "pending-ref",
+      title: "Pending source",
+      source: "PubMed",
+      url: "https://pubmed.ncbi.nlm.nih.gov/"
+    };
+
+    const packet = buildClaimSourcePacket({
+      claim: { keyReferenceIds: ["pending-ref"] },
+      referencesById: new Map([[pendingReference.id, pendingReference]]),
+      studies: []
+    });
+
+    expect(packet.references).toEqual([pendingReference]);
     expect(packet.studies).toEqual([]);
-    expect(packet.pendingReferences.map((reference) => reference.id)).toEqual(["ods-omega-3"]);
+    expect(packet.pendingReferences).toEqual([pendingReference]);
     expect(packet.missingReferenceIds).toEqual([]);
     expect(packet.completeness).toMatchObject({
       status: "extraction_pending",

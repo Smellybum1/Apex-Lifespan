@@ -428,6 +428,22 @@ export const studies: Study[] = [
     referenceId: "ods-vitamin-d"
   },
   {
+    id: "study-omega-3-ods",
+    title: "Omega-3 fatty acids health professional fact sheet",
+    year: 2025,
+    source: "NIH Office of Dietary Supplements",
+    studyType: "Systematic review",
+    sampleSize: "Evidence summary",
+    population: "General health professional reference",
+    intervention: "EPA/DHA omega-3 fatty acids",
+    outcomes: ["Triglycerides", "Cardiovascular endpoints", "Atrial fibrillation safety signal"],
+    adverseEvents:
+      "Higher-dose contexts require attention to atrial fibrillation signals, bleeding context, and medication interactions.",
+    fundingConflicts: "Government health information source.",
+    riskOfBias: "Reference summary; separates endpoint, dose, and formulation context.",
+    referenceId: "ods-omega-3"
+  },
+  {
     id: "study-fda-bpc-157",
     title:
       "Certain bulk drug substances for use in compounding that may present significant safety risks",
@@ -442,6 +458,22 @@ export const studies: Study[] = [
     fundingConflicts: "Government regulatory source.",
     riskOfBias: "Regulatory source; update monitoring required.",
     referenceId: "fda-bpc-157-category-2"
+  },
+  {
+    id: "study-tga-unapproved-peptides",
+    title: "TGA safety alerts and advisories for unapproved peptide products",
+    year: 2026,
+    source: "TGA",
+    studyType: "Regulatory safety warning",
+    sampleSize: "Regulatory safety-alert monitoring",
+    population: "Australian public, suppliers, and health professional regulatory context",
+    intervention: "Unapproved peptide products including BPC-157",
+    outcomes: ["ARTG status", "Regulatory concern", "Public safety monitoring"],
+    adverseEvents:
+      "TGA alerts highlight unknown safety, quality, effectiveness, product identity, and contamination risks for unapproved peptide products.",
+    fundingConflicts: "Government regulatory source.",
+    riskOfBias: "Regulatory safety source; monitor for current TGA updates.",
+    referenceId: "tga-safety-alerts"
   }
 ];
 

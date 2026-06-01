@@ -26,6 +26,7 @@
   - Public live-source API routes share request parsing that normalises whitespace and rejects missing or overlong search terms before calling external integrations.
   - Live source previews start idle and only fetch after an explicit form submit or suggested-search click; do not auto-refetch live sources on initial load or every evidence-card selection.
   - The Sources panel shows an active-card source packet first: linked curated references, extracted study records, extraction-pending references, unresolved reference IDs, and a tested completeness summary stay distinct from live preview results.
+  - Current seed evidence claims have structured extraction rows for all linked curated references; pending extraction behavior is preserved with synthetic source-packet tests.
   - Evidence cards use a consumer summary by default with expandable research detail for study context, applicability, score-change rationale, and source links.
   - Product label analysis includes AU/TGA-specific cautions for unresolved AUST status, approval overclaims, and research-use/injectable peptide language; each finding should show either an official source link or a visible heuristic-check provenance label.
   - TGA/ARTG approval-overclaim detection has regression coverage for negated phrases including ASCII and curly apostrophes, so `isn't` and `isn\u2019t` wording should not be reported as approval overclaims.
