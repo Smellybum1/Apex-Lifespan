@@ -958,7 +958,11 @@ function LabelAnalyzer({
         </div>
         <ClipboardCheck aria-hidden="true" className="h-5 w-5 text-spruce" />
       </div>
+      <label className="sr-only" htmlFor="product-label-text">
+        Product label text
+      </label>
       <textarea
+        id="product-label-text"
         value={labelText}
         onChange={(event) => setLabelText(event.target.value)}
         className="mt-4 min-h-40 w-full resize-y rounded-md border border-line bg-white p-3 text-sm leading-6 outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
