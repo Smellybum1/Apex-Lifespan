@@ -32,6 +32,10 @@ import {
 
 import { projectConfig } from "@/lib/config/project";
 import type {
+  ClinicalTrialSearchItem,
+  ClinicalTrialSearchResult
+} from "@/lib/integrations/clinical-trials";
+import type {
   PubMedArticleSummary,
   PubMedSearchResult
 } from "@/lib/integrations/pubmed";
@@ -1027,6 +1031,11 @@ function SourceAndStudyPanel({
   const [pubMedResult, setPubMedResult] = useState<PubMedSearchResult | null>(null);
   const [pubMedStatus, setPubMedStatus] = useState<"loading" | "ready" | "error">("loading");
   const [pubMedError, setPubMedError] = useState<string | null>(null);
+  const [trialTerm, setTrialTerm] = useState("omega-3");
+  const [submittedTrialTerm, setSubmittedTrialTerm] = useState("omega-3");
+  const [trialResult, setTrialResult] = useState<ClinicalTrialSearchResult | null>(null);
+  const [trialStatus, setTrialStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [trialError, setTrialError] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1065,9 +1074,53 @@ function SourceAndStudyPanel({
     };
   }, [submittedPubMedTerm]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadTrialPreview() {
+      setTrialStatus("loading");
+      setTrialError(null);
+
+      try {
+        const response = await fetch(
+          `/api/trials/search?term=${encodeURIComponent(submittedTrialTerm)}&pageSize=5`,
+          { signal: controller.signal }
+        );
+        const body = (await response.json()) as ClinicalTrialSearchResult | { error?: string };
+
+        if (!response.ok) {
+          throw new Error(
+            "error" in body && body.error ? body.error : "ClinicalTrials.gov search failed."
+          );
+        }
+
+        if (!controller.signal.aborted) {
+          setTrialResult(body as ClinicalTrialSearchResult);
+          setTrialStatus("ready");
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setTrialError(
+            error instanceof Error ? error.message : "ClinicalTrials.gov search failed."
+          );
+          setTrialStatus("error");
+        }
+      }
+    }
+
+    loadTrialPreview();
+
+    return () => {
+      controller.abort();
+    };
+  }, [submittedTrialTerm]);
+
   const pubMedApiHref = `/api/pubmed/search?term=${encodeURIComponent(
     submittedPubMedTerm
   )}&retmax=5`;
+  const trialApiHref = `/api/trials/search?term=${encodeURIComponent(
+    submittedTrialTerm
+  )}&pageSize=5`;
 
   return (
     <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
@@ -1105,6 +1158,34 @@ function SourceAndStudyPanel({
               Search
             </button>
           </form>
+          <form
+            className="flex min-w-0 gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const nextTerm = trialTerm.trim();
+
+              if (nextTerm) {
+                setSubmittedTrialTerm(nextTerm);
+              }
+            }}
+          >
+            <label className="sr-only" htmlFor="trial-term">
+              ClinicalTrials.gov term
+            </label>
+            <input
+              id="trial-term"
+              value={trialTerm}
+              onChange={(event) => setTrialTerm(event.target.value)}
+              className="h-9 w-full min-w-0 rounded-md border border-line bg-white px-3 text-sm text-ink outline-none transition focus:border-signal sm:w-48"
+            />
+            <button
+              type="submit"
+              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md border border-line bg-mist px-3 text-xs font-semibold text-slate-700 hover:border-signal"
+            >
+              <FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />
+              Trials
+            </button>
+          </form>
           <a
             href={pubMedApiHref}
             className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-mist px-3 text-xs font-semibold text-slate-700 hover:border-signal"
@@ -1114,12 +1195,12 @@ function SourceAndStudyPanel({
             Raw PubMed <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
           </a>
           <a
-            href="/api/trials/search?term=omega-3"
+            href={trialApiHref}
             className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-mist px-3 text-xs font-semibold text-slate-700 hover:border-signal"
             target="_blank"
             rel="noreferrer"
           >
-            Trials <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+            Raw Trials <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
           </a>
         </div>
       </div>
@@ -1127,6 +1208,11 @@ function SourceAndStudyPanel({
         error={pubMedError}
         result={pubMedResult}
         status={pubMedStatus}
+      />
+      <ClinicalTrialsPreview
+        error={trialError}
+        result={trialResult}
+        status={trialStatus}
       />
       <div className="mt-4 grid gap-3">
         {studies.map((study) => {
@@ -1273,6 +1359,111 @@ function PubMedTriageArticle({ article }: { article: PubMedArticleSummary }) {
   );
 }
 
+function ClinicalTrialsPreview({
+  error,
+  result,
+  status
+}: {
+  error: string | null;
+  result: ClinicalTrialSearchResult | null;
+  status: "loading" | "ready" | "error";
+}) {
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">ClinicalTrials.gov preview</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            {result ? `Live trial records for "${result.query}"` : "Trial candidates"}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Registry records are research leads, not proof of benefit.
+          </p>
+        </div>
+        <span className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
+          {status === "loading" ? "Loading" : status === "error" ? "Needs retry" : "Live preview"}
+        </span>
+      </div>
+
+      {status === "error" ? (
+        <p className="mt-3 rounded-md border border-danger/30 bg-red-50 p-3 text-sm text-danger">
+          {error ?? "ClinicalTrials.gov search failed."}
+        </p>
+      ) : null}
+
+      {status === "loading" ? (
+        <p className="mt-3 rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+          Loading trial records...
+        </p>
+      ) : null}
+
+      {status === "ready" && result ? (
+        <div className="mt-3 grid gap-2">
+          {result.studies.length > 0 ? (
+            result.studies.map((study) => (
+              <ClinicalTrialsPreviewCard key={study.nctId} study={study} />
+            ))
+          ) : (
+            <p className="rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+              No ClinicalTrials.gov records returned.
+            </p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ClinicalTrialsPreviewCard({ study }: { study: ClinicalTrialSearchItem }) {
+  return (
+    <article className="rounded-md border border-line bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h4 className="text-sm font-semibold leading-6 text-ink">{study.title}</h4>
+          <p className="mt-1 text-xs text-slate-500">
+            {study.status} - {study.phase} - {study.lastUpdateDate}
+          </p>
+        </div>
+        <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
+          {study.triageScore}/100
+        </span>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {study.triageReasons.map((reason) => (
+          <span
+            key={reason}
+            className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-600"
+          >
+            {reason}
+          </span>
+        ))}
+      </div>
+
+      <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+        <MiniStat label="Enrollment" value={study.enrollment} />
+        <MiniStat label="Study type" value={study.studyType} />
+        <MiniStat label="Results" value={study.hasResults ? "Posted" : "Not posted"} />
+      </dl>
+
+      <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+        <MiniStat label="Conditions" value={shortList(study.conditions)} />
+        <MiniStat label="Interventions" value={shortList(study.interventions)} />
+        <MiniStat label="Primary outcomes" value={shortList(study.primaryOutcomes)} />
+      </div>
+
+      <a
+        href={study.url}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
+      >
+        {study.nctId} <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+      </a>
+    </article>
+  );
+}
+
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-line bg-mist p-2">
@@ -1280,6 +1471,15 @@ function MiniStat({ label, value }: { label: string; value: string }) {
       <dd className="mt-1 break-words text-slate-700">{value}</dd>
     </div>
   );
+}
+
+function shortList(values: string[]) {
+  if (values.length === 0) {
+    return "Not provided";
+  }
+
+  const preview = values.slice(0, 2).join(", ");
+  return values.length > 2 ? `${preview} +${values.length - 2}` : preview;
 }
 
 function shortOutcome(outcome: OutcomeArea) {
