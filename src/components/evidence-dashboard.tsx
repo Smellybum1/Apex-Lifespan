@@ -749,22 +749,35 @@ function ClaimTable({
             ))}
           </thead>
           <tbody>
-            {table.getRowModel().rows.map((row) => (
-              <tr
-                key={row.id}
-                className={cn(
-                  "cursor-pointer transition hover:bg-blue-50",
-                  row.original.id === activeClaimId && "bg-blue-50"
-                )}
-                onClick={() => onSelectClaim(row.original.id)}
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="border-b border-line px-3 py-3 align-middle text-slate-700">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {table.getRowModel().rows.map((row) => {
+              const isActive = row.original.id === activeClaimId;
+              const selectRow = () => onSelectClaim(row.original.id);
+
+              return (
+                <tr
+                  key={row.id}
+                  aria-selected={isActive}
+                  className={cn(
+                    "cursor-pointer transition hover:bg-blue-50 focus:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-inset focus:ring-signal/20",
+                    isActive && "bg-blue-50"
+                  )}
+                  onClick={selectRow}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      selectRow();
+                    }
+                  }}
+                  tabIndex={0}
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} className="border-b border-line px-3 py-3 align-middle text-slate-700">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

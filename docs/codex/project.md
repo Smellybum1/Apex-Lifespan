@@ -27,6 +27,7 @@
   - Evidence cards use a consumer summary by default with expandable research detail for study context, applicability, score-change rationale, and source links.
   - Product label analysis includes AU/TGA-specific cautions for unresolved AUST status, approval overclaims, and research-use/injectable peptide language.
   - Review-status dashboard counts use tested summary logic so human-reviewed and draft-awaiting-review claims remain separate.
+  - Claim score table rows are mouse and keyboard selectable; preserve Enter/Space activation and visible focus state.
   - MVP mode: public read-only.
   - Default regulatory lens: Australia/TGA.
   - UI tone: consumer-friendly by default, with expandable investor-grade research detail planned.
