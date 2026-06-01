@@ -52,6 +52,7 @@ import {
   scoreBand,
   severityTone
 } from "@/lib/scoring";
+import { buildSourceSearchQueries } from "@/lib/source-queries";
 import type {
   Claim,
   EvidenceDashboardData,
@@ -277,7 +278,12 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             interventionsById={interventionsById}
             trialWatchItems={trialWatchItems}
           />
-          <SourceAndStudyPanel referencesById={referencesById} studies={studies} />
+          <SourceAndStudyPanel
+            activeClaim={activeClaim}
+            activeIntervention={activeIntervention}
+            referencesById={referencesById}
+            studies={studies}
+          />
         </section>
       </div>
     </main>
@@ -1020,12 +1026,24 @@ function TrialWatcher({
 }
 
 function SourceAndStudyPanel({
+  activeClaim,
+  activeIntervention,
   referencesById,
   studies
 }: {
+  activeClaim: Claim;
+  activeIntervention?: Intervention;
   referencesById: Map<string, Reference>;
   studies: Study[];
 }) {
+  const activeSourceQueries = useMemo(
+    () =>
+      buildSourceSearchQueries({
+        claim: activeClaim,
+        intervention: activeIntervention
+      }),
+    [activeClaim, activeIntervention]
+  );
   const [pubMedTerm, setPubMedTerm] = useState("creatine monohydrate");
   const [submittedPubMedTerm, setSubmittedPubMedTerm] = useState("creatine monohydrate");
   const [pubMedResult, setPubMedResult] = useState<PubMedSearchResult | null>(null);
@@ -1121,6 +1139,18 @@ function SourceAndStudyPanel({
   const trialApiHref = `/api/trials/search?term=${encodeURIComponent(
     submittedTrialTerm
   )}&pageSize=5`;
+  const applyActivePubMedSearch = () => {
+    setPubMedTerm(activeSourceQueries.pubMedTerm);
+    setSubmittedPubMedTerm(activeSourceQueries.pubMedTerm);
+  };
+  const applyActiveTrialSearch = () => {
+    setTrialTerm(activeSourceQueries.trialTerm);
+    setSubmittedTrialTerm(activeSourceQueries.trialTerm);
+  };
+  const applyActiveSourceSearches = () => {
+    applyActivePubMedSearch();
+    applyActiveTrialSearch();
+  };
 
   return (
     <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
@@ -1202,6 +1232,43 @@ function SourceAndStudyPanel({
           >
             Raw Trials <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
           </a>
+        </div>
+      </div>
+      <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-ink">Suggested searches</h3>
+            <p className="mt-1 truncate text-xs text-slate-500">{activeSourceQueries.label}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={applyActivePubMedSearch}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-2 text-xs font-semibold text-slate-700 hover:border-signal"
+            >
+              <Search aria-hidden="true" className="h-3.5 w-3.5" />
+              PubMed
+            </button>
+            <button
+              type="button"
+              onClick={applyActiveTrialSearch}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-2 text-xs font-semibold text-slate-700 hover:border-signal"
+            >
+              <FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />
+              Trials
+            </button>
+            <button
+              type="button"
+              onClick={applyActiveSourceSearches}
+              className="inline-flex h-8 items-center rounded-md border border-signal/30 bg-blue-50 px-2 text-xs font-semibold text-signal hover:border-signal"
+            >
+              Both
+            </button>
+          </div>
+        </div>
+        <div className="mt-3 grid gap-2 text-xs lg:grid-cols-2">
+          <MiniStat label="PubMed" value={activeSourceQueries.pubMedTerm} />
+          <MiniStat label="Trials" value={activeSourceQueries.trialTerm} />
         </div>
       </div>
       <PubMedTriagePreview
