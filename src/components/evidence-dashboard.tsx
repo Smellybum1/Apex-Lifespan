@@ -1506,6 +1506,8 @@ function ActiveSourcePacketPanel({
   packet: ClaimSourcePacket;
   referencesById: Map<string, Reference>;
 }) {
+  const completeness = packet.completeness;
+
   return (
     <div className="mt-4 rounded-lg border border-signal/25 bg-blue-50 p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1523,14 +1525,30 @@ function ActiveSourcePacketPanel({
           <span className="rounded-md border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-700">
             {claim.reviewStatus}
           </span>
+          <span className={cn("rounded-md border px-2 py-1 font-semibold", sourcePacketCompletenessTone(completeness.status))}>
+            {completeness.label}
+          </span>
           <span className="rounded-md border border-signal/25 bg-white px-2 py-1 font-semibold text-signal">
-            {packet.references.length} linked refs
+            {completeness.extractedReferences}/{completeness.totalReferences} refs extracted
           </span>
           <span className="rounded-md border border-signal/25 bg-white px-2 py-1 font-semibold text-signal">
             {packet.studies.length} extracted studies
           </span>
+          {completeness.pendingReferences > 0 ? (
+            <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 font-semibold text-amberline">
+              {completeness.pendingReferences} pending
+            </span>
+          ) : null}
+          {completeness.missingReferences > 0 ? (
+            <span className="rounded-md border border-danger/30 bg-red-50 px-2 py-1 font-semibold text-danger">
+              {completeness.missingReferences} missing
+            </span>
+          ) : null}
         </div>
       </div>
+      <p className="mt-3 rounded-md border border-signal/20 bg-white px-3 py-2 text-sm leading-6 text-slate-700">
+        Curated source coverage: {completeness.detail}
+      </p>
 
       <div className="mt-3 grid gap-3">
         {packet.studies.length > 0 ? (
@@ -1663,6 +1681,22 @@ function sourceContextLabel(reference?: Reference) {
   }
 
   return "Evidence source";
+}
+
+function sourcePacketCompletenessTone(status: ClaimSourcePacket["completeness"]["status"]) {
+  if (status === "complete") {
+    return "border-spruce/30 bg-teal-50 text-spruce";
+  }
+
+  if (status === "missing_sources") {
+    return "border-danger/30 bg-red-50 text-danger";
+  }
+
+  if (status === "not_linked") {
+    return "border-slate-300 bg-slate-50 text-slate-700";
+  }
+
+  return "border-amberline/30 bg-amber-50 text-amberline";
 }
 
 function livePreviewStatusLabel(status: LivePreviewStatus) {
