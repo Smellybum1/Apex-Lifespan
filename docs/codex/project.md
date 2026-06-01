@@ -1,0 +1,38 @@
+# Project Memory
+
+- Stack: Next.js, TypeScript, Tailwind CSS, TanStack Table, Recharts, PostgreSQL, Prisma, Node/npm.
+- Commands:
+  - Install: `npm install`
+  - Dev: `npm run dev`
+  - Test: TODO
+  - Lint/typecheck/build: `npm run lint`, `npm run typecheck`, `npm run build`
+  - Database: `npm run db:validate`, `npm run db:generate`, `npm run db:push`, `npm run db:seed`
+  - Local PostgreSQL: `docker compose up -d postgres`, `docker compose ps`, `docker compose down`; reset with `docker compose down -v`
+- Architecture/patterns:
+  - Next.js App Router under `src/app/`.
+  - Dashboard UI in `src/components/evidence-dashboard.tsx`.
+  - Domain types, seed data, scoring, and label analysis under `src/lib/`.
+  - Public source wrappers under `src/lib/integrations/` and API routes under `src/app/api/`.
+  - Prisma schema and seed script under `prisma/`.
+  - Dashboard reads through `src/lib/data/dashboard.ts`; it prefers Prisma when PostgreSQL is reachable and falls back to seed data unless `APEX_DATA_SOURCE=database`.
+  - MVP mode: public read-only.
+  - Default regulatory lens: Australia/TGA.
+  - UI tone: consumer-friendly by default, with expandable investor-grade research detail planned.
+  - First ingestion workflow priority: PubMed, because citation-backed evidence cards should come before broader product or personalization workflows.
+- Validation strategy:
+  - Run `npm run db:validate`, `npm run db:generate`, `npm run lint`, `npm run typecheck`, and `npm run build` for schema or app changes.
+  - Run `docker compose config` after Docker Compose changes.
+  - Run `npm audit` after dependency changes.
+- Local database assumptions:
+  - `.env.example` points Prisma at the Docker Compose PostgreSQL service through `localhost:5432`.
+  - Docker Desktop or Docker Compose must be available locally.
+  - The default `postgres/postgres` credentials and `apex_lifespan` database are development-only.
+  - If port `5432` is occupied, change the Compose host port and local `.env` `DATABASE_URL` together.
+- Risk areas:
+  - Medical claim accuracy and currentness.
+  - Citation traceability and review status.
+  - Peptide/drug regulatory guardrails.
+  - Avoiding individualized medical advice.
+  - Package advisories in the frontend toolchain.
+- Open questions:
+  - Test framework choice.

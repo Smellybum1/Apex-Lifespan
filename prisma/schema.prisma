@@ -1,0 +1,389 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum InterventionCategory {
+  VITAMIN_MINERAL
+  FATTY_ACID
+  AMINO_ACID
+  BOTANICAL_HERBAL
+  FIBER_PREBIOTIC_PROBIOTIC
+  ERGOGENIC_PERFORMANCE_SUPPLEMENT
+  NOOTROPIC
+  HORMONAL_ENDOCRINE_INTERVENTION
+  PEPTIDE_BIOLOGIC
+  DRUG_GEROPROTECTOR_WATCHLIST
+  FOOD_BEVERAGE
+}
+
+enum OutcomeArea {
+  MORTALITY_LIFESPAN
+  CARDIOVASCULAR_EVENTS
+  LDL_APOB_LIPIDS
+  BLOOD_PRESSURE
+  GLUCOSE_INSULIN_HBA1C
+  INFLAMMATION
+  COGNITION
+  SLEEP
+  MOOD_STRESS
+  MUSCLE_STRENGTH
+  VO2_MAX_ENDURANCE
+  JOINT_TENDON_SKIN
+  EYE_HEALTH
+  IMMUNE_RESPIRATORY
+  FERTILITY_HORMONES
+  BIOLOGICAL_AGING_CLOCKS
+  SAFETY_ADVERSE_EFFECTS
+}
+
+enum EvidenceLabel {
+  CORE_EVIDENCE_BASED
+  CONDITIONAL_BIOMARKER_GATED
+  USEFUL_FOR_SPECIFIC_USE_CASE
+  REASONABLE_N_OF_1_EXPERIMENT
+  SPECULATIVE_WATCHLIST
+  SAFETY_CONCERN
+  AVOID_NOT_RECOMMENDED
+  REQUIRES_CLINICIAN_OVERSIGHT
+  REGULATORY_CONCERN
+  INSUFFICIENT_EVIDENCE
+}
+
+enum EvidenceMomentum {
+  INCREASING
+  STABLE
+  CONFLICTING
+  WEAKENING
+  SAFETY_CONCERN_EMERGING
+}
+
+enum ReviewStatus {
+  UNREVIEWED_AI_DRAFT
+  HUMAN_REVIEWED
+}
+
+enum ConfidenceLevel {
+  HIGH
+  MODERATE
+  LOW
+  VERY_LOW
+}
+
+enum StudyType {
+  META_ANALYSIS
+  SYSTEMATIC_REVIEW
+  RANDOMIZED_CONTROLLED_TRIAL
+  OBSERVATIONAL_COHORT
+  CASE_REPORT
+  ANIMAL_STUDY
+  IN_VITRO_MECHANISTIC
+  CLINICAL_TRIAL_RECORD
+  REGULATORY_SAFETY_WARNING
+}
+
+enum TrialStatus {
+  RECRUITING
+  ACTIVE
+  COMPLETED
+  TERMINATED
+  RESULTS_PENDING
+}
+
+enum SafetyAlertType {
+  LIVER_INJURY
+  KIDNEY_RISK
+  CONTAMINATION
+  ADULTERATION
+  MISLABELING
+  PROHIBITED_IN_SPORT
+  PRESCRIPTION_ONLY
+  UNAPPROVED_THERAPEUTIC_GOOD
+  COMPOUNDING_RESTRICTION
+  DRUG_INTERACTION
+}
+
+enum SafetySeverity {
+  LOW
+  MODERATE
+  HIGH
+  CLINICIAN_REVIEW_RECOMMENDED
+  AVOID
+}
+
+enum SourceKind {
+  PUBMED
+  PUBMED_CENTRAL
+  CLINICALTRIALS_GOV
+  NIH_ODS
+  TGA
+  FDA
+  WADA
+  LIVERTOX
+  NCCIH
+  MEDLINEPLUS
+  PRODUCT_LABEL
+  ADMIN_ENTRY
+  OTHER
+}
+
+enum IngestionStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  SKIPPED
+}
+
+model Intervention {
+  id                        String               @id @default(cuid())
+  slug                      String               @unique
+  name                      String
+  synonyms                  String[]
+  category                  InterventionCategory
+  commonForms               String[]
+  commonStudyDoses          String[]
+  consumerProductDoseRanges String[]
+  regulatorySummary         String
+  australiaRegulatoryStatus String
+  safetySummary             String
+  interactionSummary        String
+  evidenceSummary           String
+  lastReviewedAt            DateTime?
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+
+  claims       Claim[]
+  trials       Trial[]
+  products     Product[]
+  safetyAlerts SafetyAlert[]
+
+  @@index([category])
+  @@index([name])
+}
+
+model Claim {
+  id                      String           @id @default(cuid())
+  interventionId          String
+  outcome                 OutcomeArea
+  claimText               String
+  populationStudied       String
+  doseFormStudied         String
+  durationStudied         String
+  comparator              String
+  evidenceGrade           String
+  effectSize              String
+  clinicalRelevance       String
+  confidenceLevel         ConfidenceLevel
+  safetyNotes             String
+  applicabilityNotes      String
+  evidenceDirectnessScore Int
+  evidenceRigorScore      Int
+  effectSizeScore         Int
+  safetyScore             Int
+  regulatoryRiskScore     Int
+  productQualityScore     Int
+  hypePenalty             Int
+  measurabilityScore      Int
+  finalLabel              EvidenceLabel
+  momentum                EvidenceMomentum
+  reviewStatus            ReviewStatus     @default(UNREVIEWED_AI_DRAFT)
+  summary                 String?
+  uncertainty             String?
+  whatWouldChangeScore    String
+  lastReviewedAt          DateTime?
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+
+  intervention Intervention     @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  references   ClaimReference[]
+
+  @@unique([interventionId, outcome, claimText])
+  @@index([outcome])
+  @@index([finalLabel])
+  @@index([reviewStatus])
+}
+
+model Reference {
+  id         String     @id @default(cuid())
+  title      String
+  source     SourceKind
+  identifier String?
+  year       Int?
+  url        String
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  claimLinks      ClaimReference[]
+  studies         Study[]
+  sourceDocuments SourceDocument[]
+
+  @@unique([url])
+  @@index([source])
+}
+
+model ClaimReference {
+  claimId     String
+  referenceId String
+  relevance   Int     @default(5)
+  note        String?
+
+  claim     Claim     @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  reference Reference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+
+  @@id([claimId, referenceId])
+}
+
+model Study {
+  id                 String    @id @default(cuid())
+  referenceId        String?
+  title              String
+  year               Int?
+  source             String
+  sourceType         StudyType
+  pmid               String?
+  pmcid              String?
+  doi                String?
+  nctId              String?
+  url                String?
+  abstract           String?
+  sampleSize         String
+  population         String
+  interventionName   String
+  dose               String?
+  duration           String?
+  outcomes           String[]
+  mainResults        String?
+  adverseEvents      String
+  fundingConflicts   String
+  riskOfBias         String
+  relevanceScore     Int       @default(5)
+  extractedAbstract  String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  reference Reference? @relation(fields: [referenceId], references: [id], onDelete: SetNull)
+
+  @@index([sourceType])
+  @@index([pmid])
+  @@index([nctId])
+}
+
+model Trial {
+  id             String               @id @default(cuid())
+  interventionId String?
+  nctId          String?              @unique
+  title          String
+  status         TrialStatus
+  phase          String
+  enrollment     String
+  conditions     String[]
+  interventions  String[]
+  outcomes       String[]
+  startDate      DateTime?
+  completionDate DateTime?
+  lastUpdateDate DateTime?
+  resultsPosted  Boolean              @default(false)
+  evidenceImpact EvidenceMomentum
+  url            String
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  intervention Intervention? @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([evidenceImpact])
+}
+
+model Product {
+  id                  String        @id @default(cuid())
+  interventionId      String?
+  name                String
+  brand               String
+  labelText           String?
+  servingSize         String?
+  ingredientsJson     Json
+  proprietaryBlend    Boolean       @default(false)
+  certificationsJson  Json
+  region              String        @default("AU")
+  regulatoryNumber    String?
+  qualityScore        Int
+  labelClaimRiskScore Int
+  url                 String?
+  reviewStatus        ReviewStatus  @default(UNREVIEWED_AI_DRAFT)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  intervention Intervention? @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+
+  @@index([region])
+  @@index([regulatoryNumber])
+  @@index([qualityScore])
+}
+
+model SafetyAlert {
+  id             String          @id @default(cuid())
+  interventionId String?
+  region         String          @default("AU")
+  agency         SourceKind
+  date           DateTime?
+  alertType      SafetyAlertType
+  severity       SafetySeverity
+  summary        String
+  url            String
+  lastCheckedAt  DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  intervention Intervention? @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+
+  @@index([region])
+  @@index([agency])
+  @@index([severity])
+}
+
+model SourceDocument {
+  id              String       @id @default(cuid())
+  referenceId     String?
+  source          SourceKind
+  url             String
+  title           String
+  rawText         String?
+  extractedSummary String?
+  checksum        String?
+  retrievedAt     DateTime     @default(now())
+  reviewStatus    ReviewStatus @default(UNREVIEWED_AI_DRAFT)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  reference Reference? @relation(fields: [referenceId], references: [id], onDelete: SetNull)
+
+  @@unique([url])
+  @@index([source])
+  @@index([reviewStatus])
+}
+
+model IngestionJob {
+  id             String          @id @default(cuid())
+  source         SourceKind
+  status         IngestionStatus @default(QUEUED)
+  query          String
+  region         String          @default("AU")
+  startedAt      DateTime?
+  completedAt    DateTime?
+  recordsFound   Int             @default(0)
+  recordsChanged Int             @default(0)
+  error          String?
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([source])
+  @@index([status])
+  @@index([region])
+  @@unique([source, query, region])
+}
