@@ -385,7 +385,6 @@ model AustraliaRegulatoryStatus {
   product      Product?      @relation(fields: [productId], references: [id], onDelete: Cascade)
   reference    Reference?    @relation(fields: [referenceId], references: [id], onDelete: SetNull)
 
-  @@unique([region, interventionId, productId, kind, artgId])
   @@index([region])
   @@index([kind])
   @@index([artgId])

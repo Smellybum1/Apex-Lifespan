@@ -6,7 +6,7 @@
   - Dev: `npm run dev`
   - Test: `npm run test`
   - Lint/typecheck/build: `npm run lint`, `npm run typecheck`, `npm run build`
-  - Database: `npm run db:validate`, `npm run db:generate`, `npm run db:push`, `npm run db:seed`
+  - Database: `npm run db:validate`, `npm run db:generate`, `npm run db:migrate`, `npm run db:migrate:deploy`, `npm run db:push`, `npm run db:seed`
   - Local PostgreSQL: `docker compose up -d postgres`, `docker compose ps`, `docker compose down`; reset with `docker compose down -v`
 - Architecture/patterns:
   - Next.js App Router under `src/app/`.
@@ -14,6 +14,8 @@
   - Domain types, seed data, scoring, and label analysis under `src/lib/`.
   - Public source wrappers under `src/lib/integrations/` and API routes under `src/app/api/`.
   - Prisma schema and seed script under `prisma/`.
+  - Prisma migrations live under `prisma/migrations/`; use migrations for reproducible database state and reserve `db:push` for temporary local prototypes.
+  - AU regulatory uniqueness uses hand-authored PostgreSQL partial indexes in the migration because nullable product/intervention/ARTG fields cannot be represented safely with a normal Prisma `@@unique`.
   - Dashboard reads through `src/lib/data/dashboard.ts`; it prefers Prisma when PostgreSQL is reachable and falls back to seed data unless `APEX_DATA_SOURCE=database`.
   - Australia/TGA regulatory status is structured in `AustraliaRegulatoryStatus` records and surfaced as active-card detail plus product chips; do not infer ARTG status from intervention evidence alone.
   - MVP mode: public read-only.

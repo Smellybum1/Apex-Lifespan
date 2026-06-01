@@ -22,7 +22,9 @@ Apex Lifespan is an evidence intelligence dashboard for supplements, peptides, a
 - Build: `npm run build`
 - Prisma validate: `npm run db:validate`
 - Prisma generate: `npm run db:generate`
-- Push schema to configured PostgreSQL: `npm run db:push`
+- Apply local Prisma migrations: `npm run db:migrate`
+- Apply committed migrations without creating new ones: `npm run db:migrate:deploy`
+- Push schema to configured PostgreSQL without migrations: `npm run db:push`
 - Seed configured PostgreSQL: `npm run db:seed`
 
 ## Local database
@@ -39,11 +41,13 @@ Workflow:
 2. Start PostgreSQL: `docker compose up -d postgres`
 3. Confirm it is healthy: `docker compose ps`
 4. Validate and generate Prisma client: `npm run db:validate` and `npm run db:generate`
-5. Push the Prisma schema: `npm run db:push`
+5. Apply the committed Prisma migrations: `npm run db:migrate`
 6. Seed local data: `npm run db:seed`
 7. Stop the database when done: `docker compose down`
 
-To reset local database state, run `docker compose down -v`, then start PostgreSQL again and repeat the push/seed steps.
+Use `npm run db:migrate:deploy` when you want to apply committed migrations without generating a new migration. Keep `npm run db:push` for temporary local prototypes only.
+
+To reset local database state, run `docker compose down -v`, then start PostgreSQL again and repeat the migrate/seed steps.
 
 Assumptions: Docker Desktop or Docker Compose is installed, `localhost:5432` is available, and the `postgres/postgres` credentials are local-development only. If port `5432` is already in use, change the host port in `docker-compose.yml` and update `DATABASE_URL` in `.env` to match.
 
