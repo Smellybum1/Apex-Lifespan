@@ -654,7 +654,7 @@ export const productSignals: ProductSignal[] = [
     ingredients: ["Creatine monohydrate"],
     proprietaryBlend: false,
     certifications: ["NSF Certified for Sport"],
-    region: "US",
+    region: "AU verification pending",
     qualityScore: 8,
     labelClaimRiskScore: 2
   },
@@ -665,7 +665,7 @@ export const productSignals: ProductSignal[] = [
     ingredients: ["Proprietary blend", "Resveratrol", "Fisetin", "Quercetin"],
     proprietaryBlend: true,
     certifications: [],
-    region: "US",
+    region: "AU verification pending",
     qualityScore: 3,
     labelClaimRiskScore: 8
   }

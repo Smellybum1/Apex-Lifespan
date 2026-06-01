@@ -476,7 +476,7 @@ async function main() {
         ingredientsJson: product.ingredients,
         proprietaryBlend: product.proprietaryBlend,
         certificationsJson: product.certifications,
-        region: product.region === "US" ? "AU-ready" : product.region,
+        region: product.region,
         qualityScore: product.qualityScore,
         labelClaimRiskScore: product.labelClaimRiskScore
       },
@@ -487,7 +487,7 @@ async function main() {
         ingredientsJson: product.ingredients,
         proprietaryBlend: product.proprietaryBlend,
         certificationsJson: product.certifications,
-        region: product.region === "US" ? "AU-ready" : product.region,
+        region: product.region,
         qualityScore: product.qualityScore,
         labelClaimRiskScore: product.labelClaimRiskScore
       }
