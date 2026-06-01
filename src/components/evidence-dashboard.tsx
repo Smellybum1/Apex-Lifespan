@@ -84,6 +84,12 @@ type ClaimTableRow = {
   updated: string;
 };
 
+type LivePreviewStatus = "idle" | "loading" | "ready" | "error";
+type SourceSearchSubmission = {
+  term: string;
+  requestId: number;
+};
+
 const scoreColors = ["#1d4ed8", "#0f766e", "#b7791f", "#334155", "#7c3aed", "#b91c1c"];
 
 export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
@@ -1104,27 +1110,35 @@ function SourceAndStudyPanel({
     () => studies.filter((study) => !activeStudyIds.has(study.id)),
     [activeStudyIds, studies]
   );
-  const [pubMedTerm, setPubMedTerm] = useState("creatine monohydrate");
-  const [submittedPubMedTerm, setSubmittedPubMedTerm] = useState("creatine monohydrate");
+  const [pubMedTerm, setPubMedTerm] = useState(() => activeSourceQueries.pubMedTerm);
+  const [submittedPubMedSearch, setSubmittedPubMedSearch] =
+    useState<SourceSearchSubmission | null>(null);
   const [pubMedResult, setPubMedResult] = useState<PubMedSearchResult | null>(null);
-  const [pubMedStatus, setPubMedStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [pubMedStatus, setPubMedStatus] = useState<LivePreviewStatus>("idle");
   const [pubMedError, setPubMedError] = useState<string | null>(null);
-  const [trialTerm, setTrialTerm] = useState("omega-3");
-  const [submittedTrialTerm, setSubmittedTrialTerm] = useState("omega-3");
+  const [trialTerm, setTrialTerm] = useState(() => activeSourceQueries.trialTerm);
+  const [submittedTrialSearch, setSubmittedTrialSearch] =
+    useState<SourceSearchSubmission | null>(null);
   const [trialResult, setTrialResult] = useState<ClinicalTrialSearchResult | null>(null);
-  const [trialStatus, setTrialStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [trialStatus, setTrialStatus] = useState<LivePreviewStatus>("idle");
   const [trialError, setTrialError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!submittedPubMedSearch) {
+      return;
+    }
+
     const controller = new AbortController();
+    const submittedTerm = submittedPubMedSearch.term;
 
     async function loadPubMedPreview() {
       setPubMedStatus("loading");
       setPubMedError(null);
+      setPubMedResult(null);
 
       try {
         const response = await fetch(
-          `/api/pubmed/search?term=${encodeURIComponent(submittedPubMedTerm)}&retmax=5`,
+          `/api/pubmed/search?term=${encodeURIComponent(submittedTerm)}&retmax=5`,
           { signal: controller.signal }
         );
         const body = (await response.json()) as PubMedSearchResult | { error?: string };
@@ -1150,18 +1164,24 @@ function SourceAndStudyPanel({
     return () => {
       controller.abort();
     };
-  }, [submittedPubMedTerm]);
+  }, [submittedPubMedSearch]);
 
   useEffect(() => {
+    if (!submittedTrialSearch) {
+      return;
+    }
+
     const controller = new AbortController();
+    const submittedTerm = submittedTrialSearch.term;
 
     async function loadTrialPreview() {
       setTrialStatus("loading");
       setTrialError(null);
+      setTrialResult(null);
 
       try {
         const response = await fetch(
-          `/api/trials/search?term=${encodeURIComponent(submittedTrialTerm)}&pageSize=5`,
+          `/api/trials/search?term=${encodeURIComponent(submittedTerm)}&pageSize=5`,
           { signal: controller.signal }
         );
         const body = (await response.json()) as ClinicalTrialSearchResult | { error?: string };
@@ -1191,21 +1211,47 @@ function SourceAndStudyPanel({
     return () => {
       controller.abort();
     };
-  }, [submittedTrialTerm]);
+  }, [submittedTrialSearch]);
 
-  const pubMedApiHref = `/api/pubmed/search?term=${encodeURIComponent(
-    submittedPubMedTerm
-  )}&retmax=5`;
-  const trialApiHref = `/api/trials/search?term=${encodeURIComponent(
-    submittedTrialTerm
-  )}&pageSize=5`;
+  const pubMedRawTerm = submittedPubMedSearch?.term ?? pubMedTerm.trim();
+  const trialRawTerm = submittedTrialSearch?.term ?? trialTerm.trim();
+  const pubMedApiHref = pubMedRawTerm
+    ? `/api/pubmed/search?term=${encodeURIComponent(pubMedRawTerm)}&retmax=5`
+    : "#pubmed-term";
+  const trialApiHref = trialRawTerm
+    ? `/api/trials/search?term=${encodeURIComponent(trialRawTerm)}&pageSize=5`
+    : "#trial-term";
+  const submitPubMedSearch = (term: string) => {
+    const nextTerm = term.trim();
+
+    if (!nextTerm) {
+      return;
+    }
+
+    setPubMedTerm(nextTerm);
+    setSubmittedPubMedSearch((current) => ({
+      term: nextTerm,
+      requestId: (current?.requestId ?? 0) + 1
+    }));
+  };
+  const submitTrialSearch = (term: string) => {
+    const nextTerm = term.trim();
+
+    if (!nextTerm) {
+      return;
+    }
+
+    setTrialTerm(nextTerm);
+    setSubmittedTrialSearch((current) => ({
+      term: nextTerm,
+      requestId: (current?.requestId ?? 0) + 1
+    }));
+  };
   const applyActivePubMedSearch = () => {
-    setPubMedTerm(activeSourceQueries.pubMedTerm);
-    setSubmittedPubMedTerm(activeSourceQueries.pubMedTerm);
+    submitPubMedSearch(activeSourceQueries.pubMedTerm);
   };
   const applyActiveTrialSearch = () => {
-    setTrialTerm(activeSourceQueries.trialTerm);
-    setSubmittedTrialTerm(activeSourceQueries.trialTerm);
+    submitTrialSearch(activeSourceQueries.trialTerm);
   };
   const applyActiveSourceSearches = () => {
     applyActivePubMedSearch();
@@ -1227,7 +1273,7 @@ function SourceAndStudyPanel({
               const nextTerm = pubMedTerm.trim();
 
               if (nextTerm) {
-                setSubmittedPubMedTerm(nextTerm);
+                submitPubMedSearch(nextTerm);
               }
             }}
           >
@@ -1255,7 +1301,7 @@ function SourceAndStudyPanel({
               const nextTerm = trialTerm.trim();
 
               if (nextTerm) {
-                setSubmittedTrialTerm(nextTerm);
+                submitTrialSearch(nextTerm);
               }
             }}
           >
@@ -1341,11 +1387,13 @@ function SourceAndStudyPanel({
         error={pubMedError}
         result={pubMedResult}
         status={pubMedStatus}
+        submittedTerm={submittedPubMedSearch?.term}
       />
       <ClinicalTrialsPreview
         error={trialError}
         result={trialResult}
         status={trialStatus}
+        submittedTerm={submittedTrialSearch?.term}
       />
       <details className="mt-4 rounded-lg border border-line bg-white p-3">
         <summary className="cursor-pointer text-sm font-semibold text-ink">
@@ -1541,30 +1589,59 @@ function sourceContextLabel(reference?: Reference) {
   return "Evidence source";
 }
 
+function livePreviewStatusLabel(status: LivePreviewStatus) {
+  if (status === "idle") {
+    return "Idle";
+  }
+
+  if (status === "loading") {
+    return "Loading";
+  }
+
+  if (status === "error") {
+    return "Needs retry";
+  }
+
+  return "Live preview";
+}
+
 function PubMedTriagePreview({
   error,
   result,
+  submittedTerm,
   status
 }: {
   error: string | null;
   result: PubMedSearchResult | null;
-  status: "loading" | "ready" | "error";
+  submittedTerm?: string;
+  status: LivePreviewStatus;
 }) {
+  const resultSummary =
+    status === "idle"
+      ? "No live PubMed search run yet"
+      : result
+        ? `${result.count.toLocaleString()} records for "${result.query}"`
+        : submittedTerm
+          ? `Citation candidates for "${submittedTerm}"`
+          : "Citation candidates";
+
   return (
     <div className="mt-4 rounded-lg border border-line bg-mist p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-ink">PubMed triage</h3>
-          <p className="mt-1 text-xs text-slate-500">
-            {result
-              ? `${result.count.toLocaleString()} records for "${result.query}"`
-              : "Citation candidates"}
-          </p>
+          <p className="mt-1 text-xs text-slate-500">{resultSummary}</p>
         </div>
         <span className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
-          {status === "loading" ? "Loading" : status === "error" ? "Needs retry" : "Live preview"}
+          {livePreviewStatusLabel(status)}
         </span>
       </div>
+
+      {status === "idle" ? (
+        <p className="mt-3 rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+          Submit a PubMed term or use the active-card suggestion to load live citation candidates.
+        </p>
+      ) : null}
 
       {status === "error" ? (
         <p className="mt-3 rounded-md border border-danger/30 bg-red-50 p-3 text-sm text-danger">
@@ -1651,28 +1728,43 @@ function PubMedTriageArticle({ article }: { article: PubMedArticleSummary }) {
 function ClinicalTrialsPreview({
   error,
   result,
+  submittedTerm,
   status
 }: {
   error: string | null;
   result: ClinicalTrialSearchResult | null;
-  status: "loading" | "ready" | "error";
+  submittedTerm?: string;
+  status: LivePreviewStatus;
 }) {
+  const resultSummary =
+    status === "idle"
+      ? "No live trial search run yet"
+      : result
+        ? `Live trial records for "${result.query}"`
+        : submittedTerm
+          ? `Trial candidates for "${submittedTerm}"`
+          : "Trial candidates";
+
   return (
     <div className="mt-4 rounded-lg border border-line bg-mist p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-ink">ClinicalTrials.gov preview</h3>
-          <p className="mt-1 text-xs text-slate-500">
-            {result ? `Live trial records for "${result.query}"` : "Trial candidates"}
-          </p>
+          <p className="mt-1 text-xs text-slate-500">{resultSummary}</p>
           <p className="mt-1 text-xs text-slate-500">
             Registry records are research leads, not proof of benefit.
           </p>
         </div>
         <span className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
-          {status === "loading" ? "Loading" : status === "error" ? "Needs retry" : "Live preview"}
+          {livePreviewStatusLabel(status)}
         </span>
       </div>
+
+      {status === "idle" ? (
+        <p className="mt-3 rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+          Submit a ClinicalTrials.gov term or use the active-card suggestion to load live trial records.
+        </p>
+      ) : null}
 
       {status === "error" ? (
         <p className="mt-3 rounded-md border border-danger/30 bg-red-50 p-3 text-sm text-danger">
