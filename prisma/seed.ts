@@ -1,4 +1,5 @@
 import {
+  AustraliaRegulatoryKind as PrismaAustraliaRegulatoryKind,
   ConfidenceLevel as PrismaConfidenceLevel,
   EvidenceLabel as PrismaEvidenceLabel,
   EvidenceMomentum as PrismaEvidenceMomentum,
@@ -13,6 +14,7 @@ import {
   TrialStatus as PrismaTrialStatus
 } from "@prisma/client";
 import {
+  australiaRegulatoryStatuses,
   claims,
   interventions,
   productSignals,
@@ -22,6 +24,7 @@ import {
   trialWatchItems
 } from "../src/lib/seed-data";
 import type {
+  AustraliaRegulatoryKind,
   Claim,
   EvidenceLabel,
   EvidenceMomentum,
@@ -135,6 +138,17 @@ const trialStatusMap: Record<TrialWatchItem["status"], PrismaTrialStatus> = {
   Completed: PrismaTrialStatus.COMPLETED,
   Terminated: PrismaTrialStatus.TERMINATED,
   "Results pending": PrismaTrialStatus.RESULTS_PENDING
+};
+
+const australiaRegulatoryKindMap: Record<AustraliaRegulatoryKind, PrismaAustraliaRegulatoryKind> = {
+  "AUST L": PrismaAustraliaRegulatoryKind.AUST_L,
+  "AUST L(A)": PrismaAustraliaRegulatoryKind.AUST_LA,
+  "AUST R": PrismaAustraliaRegulatoryKind.AUST_R,
+  "Not in ARTG": PrismaAustraliaRegulatoryKind.NOT_IN_ARTG,
+  Unapproved: PrismaAustraliaRegulatoryKind.UNAPPROVED,
+  Exempt: PrismaAustraliaRegulatoryKind.EXEMPT,
+  Excluded: PrismaAustraliaRegulatoryKind.EXCLUDED,
+  Unknown: PrismaAustraliaRegulatoryKind.UNKNOWN
 };
 
 function sourceKind(source: string) {
@@ -449,6 +463,49 @@ async function main() {
         region: product.region === "US" ? "AU-ready" : product.region,
         qualityScore: product.qualityScore,
         labelClaimRiskScore: product.labelClaimRiskScore
+      }
+    });
+  }
+
+  for (const status of australiaRegulatoryStatuses) {
+    await prisma.australiaRegulatoryStatus.upsert({
+      where: { id: status.id },
+      update: {
+        interventionId: status.interventionId,
+        productId: status.productId,
+        referenceId: status.referenceId,
+        region: status.region,
+        kind: australiaRegulatoryKindMap[status.kind],
+        artgId: status.artgId,
+        austNumber: status.austNumber,
+        sponsor: status.sponsor,
+        status: status.status,
+        efficacyAssessed: status.efficacyAssessed,
+        preMarketAssessment: status.preMarketAssessment,
+        supplySummary: status.supplySummary,
+        evidenceRequirement: status.evidenceRequirement,
+        sourceUrl: status.sourceUrl,
+        checkedAt: dateOrNull(status.checkedAt),
+        notes: status.notes
+      },
+      create: {
+        id: status.id,
+        interventionId: status.interventionId,
+        productId: status.productId,
+        referenceId: status.referenceId,
+        region: status.region,
+        kind: australiaRegulatoryKindMap[status.kind],
+        artgId: status.artgId,
+        austNumber: status.austNumber,
+        sponsor: status.sponsor,
+        status: status.status,
+        efficacyAssessed: status.efficacyAssessed,
+        preMarketAssessment: status.preMarketAssessment,
+        supplySummary: status.supplySummary,
+        evidenceRequirement: status.evidenceRequirement,
+        sourceUrl: status.sourceUrl,
+        checkedAt: dateOrNull(status.checkedAt),
+        notes: status.notes
       }
     });
   }

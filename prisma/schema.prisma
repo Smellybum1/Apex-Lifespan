@@ -139,6 +139,17 @@ enum IngestionStatus {
   SKIPPED
 }
 
+enum AustraliaRegulatoryKind {
+  AUST_L
+  AUST_LA
+  AUST_R
+  NOT_IN_ARTG
+  UNAPPROVED
+  EXEMPT
+  EXCLUDED
+  UNKNOWN
+}
+
 model Intervention {
   id                        String               @id @default(cuid())
   slug                      String               @unique
@@ -157,10 +168,11 @@ model Intervention {
   createdAt                 DateTime             @default(now())
   updatedAt                 DateTime             @updatedAt
 
-  claims       Claim[]
-  trials       Trial[]
-  products     Product[]
-  safetyAlerts SafetyAlert[]
+  claims                      Claim[]
+  trials                      Trial[]
+  products                    Product[]
+  safetyAlerts                SafetyAlert[]
+  australiaRegulatoryStatuses AustraliaRegulatoryStatus[]
 
   @@index([category])
   @@index([name])
@@ -218,9 +230,10 @@ model Reference {
   createdAt  DateTime   @default(now())
   updatedAt  DateTime   @updatedAt
 
-  claimLinks      ClaimReference[]
-  studies         Study[]
-  sourceDocuments SourceDocument[]
+  claimLinks                  ClaimReference[]
+  studies                     Study[]
+  sourceDocuments             SourceDocument[]
+  australiaRegulatoryStatuses AustraliaRegulatoryStatus[]
 
   @@unique([url])
   @@index([source])
@@ -239,32 +252,32 @@ model ClaimReference {
 }
 
 model Study {
-  id                 String    @id @default(cuid())
-  referenceId        String?
-  title              String
-  year               Int?
-  source             String
-  sourceType         StudyType
-  pmid               String?
-  pmcid              String?
-  doi                String?
-  nctId              String?
-  url                String?
-  abstract           String?
-  sampleSize         String
-  population         String
-  interventionName   String
-  dose               String?
-  duration           String?
-  outcomes           String[]
-  mainResults        String?
-  adverseEvents      String
-  fundingConflicts   String
-  riskOfBias         String
-  relevanceScore     Int       @default(5)
-  extractedAbstract  String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  referenceId       String?
+  title             String
+  year              Int?
+  source            String
+  sourceType        StudyType
+  pmid              String?
+  pmcid             String?
+  doi               String?
+  nctId             String?
+  url               String?
+  abstract          String?
+  sampleSize        String
+  population        String
+  interventionName  String
+  dose              String?
+  duration          String?
+  outcomes          String[]
+  mainResults       String?
+  adverseEvents     String
+  fundingConflicts  String
+  riskOfBias        String
+  relevanceScore    Int       @default(5)
+  extractedAbstract String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   reference Reference? @relation(fields: [referenceId], references: [id], onDelete: SetNull)
 
@@ -274,9 +287,9 @@ model Study {
 }
 
 model Trial {
-  id             String               @id @default(cuid())
+  id             String           @id @default(cuid())
   interventionId String?
-  nctId          String?              @unique
+  nctId          String?          @unique
   title          String
   status         TrialStatus
   phase          String
@@ -287,11 +300,11 @@ model Trial {
   startDate      DateTime?
   completionDate DateTime?
   lastUpdateDate DateTime?
-  resultsPosted  Boolean              @default(false)
+  resultsPosted  Boolean          @default(false)
   evidenceImpact EvidenceMomentum
   url            String
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   intervention Intervention? @relation(fields: [interventionId], references: [id], onDelete: SetNull)
 
@@ -300,25 +313,26 @@ model Trial {
 }
 
 model Product {
-  id                  String        @id @default(cuid())
+  id                  String       @id @default(cuid())
   interventionId      String?
   name                String
   brand               String
   labelText           String?
   servingSize         String?
   ingredientsJson     Json
-  proprietaryBlend    Boolean       @default(false)
+  proprietaryBlend    Boolean      @default(false)
   certificationsJson  Json
-  region              String        @default("AU")
+  region              String       @default("AU")
   regulatoryNumber    String?
   qualityScore        Int
   labelClaimRiskScore Int
   url                 String?
-  reviewStatus        ReviewStatus  @default(UNREVIEWED_AI_DRAFT)
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  reviewStatus        ReviewStatus @default(UNREVIEWED_AI_DRAFT)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
-  intervention Intervention? @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+  intervention                Intervention?               @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+  australiaRegulatoryStatuses AustraliaRegulatoryStatus[]
 
   @@index([region])
   @@index([regulatoryNumber])
@@ -346,19 +360,53 @@ model SafetyAlert {
   @@index([severity])
 }
 
+model AustraliaRegulatoryStatus {
+  id                  String                  @id @default(cuid())
+  interventionId      String?
+  productId           String?
+  referenceId         String?
+  region              String                  @default("AU")
+  kind                AustraliaRegulatoryKind
+  artgId              String?
+  austNumber          String?
+  sponsor             String?
+  status              String
+  efficacyAssessed    Boolean?
+  preMarketAssessment Boolean?
+  supplySummary       String
+  evidenceRequirement String
+  sourceUrl           String
+  checkedAt           DateTime?
+  notes               String
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  intervention Intervention? @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  product      Product?      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  reference    Reference?    @relation(fields: [referenceId], references: [id], onDelete: SetNull)
+
+  @@unique([region, interventionId, productId, kind, artgId])
+  @@index([region])
+  @@index([kind])
+  @@index([artgId])
+  @@index([austNumber])
+  @@index([interventionId])
+  @@index([productId])
+}
+
 model SourceDocument {
-  id              String       @id @default(cuid())
-  referenceId     String?
-  source          SourceKind
-  url             String
-  title           String
-  rawText         String?
+  id               String       @id @default(cuid())
+  referenceId      String?
+  source           SourceKind
+  url              String
+  title            String
+  rawText          String?
   extractedSummary String?
-  checksum        String?
-  retrievedAt     DateTime     @default(now())
-  reviewStatus    ReviewStatus @default(UNREVIEWED_AI_DRAFT)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  checksum         String?
+  retrievedAt      DateTime     @default(now())
+  reviewStatus     ReviewStatus @default(UNREVIEWED_AI_DRAFT)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   reference Reference? @relation(fields: [referenceId], references: [id], onDelete: SetNull)
 
@@ -382,8 +430,8 @@ model IngestionJob {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
+  @@unique([source, query, region])
   @@index([source])
   @@index([status])
   @@index([region])
-  @@unique([source, query, region])
 }

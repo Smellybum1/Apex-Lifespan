@@ -1,4 +1,5 @@
 import type {
+  AustraliaRegulatoryStatus,
   Claim,
   Intervention,
   ProductSignal,
@@ -43,6 +44,13 @@ export const references: Reference[] = [
     source: "TGA",
     year: 2024,
     url: "https://www.tga.gov.au/products/regulations-all-products/about-australian-register-therapeutic-goods-artg"
+  },
+  {
+    id: "tga-aust-numbers",
+    title: "AUST numbers on medicine labels",
+    source: "TGA",
+    year: 2025,
+    url: "https://www.tga.gov.au/how-we-regulate/labelling-and-packaging/medicines-and-biologicals/aust-numbers-medicine-labels"
   },
   {
     id: "tga-safety-alerts",
@@ -514,6 +522,127 @@ export const safetyAlerts: SafetyAlert[] = [
       "High-dose vitamin D claims must be framed around measured status, total intake, and safety limits.",
     url: "https://ods.od.nih.gov/factsheets/VitaminD-HealthProfessional/",
     lastChecked: "2026-06-02"
+  }
+];
+
+export const australiaRegulatoryStatuses: AustraliaRegulatoryStatus[] = [
+  {
+    id: "au-reg-creatine-intervention",
+    interventionId: "creatine",
+    referenceId: "tga-artg",
+    region: "AU",
+    kind: "Unknown",
+    status: "Product-level ARTG status required",
+    supplySummary:
+      "Creatine is an ingredient-level intervention in this dashboard; Australian supply status must be verified at the product and AUST-number level.",
+    evidenceRequirement:
+      "Check the product label and ARTG record for AUST L, AUST L(A), AUST R, or absence of an AUST number.",
+    sourceUrl:
+      "https://www.tga.gov.au/products/regulations-all-products/about-australian-register-therapeutic-goods-artg",
+    checkedAt: "2026-06-02",
+    notes:
+      "No seed ARTG product record is attached yet, so do not infer Australian market authorisation from the intervention evidence score."
+  },
+  {
+    id: "au-reg-vitamin-d-intervention",
+    interventionId: "vitamin-d",
+    referenceId: "tga-aust-numbers",
+    region: "AU",
+    kind: "Unknown",
+    status: "AUST number varies by product",
+    supplySummary:
+      "Vitamin D products may appear in different Australian regulatory contexts; this project has not verified a specific ARTG entry.",
+    evidenceRequirement:
+      "Use the product's AUST number to distinguish AUST L, AUST L(A), and AUST R status.",
+    sourceUrl:
+      "https://www.tga.gov.au/how-we-regulate/labelling-and-packaging/medicines-and-biologicals/aust-numbers-medicine-labels",
+    checkedAt: "2026-06-02",
+    notes:
+      "Biomarker-gated evidence should remain separate from product-level market authorisation."
+  },
+  {
+    id: "au-reg-omega-3-intervention",
+    interventionId: "omega-3",
+    referenceId: "tga-aust-numbers",
+    region: "AU",
+    kind: "Unknown",
+    status: "Supplement and medicine contexts differ",
+    supplySummary:
+      "Omega-3 intervention evidence is not the same as a verified Australian ARTG status for any specific product.",
+    evidenceRequirement:
+      "Record the product's AUST number and formulation before showing product-level regulatory confidence.",
+    sourceUrl:
+      "https://www.tga.gov.au/how-we-regulate/labelling-and-packaging/medicines-and-biologicals/aust-numbers-medicine-labels",
+    checkedAt: "2026-06-02",
+    notes:
+      "Keep triglyceride, cardiovascular-event, and safety claims separate from product registration/listing."
+  },
+  {
+    id: "au-reg-bpc-157-intervention",
+    interventionId: "bpc-157",
+    referenceId: "tga-safety-alerts",
+    region: "AU",
+    kind: "Unapproved",
+    status: "Unapproved therapeutic good concern",
+    efficacyAssessed: false,
+    preMarketAssessment: false,
+    supplySummary:
+      "BPC-157 should remain in the peptide/regulatory watchlist with clinician-review warnings and no self-use instructions.",
+    evidenceRequirement:
+      "Require ARTG verification, TGA safety-alert review, and human clinical evidence before any stronger claim label.",
+    sourceUrl: "https://www.tga.gov.au/safety/safety-monitoring-and-information/safety-alerts",
+    checkedAt: "2026-06-02",
+    notes:
+      "The seed data flags regulatory concern; it does not provide sourcing, reconstitution, injection, cycling, or dosing guidance."
+  },
+  {
+    id: "au-reg-psyllium-intervention",
+    interventionId: "psyllium",
+    referenceId: "tga-artg",
+    region: "AU",
+    kind: "Unknown",
+    status: "Product-level ARTG status required",
+    supplySummary:
+      "Psyllium is tracked as an intervention; Australian product supply status must be verified product by product.",
+    evidenceRequirement:
+      "Record AUST number, sponsor, formulation, and permitted indications when product ingestion is added.",
+    sourceUrl:
+      "https://www.tga.gov.au/products/regulations-all-products/about-australian-register-therapeutic-goods-artg",
+    checkedAt: "2026-06-02",
+    notes:
+      "Do not assume a generic fiber evidence card applies to every Australian product label."
+  },
+  {
+    id: "au-reg-seed-creatine-product",
+    productId: "seed-creatine-product",
+    referenceId: "tga-aust-numbers",
+    region: "AU",
+    kind: "Unknown",
+    status: "AUST number not verified",
+    supplySummary:
+      "This seed product is a quality-signal example, not a verified Australian ARTG record.",
+    evidenceRequirement:
+      "Capture the label AUST number or ARTG search result before showing Australian regulatory confidence.",
+    sourceUrl:
+      "https://www.tga.gov.au/how-we-regulate/labelling-and-packaging/medicines-and-biologicals/aust-numbers-medicine-labels",
+    checkedAt: "2026-06-02",
+    notes: "NSF certification is a quality signal, not an Australian market authorisation signal."
+  },
+  {
+    id: "au-reg-seed-blend-product",
+    productId: "seed-blend-product",
+    referenceId: "tga-aust-numbers",
+    region: "AU",
+    kind: "Unknown",
+    status: "AUST number not verified",
+    supplySummary:
+      "This seed blend is intentionally a label-risk example; Australian ARTG status has not been verified.",
+    evidenceRequirement:
+      "Capture AUST number, sponsor, ingredients, and permitted indications before product recommendations.",
+    sourceUrl:
+      "https://www.tga.gov.au/how-we-regulate/labelling-and-packaging/medicines-and-biologicals/aust-numbers-medicine-labels",
+    checkedAt: "2026-06-02",
+    notes: "Proprietary blend and hype-risk checks remain separate from ARTG verification."
   }
 ];
 

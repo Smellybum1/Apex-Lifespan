@@ -51,6 +51,15 @@ Assumptions: Docker Desktop or Docker Compose is installed, `localhost:5432` is 
 
 The dashboard route is dynamic. It checks whether PostgreSQL is reachable, reads from Prisma when available, and falls back to seed data when the database is unavailable or empty. Set `APEX_DATA_SOURCE=seed` to force seed mode or `APEX_DATA_SOURCE=database` to fail instead of falling back.
 
+## Australia regulatory lens
+
+Apex Lifespan tracks Australia/TGA regulatory status separately from evidence scores. Generic intervention evidence does not imply a product is legal to supply in Australia. Product-level confidence should come from an ARTG/AUST number:
+
+- `AUST L`: listed medicine; quality and safety requirements apply, but efficacy is not individually assessed before listing.
+- `AUST L(A)`: assessed listed medicine; health claims have pre-market efficacy assessment.
+- `AUST R`: registered medicine; quality, safety, and efficacy are assessed before registration.
+- Unknown or unapproved states stay visible until the product label or ARTG record is verified.
+
 ## Safety boundaries
 
 - General public resource only.

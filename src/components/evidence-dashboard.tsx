@@ -32,6 +32,11 @@ import {
 
 import { projectConfig } from "@/lib/config/project";
 import {
+  australiaRegulatoryKindDescription,
+  australiaRegulatoryTone,
+  getPrimaryAustraliaStatus
+} from "@/lib/regulatory";
+import {
   analyzeLabel,
   compositeScore,
   getClaimScoreRows,
@@ -43,6 +48,7 @@ import type {
   Claim,
   EvidenceDashboardData,
   EvidenceLabel,
+  AustraliaRegulatoryStatus,
   Intervention,
   OutcomeArea,
   ProductSignal,
@@ -126,6 +132,9 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const activeClaim =
     claims.find((claim) => claim.id === activeClaimId) ?? filteredClaims[0] ?? claims[0];
   const activeIntervention = interventionsById.get(activeClaim.interventionId);
+  const activeAustraliaStatus = activeIntervention
+    ? getPrimaryAustraliaStatus(data.australiaRegulatoryStatuses, activeIntervention.id)
+    : undefined;
   const labelFindings = analyzeLabel(labelText);
 
   const tableRows = useMemo(
@@ -226,7 +235,11 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             />
           </div>
 
-          <ScorePanel claim={activeClaim} intervention={activeIntervention} />
+          <ScorePanel
+            australiaStatus={activeAustraliaStatus}
+            claim={activeClaim}
+            intervention={activeIntervention}
+          />
         </section>
 
         <section className="grid items-start gap-4 xl:grid-cols-[1fr_0.8fr]">
@@ -247,6 +260,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             setLabelText={setLabelText}
             findings={labelFindings}
             productSignals={productSignals}
+            australiaRegulatoryStatuses={data.australiaRegulatoryStatuses}
           />
         </section>
 
@@ -435,9 +449,11 @@ function EvidenceMapRow({
 }
 
 function ScorePanel({
+  australiaStatus,
   claim,
   intervention
 }: {
+  australiaStatus?: AustraliaRegulatoryStatus;
   claim: Claim;
   intervention?: Intervention;
 }) {
@@ -547,11 +563,62 @@ function ScorePanel({
 
       <dl className="grid gap-2 text-sm">
         <DetailRow label="Population" value={claim.populationStudied} />
+        <AustraliaRegulatoryDetail status={australiaStatus} />
         <DetailRow label="Dose/form" value={claim.doseFormStudied} />
         <DetailRow label="Safety" value={claim.safetyNotes} />
         <DetailRow label="Score mover" value={claim.whatWouldChangeScore} />
       </dl>
     </aside>
+  );
+}
+
+function AustraliaRegulatoryDetail({
+  status
+}: {
+  status?: AustraliaRegulatoryStatus;
+}) {
+  if (!status) {
+    return (
+      <DetailRow
+        label="AU/TGA"
+        value="Australian regulatory status has not been captured for this intervention yet."
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-2 rounded-md border border-line bg-mist p-3 sm:grid-cols-[120px_1fr]">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">AU/TGA</dt>
+      <dd className="text-sm text-slate-700">
+        <span
+          className={cn(
+            "mb-2 inline-flex rounded-md border px-2 py-1 text-xs font-semibold",
+            australiaRegulatoryTone(status.kind)
+          )}
+        >
+          {status.kind}
+        </span>
+        <p className="leading-6">{status.status}</p>
+        <p className="mt-1 leading-6 text-slate-600">{status.supplySummary}</p>
+        <details className="mt-2">
+          <summary className="cursor-pointer text-xs font-semibold text-signal">
+            Research detail
+          </summary>
+          <p className="mt-2 leading-6 text-slate-600">
+            {australiaRegulatoryKindDescription(status.kind)}
+          </p>
+          <p className="mt-2 leading-6 text-slate-600">{status.evidenceRequirement}</p>
+          <a
+            href={status.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
+          >
+            TGA source <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+          </a>
+        </details>
+      </dd>
+    </div>
   );
 }
 
@@ -791,11 +858,13 @@ function EvidenceCards({
 }
 
 function LabelAnalyzer({
+  australiaRegulatoryStatuses,
   labelText,
   setLabelText,
   findings,
   productSignals
 }: {
+  australiaRegulatoryStatuses: AustraliaRegulatoryStatus[];
   labelText: string;
   setLabelText: (value: string) => void;
   findings: ReturnType<typeof analyzeLabel>;
@@ -843,6 +912,9 @@ function LabelAnalyzer({
           <div key={product.id} className="rounded-lg border border-line bg-mist p-3">
             <h3 className="text-sm font-semibold text-ink">{product.name}</h3>
             <p className="mt-1 text-xs text-slate-500">{product.brand}</p>
+            <ProductAustraliaRegulatoryChip
+              status={australiaRegulatoryStatuses.find((item) => item.productId === product.id)}
+            />
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
               <span className="rounded-md bg-white px-2 py-1 text-slate-700">
                 Quality {product.qualityScore}/10
@@ -855,6 +927,32 @@ function LabelAnalyzer({
         ))}
       </div>
     </section>
+  );
+}
+
+function ProductAustraliaRegulatoryChip({
+  status
+}: {
+  status?: AustraliaRegulatoryStatus;
+}) {
+  if (!status) {
+    return (
+      <span className="mt-3 inline-flex rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+        AU status uncaptured
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className={cn(
+        "mt-3 inline-flex rounded-md border px-2 py-1 text-xs font-semibold",
+        australiaRegulatoryTone(status.kind)
+      )}
+      title={status.evidenceRequirement}
+    >
+      AU: {status.kind} - {status.status}
+    </span>
   );
 }
 

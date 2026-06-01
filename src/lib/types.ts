@@ -53,6 +53,16 @@ export type ReviewStatus = "Unreviewed AI draft" | "Human reviewed";
 
 export type ConfidenceLevel = "High" | "Moderate" | "Low" | "Very low";
 
+export type AustraliaRegulatoryKind =
+  | "AUST L"
+  | "AUST L(A)"
+  | "AUST R"
+  | "Not in ARTG"
+  | "Unapproved"
+  | "Exempt"
+  | "Excluded"
+  | "Unknown";
+
 export interface ScoreSet {
   evidenceDirectness: number;
   evidenceRigor: number;
@@ -183,6 +193,26 @@ export interface ProductSignal {
   labelClaimRiskScore: number;
 }
 
+export interface AustraliaRegulatoryStatus {
+  id: string;
+  interventionId?: string;
+  productId?: string;
+  referenceId?: string;
+  region: "AU";
+  kind: AustraliaRegulatoryKind;
+  artgId?: string;
+  austNumber?: string;
+  sponsor?: string;
+  status: string;
+  efficacyAssessed?: boolean;
+  preMarketAssessment?: boolean;
+  supplySummary: string;
+  evidenceRequirement: string;
+  sourceUrl: string;
+  checkedAt: string;
+  notes: string;
+}
+
 export interface EvidenceDashboardData {
   references: Reference[];
   interventions: Intervention[];
@@ -191,6 +221,7 @@ export interface EvidenceDashboardData {
   trialWatchItems: TrialWatchItem[];
   safetyAlerts: SafetyAlert[];
   productSignals: ProductSignal[];
+  australiaRegulatoryStatuses: AustraliaRegulatoryStatus[];
   dataSource: "database" | "seed";
   fallbackReason?: string;
 }

@@ -1,4 +1,6 @@
 import {
+  AustraliaRegulatoryKind as DbAustraliaRegulatoryKind,
+  type AustraliaRegulatoryStatus as DbAustraliaRegulatoryStatus,
   ConfidenceLevel as DbConfidenceLevel,
   EvidenceLabel as DbEvidenceLabel,
   EvidenceMomentum as DbEvidenceMomentum,
@@ -24,6 +26,7 @@ import { Socket } from "node:net";
 import { projectConfig } from "@/lib/config/project";
 import { prisma } from "@/lib/db/prisma";
 import {
+  australiaRegulatoryStatuses,
   claims,
   interventions,
   productSignals,
@@ -34,6 +37,8 @@ import {
 } from "@/lib/seed-data";
 import type {
   Claim,
+  AustraliaRegulatoryKind,
+  AustraliaRegulatoryStatus,
   ConfidenceLevel,
   EvidenceDashboardData,
   EvidenceLabel,
@@ -171,6 +176,17 @@ const sourceMap: Record<DbSourceKind, string> = {
   OTHER: "Other"
 };
 
+const australiaRegulatoryKindMap: Record<DbAustraliaRegulatoryKind, AustraliaRegulatoryKind> = {
+  AUST_L: "AUST L",
+  AUST_LA: "AUST L(A)",
+  AUST_R: "AUST R",
+  NOT_IN_ARTG: "Not in ARTG",
+  UNAPPROVED: "Unapproved",
+  EXEMPT: "Exempt",
+  EXCLUDED: "Excluded",
+  UNKNOWN: "Unknown"
+};
+
 export async function getEvidenceDashboardData(): Promise<EvidenceDashboardData> {
   if (process.env.APEX_DATA_SOURCE === "seed") {
     return getSeedDashboardData("Seed mode forced by APEX_DATA_SOURCE.");
@@ -211,6 +227,7 @@ function getSeedDashboardData(fallbackReason?: string): EvidenceDashboardData {
     trialWatchItems,
     safetyAlerts,
     productSignals,
+    australiaRegulatoryStatuses,
     dataSource: "seed",
     fallbackReason
   };
@@ -224,7 +241,8 @@ async function getPrismaDashboardData(): Promise<EvidenceDashboardData> {
     dbStudies,
     dbTrials,
     dbSafetyAlerts,
-    dbProducts
+    dbProducts,
+    dbAustraliaRegulatoryStatuses
   ] = await Promise.all([
     prisma.reference.findMany({ orderBy: [{ source: "asc" }, { title: "asc" }] }),
     prisma.intervention.findMany({ orderBy: { name: "asc" } }),
@@ -235,7 +253,10 @@ async function getPrismaDashboardData(): Promise<EvidenceDashboardData> {
     prisma.study.findMany({ orderBy: [{ year: "desc" }, { title: "asc" }] }),
     prisma.trial.findMany({ orderBy: [{ lastUpdateDate: "desc" }, { title: "asc" }] }),
     prisma.safetyAlert.findMany({ orderBy: [{ date: "desc" }, { severity: "desc" }] }),
-    prisma.product.findMany({ orderBy: [{ qualityScore: "desc" }, { name: "asc" }] })
+    prisma.product.findMany({ orderBy: [{ qualityScore: "desc" }, { name: "asc" }] }),
+    prisma.australiaRegulatoryStatus.findMany({
+      orderBy: [{ region: "asc" }, { kind: "asc" }, { status: "asc" }]
+    })
   ]);
 
   if (dbInterventions.length === 0 || dbClaims.length === 0) {
@@ -250,6 +271,7 @@ async function getPrismaDashboardData(): Promise<EvidenceDashboardData> {
     trialWatchItems: dbTrials.map(mapTrial),
     safetyAlerts: dbSafetyAlerts.map(mapSafetyAlert),
     productSignals: dbProducts.map(mapProduct),
+    australiaRegulatoryStatuses: dbAustraliaRegulatoryStatuses.map(mapAustraliaRegulatoryStatus),
     dataSource: "database"
   };
 }
@@ -378,6 +400,30 @@ function mapProduct(product: DbProduct): ProductSignal {
     region: product.region,
     qualityScore: product.qualityScore,
     labelClaimRiskScore: product.labelClaimRiskScore
+  };
+}
+
+function mapAustraliaRegulatoryStatus(
+  status: DbAustraliaRegulatoryStatus
+): AustraliaRegulatoryStatus {
+  return {
+    id: status.id,
+    interventionId: status.interventionId ?? undefined,
+    productId: status.productId ?? undefined,
+    referenceId: status.referenceId ?? undefined,
+    region: "AU",
+    kind: australiaRegulatoryKindMap[status.kind],
+    artgId: status.artgId ?? undefined,
+    austNumber: status.austNumber ?? undefined,
+    sponsor: status.sponsor ?? undefined,
+    status: status.status,
+    efficacyAssessed: status.efficacyAssessed ?? undefined,
+    preMarketAssessment: status.preMarketAssessment ?? undefined,
+    supplySummary: status.supplySummary,
+    evidenceRequirement: status.evidenceRequirement,
+    sourceUrl: status.sourceUrl,
+    checkedAt: formatDate(status.checkedAt),
+    notes: status.notes
   };
 }
 

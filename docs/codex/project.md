@@ -15,6 +15,7 @@
   - Public source wrappers under `src/lib/integrations/` and API routes under `src/app/api/`.
   - Prisma schema and seed script under `prisma/`.
   - Dashboard reads through `src/lib/data/dashboard.ts`; it prefers Prisma when PostgreSQL is reachable and falls back to seed data unless `APEX_DATA_SOURCE=database`.
+  - Australia/TGA regulatory status is structured in `AustraliaRegulatoryStatus` records and surfaced as active-card detail plus product chips; do not infer ARTG status from intervention evidence alone.
   - MVP mode: public read-only.
   - Default regulatory lens: Australia/TGA.
   - UI tone: consumer-friendly by default, with expandable investor-grade research detail planned.
@@ -32,6 +33,7 @@
 - Risk areas:
   - Medical claim accuracy and currentness.
   - Citation traceability and review status.
+  - ARTG/AUST status accuracy for Australia-facing product claims.
   - Peptide/drug regulatory guardrails.
   - Avoiding individualized medical advice.
   - Package advisories in the frontend toolchain.
