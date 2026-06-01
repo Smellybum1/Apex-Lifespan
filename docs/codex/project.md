@@ -18,6 +18,7 @@
   - AU regulatory uniqueness uses hand-authored PostgreSQL partial indexes in the migration because nullable product/intervention/ARTG fields cannot be represented safely with a normal Prisma `@@unique`.
   - `prisma/seed.ts` runs a seed integrity check after upserts so missing required IDs or stale seed-owned IDs fail loudly.
   - Dashboard reads through `src/lib/data/dashboard.ts`; it prefers Prisma when PostgreSQL is reachable and falls back to seed data unless `APEX_DATA_SOURCE=database`.
+  - Dashboard data-source behavior has fallback tests for forced seed mode, missing `DATABASE_URL`, unreachable configured databases, and strict database mode failure.
   - Australia/TGA regulatory status is structured in `AustraliaRegulatoryStatus` records and surfaced as active-card detail plus product chips; do not infer ARTG status from intervention evidence alone.
   - PubMed search is surfaced as a read-only triage preview in the Sources panel; it shows live citation candidates and metadata but does not persist them yet.
   - ClinicalTrials.gov search is surfaced as a read-only preview in the Sources panel; keep it separate from the curated Trial Watcher until live records are reviewed/persisted.
