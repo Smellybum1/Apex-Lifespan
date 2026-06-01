@@ -103,6 +103,9 @@ const tgaAustNumbersUrl =
   "https://www.tga.gov.au/products/medicines/labelling-and-advertising/medicines-and-biologicals-labelling-and-packaging/aust-numbers-medicine-labels";
 const tgaPeptideSafetyUrl =
   "https://www.tga.gov.au/safety/safety-monitoring-and-information/safety-alerts/tga-warning-risks-importing-unapproved-peptide-products";
+const nihOdsVitaminDUrl =
+  "https://ods.od.nih.gov/factsheets/VitaminD-HealthProfessional/";
+const heuristicSourceLabel = "Heuristic check";
 
 export function analyzeLabel(labelText: string): LabelFinding[] {
   const text = labelText.trim();
@@ -121,7 +124,8 @@ export function analyzeLabel(labelText: string): LabelFinding[] {
       id: "proprietary-blend",
       level: "moderate",
       title: "Proprietary blend",
-      detail: "Dose transparency is limited, so ingredient-level evidence matching is weaker."
+      detail: "Dose transparency is limited, so ingredient-level evidence matching is weaker.",
+      sourceLabel: heuristicSourceLabel
     });
   }
 
@@ -192,7 +196,9 @@ export function analyzeLabel(labelText: string): LabelFinding[] {
       level: "moderate",
       title: "High vitamin D amount",
       detail:
-        "High-dose vitamin D should be interpreted against deficiency status, total intake, and safety limits."
+        "High-dose vitamin D should be interpreted against deficiency status, total intake, and safety limits.",
+      sourceLabel: "NIH ODS vitamin D",
+      sourceUrl: nihOdsVitaminDUrl
     });
   }
 
@@ -201,7 +207,8 @@ export function analyzeLabel(labelText: string): LabelFinding[] {
       id: "hype-language",
       level: "high",
       title: "Hype language",
-      detail: "Marketing claims should be matched against human clinical evidence and citations."
+      detail: "Marketing claims should be matched against human clinical evidence and citations.",
+      sourceLabel: heuristicSourceLabel
     });
   }
 
@@ -210,7 +217,8 @@ export function analyzeLabel(labelText: string): LabelFinding[] {
       id: "certification",
       level: "low",
       title: "Quality signal",
-      detail: "A recognized certification can improve product-quality confidence when verified."
+      detail: "A recognized certification can improve product-quality confidence when verified.",
+      sourceLabel: heuristicSourceLabel
     });
   }
 

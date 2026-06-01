@@ -42,6 +42,7 @@ describe("analyzeLabel", () => {
     const findings = analyzeLabel("Creatine monohydrate 5 g\nNo proprietary blend\nNSF Certified for Sport");
 
     expect(findings.map((finding) => finding.id)).toEqual(["certification"]);
+    expect(findings[0]).toMatchObject({ sourceLabel: "Heuristic check" });
   });
 
   it("flags peptide guardrails and hype language", () => {
@@ -81,5 +82,26 @@ describe("analyzeLabel", () => {
 
     expect(analyzeLabel("This product is not TGA approved").map((finding) => finding.id))
       .not.toContain("tga-approval-overclaim");
+  });
+
+  it("shows provenance for sourced and heuristic label findings", () => {
+    const findings = analyzeLabel(
+      "Vitamin D 10,000 IU proprietary blend detox formula, NSF Certified for Sport"
+    );
+
+    expect(findings.every((finding) => Boolean(finding.sourceLabel))).toBe(true);
+    expect(findings.find((finding) => finding.id === "high-vitamin-d")).toMatchObject({
+      sourceLabel: "NIH ODS vitamin D",
+      sourceUrl: "https://ods.od.nih.gov/factsheets/VitaminD-HealthProfessional/"
+    });
+    const proprietaryBlendFinding = findings.find(
+      (finding) => finding.id === "proprietary-blend"
+    );
+    const hypeFinding = findings.find((finding) => finding.id === "hype-language");
+
+    expect(proprietaryBlendFinding).toMatchObject({ sourceLabel: "Heuristic check" });
+    expect(proprietaryBlendFinding).not.toHaveProperty("sourceUrl");
+    expect(hypeFinding).toMatchObject({ sourceLabel: "Heuristic check" });
+    expect(hypeFinding).not.toHaveProperty("sourceUrl");
   });
 });

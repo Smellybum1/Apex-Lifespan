@@ -996,6 +996,10 @@ function LabelAnalyzer({
                   {finding.sourceLabel ?? "Source"}{" "}
                   <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
                 </a>
+              ) : finding.sourceLabel ? (
+                <span className="mt-2 inline-flex rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-600">
+                  {finding.sourceLabel}
+                </span>
               ) : null}
             </article>
           ))
