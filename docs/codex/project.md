@@ -26,6 +26,7 @@
   - The Sources panel shows an active-card source packet first: linked curated references, extracted study records, extraction-pending references, and unresolved reference IDs stay distinct from live preview results.
   - Evidence cards use a consumer summary by default with expandable research detail for study context, applicability, score-change rationale, and source links.
   - Product label analysis includes AU/TGA-specific cautions for unresolved AUST status, approval overclaims, and research-use/injectable peptide language.
+  - Review-status dashboard counts use tested summary logic so human-reviewed and draft-awaiting-review claims remain separate.
   - MVP mode: public read-only.
   - Default regulatory lens: Australia/TGA.
   - UI tone: consumer-friendly by default, with expandable investor-grade research detail planned.

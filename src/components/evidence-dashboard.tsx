@@ -52,6 +52,7 @@ import {
   scoreBand,
   severityTone
 } from "@/lib/scoring";
+import { summarizeReviewStatus } from "@/lib/review-summary";
 import {
   buildClaimSourcePacket,
   type ClaimSourcePacket
@@ -155,6 +156,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     ? getPrimaryAustraliaStatus(data.australiaRegulatoryStatuses, activeIntervention.id)
     : undefined;
   const labelFindings = analyzeLabel(labelText);
+  const reviewSummary = useMemo(() => summarizeReviewStatus(claims), [claims]);
 
   const tableRows = useMemo(
     () =>
@@ -187,8 +189,8 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
           <MetricPanel
             icon={<ShieldCheck aria-hidden="true" className="h-4 w-4" />}
             label="Human-reviewed"
-            value={claims.filter((claim) => claim.reviewStatus === "Human reviewed").length}
-            detail={`${claims.length} drafts awaiting review`}
+            value={reviewSummary.humanReviewed}
+            detail={`${reviewSummary.unreviewedDrafts} drafts awaiting review`}
           />
           <MetricPanel
             icon={<AlertTriangle aria-hidden="true" className="h-4 w-4" />}
