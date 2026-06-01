@@ -22,6 +22,7 @@
   - PubMed search is surfaced as a read-only triage preview in the Sources panel; it shows live citation candidates and metadata but does not persist them yet.
   - ClinicalTrials.gov search is surfaced as a read-only preview in the Sources panel; keep it separate from the curated Trial Watcher until live records are reviewed/persisted.
   - Source previews have user-triggered active-claim search suggestions; do not auto-refetch live sources on every evidence-card selection.
+  - Evidence cards use a consumer summary by default with expandable research detail for study context, applicability, score-change rationale, and source links.
   - Product label analysis includes AU/TGA-specific cautions for unresolved AUST status, approval overclaims, and research-use/injectable peptide language.
   - MVP mode: public read-only.
   - Default regulatory lens: Australia/TGA.

@@ -821,21 +821,28 @@ function EvidenceCards({
       <div className="mt-4 grid gap-3">
         {visibleClaims.map((claim) => {
           const intervention = interventionsById.get(claim.interventionId);
+          const claimReferences = claim.keyReferenceIds
+            .map((referenceId) => referencesById.get(referenceId))
+            .filter((reference): reference is Reference => Boolean(reference));
 
           return (
-            <button
+            <article
               key={claim.id}
-              type="button"
-              onClick={() => onSelectClaim(claim.id)}
               className={cn(
-                "rounded-lg border border-line bg-white p-3 text-left transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20",
+                "rounded-lg border border-line bg-white p-3 transition",
                 activeClaimId === claim.id && "border-signal ring-2 ring-signal/20"
               )}
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
+                <div className="min-w-0 flex-1">
                   <h3 className="text-sm font-semibold text-ink">
-                    {intervention?.name} - {shortOutcome(claim.outcome)}
+                    <button
+                      type="button"
+                      onClick={() => onSelectClaim(claim.id)}
+                      className="rounded-md text-left outline-none transition hover:text-signal focus:ring-4 focus:ring-signal/20"
+                    >
+                      {intervention?.name} - {shortOutcome(claim.outcome)}
+                    </button>
                   </h3>
                   <p className="mt-1 text-sm leading-6 text-slate-700">{claim.claimText}</p>
                 </div>
@@ -845,25 +852,57 @@ function EvidenceCards({
               </div>
               <p className="mt-3 text-sm leading-6 text-slate-600">{claim.clinicalRelevance}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {claim.keyReferenceIds.map((referenceId) => {
-                  const reference = referencesById.get(referenceId);
-
-                  if (!reference) {
-                    return null;
-                  }
-
-                  return (
-                    <span
-                      key={referenceId}
-                      className="rounded-md border border-line bg-mist px-2 py-1 text-xs text-slate-600"
-                    >
-                      {reference.source}
-                      {reference.identifier ? ` - ${reference.identifier}` : ""}
-                    </span>
-                  );
-                })}
+                <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
+                  {claim.reviewStatus}
+                </span>
+                <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs text-slate-600">
+                  Confidence: {claim.confidenceLevel}
+                </span>
+                {claimReferences.map((reference) => (
+                  <span
+                    key={reference.id}
+                    className="rounded-md border border-line bg-mist px-2 py-1 text-xs text-slate-600"
+                  >
+                    {reference.source}
+                    {reference.identifier ? ` - ${reference.identifier}` : ""}
+                  </span>
+                ))}
               </div>
-            </button>
+              <details className="mt-3 rounded-md border border-line bg-mist p-3">
+                <summary className="cursor-pointer text-xs font-semibold text-signal">
+                  Research detail
+                </summary>
+                <dl className="mt-3 grid gap-2 text-xs md:grid-cols-2">
+                  <MiniStat label="Evidence grade" value={claim.evidenceGrade} />
+                  <MiniStat label="Effect" value={claim.effectSize} />
+                  <MiniStat label="Population" value={claim.populationStudied} />
+                  <MiniStat label="Comparator" value={claim.comparator} />
+                  <MiniStat label="Duration" value={claim.durationStudied} />
+                  <MiniStat label="Applicability" value={claim.applicabilityNotes} />
+                  <MiniStat label="Score mover" value={claim.whatWouldChangeScore} />
+                  <MiniStat label="Last reviewed" value={claim.lastUpdated} />
+                </dl>
+                <div className="mt-3 grid gap-2">
+                  {claimReferences.length > 0 ? (
+                    claimReferences.map((reference) => (
+                      <a
+                        key={reference.id}
+                        href={reference.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex w-fit max-w-full items-center gap-1 break-words text-xs font-semibold text-signal hover:underline"
+                      >
+                        {reference.source}
+                        {reference.identifier ? ` - ${reference.identifier}` : ""}
+                        <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                      </a>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-600">No references linked yet.</p>
+                  )}
+                </div>
+              </details>
+            </article>
           );
         })}
       </div>
