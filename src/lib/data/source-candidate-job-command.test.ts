@@ -49,6 +49,43 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     });
   });
 
+  it("parses source-candidate review modes", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand",
+        "--review-note",
+        "Full-text reviewed."
+      ])
+    ).toEqual({
+      acceptedReferenceId: "ref-creatine-position-stand",
+      help: false,
+      limit: 1,
+      reviewCandidateDedupeKey: "pubmed|au|creatine|28615996",
+      reviewDecision: "Accepted",
+      reviewNote: "Full-text reviewed.",
+      summary: false
+    });
+
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--reject-candidate",
+        "clinicaltrials.gov|au|creatine|nct123",
+        "--review-note",
+        "Not relevant to the consumer claim."
+      ])
+    ).toEqual({
+      help: false,
+      limit: 1,
+      reviewCandidateDedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+      reviewDecision: "Rejected",
+      reviewNote: "Not relevant to the consumer claim.",
+      summary: false
+    });
+  });
+
   it("parses read-only candidate review queue mode", () => {
     expect(parseSourceCandidateJobCommandArgs(["--candidates"])).toEqual({
       candidates: true,
@@ -154,6 +191,99 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--summary", "--job-id", "job-pubmed"])
     ).toThrow("--summary is read-only and cannot be combined with run options.");
+  });
+
+  it("requires explicit and isolated source-candidate review options", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow("--accept-candidate requires --accepted-reference-id.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ])
+    ).toThrow("--accepted-reference-id requires --accept-candidate.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--review-note", "Reviewed."])
+    ).toThrow("--review-note requires --accept-candidate or --reject-candidate.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--reject-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ])
+    ).toThrow("--accepted-reference-id requires --accept-candidate.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--reject-candidate",
+        "clinicaltrials.gov|au|creatine|nct123"
+      ])
+    ).toThrow("Only one source-candidate review option can be used at a time.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand",
+        "--summary"
+      ])
+    ).toThrow("Review options cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand",
+        "--candidates"
+      ])
+    ).toThrow("Review options cannot be combined with --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand",
+        "--candidate-source",
+        "pubmed"
+      ])
+    ).toThrow("Candidate-list filters cannot be combined with review options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--reject-candidate",
+        "pubmed|au|creatine|28615996",
+        "--jobs"
+      ])
+    ).toThrow("Review options cannot be combined with --jobs.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--reject-candidate",
+        "pubmed|au|creatine|28615996",
+        "--queue-pubmed",
+        "creatine"
+      ])
+    ).toThrow("Review options cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--reject-candidate",
+        "pubmed|au|creatine|28615996",
+        "--region",
+        "AU"
+      ])
+    ).toThrow("Review options cannot be combined with queue metadata.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--reject-candidate",
+        "pubmed|au|creatine|28615996",
+        "--limit",
+        "2"
+      ])
+    ).toThrow("Review options cannot be combined with run options.");
   });
 
   it("does not combine candidate review queue mode with other command modes", () => {
@@ -274,6 +404,115 @@ describe("runSourceCandidateJobCommand", () => {
         "- PubMed AU Pending review / Unreviewed AI draft: 3",
         "- ClinicalTrials.gov AU Accepted / Human reviewed: 1"
       ].join("\n")
+    );
+  });
+
+  it("records an accepted source-candidate review decision", async () => {
+    const stdout = vi.fn();
+    const recordDecision = vi.fn().mockResolvedValue(
+      sourceCandidate({
+        decision: "Accepted",
+        reviewStatus: "Human reviewed",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        reviewedAt: "2026-06-02T01:00:00.000Z",
+        reviewNote: "Full-text reviewed."
+      })
+    );
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--accept-candidate",
+          "pubmed|au|creatine|28615996",
+          "--accepted-reference-id",
+          "ref-creatine-position-stand",
+          "--review-note",
+          "Full-text reviewed."
+        ],
+        { stdout },
+        { recordDecision, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(recordDecision).toHaveBeenCalledWith({
+      dedupeKey: "pubmed|au|creatine|28615996",
+      decision: "Accepted",
+      acceptedReferenceId: "ref-creatine-position-stand",
+      reviewNote: "Full-text reviewed."
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      '[Accepted] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" title="Creatine position stand" reviewStatus="Human reviewed" acceptedReference=ref-creatine-position-stand note="Full-text reviewed."'
+    );
+  });
+
+  it("records a rejected source-candidate review decision", async () => {
+    const stdout = vi.fn();
+    const recordDecision = vi.fn().mockResolvedValue(
+      sourceCandidate({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        source: "ClinicalTrials.gov",
+        externalId: "NCT123",
+        title: "Creatine and aging",
+        url: "https://clinicaltrials.gov/study/NCT123",
+        decision: "Rejected",
+        reviewStatus: "Human reviewed",
+        acceptedReferenceId: undefined,
+        reviewedAt: "2026-06-02T02:00:00.000Z",
+        reviewNote: "Not relevant to the consumer claim."
+      })
+    );
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--reject-candidate",
+          "clinicaltrials.gov|au|creatine|nct123",
+          "--review-note",
+          "Not relevant to the consumer claim."
+        ],
+        { stdout },
+        { recordDecision, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(recordDecision).toHaveBeenCalledWith({
+      dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+      decision: "Rejected",
+      acceptedReferenceId: undefined,
+      reviewNote: "Not relevant to the consumer claim."
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      '[Rejected] source-candidate ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" title="Creatine and aging" reviewStatus="Human reviewed" note="Not relevant to the consumer claim."'
+    );
+  });
+
+  it("returns a failing exit code when source-candidate review fails", async () => {
+    const stderr = vi.fn();
+    const recordDecision = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("Accepted source candidates require an acceptedReferenceId.")
+      );
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--accept-candidate",
+          "pubmed|au|creatine|28615996",
+          "--accepted-reference-id",
+          "ref-creatine-position-stand"
+        ],
+        { stderr },
+        { recordDecision }
+      )
+    ).resolves.toBe(1);
+
+    expect(stderr).toHaveBeenCalledWith(
+      "Accepted source candidates require an acceptedReferenceId."
     );
   });
 

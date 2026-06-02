@@ -11,14 +11,18 @@ import {
   type SourceCandidateIngestionJobRunResult
 } from "@/lib/data/source-candidate-jobs";
 import {
-  summarizeSourceCandidateBacklog,
   listSourceCandidateReviewQueue,
+  recordSourceCandidateDecision,
+  summarizeSourceCandidateBacklog,
+  type RecordSourceCandidateDecisionInput,
+  type ReviewedSourceCandidateDecision,
   type SourceCandidateBacklogSummary
 } from "@/lib/data/source-candidates";
 import type { SourceCandidate, SourceCandidateSource } from "@/lib/types";
 
 export interface SourceCandidateJobCommandOptions
   extends SourceCandidateIngestionJobOptions {
+  acceptedReferenceId?: string;
   candidateSource?: SourceCandidateSource;
   candidates?: boolean;
   candidatesLimit?: number;
@@ -32,6 +36,9 @@ export interface SourceCandidateJobCommandOptions
   queueQuery?: string;
   queueSource?: SourceCandidateSource;
   region?: string;
+  reviewCandidateDedupeKey?: string;
+  reviewDecision?: ReviewedSourceCandidateDecision;
+  reviewNote?: string;
   summary: boolean;
 }
 
@@ -58,6 +65,9 @@ export interface SourceCandidateJobCommandRunners {
   runNextJob?: (
     options: SourceCandidateIngestionJobOptions
   ) => Promise<SourceCandidateIngestionJobRunResult | null>;
+  recordDecision?: (
+    input: RecordSourceCandidateDecisionInput
+  ) => Promise<SourceCandidate>;
   summarizeBacklog?: () => Promise<SourceCandidateBacklogSummary>;
 }
 
@@ -74,6 +84,7 @@ export async function runSourceCandidateJobCommand(
   const listCandidates = runners.listCandidates ?? listSourceCandidateReviewQueue;
   const listJobs = runners.listJobs ?? listSourceCandidateIngestionJobs;
   const queueJob = runners.queueJob ?? queueSourceCandidateIngestionJob;
+  const recordDecision = runners.recordDecision ?? recordSourceCandidateDecision;
   const runJobById = runners.runJobById ?? runSourceCandidateIngestionJob;
   const runNextJob = runners.runNextJob ?? runNextSourceCandidateIngestionJob;
   const summarizeBacklog = runners.summarizeBacklog ?? summarizeSourceCandidateBacklog;
@@ -94,6 +105,18 @@ export async function runSourceCandidateJobCommand(
   }
 
   try {
+    if (options.reviewDecision && options.reviewCandidateDedupeKey) {
+      const candidate = await recordDecision({
+        dedupeKey: options.reviewCandidateDedupeKey,
+        decision: options.reviewDecision,
+        acceptedReferenceId: options.acceptedReferenceId,
+        reviewNote: options.reviewNote
+      });
+
+      stdout(formatReviewedSourceCandidate(candidate));
+      return 0;
+    }
+
     if (options.candidates) {
       const candidates = await listCandidates({
         limit: options.candidatesLimit,
@@ -163,8 +186,10 @@ export function parseSourceCandidateJobCommandArgs(
     summary: false
   };
   let candidatesLimitProvided = false;
+  let acceptedReferenceIdProvided = false;
   let limitProvided = false;
   let jobsLimitProvided = false;
+  let reviewNoteProvided = false;
   let sourceLimitProvided = false;
 
   for (let index = 0; index < args.length; index += 1) {
@@ -183,6 +208,40 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--summary") {
       options.summary = true;
+      continue;
+    }
+
+    if (arg === "--accept-candidate") {
+      setCandidateReviewOption(
+        options,
+        "Accepted",
+        readRequiredValue(args, index, arg)
+      );
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--reject-candidate") {
+      setCandidateReviewOption(
+        options,
+        "Rejected",
+        readRequiredValue(args, index, arg)
+      );
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--accepted-reference-id") {
+      options.acceptedReferenceId = readRequiredValue(args, index, arg);
+      acceptedReferenceIdProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--review-note") {
+      options.reviewNote = readRequiredValue(args, index, arg);
+      reviewNoteProvided = true;
+      index += 1;
       continue;
     }
 
@@ -278,6 +337,46 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--job-id runs exactly one job and cannot be combined with --limit.");
   }
 
+  if (acceptedReferenceIdProvided && options.reviewDecision !== "Accepted") {
+    throw new Error("--accepted-reference-id requires --accept-candidate.");
+  }
+
+  if (reviewNoteProvided && !options.reviewDecision) {
+    throw new Error("--review-note requires --accept-candidate or --reject-candidate.");
+  }
+
+  if (options.reviewDecision === "Accepted" && !options.acceptedReferenceId) {
+    throw new Error("--accept-candidate requires --accepted-reference-id.");
+  }
+
+  if (options.reviewDecision && options.summary) {
+    throw new Error("Review options cannot be combined with --summary.");
+  }
+
+  if (options.reviewDecision && options.candidates) {
+    throw new Error("Review options cannot be combined with --candidates.");
+  }
+
+  if (options.reviewDecision && (candidatesLimitProvided || options.candidateSource)) {
+    throw new Error("Candidate-list filters cannot be combined with review options.");
+  }
+
+  if (options.reviewDecision && options.jobs) {
+    throw new Error("Review options cannot be combined with --jobs.");
+  }
+
+  if (options.reviewDecision && options.queueSource) {
+    throw new Error("Review options cannot be combined with queue options.");
+  }
+
+  if (options.reviewDecision && (options.region || options.interventionId || options.claimId)) {
+    throw new Error("Review options cannot be combined with queue metadata.");
+  }
+
+  if (options.reviewDecision && (options.jobId || limitProvided || sourceLimitProvided)) {
+    throw new Error("Review options cannot be combined with run options.");
+  }
+
   if ((candidatesLimitProvided || options.candidateSource) && !options.candidates) {
     throw new Error("--candidates-limit and --candidate-source require --candidates.");
   }
@@ -340,6 +439,10 @@ export function commandUsage() {
     "Options:",
     "  --job-id <id>                     Run one specific ingestion job.",
     "  --limit <count>                   Run up to count queued jobs (default 1, max 25).",
+    "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
+    "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
+    "  --accepted-reference-id <id>      Required curated reference id for --accept-candidate.",
+    "  --review-note <note>              Human review note for accepted/rejected candidates.",
     "  --candidates                      Print pending source-candidate review queue rows.",
     "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
     "  --candidate-source <source>       Candidate source: pubmed or clinical-trials.",
@@ -413,6 +516,27 @@ function formatQueuedSourceCandidateJob(result: QueuedSourceCandidateIngestionJo
     quote(result.query),
     `created=${result.created}`
   ].join(" ");
+}
+
+function formatReviewedSourceCandidate(candidate: SourceCandidate) {
+  const parts = [
+    `[${candidate.decision}] source-candidate`,
+    candidate.source,
+    candidate.region,
+    `dedupe=${quote(candidate.dedupeKey)}`,
+    `title=${quote(candidate.title)}`,
+    `reviewStatus=${quote(candidate.reviewStatus)}`
+  ];
+
+  if (candidate.acceptedReferenceId) {
+    parts.push(`acceptedReference=${candidate.acceptedReferenceId}`);
+  }
+
+  if (candidate.reviewNote) {
+    parts.push(`note=${quote(candidate.reviewNote)}`);
+  }
+
+  return parts.join(" ");
 }
 
 function formatSourceCandidateReviewQueue(candidates: SourceCandidate[]) {
@@ -546,6 +670,19 @@ function setQueueOption(
 
   options.queueSource = source;
   options.queueQuery = query;
+}
+
+function setCandidateReviewOption(
+  options: SourceCandidateJobCommandOptions,
+  decision: ReviewedSourceCandidateDecision,
+  dedupeKey: string
+) {
+  if (options.reviewDecision) {
+    throw new Error("Only one source-candidate review option can be used at a time.");
+  }
+
+  options.reviewDecision = decision;
+  options.reviewCandidateDedupeKey = dedupeKey;
 }
 
 function quote(value: string) {

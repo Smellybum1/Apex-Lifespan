@@ -76,6 +76,8 @@ npm run ingest:sources -- --queue-clinical-trials "creatine aging"
 npm run ingest:sources -- --jobs
 npm run ingest:sources -- --candidates
 npm run ingest:sources -- --candidates --candidate-source pubmed --candidates-limit 10
+npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id>
+npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Not relevant to this claim."
 npm run ingest:sources -- --limit 5
 npm run ingest:sources -- --job-id <ingestion-job-id>
 npm run ingest:sources -- --pubmed-retmax 10
@@ -87,6 +89,7 @@ The command reports job status, records found, and records changed. These are in
 Queue options create a missing job or report the existing job for the same source, query, and region; they do not reset completed jobs.
 The `--jobs` option is read-only and reports recent source-candidate ingestion job ids, statuses, workflow counts, and errors.
 The `--candidates` option is read-only and reports pending source-candidate review rows with triage scores, titles, URLs, and dedupe keys.
+The `--accept-candidate` and `--reject-candidate` options are operator-only review actions for pending candidates. Accepted candidates require an existing curated reference id and do not automatically promote evidence cards.
 The `--summary` option is read-only and reports source-candidate workflow counts by source, region, decision, and review status.
 
 ## Australia regulatory lens

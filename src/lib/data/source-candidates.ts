@@ -146,21 +146,30 @@ export async function recordSourceCandidateDecision({
     throw new Error("Accepted source candidates require an acceptedReferenceId.");
   }
 
-  const candidate = await prisma.sourceCandidate.update({
-    where: {
-      dedupeKey
-    },
-    data: {
-      decision: decisionMap[decision],
-      reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
-      reviewedAt,
-      reviewNote,
-      acceptedReferenceId:
-        decision === "Accepted" ? acceptedReferenceIdOrUndefined : null
-    }
-  });
+  try {
+    const candidate = await prisma.sourceCandidate.update({
+      where: {
+        dedupeKey,
+        decision: DbSourceCandidateDecision.PENDING_REVIEW
+      },
+      data: {
+        decision: decisionMap[decision],
+        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        reviewedAt,
+        reviewNote,
+        acceptedReferenceId:
+          decision === "Accepted" ? acceptedReferenceIdOrUndefined : null
+      }
+    });
 
-  return mapDbSourceCandidate(candidate);
+    return mapDbSourceCandidate(candidate);
+  } catch (error) {
+    if (isPrismaNotFoundError(error)) {
+      throw new Error("Pending source candidate not found for review.");
+    }
+
+    throw error;
+  }
 }
 
 function sourceCandidateCreateInput(
@@ -310,5 +319,14 @@ function stripUndefined(value: unknown): unknown {
     Object.entries(value)
       .map(([key, item]) => [key, stripUndefined(item)] as const)
       .filter(([, item]) => item !== undefined)
+  );
+}
+
+function isPrismaNotFoundError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2025"
   );
 }

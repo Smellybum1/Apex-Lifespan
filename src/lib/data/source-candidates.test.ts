@@ -292,7 +292,8 @@ describe("recordSourceCandidateDecision", () => {
 
     expect(prismaMocks.sourceCandidateUpdate).toHaveBeenCalledWith({
       where: {
-        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength"
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "PENDING_REVIEW"
       },
       data: {
         decision: "ACCEPTED",
@@ -335,7 +336,8 @@ describe("recordSourceCandidateDecision", () => {
 
     expect(prismaMocks.sourceCandidateUpdate).toHaveBeenCalledWith({
       where: {
-        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength"
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "PENDING_REVIEW"
       },
       data: {
         decision: "REJECTED",
@@ -357,6 +359,34 @@ describe("recordSourceCandidateDecision", () => {
     ).rejects.toThrow("Accepted source candidates require an acceptedReferenceId.");
 
     expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite source candidates that are no longer pending review", async () => {
+    prismaMocks.sourceCandidateUpdate.mockRejectedValue({
+      code: "P2025"
+    });
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Rejected",
+        reviewNote: "Duplicate."
+      })
+    ).rejects.toThrow("Pending source candidate not found for review.");
+
+    expect(prismaMocks.sourceCandidateUpdate).toHaveBeenCalledWith({
+      where: {
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "PENDING_REVIEW"
+      },
+      data: {
+        decision: "REJECTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        reviewedAt: expect.any(Date),
+        reviewNote: "Duplicate.",
+        acceptedReferenceId: null
+      }
+    });
   });
 });
 
