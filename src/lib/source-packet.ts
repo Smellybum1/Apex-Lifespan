@@ -19,6 +19,7 @@ export interface ClaimSourcePacketCompleteness {
   status: ClaimSourcePacketCompletenessStatus;
   label: string;
   detail: string;
+  nextStep: string;
   totalReferences: number;
   extractedReferences: number;
   pendingReferences: number;
@@ -89,6 +90,7 @@ function summarizeClaimSourcePacket({
       status: "not_linked",
       label: "No curated sources",
       detail: "This claim does not have curated reference links yet.",
+      nextStep: "Add curated reference links before treating this claim as source-backed.",
       totalReferences,
       extractedReferences: extractedCount,
       pendingReferences: pendingCount,
@@ -101,6 +103,7 @@ function summarizeClaimSourcePacket({
       status: "missing_sources",
       label: "Source records missing",
       detail: "One or more linked reference IDs are missing from the curated source records.",
+      nextStep: "Restore the missing curated source records before relying on this packet.",
       totalReferences,
       extractedReferences: extractedCount,
       pendingReferences: pendingCount,
@@ -113,6 +116,7 @@ function summarizeClaimSourcePacket({
       status: "extraction_pending",
       label: "Extraction pending",
       detail: "Curated references are linked, but at least one still needs a structured study extraction.",
+      nextStep: "Add structured extraction for the pending references before treating this packet as complete.",
       totalReferences,
       extractedReferences: extractedCount,
       pendingReferences: pendingCount,
@@ -124,6 +128,7 @@ function summarizeClaimSourcePacket({
     status: "complete",
     label: "Extraction complete",
     detail: "Every linked curated reference has at least one structured study extraction.",
+    nextStep: "Keep source links reviewed as new evidence or regulatory updates appear.",
     totalReferences,
     extractedReferences: extractedCount,
     pendingReferences: pendingCount,

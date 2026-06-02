@@ -26,6 +26,7 @@ describe("buildClaimSourcePacket", () => {
     expect(packet.completeness).toMatchObject({
       status: "complete",
       label: "Extraction complete",
+      nextStep: "Keep source links reviewed as new evidence or regulatory updates appear.",
       totalReferences: 1,
       extractedReferences: 1,
       pendingReferences: 0,
@@ -111,6 +112,8 @@ describe("buildClaimSourcePacket", () => {
     expect(packet.completeness).toMatchObject({
       status: "extraction_pending",
       label: "Extraction pending",
+      nextStep:
+        "Add structured extraction for the pending references before treating this packet as complete.",
       totalReferences: 1,
       extractedReferences: 0,
       pendingReferences: 1,
@@ -138,6 +141,7 @@ describe("buildClaimSourcePacket", () => {
     expect(packet.completeness).toMatchObject({
       status: "missing_sources",
       label: "Source records missing",
+      nextStep: "Restore the missing curated source records before relying on this packet.",
       totalReferences: 2,
       extractedReferences: 0,
       pendingReferences: 1,
@@ -160,6 +164,8 @@ describe("buildClaimSourcePacket", () => {
     expect(packet.completeness).toMatchObject({
       status: "not_linked",
       label: "No curated sources",
+      nextStep:
+        "Add curated reference links before treating this claim as source-backed.",
       totalReferences: 0,
       extractedReferences: 0,
       pendingReferences: 0,

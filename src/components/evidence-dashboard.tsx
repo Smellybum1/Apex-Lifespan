@@ -1554,9 +1554,13 @@ function ActiveSourcePacketPanel({
           ) : null}
         </div>
       </div>
-      <p className="mt-3 rounded-md border border-signal/20 bg-white px-3 py-2 text-sm leading-6 text-slate-700">
-        Curated source coverage: {completeness.detail}
-      </p>
+      <div className="mt-3 rounded-md border border-signal/20 bg-white px-3 py-2 text-sm leading-6 text-slate-700">
+        <p>Curated source coverage: {completeness.detail}</p>
+        <p className="mt-1 text-xs leading-5 text-slate-600">
+          <span className="font-semibold text-slate-700">Next source step:</span>{" "}
+          {completeness.nextStep}
+        </p>
+      </div>
 
       <div className="mt-3 grid gap-3">
         {packet.studies.length > 0 ? (
