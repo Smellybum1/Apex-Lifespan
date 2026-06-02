@@ -14,6 +14,7 @@ import {
   getSourceCandidateCurationDraft,
   getSourceCandidateCurationStatus,
   getSourceCandidateByDedupeKey,
+  linkAcceptedSourceCandidateClaim,
   listSourceCandidateAcceptedReferenceMatches,
   listSourceCandidateCurationHandoff,
   listSourceCandidateReviewQueue,
@@ -21,6 +22,8 @@ import {
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
   summarizeSourceCandidateCurationHandoff,
+  type LinkAcceptedSourceCandidateClaimInput,
+  type LinkedSourceCandidateClaim,
   type RecordSourceCandidateDecisionInput,
   type ReviewedSourceCandidateDecision,
   type SourceCandidateAcceptedReferenceMatches,
@@ -60,11 +63,14 @@ export interface SourceCandidateJobCommandOptions
   candidates?: boolean;
   candidatesLimit?: number;
   claimId?: string;
+  claimLinkNote?: string;
+  claimLinkRelevance?: number;
   help: boolean;
   interventionId?: string;
   jobId?: string;
   jobs?: boolean;
   jobsLimit?: number;
+  linkCandidateClaimDedupeKey?: string;
   limit: number;
   queueQuery?: string;
   queueSource?: SourceCandidateSource;
@@ -109,6 +115,9 @@ export interface SourceCandidateJobCommandRunners {
     dedupeKey: string,
     options: SourceCandidateSiblingOptions
   ) => Promise<SourceCandidateSiblings | null>;
+  linkCandidateClaim?: (
+    input: LinkAcceptedSourceCandidateClaimInput
+  ) => Promise<LinkedSourceCandidateClaim>;
   queueJob?: (
     input: QueueSourceCandidateIngestionJobInput
   ) => Promise<QueuedSourceCandidateIngestionJob>;
@@ -172,6 +181,8 @@ export async function runSourceCandidateJobCommand(
   const listReferenceMatches =
     runners.listReferenceMatches ?? listSourceCandidateAcceptedReferenceMatches;
   const listSiblings = runners.listSiblings ?? listSourceCandidateSiblings;
+  const linkCandidateClaim =
+    runners.linkCandidateClaim ?? linkAcceptedSourceCandidateClaim;
   const queueJob = runners.queueJob ?? queueSourceCandidateIngestionJob;
   const recordDecision = runners.recordDecision ?? recordSourceCandidateDecision;
   const runJobById = runners.runJobById ?? runSourceCandidateIngestionJob;
@@ -300,6 +311,17 @@ export async function runSourceCandidateJobCommand(
       return 0;
     }
 
+    if (options.linkCandidateClaimDedupeKey) {
+      const result = await linkCandidateClaim({
+        dedupeKey: options.linkCandidateClaimDedupeKey,
+        note: options.claimLinkNote,
+        relevance: options.claimLinkRelevance
+      });
+
+      stdout(formatLinkedSourceCandidateClaim(result));
+      return 0;
+    }
+
     if (options.candidates) {
       const candidates = await listCandidates({
         decision: options.candidateDecision,
@@ -389,6 +411,8 @@ export function parseSourceCandidateJobCommandArgs(
   let candidateCurationHandoffStatusProvided = false;
   let candidateSiblingsLimitProvided = false;
   let acceptedReferenceIdProvided = false;
+  let claimLinkNoteProvided = false;
+  let claimLinkRelevanceProvided = false;
   let limitProvided = false;
   let jobsLimitProvided = false;
   let reviewNoteProvided = false;
@@ -492,6 +516,26 @@ export function parseSourceCandidateJobCommandArgs(
         "Rejected",
         readRequiredValue(args, index, arg)
       );
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--link-candidate-claim") {
+      options.linkCandidateClaimDedupeKey = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--claim-link-note") {
+      options.claimLinkNote = readRequiredValue(args, index, arg);
+      claimLinkNoteProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--claim-link-relevance") {
+      options.claimLinkRelevance = readPositiveInteger(args, index, arg, 5);
+      claimLinkRelevanceProvided = true;
       index += 1;
       continue;
     }
@@ -648,6 +692,14 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-siblings-limit requires --candidate-siblings.");
   }
 
+  if (claimLinkNoteProvided && !options.linkCandidateClaimDedupeKey) {
+    throw new Error("--claim-link-note requires --link-candidate-claim.");
+  }
+
+  if (claimLinkRelevanceProvided && !options.linkCandidateClaimDedupeKey) {
+    throw new Error("--claim-link-relevance requires --link-candidate-claim.");
+  }
+
   if (options.candidateCurationHandoff && options.candidateDetailDedupeKey) {
     throw new Error(
       "--candidate-curation-handoff cannot be combined with --candidate-detail."
@@ -701,6 +753,12 @@ export function parseSourceCandidateJobCommandArgs(
   if (options.candidateCurationHandoff && options.reviewDecision) {
     throw new Error(
       "--candidate-curation-handoff cannot be combined with review options."
+    );
+  }
+
+  if (options.candidateCurationHandoff && options.linkCandidateClaimDedupeKey) {
+    throw new Error(
+      "--candidate-curation-handoff cannot be combined with --link-candidate-claim."
     );
   }
 
@@ -776,6 +834,10 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (options.candidateDetailDedupeKey && options.reviewDecision) {
     throw new Error("--candidate-detail cannot be combined with review options.");
+  }
+
+  if (options.candidateDetailDedupeKey && options.linkCandidateClaimDedupeKey) {
+    throw new Error("--candidate-detail cannot be combined with --link-candidate-claim.");
   }
 
   if (options.candidateDetailDedupeKey && options.jobs) {
@@ -857,6 +919,15 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (
+    options.candidateCurationStatusDedupeKey &&
+    options.linkCandidateClaimDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-curation-status cannot be combined with --link-candidate-claim."
+    );
+  }
+
   if (options.candidateCurationStatusDedupeKey && options.jobs) {
     throw new Error("--candidate-curation-status cannot be combined with --jobs.");
   }
@@ -929,6 +1000,15 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-curation-draft cannot be combined with review options.");
   }
 
+  if (
+    options.candidateCurationDraftDedupeKey &&
+    options.linkCandidateClaimDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-curation-draft cannot be combined with --link-candidate-claim."
+    );
+  }
+
   if (options.candidateCurationDraftDedupeKey && options.jobs) {
     throw new Error("--candidate-curation-draft cannot be combined with --jobs.");
   }
@@ -978,6 +1058,15 @@ export function parseSourceCandidateJobCommandArgs(
   if (options.candidateReferenceMatchesDedupeKey && options.reviewDecision) {
     throw new Error(
       "--candidate-reference-matches cannot be combined with review options."
+    );
+  }
+
+  if (
+    options.candidateReferenceMatchesDedupeKey &&
+    options.linkCandidateClaimDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-reference-matches cannot be combined with --link-candidate-claim."
     );
   }
 
@@ -1042,6 +1131,10 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (options.candidateSiblingsDedupeKey && options.reviewDecision) {
     throw new Error("--candidate-siblings cannot be combined with review options.");
+  }
+
+  if (options.candidateSiblingsDedupeKey && options.linkCandidateClaimDedupeKey) {
+    throw new Error("--candidate-siblings cannot be combined with --link-candidate-claim.");
   }
 
   if (options.candidateSiblingsDedupeKey && options.jobs) {
@@ -1116,8 +1209,58 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("Review options cannot be combined with run options.");
   }
 
+  if (options.reviewDecision && options.linkCandidateClaimDedupeKey) {
+    throw new Error("Review options cannot be combined with --link-candidate-claim.");
+  }
+
   if (options.reviewDecision === "Rejected" && !options.reviewNote?.trim()) {
     throw new Error("--reject-candidate requires --review-note.");
+  }
+
+  if (options.linkCandidateClaimDedupeKey && options.summary) {
+    throw new Error("--link-candidate-claim cannot be combined with --summary.");
+  }
+
+  if (options.linkCandidateClaimDedupeKey && options.candidates) {
+    throw new Error("--link-candidate-claim cannot be combined with --candidates.");
+  }
+
+  if (
+    options.linkCandidateClaimDedupeKey &&
+    hasCandidateListFilter({
+      candidatesLimitProvided,
+      candidateDecisionProvided,
+      candidateJobIdProvided,
+      candidateInterventionIdProvided,
+      candidateClaimIdProvided,
+      candidateSource: options.candidateSource
+    })
+  ) {
+    throw new Error(
+      "Candidate-list filters cannot be combined with --link-candidate-claim."
+    );
+  }
+
+  if (options.linkCandidateClaimDedupeKey && options.jobs) {
+    throw new Error("--link-candidate-claim cannot be combined with --jobs.");
+  }
+
+  if (options.linkCandidateClaimDedupeKey && options.queueSource) {
+    throw new Error("--link-candidate-claim cannot be combined with queue options.");
+  }
+
+  if (
+    options.linkCandidateClaimDedupeKey &&
+    (options.region || options.interventionId || options.claimId)
+  ) {
+    throw new Error("--link-candidate-claim cannot be combined with queue metadata.");
+  }
+
+  if (
+    options.linkCandidateClaimDedupeKey &&
+    (options.jobId || limitProvided || sourceLimitProvided)
+  ) {
+    throw new Error("--link-candidate-claim cannot be combined with run options.");
   }
 
   if (
@@ -1208,6 +1351,9 @@ export function commandUsage() {
     "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
     "  --accepted-reference-id <id>      Required curated reference id for --accept-candidate.",
     "  --review-note <note>              Human review note; required for --reject-candidate.",
+    "  --link-candidate-claim <dedupe-key> Link an accepted candidate reference to its claim.",
+    "  --claim-link-note <note>          Optional note for --link-candidate-claim.",
+    "  --claim-link-relevance <1-5>      Optional relevance for --link-candidate-claim.",
     "  --candidates                      Print pending source-candidate review queue rows.",
     "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
     "  --candidate-source <source>       Filter candidates or handoff by source: pubmed or clinical-trials.",
@@ -1313,6 +1459,28 @@ function formatReviewedSourceCandidate(candidate: SourceCandidate) {
 
   if (candidate.reviewNote) {
     parts.push(`note=${quote(candidate.reviewNote)}`);
+  }
+
+  return parts.join(" ");
+}
+
+function formatLinkedSourceCandidateClaim(result: LinkedSourceCandidateClaim) {
+  const parts = [
+    "[CLAIM_LINKED] source-candidate",
+    result.candidate.source,
+    result.candidate.region,
+    `dedupe=${quote(result.candidate.dedupeKey)}`,
+    `reference=${result.acceptedReference.id}`,
+    `claim=${result.claimLink.claimId}`,
+    `created=${result.created}`,
+    `relevance=${result.claimLink.relevance}`,
+    `status=${quote(result.status.status)}`,
+    `publicSourcePacketReady=${result.status.publicSourcePacketReady}`,
+    `nextAction=${quote(result.status.nextAction)}`
+  ];
+
+  if (result.claimLink.note) {
+    parts.push(`note=${quote(result.claimLink.note)}`);
   }
 
   return parts.join(" ");

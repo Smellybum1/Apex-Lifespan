@@ -64,7 +64,11 @@ Review actions:
 ```bash
 npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id>
 npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Not relevant to this claim."
+npm run ingest:sources -- --link-candidate-claim <dedupe-key>
+npm run ingest:sources -- --link-candidate-claim <dedupe-key> --claim-link-relevance 4 --claim-link-note "Primary source for this claim."
 ```
+
+`--link-candidate-claim` writes only a `ClaimReference` row after validating the candidate is accepted, claim-scoped, and attached to a matching accepted reference. It does not create references, study extractions, source documents, or public evidence promotions.
 
 Run controls:
 

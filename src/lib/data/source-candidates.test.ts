@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMocks = vi.hoisted(() => ({
+  claimFindUnique: vi.fn(),
   claimReferenceFindMany: vi.fn(),
+  claimReferenceFindUnique: vi.fn(),
+  claimReferenceUpsert: vi.fn(),
   referenceFindMany: vi.fn(),
   referenceFindUnique: vi.fn(),
   studyFindMany: vi.fn(),
@@ -15,8 +18,13 @@ const prismaMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db/prisma", () => ({
   prisma: {
+    claim: {
+      findUnique: prismaMocks.claimFindUnique
+    },
     claimReference: {
-      findMany: prismaMocks.claimReferenceFindMany
+      findMany: prismaMocks.claimReferenceFindMany,
+      findUnique: prismaMocks.claimReferenceFindUnique,
+      upsert: prismaMocks.claimReferenceUpsert
     },
     reference: {
       findMany: prismaMocks.referenceFindMany,
@@ -40,6 +48,7 @@ import {
   getSourceCandidateCurationDraft,
   getSourceCandidateCurationStatus,
   getSourceCandidateByDedupeKey,
+  linkAcceptedSourceCandidateClaim,
   listSourceCandidateAcceptedReferenceMatches,
   listSourceCandidateCurationHandoff,
   listSourceCandidateReviewQueue,
@@ -57,7 +66,12 @@ beforeEach(() => {
     id: args.where.dedupeKey
   }));
   prismaMocks.sourceCandidateFindUnique.mockResolvedValue(dbSourceCandidate());
+  prismaMocks.claimFindUnique.mockResolvedValue(dbClaim());
   prismaMocks.claimReferenceFindMany.mockResolvedValue([]);
+  prismaMocks.claimReferenceFindUnique.mockResolvedValue(null);
+  prismaMocks.claimReferenceUpsert.mockImplementation(async (args) =>
+    dbClaimReference(args.create)
+  );
   prismaMocks.referenceFindMany.mockResolvedValue([dbReference()]);
   prismaMocks.referenceFindUnique.mockResolvedValue(dbReference());
   prismaMocks.studyFindMany.mockResolvedValue([]);
@@ -975,6 +989,212 @@ describe("getSourceCandidateCurationDraft", () => {
     prismaMocks.sourceCandidateFindUnique.mockResolvedValue(null);
 
     await expect(getSourceCandidateCurationDraft("missing-candidate")).resolves.toBeNull();
+  });
+});
+
+describe("linkAcceptedSourceCandidateClaim", () => {
+  it("creates a claim link for accepted candidates with matching references", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand"
+      })
+    );
+    prismaMocks.claimReferenceFindUnique.mockResolvedValue(null);
+    prismaMocks.claimReferenceUpsert.mockResolvedValue(
+      dbClaimReference({
+        note: "Primary accepted candidate link.",
+        relevance: 4
+      })
+    );
+    prismaMocks.studyFindMany.mockResolvedValue([]);
+
+    await expect(
+      linkAcceptedSourceCandidateClaim({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        note: " Primary accepted candidate link. ",
+        relevance: 4
+      })
+    ).resolves.toEqual({
+      acceptedReference: expect.objectContaining({
+        id: "ref-creatine-position-stand",
+        source: "PubMed"
+      }),
+      candidate: expect.objectContaining({
+        acceptedReferenceId: "ref-creatine-position-stand",
+        claimId: "creatine-strength",
+        decision: "Accepted"
+      }),
+      claimLink: {
+        claimId: "creatine-strength",
+        note: "Primary accepted candidate link.",
+        relevance: 4
+      },
+      created: true,
+      status: expect.objectContaining({
+        candidateClaimLinked: true,
+        nextAction: "Add structured study extraction for the accepted reference.",
+        publicSourcePacketReady: false,
+        status: "Extraction pending"
+      })
+    });
+
+    expect(prismaMocks.claimFindUnique).toHaveBeenCalledWith({
+      where: {
+        id: "creatine-strength"
+      }
+    });
+    expect(prismaMocks.claimReferenceFindUnique).toHaveBeenCalledWith({
+      where: {
+        claimId_referenceId: {
+          claimId: "creatine-strength",
+          referenceId: "ref-creatine-position-stand"
+        }
+      }
+    });
+    expect(prismaMocks.claimReferenceUpsert).toHaveBeenCalledWith({
+      where: {
+        claimId_referenceId: {
+          claimId: "creatine-strength",
+          referenceId: "ref-creatine-position-stand"
+        }
+      },
+      create: {
+        claimId: "creatine-strength",
+        note: "Primary accepted candidate link.",
+        referenceId: "ref-creatine-position-stand",
+        relevance: 4
+      },
+      update: {
+        note: "Primary accepted candidate link.",
+        relevance: 4
+      }
+    });
+  });
+
+  it("updates existing claim links and reports public packet readiness when extracted", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand"
+      })
+    );
+    prismaMocks.claimReferenceFindUnique.mockResolvedValue(dbClaimReference());
+    prismaMocks.claimReferenceUpsert.mockResolvedValue(dbClaimReference());
+    prismaMocks.studyFindMany.mockResolvedValue([dbStudy()]);
+
+    await expect(
+      linkAcceptedSourceCandidateClaim({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        relevance: 99
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        claimLink: {
+          claimId: "creatine-strength",
+          note: undefined,
+          relevance: 5
+        },
+        created: false,
+        status: expect.objectContaining({
+          publicSourcePacketReady: true,
+          status: "Public source packet ready"
+        })
+      })
+    );
+
+    expect(prismaMocks.claimReferenceUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          relevance: 5
+        }),
+        update: {
+          note:
+            "Accepted PubMed candidate 28615996: Creatine position stand",
+          relevance: 5
+        }
+      })
+    );
+  });
+
+  it("refuses to link candidates that are not accepted", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(dbSourceCandidate());
+
+    await expect(
+      linkAcceptedSourceCandidateClaim({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength"
+      })
+    ).rejects.toThrow("Accepted source candidate not found for claim linking.");
+
+    expect(prismaMocks.referenceFindUnique).not.toHaveBeenCalled();
+    expect(prismaMocks.claimReferenceUpsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses to link accepted candidates with mismatched references", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "wrong-pubmed-reference"
+      })
+    );
+    prismaMocks.referenceFindUnique.mockResolvedValue(
+      dbReference({
+        id: "wrong-pubmed-reference",
+        identifier: "PMID: 12345678",
+        url: "https://pubmed.ncbi.nlm.nih.gov/12345678/"
+      })
+    );
+
+    await expect(
+      linkAcceptedSourceCandidateClaim({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength"
+      })
+    ).rejects.toThrow(
+      "Accepted source candidate reference must match candidate source and external id."
+    );
+
+    expect(prismaMocks.claimReferenceUpsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses to link candidates whose claim context is missing or stale", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        claimId: null
+      })
+    );
+
+    await expect(
+      linkAcceptedSourceCandidateClaim({
+        dedupeKey: "pubmed|au|creatine|28615996"
+      })
+    ).rejects.toThrow("Accepted source candidate requires a claimId before claim linking.");
+
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand"
+      })
+    );
+    prismaMocks.claimFindUnique.mockResolvedValue(
+      dbClaim({
+        interventionId: "different-intervention"
+      })
+    );
+
+    await expect(
+      linkAcceptedSourceCandidateClaim({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength"
+      })
+    ).rejects.toThrow(
+      "Accepted source candidate claim must belong to candidate intervention."
+    );
   });
 });
 
@@ -2042,6 +2262,14 @@ function dbClaimReference(overrides: Record<string, unknown> = {}) {
     referenceId: "ref-creatine-position-stand",
     relevance: 5,
     note: null,
+    ...overrides
+  };
+}
+
+function dbClaim(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "creatine-strength",
+    interventionId: "creatine",
     ...overrides
   };
 }

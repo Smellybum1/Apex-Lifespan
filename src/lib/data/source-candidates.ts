@@ -150,6 +150,20 @@ export interface SourceCandidateCurationDraft {
   studyExtractionDraft?: SourceCandidateCurationStudyExtractionDraft;
 }
 
+export interface LinkAcceptedSourceCandidateClaimInput {
+  dedupeKey: string;
+  note?: string;
+  relevance?: number;
+}
+
+export interface LinkedSourceCandidateClaim {
+  acceptedReference: Reference;
+  candidate: SourceCandidate;
+  claimLink: SourceCandidateCurationClaimLink;
+  created: boolean;
+  status: SourceCandidateCurationStatus;
+}
+
 export interface SourceCandidateCurationHandoffOptions {
   claimId?: string;
   ingestionJobId?: string;
@@ -433,6 +447,116 @@ export async function getSourceCandidateCurationDraft(
     claimLinkDraft: sourceCandidateClaimLinkDraft(status),
     status,
     studyExtractionDraft: sourceCandidateStudyExtractionDraft(status)
+  };
+}
+
+export async function linkAcceptedSourceCandidateClaim({
+  dedupeKey,
+  note,
+  relevance
+}: LinkAcceptedSourceCandidateClaimInput): Promise<LinkedSourceCandidateClaim> {
+  const candidate = await prisma.sourceCandidate.findUnique({
+    where: {
+      dedupeKey
+    }
+  });
+
+  if (!candidate || candidate.decision !== DbSourceCandidateDecision.ACCEPTED) {
+    throw new Error("Accepted source candidate not found for claim linking.");
+  }
+
+  if (!candidate.acceptedReferenceId) {
+    throw new Error("Accepted source candidate requires an acceptedReferenceId before claim linking.");
+  }
+
+  if (!candidate.claimId) {
+    throw new Error("Accepted source candidate requires a claimId before claim linking.");
+  }
+
+  const [acceptedReference, claim] = await Promise.all([
+    prisma.reference.findUnique({
+      where: {
+        id: candidate.acceptedReferenceId
+      }
+    }),
+    prisma.claim.findUnique({
+      where: {
+        id: candidate.claimId
+      }
+    })
+  ]);
+
+  if (!acceptedReference) {
+    throw new Error("Accepted source candidate reference was not found.");
+  }
+
+  if (!referenceMatchesSourceCandidate(acceptedReference, candidate)) {
+    throw new Error(
+      "Accepted source candidate reference must match candidate source and external id."
+    );
+  }
+
+  if (!claim) {
+    throw new Error("Accepted source candidate claim was not found.");
+  }
+
+  if (candidate.interventionId && claim.interventionId !== candidate.interventionId) {
+    throw new Error("Accepted source candidate claim must belong to candidate intervention.");
+  }
+
+  const linkInput = {
+    claimId: candidate.claimId,
+    note: normaliseClaimLinkNote(note, candidate),
+    referenceId: candidate.acceptedReferenceId,
+    relevance: normaliseClaimLinkRelevance(relevance)
+  };
+  const existingLink = await prisma.claimReference.findUnique({
+    where: {
+      claimId_referenceId: {
+        claimId: linkInput.claimId,
+        referenceId: linkInput.referenceId
+      }
+    }
+  });
+  const claimLink = await prisma.claimReference.upsert({
+    where: {
+      claimId_referenceId: {
+        claimId: linkInput.claimId,
+        referenceId: linkInput.referenceId
+      }
+    },
+    create: linkInput,
+    update: {
+      note: linkInput.note,
+      relevance: linkInput.relevance
+    }
+  });
+  const studies = await prisma.study.findMany({
+    where: {
+      referenceId: acceptedReference.id
+    },
+    orderBy: [{ year: "desc" }, { title: "asc" }]
+  });
+  const mappedCandidate = mapDbSourceCandidate(candidate);
+  const mappedClaimLink = mapDbClaimReference(claimLink);
+  const mappedStudies = studies.map(mapDbCurationStudy);
+  const mappedReference = mapDbReference(acceptedReference);
+  const status = sourceCandidateCurationStatus({
+    acceptedReference: mappedReference,
+    acceptedReferenceId: candidate.acceptedReferenceId,
+    candidate: mappedCandidate,
+    candidateClaimLinked: true,
+    claimLinks: [mappedClaimLink],
+    status: curationStatusKind([mappedClaimLink], mappedStudies, true),
+    studies: mappedStudies
+  });
+
+  return {
+    acceptedReference: mappedReference,
+    candidate: mappedCandidate,
+    claimLink: mappedClaimLink,
+    created: !existingLink,
+    status
   };
 }
 
@@ -899,6 +1023,27 @@ function sourceCandidateCurationStatus({
     status,
     studies
   };
+}
+
+function normaliseClaimLinkNote(
+  note: string | undefined,
+  candidate: DbSourceCandidate
+) {
+  const trimmed = note?.trim();
+
+  if (trimmed) {
+    return trimmed;
+  }
+
+  return `Accepted ${sourceFromDb(candidate.source)} candidate ${candidate.externalId}: ${candidate.title}`;
+}
+
+function normaliseClaimLinkRelevance(relevance: number | undefined) {
+  if (relevance === undefined || !Number.isFinite(relevance)) {
+    return 5;
+  }
+
+  return Math.min(Math.max(Math.trunc(relevance), 1), 5);
 }
 
 function sourceCandidateClaimLinkDraft(

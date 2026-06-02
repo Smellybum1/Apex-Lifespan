@@ -23,6 +23,9 @@ describe("commandUsage", () => {
     expect(commandUsage()).toContain(
       "--review-note <note>              Human review note; required for --reject-candidate."
     );
+    expect(commandUsage()).toContain(
+      "--link-candidate-claim <dedupe-key> Link an accepted candidate reference to its claim."
+    );
   });
 });
 
@@ -250,6 +253,26 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       reviewCandidateDedupeKey: "clinicaltrials.gov|au|creatine|nct123",
       reviewDecision: "Rejected",
       reviewNote: "Not relevant to the consumer claim.",
+      summary: false
+    });
+  });
+
+  it("parses guarded source-candidate claim-link mode", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--link-candidate-claim",
+        "pubmed|au|creatine|28615996",
+        "--claim-link-note",
+        "Primary source for this claim.",
+        "--claim-link-relevance",
+        "9"
+      ])
+    ).toEqual({
+      claimLinkNote: "Primary source for this claim.",
+      claimLinkRelevance: 5,
+      help: false,
+      limit: 1,
+      linkCandidateClaimDedupeKey: "pubmed|au|creatine|28615996",
       summary: false
     });
   });
@@ -973,6 +996,74 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidate-siblings-limit", "5"])
     ).toThrow("--candidate-siblings-limit requires --candidate-siblings.");
+  });
+
+  it("requires isolated source-candidate claim-link options", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--claim-link-note", "Primary source."])
+    ).toThrow("--claim-link-note requires --link-candidate-claim.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--claim-link-relevance", "4"])
+    ).toThrow("--claim-link-relevance requires --link-candidate-claim.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--link-candidate-claim",
+        "pubmed|au|creatine|28615996",
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow("--candidate-detail cannot be combined with --link-candidate-claim.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--link-candidate-claim",
+        "pubmed|au|creatine|28615996",
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow(
+      "--candidate-curation-draft cannot be combined with --link-candidate-claim."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--link-candidate-claim",
+        "pubmed|au|creatine|28615996",
+        "--summary"
+      ])
+    ).toThrow("--link-candidate-claim cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--link-candidate-claim",
+        "pubmed|au|creatine|28615996",
+        "--candidate-claim-id",
+        "creatine-strength"
+      ])
+    ).toThrow("Candidate-list filters cannot be combined with --link-candidate-claim.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--link-candidate-claim",
+        "pubmed|au|creatine|28615996",
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ])
+    ).toThrow("Review options cannot be combined with --link-candidate-claim.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--link-candidate-claim",
+        "pubmed|au|creatine|28615996",
+        "--queue-pubmed",
+        "creatine"
+      ])
+    ).toThrow("--link-candidate-claim cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--link-candidate-claim",
+        "pubmed|au|creatine|28615996",
+        "--limit",
+        "2"
+      ])
+    ).toThrow("--link-candidate-claim cannot be combined with run options.");
   });
 
   it("requires explicit and isolated source-candidate review options", () => {
@@ -2213,6 +2304,100 @@ describe("runSourceCandidateJobCommand", () => {
 
     expect(stderr).toHaveBeenCalledWith(
       "Accepted source candidates require an acceptedReferenceId."
+    );
+  });
+
+  it("links an accepted source candidate reference to its claim", async () => {
+    const stdout = vi.fn();
+    const linkCandidateClaim = vi.fn().mockResolvedValue({
+      acceptedReference: {
+        id: "ref-creatine-position-stand",
+        title: "Creatine position stand",
+        source: "PubMed",
+        identifier: "PMID: 28615996",
+        year: 2017,
+        url: "https://pubmed.ncbi.nlm.nih.gov/28615996/"
+      },
+      candidate: sourceCandidate({
+        decision: "Accepted",
+        reviewStatus: "Human reviewed",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        claimId: "creatine-strength"
+      }),
+      claimLink: {
+        claimId: "creatine-strength",
+        note: "Primary source for this claim.",
+        relevance: 4
+      },
+      created: true,
+      status: {
+        acceptedReferenceId: "ref-creatine-position-stand",
+        candidate: sourceCandidate({
+          decision: "Accepted",
+          reviewStatus: "Human reviewed",
+          acceptedReferenceId: "ref-creatine-position-stand",
+          claimId: "creatine-strength"
+        }),
+        candidateClaimLinked: true,
+        claimLinks: [
+          {
+            claimId: "creatine-strength",
+            note: "Primary source for this claim.",
+            relevance: 4
+          }
+        ],
+        nextAction: "Add structured study extraction for the accepted reference.",
+        publicSourcePacketReady: false,
+        status: "Extraction pending",
+        studies: []
+      }
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--link-candidate-claim",
+          "pubmed|au|creatine|28615996",
+          "--claim-link-note",
+          "Primary source for this claim.",
+          "--claim-link-relevance",
+          "4"
+        ],
+        { stdout },
+        { linkCandidateClaim, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(linkCandidateClaim).toHaveBeenCalledWith({
+      dedupeKey: "pubmed|au|creatine|28615996",
+      note: "Primary source for this claim.",
+      relevance: 4
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      '[CLAIM_LINKED] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" reference=ref-creatine-position-stand claim=creatine-strength created=true relevance=4 status="Extraction pending" publicSourcePacketReady=false nextAction="Add structured study extraction for the accepted reference." note="Primary source for this claim."'
+    );
+  });
+
+  it("returns a failing exit code when claim linking fails", async () => {
+    const stderr = vi.fn();
+    const linkCandidateClaim = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("Accepted source candidate reference must match candidate source and external id.")
+      );
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--link-candidate-claim", "pubmed|au|creatine|28615996"],
+        { stderr },
+        { linkCandidateClaim }
+      )
+    ).resolves.toBe(1);
+
+    expect(stderr).toHaveBeenCalledWith(
+      "Accepted source candidate reference must match candidate source and external id."
     );
   });
 

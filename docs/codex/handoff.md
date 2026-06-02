@@ -35,6 +35,9 @@ Created for a new Codex thread on 2026-06-02.
 - Added a read-only source-candidate curation draft view:
   - `--candidate-curation-draft <dedupe-key>` shows accepted-reference blockers plus claim-link and study-extraction draft fields;
   - output stays local/operator-only and does not create references, claim links, study extractions, or decisions.
+- Added a guarded local claim-link write:
+  - `--link-candidate-claim <dedupe-key>` creates or updates only the accepted reference's `ClaimReference`;
+  - it requires an accepted, claim-scoped candidate with a matching accepted reference and does not create references, studies, or public promotions.
 - Scoped source-candidate ingestion-job identity:
   - `IngestionJob` now has first-class `interventionId` and `claimId`;
   - migration `20260602061000_ingestion_job_context_identity` backfills valid legacy metadata context;
@@ -66,7 +69,7 @@ Created for a new Codex thread on 2026-06-02.
   - `docker compose up -d postgres`
   - `npm run db:migrate`
   - `npm run db:seed`
-- Later, decide whether to add guarded local write commands for claim links or study extractions; keep public promotion human-reviewed and never automatic.
+- Later, decide whether to add a guarded local study-extraction write command; keep public promotion human-reviewed and never automatic.
 
 ## Guardrails
 
