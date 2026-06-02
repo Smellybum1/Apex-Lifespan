@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { buildClaimSourcePacket } from "@/lib/source-packet";
+import {
+  buildClaimSourcePacket,
+  summarizeClaimSourcePackets
+} from "@/lib/source-packet";
 import { claims, references, studies } from "@/lib/seed-data";
-import type { Claim, Reference } from "@/lib/types";
+import type { Claim, Reference, Study } from "@/lib/types";
 
 const referencesById = new Map(references.map((reference) => [reference.id, reference]));
 
@@ -56,6 +59,26 @@ describe("buildClaimSourcePacket", () => {
       });
 
     expect(incompletePackets).toEqual([]);
+  });
+
+  it("summarizes current seed claim source packet coverage", () => {
+    expect(
+      summarizeClaimSourcePackets({
+        claims,
+        referencesById,
+        studies
+      })
+    ).toEqual({
+      completeClaims: 7,
+      extractionPendingClaims: 0,
+      extractedReferences: 8,
+      missingReferences: 0,
+      missingSourceClaims: 0,
+      pendingReferences: 0,
+      totalClaims: 7,
+      totalReferences: 8,
+      unlinkedClaims: 0
+    });
   });
 
   it("links omega-3 and TGA seed references to structured extraction rows", () => {
@@ -170,6 +193,62 @@ describe("buildClaimSourcePacket", () => {
       extractedReferences: 0,
       pendingReferences: 0,
       missingReferences: 0
+    });
+  });
+
+  it("summarizes mixed source packet completeness states", () => {
+    const completeReference: Reference = {
+      id: "complete-ref",
+      title: "Complete source",
+      source: "PubMed",
+      url: "https://pubmed.ncbi.nlm.nih.gov/"
+    };
+    const pendingReference: Reference = {
+      id: "pending-ref",
+      title: "Pending source",
+      source: "PubMed",
+      url: "https://pubmed.ncbi.nlm.nih.gov/"
+    };
+    const extractedStudy: Study = {
+      id: "study-complete",
+      title: "Complete source extraction",
+      year: 2026,
+      source: "PubMed",
+      studyType: "Systematic review",
+      sampleSize: "1 source",
+      population: "Adults",
+      intervention: "Example",
+      outcomes: ["Traceability"],
+      adverseEvents: "Not assessed in this fixture.",
+      fundingConflicts: "Not assessed in this fixture.",
+      riskOfBias: "Fixture only.",
+      referenceId: "complete-ref"
+    };
+
+    expect(
+      summarizeClaimSourcePackets({
+        claims: [
+          { keyReferenceIds: ["complete-ref"] },
+          { keyReferenceIds: ["pending-ref"] },
+          { keyReferenceIds: ["missing-ref"] },
+          { keyReferenceIds: [] }
+        ],
+        referencesById: new Map([
+          [completeReference.id, completeReference],
+          [pendingReference.id, pendingReference]
+        ]),
+        studies: [extractedStudy]
+      })
+    ).toEqual({
+      completeClaims: 1,
+      extractionPendingClaims: 1,
+      extractedReferences: 1,
+      missingReferences: 1,
+      missingSourceClaims: 1,
+      pendingReferences: 1,
+      totalClaims: 4,
+      totalReferences: 3,
+      unlinkedClaims: 1
     });
   });
 });

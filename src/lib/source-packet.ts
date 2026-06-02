@@ -26,6 +26,18 @@ export interface ClaimSourcePacketCompleteness {
   missingReferences: number;
 }
 
+export interface ClaimSourcePacketSummary {
+  completeClaims: number;
+  extractionPendingClaims: number;
+  extractedReferences: number;
+  missingReferences: number;
+  missingSourceClaims: number;
+  pendingReferences: number;
+  totalClaims: number;
+  totalReferences: number;
+  unlinkedClaims: number;
+}
+
 export function buildClaimSourcePacket({
   claim,
   referencesById,
@@ -67,6 +79,56 @@ export function buildClaimSourcePacket({
     missingReferenceIds,
     completeness
   };
+}
+
+export function summarizeClaimSourcePackets({
+  claims,
+  referencesById,
+  studies
+}: {
+  claims: Array<Pick<Claim, "keyReferenceIds">>;
+  referencesById: Map<string, Reference>;
+  studies: Study[];
+}): ClaimSourcePacketSummary {
+  return claims.reduce<ClaimSourcePacketSummary>(
+    (summary, claim) => {
+      const packet = buildClaimSourcePacket({ claim, referencesById, studies });
+
+      summary.totalClaims += 1;
+      summary.totalReferences += packet.completeness.totalReferences;
+      summary.extractedReferences += packet.completeness.extractedReferences;
+      summary.pendingReferences += packet.completeness.pendingReferences;
+      summary.missingReferences += packet.completeness.missingReferences;
+
+      switch (packet.completeness.status) {
+        case "complete":
+          summary.completeClaims += 1;
+          break;
+        case "extraction_pending":
+          summary.extractionPendingClaims += 1;
+          break;
+        case "missing_sources":
+          summary.missingSourceClaims += 1;
+          break;
+        case "not_linked":
+          summary.unlinkedClaims += 1;
+          break;
+      }
+
+      return summary;
+    },
+    {
+      completeClaims: 0,
+      extractionPendingClaims: 0,
+      extractedReferences: 0,
+      missingReferences: 0,
+      missingSourceClaims: 0,
+      pendingReferences: 0,
+      totalClaims: 0,
+      totalReferences: 0,
+      unlinkedClaims: 0
+    }
+  );
 }
 
 function summarizeClaimSourcePacket({

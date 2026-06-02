@@ -55,7 +55,9 @@ import {
 import { summarizeReviewStatus } from "@/lib/review-summary";
 import {
   buildClaimSourcePacket,
-  type ClaimSourcePacket
+  summarizeClaimSourcePackets,
+  type ClaimSourcePacket,
+  type ClaimSourcePacketSummary
 } from "@/lib/source-packet";
 import { buildSourceSearchQueries } from "@/lib/source-queries";
 import { formatProductRegionLabel } from "@/lib/product-signals";
@@ -158,6 +160,15 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     : undefined;
   const labelFindings = analyzeLabel(labelText);
   const reviewSummary = useMemo(() => summarizeReviewStatus(claims), [claims]);
+  const sourcePacketSummary = useMemo(
+    () =>
+      summarizeClaimSourcePackets({
+        claims,
+        referencesById,
+        studies
+      }),
+    [claims, referencesById, studies]
+  );
 
   const tableRows = useMemo(
     () =>
@@ -201,9 +212,9 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
           />
           <MetricPanel
             icon={<FlaskConical aria-hidden="true" className="h-4 w-4" />}
-            label="Source monitors"
-            value={trialWatchItems.length}
-            detail="PubMed + ClinicalTrials.gov"
+            label="Source packets"
+            value={`${sourcePacketSummary.completeClaims}/${sourcePacketSummary.totalClaims}`}
+            detail={sourcePacketSummaryDetail(sourcePacketSummary)}
           />
         </section>
 
@@ -350,7 +361,7 @@ function MetricPanel({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: number;
+  value: React.ReactNode;
   detail: string;
 }) {
   return (
@@ -365,6 +376,23 @@ function MetricPanel({
       </div>
     </div>
   );
+}
+
+function sourcePacketSummaryDetail(summary: ClaimSourcePacketSummary) {
+  if (summary.totalClaims === 0) {
+    return "No scored claims yet";
+  }
+
+  const needsWork =
+    summary.extractionPendingClaims +
+    summary.missingSourceClaims +
+    summary.unlinkedClaims;
+
+  if (needsWork === 0) {
+    return `${summary.extractedReferences}/${summary.totalReferences} linked refs extracted`;
+  }
+
+  return `${needsWork} need source work: ${summary.extractionPendingClaims} pending, ${summary.missingSourceClaims} missing, ${summary.unlinkedClaims} unlinked`;
 }
 
 function EvidenceMap({
