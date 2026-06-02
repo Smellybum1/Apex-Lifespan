@@ -1,6 +1,7 @@
 # Project Memory
 
 - Stack: Next.js, TypeScript, Tailwind CSS, TanStack Table, Recharts, PostgreSQL, Prisma, Node/npm.
+- Handoff: read `docs/codex/handoff.md` when starting a fresh Codex thread or rehydrating after archive/compaction.
 - Commands:
   - Install: `npm install`
   - Dev: `npm run dev`
