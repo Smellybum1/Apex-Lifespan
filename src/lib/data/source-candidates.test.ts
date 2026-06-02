@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMocks = vi.hoisted(() => ({
+  referenceFindMany: vi.fn(),
   referenceFindUnique: vi.fn(),
   sourceCandidateFindMany: vi.fn(),
   sourceCandidateFindUnique: vi.fn(),
@@ -13,6 +14,7 @@ const prismaMocks = vi.hoisted(() => ({
 vi.mock("@/lib/db/prisma", () => ({
   prisma: {
     reference: {
+      findMany: prismaMocks.referenceFindMany,
       findUnique: prismaMocks.referenceFindUnique
     },
     sourceCandidate: {
@@ -28,6 +30,7 @@ vi.mock("@/lib/db/prisma", () => ({
 
 import {
   getSourceCandidateByDedupeKey,
+  listSourceCandidateAcceptedReferenceMatches,
   listSourceCandidateReviewQueue,
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
@@ -41,6 +44,7 @@ beforeEach(() => {
     id: args.where.dedupeKey
   }));
   prismaMocks.sourceCandidateFindUnique.mockResolvedValue(dbSourceCandidate());
+  prismaMocks.referenceFindMany.mockResolvedValue([dbReference()]);
   prismaMocks.referenceFindUnique.mockResolvedValue(dbReference());
   prismaMocks.transaction.mockImplementation(async (operations) => operations);
 });
@@ -237,6 +241,177 @@ describe("getSourceCandidateByDedupeKey", () => {
     prismaMocks.sourceCandidateFindUnique.mockResolvedValue(null);
 
     await expect(getSourceCandidateByDedupeKey("missing-candidate")).resolves.toBeNull();
+  });
+});
+
+describe("listSourceCandidateAcceptedReferenceMatches", () => {
+  it("lists matching PubMed references using exact identifier and URL rules", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        externalId: "1234",
+        url: "https://pubmed.ncbi.nlm.nih.gov/1234/?term=creatine"
+      })
+    );
+    prismaMocks.referenceFindMany.mockResolvedValue([
+      dbReference({
+        id: "wrong-pubmed-reference",
+        identifier: "PMID: 12345",
+        url: "https://pubmed.ncbi.nlm.nih.gov/12345/"
+      }),
+      dbReference({
+        id: "ref-by-pmid",
+        identifier: "PMID: 1234",
+        url: "https://publisher.example/creatine-position-stand"
+      }),
+      dbReference({
+        id: "ref-by-url",
+        identifier: "PMID: 7777",
+        url: "https://pubmed.ncbi.nlm.nih.gov/1234/#abstract"
+      })
+    ]);
+
+    await expect(
+      listSourceCandidateAcceptedReferenceMatches("pubmed|au|creatine|1234")
+    ).resolves.toEqual({
+      candidate: expect.objectContaining({
+        externalId: "1234",
+        source: "PubMed"
+      }),
+      references: [
+        expect.objectContaining({
+          id: "ref-by-pmid",
+          source: "PubMed",
+          identifier: "PMID: 1234"
+        }),
+        expect.objectContaining({
+          id: "ref-by-url",
+          source: "PubMed",
+          identifier: "PMID: 7777"
+        })
+      ]
+    });
+
+    expect(prismaMocks.referenceFindMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        source: "PUBMED",
+        OR: expect.arrayContaining([
+          {
+            identifier: {
+              contains: "1234"
+            }
+          },
+          {
+            url: {
+              contains: "1234"
+            }
+          }
+        ])
+      }),
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+      take: 50
+    });
+  });
+
+  it("lists exact ClinicalTrials.gov NCT matches and excludes generic references", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        source: "CLINICALTRIALS_GOV",
+        externalId: "nct123",
+        title: "Creatine and aging",
+        url: "https://clinicaltrials.gov/study/nct123?term=creatine"
+      })
+    );
+    prismaMocks.referenceFindMany.mockResolvedValue([
+      dbReference({
+        id: "clinicaltrials-api",
+        source: "CLINICALTRIALS_GOV",
+        identifier: undefined,
+        url: "https://clinicaltrials.gov/data-about-studies/learn-about-api"
+      }),
+      dbReference({
+        id: "trial-nct1234",
+        source: "CLINICALTRIALS_GOV",
+        identifier: "NCT1234",
+        url: "https://clinicaltrials.gov/study/NCT1234"
+      }),
+      dbReference({
+        id: "trial-nct123",
+        source: "CLINICALTRIALS_GOV",
+        identifier: undefined,
+        url: "https://clinicaltrials.gov/study/NCT123"
+      })
+    ]);
+
+    await expect(
+      listSourceCandidateAcceptedReferenceMatches(
+        "clinicaltrials.gov|au|creatine|nct123"
+      )
+    ).resolves.toEqual({
+      candidate: expect.objectContaining({
+        externalId: "nct123",
+        source: "ClinicalTrials.gov"
+      }),
+      references: [
+        expect.objectContaining({
+          id: "trial-nct123",
+          source: "ClinicalTrials.gov"
+        })
+      ]
+    });
+
+    expect(prismaMocks.referenceFindMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({
+        source: "CLINICALTRIALS_GOV",
+        OR: expect.arrayContaining([
+          {
+            identifier: {
+              contains: "NCT123",
+              mode: "insensitive"
+            }
+          },
+          {
+            url: {
+              contains: "NCT123",
+              mode: "insensitive"
+            }
+          }
+        ])
+      }),
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+      take: 50
+    });
+  });
+
+  it("returns a candidate with an empty reference list when no curated references match", async () => {
+    prismaMocks.referenceFindMany.mockResolvedValue([
+      dbReference({
+        id: "wrong-pubmed-reference",
+        identifier: "PMID: 12345678",
+        url: "https://pubmed.ncbi.nlm.nih.gov/12345678/"
+      })
+    ]);
+
+    await expect(
+      listSourceCandidateAcceptedReferenceMatches(
+        "pubmed|au|creatine|28615996|creatine|creatine-strength"
+      )
+    ).resolves.toEqual({
+      candidate: expect.objectContaining({
+        externalId: "28615996"
+      }),
+      references: []
+    });
+  });
+
+  it("returns null without reading references when the candidate is missing", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(null);
+
+    await expect(
+      listSourceCandidateAcceptedReferenceMatches("missing-candidate")
+    ).resolves.toBeNull();
+
+    expect(prismaMocks.referenceFindMany).not.toHaveBeenCalled();
   });
 });
 

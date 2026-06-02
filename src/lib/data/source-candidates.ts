@@ -9,6 +9,7 @@ import {
 
 import { prisma } from "@/lib/db/prisma";
 import type {
+  Reference,
   ReviewStatus,
   SourceCandidate,
   SourceCandidateDecision,
@@ -39,6 +40,11 @@ export interface SourceCandidateReviewQueueOptions {
   source?: SourceCandidateSource;
 }
 
+export interface SourceCandidateAcceptedReferenceMatches {
+  candidate: SourceCandidate;
+  references: Reference[];
+}
+
 export type ReviewedSourceCandidateDecision = Exclude<
   SourceCandidateDecision,
   "Pending review"
@@ -54,6 +60,7 @@ export interface RecordSourceCandidateDecisionInput {
 
 const DEFAULT_REVIEW_QUEUE_LIMIT = 25;
 const MAX_REVIEW_QUEUE_LIMIT = 100;
+const MAX_REFERENCE_MATCH_CANDIDATES = 50;
 
 const sourceMap: Record<SourceCandidateSource, DbSourceKind> = {
   PubMed: DbSourceKind.PUBMED,
@@ -123,6 +130,33 @@ export async function getSourceCandidateByDedupeKey(
   });
 
   return candidate ? mapDbSourceCandidate(candidate) : null;
+}
+
+export async function listSourceCandidateAcceptedReferenceMatches(
+  dedupeKey: string
+): Promise<SourceCandidateAcceptedReferenceMatches | null> {
+  const candidate = await prisma.sourceCandidate.findUnique({
+    where: {
+      dedupeKey
+    }
+  });
+
+  if (!candidate) {
+    return null;
+  }
+
+  const references = await prisma.reference.findMany({
+    where: referenceMatchLookupWhere(candidate),
+    orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+    take: MAX_REFERENCE_MATCH_CANDIDATES
+  });
+
+  return {
+    candidate: mapDbSourceCandidate(candidate),
+    references: references
+      .filter((reference) => referenceMatchesSourceCandidate(reference, candidate))
+      .map(mapDbReference)
+  };
 }
 
 export async function summarizeSourceCandidateBacklog(): Promise<SourceCandidateBacklogSummary> {
@@ -302,6 +336,17 @@ function mapDbSourceCandidate(candidate: DbSourceCandidate): SourceCandidate {
   };
 }
 
+function mapDbReference(reference: DbReference): Reference {
+  return {
+    id: reference.id,
+    title: reference.title,
+    source: sourceFromDb(reference.source),
+    identifier: reference.identifier ?? undefined,
+    year: reference.year ?? undefined,
+    url: reference.url
+  };
+}
+
 function sourceFromDb(source: DbSourceKind): SourceCandidateSource {
   switch (source) {
     case DbSourceKind.PUBMED:
@@ -373,6 +418,61 @@ function referenceMatchesSourceCandidate(
   }
 
   return false;
+}
+
+function referenceMatchLookupWhere(
+  candidate: DbSourceCandidate
+): Prisma.ReferenceWhereInput {
+  const candidates: Prisma.ReferenceWhereInput[] = [
+    {
+      url: candidate.url
+    }
+  ];
+
+  if (candidate.source === DbSourceKind.PUBMED) {
+    const pmid = normalisePubMedId(candidate.externalId);
+
+    if (pmid) {
+      candidates.push(
+        {
+          identifier: {
+            contains: pmid
+          }
+        },
+        {
+          url: {
+            contains: pmid
+          }
+        }
+      );
+    }
+  }
+
+  if (candidate.source === DbSourceKind.CLINICALTRIALS_GOV) {
+    const nctId = normaliseNctId(candidate.externalId);
+
+    if (nctId) {
+      candidates.push(
+        {
+          identifier: {
+            contains: nctId,
+            mode: "insensitive"
+          }
+        },
+        {
+          url: {
+            contains: nctId,
+            mode: "insensitive"
+          }
+        }
+      );
+    }
+  }
+
+  return {
+    source: candidate.source,
+    OR: candidates
+  };
 }
 
 function normaliseUrl(value: string | null | undefined) {

@@ -12,14 +12,17 @@ import {
 } from "@/lib/data/source-candidate-jobs";
 import {
   getSourceCandidateByDedupeKey,
+  listSourceCandidateAcceptedReferenceMatches,
   listSourceCandidateReviewQueue,
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
   type RecordSourceCandidateDecisionInput,
   type ReviewedSourceCandidateDecision,
+  type SourceCandidateAcceptedReferenceMatches,
   type SourceCandidateBacklogSummary
 } from "@/lib/data/source-candidates";
 import type {
+  Reference,
   SourceCandidate,
   SourceCandidateDecision,
   SourceCandidateSource
@@ -30,6 +33,7 @@ export interface SourceCandidateJobCommandOptions
   acceptedReferenceId?: string;
   candidateDetailDedupeKey?: string;
   candidateDecision?: SourceCandidateDecision;
+  candidateReferenceMatchesDedupeKey?: string;
   candidateSource?: SourceCandidateSource;
   candidates?: boolean;
   candidatesLimit?: number;
@@ -64,6 +68,9 @@ export interface SourceCandidateJobCommandRunners {
   listJobs?: (
     options: SourceCandidateIngestionJobListOptions
   ) => Promise<SourceCandidateIngestionJobListItem[]>;
+  listReferenceMatches?: (
+    dedupeKey: string
+  ) => Promise<SourceCandidateAcceptedReferenceMatches | null>;
   queueJob?: (
     input: QueueSourceCandidateIngestionJobInput
   ) => Promise<QueuedSourceCandidateIngestionJob>;
@@ -117,6 +124,8 @@ export async function runSourceCandidateJobCommand(
   const getCandidate = runners.getCandidate ?? getSourceCandidateByDedupeKey;
   const listCandidates = runners.listCandidates ?? listSourceCandidateReviewQueue;
   const listJobs = runners.listJobs ?? listSourceCandidateIngestionJobs;
+  const listReferenceMatches =
+    runners.listReferenceMatches ?? listSourceCandidateAcceptedReferenceMatches;
   const queueJob = runners.queueJob ?? queueSourceCandidateIngestionJob;
   const recordDecision = runners.recordDecision ?? recordSourceCandidateDecision;
   const runJobById = runners.runJobById ?? runSourceCandidateIngestionJob;
@@ -139,6 +148,24 @@ export async function runSourceCandidateJobCommand(
   }
 
   try {
+    if (options.candidateReferenceMatchesDedupeKey) {
+      const matches = await listReferenceMatches(
+        options.candidateReferenceMatchesDedupeKey
+      );
+
+      if (!matches) {
+        stderr(
+          `Source candidate not found: ${quote(
+            options.candidateReferenceMatchesDedupeKey
+          )}`
+        );
+        return 1;
+      }
+
+      stdout(formatSourceCandidateReferenceMatches(matches));
+      return 0;
+    }
+
     if (options.candidateDetailDedupeKey) {
       const candidate = await getCandidate(options.candidateDetailDedupeKey);
 
@@ -263,6 +290,12 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--candidate-detail") {
       options.candidateDetailDedupeKey = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-reference-matches") {
+      options.candidateReferenceMatchesDedupeKey = readRequiredValue(args, index, arg);
       index += 1;
       continue;
     }
@@ -402,6 +435,12 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--job-id runs exactly one job and cannot be combined with --limit.");
   }
 
+  if (options.candidateDetailDedupeKey && options.candidateReferenceMatchesDedupeKey) {
+    throw new Error(
+      "--candidate-reference-matches cannot be combined with --candidate-detail."
+    );
+  }
+
   if (options.candidateDetailDedupeKey && options.summary) {
     throw new Error("--candidate-detail cannot be combined with --summary.");
   }
@@ -441,6 +480,55 @@ export function parseSourceCandidateJobCommandArgs(
     (options.jobId || limitProvided || sourceLimitProvided)
   ) {
     throw new Error("--candidate-detail cannot be combined with run options.");
+  }
+
+  if (options.candidateReferenceMatchesDedupeKey && options.summary) {
+    throw new Error("--candidate-reference-matches cannot be combined with --summary.");
+  }
+
+  if (options.candidateReferenceMatchesDedupeKey && options.candidates) {
+    throw new Error("--candidate-reference-matches cannot be combined with --candidates.");
+  }
+
+  if (
+    options.candidateReferenceMatchesDedupeKey &&
+    (candidatesLimitProvided || options.candidateSource || candidateDecisionProvided)
+  ) {
+    throw new Error(
+      "Candidate-list filters cannot be combined with --candidate-reference-matches."
+    );
+  }
+
+  if (options.candidateReferenceMatchesDedupeKey && options.reviewDecision) {
+    throw new Error(
+      "--candidate-reference-matches cannot be combined with review options."
+    );
+  }
+
+  if (options.candidateReferenceMatchesDedupeKey && options.jobs) {
+    throw new Error("--candidate-reference-matches cannot be combined with --jobs.");
+  }
+
+  if (options.candidateReferenceMatchesDedupeKey && options.queueSource) {
+    throw new Error(
+      "--candidate-reference-matches cannot be combined with queue options."
+    );
+  }
+
+  if (
+    options.candidateReferenceMatchesDedupeKey &&
+    (options.region || options.interventionId || options.claimId)
+  ) {
+    throw new Error(
+      "--candidate-reference-matches cannot be combined with queue metadata."
+    );
+  }
+
+  if (
+    options.candidateReferenceMatchesDedupeKey &&
+    (options.jobId || limitProvided || sourceLimitProvided)
+  ) {
+    throw new Error("--candidate-reference-matches cannot be combined with run options.");
   }
 
   if (acceptedReferenceIdProvided && options.reviewDecision !== "Accepted") {
@@ -554,6 +642,7 @@ export function commandUsage() {
     "  --job-id <id>                     Run one specific ingestion job.",
     "  --limit <count>                   Run up to count queued jobs (default 1, max 25).",
     "  --candidate-detail <dedupe-key>   Print one source-candidate detail record.",
+    "  --candidate-reference-matches <dedupe-key> Print curated reference ids eligible for candidate acceptance.",
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
     "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
     "  --accepted-reference-id <id>      Required curated reference id for --accept-candidate.",
@@ -716,6 +805,40 @@ function formatSourceCandidateDetail(candidate: SourceCandidate) {
   }
 
   return lines.join("\n");
+}
+
+function formatSourceCandidateReferenceMatches(
+  matches: SourceCandidateAcceptedReferenceMatches
+) {
+  const heading = `Source-candidate accepted-reference matches: total=${matches.references.length} dedupe=${quote(matches.candidate.dedupeKey)}`;
+
+  if (matches.references.length === 0) {
+    return heading;
+  }
+
+  return [
+    heading,
+    ...matches.references.map(formatSourceCandidateReferenceMatch)
+  ].join("\n");
+}
+
+function formatSourceCandidateReferenceMatch(reference: Reference) {
+  const parts = [
+    `- reference=${quote(reference.id)}`,
+    `source=${quote(reference.source)}`,
+    `title=${quote(reference.title)}`,
+    `url=${reference.url}`
+  ];
+
+  if (reference.identifier) {
+    parts.push(`identifier=${quote(reference.identifier)}`);
+  }
+
+  if (reference.year !== undefined) {
+    parts.push(`year=${reference.year}`);
+  }
+
+  return parts.join(" ");
 }
 
 function formatSourceCandidateReviewQueue(

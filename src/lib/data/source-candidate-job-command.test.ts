@@ -63,6 +63,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     });
   });
 
+  it("parses read-only source-candidate reference match mode", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toEqual({
+      candidateReferenceMatchesDedupeKey: "pubmed|au|creatine|28615996",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+  });
+
   it("parses source-candidate review modes", () => {
     expect(
       parseSourceCandidateJobCommandArgs([
@@ -287,6 +301,88 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "2"
       ])
     ).toThrow("--candidate-detail cannot be combined with run options.");
+  });
+
+  it("does not combine source-candidate reference match mode with other command modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996",
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow(
+      "--candidate-reference-matches cannot be combined with --candidate-detail."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996",
+        "--summary"
+      ])
+    ).toThrow("--candidate-reference-matches cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996",
+        "--candidates"
+      ])
+    ).toThrow("--candidate-reference-matches cannot be combined with --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996",
+        "--candidate-decision",
+        "accepted"
+      ])
+    ).toThrow(
+      "Candidate-list filters cannot be combined with --candidate-reference-matches."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996",
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ])
+    ).toThrow("--candidate-reference-matches cannot be combined with review options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996",
+        "--jobs"
+      ])
+    ).toThrow("--candidate-reference-matches cannot be combined with --jobs.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996",
+        "--queue-pubmed",
+        "creatine"
+      ])
+    ).toThrow(
+      "--candidate-reference-matches cannot be combined with queue options."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996",
+        "--region",
+        "AU"
+      ])
+    ).toThrow(
+      "--candidate-reference-matches cannot be combined with queue metadata."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996",
+        "--limit",
+        "2"
+      ])
+    ).toThrow("--candidate-reference-matches cannot be combined with run options.");
   });
 
   it("requires explicit and isolated source-candidate review options", () => {
@@ -667,6 +763,96 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(1);
 
     expect(getCandidate).toHaveBeenCalledWith("missing-candidate");
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(
+      'Source candidate not found: "missing-candidate"'
+    );
+  });
+
+  it("prints read-only source-candidate accepted-reference matches", async () => {
+    const stdout = vi.fn();
+    const listReferenceMatches = vi.fn().mockResolvedValue({
+      candidate: sourceCandidate({
+        dedupeKey: "pubmed|au|creatine|28615996",
+        source: "PubMed"
+      }),
+      references: [
+        {
+          id: "ref-creatine-position-stand",
+          title: "Creatine position stand",
+          source: "PubMed",
+          identifier: "PMID: 28615996",
+          year: 2017,
+          url: "https://pubmed.ncbi.nlm.nih.gov/28615996/"
+        },
+        {
+          id: "ref-creatine-publisher",
+          title: "Creatine\npublisher record",
+          source: "PubMed",
+          url: "https://publisher.example/creatine-position-stand"
+        }
+      ]
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-reference-matches", "pubmed|au|creatine|28615996"],
+        { stdout },
+        { listReferenceMatches, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(listReferenceMatches).toHaveBeenCalledWith(
+      "pubmed|au|creatine|28615996"
+    );
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        'Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996"',
+        '- reference="ref-creatine-position-stand" source="PubMed" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ identifier="PMID: 28615996" year=2017',
+        '- reference="ref-creatine-publisher" source="PubMed" title="Creatine\\npublisher record" url=https://publisher.example/creatine-position-stand'
+      ].join("\n")
+    );
+  });
+
+  it("prints an empty source-candidate accepted-reference match list", async () => {
+    const stdout = vi.fn();
+    const listReferenceMatches = vi.fn().mockResolvedValue({
+      candidate: sourceCandidate({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        source: "ClinicalTrials.gov"
+      }),
+      references: []
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-reference-matches", "clinicaltrials.gov|au|creatine|nct123"],
+        { stdout },
+        { listReferenceMatches }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      'Source-candidate accepted-reference matches: total=0 dedupe="clinicaltrials.gov|au|creatine|nct123"'
+    );
+  });
+
+  it("returns a failing exit code when reference matches target a missing candidate", async () => {
+    const stderr = vi.fn();
+    const listReferenceMatches = vi.fn().mockResolvedValue(null);
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-reference-matches", "missing-candidate"],
+        { stderr },
+        { listReferenceMatches, runNextJob }
+      )
+    ).resolves.toBe(1);
+
+    expect(listReferenceMatches).toHaveBeenCalledWith("missing-candidate");
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stderr).toHaveBeenCalledWith(
       'Source candidate not found: "missing-candidate"'
