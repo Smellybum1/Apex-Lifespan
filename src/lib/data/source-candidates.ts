@@ -253,10 +253,17 @@ export async function getSourceCandidateCurationStatus(
   const mappedCandidate = mapDbSourceCandidate(candidate);
   const acceptedReferenceId = candidate.acceptedReferenceId ?? undefined;
 
-  if (candidate.decision !== DbSourceCandidateDecision.ACCEPTED || !acceptedReferenceId) {
+  if (candidate.decision !== DbSourceCandidateDecision.ACCEPTED) {
     return sourceCandidateCurationStatus({
       candidate: mappedCandidate,
       status: "Not accepted"
+    });
+  }
+
+  if (!acceptedReferenceId) {
+    return sourceCandidateCurationStatus({
+      candidate: mappedCandidate,
+      status: "Accepted reference missing"
     });
   }
 

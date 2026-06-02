@@ -617,6 +617,32 @@ describe("getSourceCandidateCurationStatus", () => {
     expect(prismaMocks.studyFindMany).not.toHaveBeenCalled();
   });
 
+  it("reports accepted candidates without an accepted reference id as missing-reference curation gaps", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: null
+      })
+    );
+
+    await expect(
+      getSourceCandidateCurationStatus("pubmed|au|creatine|28615996")
+    ).resolves.toMatchObject({
+      acceptedReferenceId: undefined,
+      claimLinks: [],
+      nextAction:
+        "Attach or restore the matching curated reference before public packet review.",
+      publicSourcePacketReady: false,
+      status: "Accepted reference missing",
+      studies: []
+    });
+
+    expect(prismaMocks.referenceFindUnique).not.toHaveBeenCalled();
+    expect(prismaMocks.claimReferenceFindMany).not.toHaveBeenCalled();
+    expect(prismaMocks.studyFindMany).not.toHaveBeenCalled();
+  });
+
   it("reports pending or rejected candidates without reading curation tables", async () => {
     prismaMocks.sourceCandidateFindUnique.mockResolvedValue(dbSourceCandidate());
 
