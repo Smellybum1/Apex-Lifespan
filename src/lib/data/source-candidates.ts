@@ -36,6 +36,17 @@ export interface SourceCandidateBacklogSummary {
   total: number;
 }
 
+export interface SourceCandidateCurationHandoffSummaryGroup {
+  count: number;
+  publicSourcePacketReady: boolean;
+  status: SourceCandidateCurationStatusKind;
+}
+
+export interface SourceCandidateCurationHandoffSummary {
+  groups: SourceCandidateCurationHandoffSummaryGroup[];
+  total: number;
+}
+
 export interface SourceCandidateReviewQueueOptions {
   claimId?: string;
   decision?: SourceCandidateDecision;
@@ -107,6 +118,13 @@ const MAX_REVIEW_QUEUE_LIMIT = 100;
 const DEFAULT_CURATION_HANDOFF_LIMIT = 25;
 const MAX_CURATION_HANDOFF_LIMIT = 50;
 const MAX_REFERENCE_MATCH_CANDIDATES = 50;
+const CURATION_HANDOFF_STATUS_ORDER: SourceCandidateCurationStatusKind[] = [
+  "Accepted reference missing",
+  "Claim link missing",
+  "Extraction pending",
+  "Public source packet ready",
+  "Not accepted"
+];
 
 const sourceMap: Record<SourceCandidateSource, DbSourceKind> = {
   PubMed: DbSourceKind.PUBMED,
@@ -313,6 +331,39 @@ export async function listSourceCandidateCurationHandoff(
     orderBy: [{ reviewedAt: "asc" }, { updatedAt: "desc" }],
     take: normaliseCurationHandoffLimit(options.limit)
   });
+
+  return sourceCandidateCurationStatuses(candidates);
+}
+
+export async function summarizeSourceCandidateCurationHandoff(): Promise<SourceCandidateCurationHandoffSummary> {
+  const candidates = await prisma.sourceCandidate.findMany({
+    where: {
+      decision: DbSourceCandidateDecision.ACCEPTED
+    },
+    orderBy: [{ reviewedAt: "asc" }, { updatedAt: "desc" }]
+  });
+  const statuses = await sourceCandidateCurationStatuses(candidates);
+  const counts = new Map<SourceCandidateCurationStatusKind, number>();
+
+  for (const status of statuses) {
+    counts.set(status.status, (counts.get(status.status) ?? 0) + 1);
+  }
+
+  const groups = CURATION_HANDOFF_STATUS_ORDER.map((status) => ({
+    count: counts.get(status) ?? 0,
+    publicSourcePacketReady: status === "Public source packet ready",
+    status
+  })).filter((group) => group.count > 0);
+
+  return {
+    groups,
+    total: statuses.length
+  };
+}
+
+async function sourceCandidateCurationStatuses(
+  candidates: DbSourceCandidate[]
+): Promise<SourceCandidateCurationStatus[]> {
   const acceptedReferenceIds = uniqueStringValues(
     candidates.map((candidate) => candidate.acceptedReferenceId)
   );

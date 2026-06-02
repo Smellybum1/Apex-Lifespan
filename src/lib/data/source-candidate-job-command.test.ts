@@ -898,22 +898,47 @@ describe("runSourceCandidateJobCommand", () => {
         }
       ]
     });
+    const summarizeCurationHandoff = vi.fn().mockResolvedValue({
+      total: 3,
+      groups: [
+        {
+          status: "Claim link missing",
+          publicSourcePacketReady: false,
+          count: 1
+        },
+        {
+          status: "Extraction pending",
+          publicSourcePacketReady: false,
+          count: 1
+        },
+        {
+          status: "Public source packet ready",
+          publicSourcePacketReady: true,
+          count: 1
+        }
+      ]
+    });
 
     await expect(
       runSourceCandidateJobCommand(
         ["--summary"],
         { stdout },
-        { runNextJob, summarizeBacklog }
+        { runNextJob, summarizeBacklog, summarizeCurationHandoff }
       )
     ).resolves.toBe(0);
 
     expect(runNextJob).not.toHaveBeenCalled();
     expect(summarizeBacklog).toHaveBeenCalledTimes(1);
+    expect(summarizeCurationHandoff).toHaveBeenCalledTimes(1);
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate backlog: total=4",
         "- PubMed AU Pending review / Unreviewed AI draft: 3",
-        "- ClinicalTrials.gov AU Accepted / Human reviewed: 1"
+        "- ClinicalTrials.gov AU Accepted / Human reviewed: 1",
+        "Source-candidate curation handoff: total=3",
+        '- status="Claim link missing" publicSourcePacketReady=false: 1',
+        '- status="Extraction pending" publicSourcePacketReady=false: 1',
+        '- status="Public source packet ready" publicSourcePacketReady=true: 1'
       ].join("\n")
     );
   });
@@ -1842,12 +1867,25 @@ describe("runSourceCandidateJobCommand", () => {
       total: 0,
       groups: []
     });
+    const summarizeCurationHandoff = vi.fn().mockResolvedValue({
+      total: 0,
+      groups: []
+    });
 
     await expect(
-      runSourceCandidateJobCommand(["--summary"], { stdout }, { summarizeBacklog })
+      runSourceCandidateJobCommand(
+        ["--summary"],
+        { stdout },
+        { summarizeBacklog, summarizeCurationHandoff }
+      )
     ).resolves.toBe(0);
 
-    expect(stdout).toHaveBeenCalledWith("Source-candidate backlog: total=0");
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate backlog: total=0",
+        "Source-candidate curation handoff: total=0"
+      ].join("\n")
+    );
   });
 
   it("runs one queued job by default", async () => {

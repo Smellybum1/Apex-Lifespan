@@ -18,11 +18,13 @@ import {
   listSourceCandidateReviewQueue,
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
+  summarizeSourceCandidateCurationHandoff,
   type RecordSourceCandidateDecisionInput,
   type ReviewedSourceCandidateDecision,
   type SourceCandidateAcceptedReferenceMatches,
   type SourceCandidateBacklogSummary,
   type SourceCandidateCurationHandoffOptions,
+  type SourceCandidateCurationHandoffSummary,
   type SourceCandidateCurationStatus
 } from "@/lib/data/source-candidates";
 import type {
@@ -104,6 +106,7 @@ export interface SourceCandidateJobCommandRunners {
     input: RecordSourceCandidateDecisionInput
   ) => Promise<SourceCandidate>;
   summarizeBacklog?: () => Promise<SourceCandidateBacklogSummary>;
+  summarizeCurationHandoff?: () => Promise<SourceCandidateCurationHandoffSummary>;
 }
 
 const DEFAULT_JOB_LIMIT = 1;
@@ -154,6 +157,8 @@ export async function runSourceCandidateJobCommand(
   const runJobById = runners.runJobById ?? runSourceCandidateIngestionJob;
   const runNextJob = runners.runNextJob ?? runNextSourceCandidateIngestionJob;
   const summarizeBacklog = runners.summarizeBacklog ?? summarizeSourceCandidateBacklog;
+  const summarizeCurationHandoff =
+    runners.summarizeCurationHandoff ?? summarizeSourceCandidateCurationHandoff;
 
   let options: SourceCandidateJobCommandOptions;
 
@@ -281,9 +286,17 @@ export async function runSourceCandidateJobCommand(
     }
 
     if (options.summary) {
-      const summary = await summarizeBacklog();
+      const [backlogSummary, curationHandoffSummary] = await Promise.all([
+        summarizeBacklog(),
+        summarizeCurationHandoff()
+      ]);
 
-      stdout(formatSourceCandidateBacklogSummary(summary));
+      stdout(
+        formatSourceCandidateWorkflowSummary(
+          backlogSummary,
+          curationHandoffSummary
+        )
+      );
       return 0;
     }
 
@@ -945,7 +958,7 @@ export function commandUsage() {
     "  --claim-id <id>                   Claim metadata for queued jobs.",
     "  --pubmed-retmax <count>           PubMed result limit passed to NCBI (max 20).",
     "  --clinical-trial-page-size <count> ClinicalTrials.gov page size (max 20).",
-    "  --summary                         Print read-only source-candidate backlog counts.",
+    "  --summary                         Print read-only source-candidate workflow and curation handoff counts.",
     "  --help                            Show this help."
   ].join("\n");
 }
@@ -1355,6 +1368,16 @@ function appendJobContext(
   }
 }
 
+function formatSourceCandidateWorkflowSummary(
+  backlogSummary: SourceCandidateBacklogSummary,
+  curationHandoffSummary: SourceCandidateCurationHandoffSummary
+) {
+  return [
+    formatSourceCandidateBacklogSummary(backlogSummary),
+    formatSourceCandidateCurationHandoffSummary(curationHandoffSummary)
+  ].join("\n");
+}
+
 function formatSourceCandidateBacklogSummary(summary: SourceCandidateBacklogSummary) {
   if (summary.total === 0) {
     return "Source-candidate backlog: total=0";
@@ -1365,6 +1388,22 @@ function formatSourceCandidateBacklogSummary(summary: SourceCandidateBacklogSumm
     ...summary.groups.map(
       (group) =>
         `- ${group.source} ${group.region} ${group.decision} / ${group.reviewStatus}: ${group.count}`
+    )
+  ].join("\n");
+}
+
+function formatSourceCandidateCurationHandoffSummary(
+  summary: SourceCandidateCurationHandoffSummary
+) {
+  if (summary.total === 0) {
+    return "Source-candidate curation handoff: total=0";
+  }
+
+  return [
+    `Source-candidate curation handoff: total=${summary.total}`,
+    ...summary.groups.map(
+      (group) =>
+        `- status=${quote(group.status)} publicSourcePacketReady=${group.publicSourcePacketReady}: ${group.count}`
     )
   ].join("\n");
 }
