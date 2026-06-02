@@ -16,6 +16,7 @@ Apex Lifespan is an evidence intelligence dashboard for supplements, peptides, a
 
 - Install: `npm install`
 - Dev: `npm run dev`
+- Stop dev server on port 3000: `npm run dev:stop`
 - Test: `npm run test`
 - Lint: `npm run lint`
 - Typecheck: `npm run typecheck`
@@ -57,6 +58,8 @@ Assumptions: Docker Desktop or Docker Compose is installed, `localhost:5432` is 
 ## Data source behavior
 
 The dashboard route is dynamic. It checks whether PostgreSQL is reachable, reads from Prisma when available, and falls back to seed data when the database is unavailable or empty. Set `APEX_DATA_SOURCE=seed` to force seed mode or `APEX_DATA_SOURCE=database` to fail instead of falling back.
+
+On Windows, stop the dev server with `npm run dev:stop` before running Prisma-generating checks such as `npm run typecheck` or `npm run build`; this avoids generated query-engine DLL locks without needing PID-specific stop commands.
 
 ## Local ingestion
 

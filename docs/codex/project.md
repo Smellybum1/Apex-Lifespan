@@ -4,6 +4,7 @@
 - Commands:
   - Install: `npm install`
   - Dev: `npm run dev`
+  - Stop dev server: `npm run dev:stop` (stops the port 3000 Node listener before Prisma-generating checks)
   - Test: `npm run test`
   - Lint/typecheck/build: `npm run lint`, `npm run typecheck`, `npm run build`
   - Local source-candidate ingestion: `npm run ingest:sources` (operator-only; runs queued PubMed/ClinicalTrials.gov jobs against configured PostgreSQL); queue jobs with `--queue-pubmed "<term>"` or `--queue-clinical-trials "<term>"`; `--jobs` lists recent ingestion jobs and ids; `--candidates` lists pending candidate titles/URLs/dedupe keys and can filter by source, job id, intervention id, claim id, or reviewed rows with `--candidate-decision accepted|rejected`; `--candidate-detail <dedupe-key>` prints one read-only record with triage reasons and compact metadata; `--candidate-curation-status <dedupe-key>` checks accepted-reference claim-link and extraction handoff status; `--candidate-curation-handoff` lists accepted candidates with claim-link and study-extraction readiness and can reuse source/job/intervention/claim filters; `--candidate-reference-matches <dedupe-key>` prints read-only curated reference ids eligible for acceptance; `--accept-candidate <dedupe-key> --accepted-reference-id <reference-id>` and `--reject-candidate <dedupe-key>` record operator review decisions; `--summary` prints read-only source-candidate workflow counts.
@@ -48,7 +49,7 @@
   - First ingestion workflow priority: PubMed, because citation-backed evidence cards should come before broader product or personalization workflows.
 - Validation strategy:
   - Run `npm run db:validate`, `npm run db:generate`, `npm run test`, `npm run lint`, `npm run typecheck`, and `npm run build` for schema or app changes.
-  - On Windows, stop `npm run dev` and run Prisma-generating commands such as `npm run typecheck` sequentially; concurrent dev/build processes can lock Prisma's generated query-engine DLL.
+  - On Windows, stop `npm run dev` with `npm run dev:stop` and run Prisma-generating commands such as `npm run typecheck` sequentially; concurrent dev/build processes can lock Prisma's generated query-engine DLL, and the stable npm command avoids PID-specific `Stop-Process` approvals.
   - Run `docker compose config` after Docker Compose changes.
   - Run `npm audit` after dependency changes.
 - Local database assumptions:
