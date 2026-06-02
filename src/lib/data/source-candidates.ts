@@ -328,15 +328,16 @@ export async function listSourceCandidateCurationHandoff(
     where.claimId = options.claimId;
   }
 
+  const limit = normaliseCurationHandoffLimit(options.limit);
   const candidates = await prisma.sourceCandidate.findMany({
     where,
     orderBy: [{ reviewedAt: "asc" }, { updatedAt: "desc" }],
-    take: normaliseCurationHandoffLimit(options.limit)
+    ...(options.status ? {} : { take: limit })
   });
   const statuses = await sourceCandidateCurationStatuses(candidates);
 
   return options.status
-    ? statuses.filter((status) => status.status === options.status)
+    ? statuses.filter((status) => status.status === options.status).slice(0, limit)
     : statuses;
 }
 

@@ -893,6 +893,84 @@ describe("listSourceCandidateCurationHandoff", () => {
         status: "Claim link missing"
       })
     ]);
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        decision: "ACCEPTED"
+      },
+      orderBy: [{ reviewedAt: "asc" }, { updatedAt: "desc" }]
+    });
+  });
+
+  it("applies curation handoff status filtering before the display limit", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|ready",
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-ready"
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|claim-link-missing-1",
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-claim-link-missing-1"
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|claim-link-missing-2",
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-claim-link-missing-2"
+      })
+    ]);
+    prismaMocks.referenceFindMany.mockResolvedValue([
+      dbReference({ id: "ref-ready" }),
+      dbReference({ id: "ref-claim-link-missing-1" }),
+      dbReference({ id: "ref-claim-link-missing-2" })
+    ]);
+    prismaMocks.claimReferenceFindMany.mockResolvedValue([
+      dbClaimReference({ referenceId: "ref-ready" }),
+      dbClaimReference({
+        claimId: "different-claim",
+        referenceId: "ref-claim-link-missing-1"
+      }),
+      dbClaimReference({
+        claimId: "different-claim",
+        referenceId: "ref-claim-link-missing-2"
+      })
+    ]);
+    prismaMocks.studyFindMany.mockResolvedValue([
+      dbStudy({ id: "study-ready", referenceId: "ref-ready" }),
+      dbStudy({
+        id: "study-claim-link-missing-1",
+        referenceId: "ref-claim-link-missing-1"
+      }),
+      dbStudy({
+        id: "study-claim-link-missing-2",
+        referenceId: "ref-claim-link-missing-2"
+      })
+    ]);
+
+    await expect(
+      listSourceCandidateCurationHandoff({
+        limit: 1,
+        status: "Claim link missing"
+      })
+    ).resolves.toEqual([
+      expect.objectContaining({
+        candidate: expect.objectContaining({
+          dedupeKey: "pubmed|au|creatine|claim-link-missing-1"
+        }),
+        status: "Claim link missing"
+      })
+    ]);
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        decision: "ACCEPTED"
+      },
+      orderBy: [{ reviewedAt: "asc" }, { updatedAt: "desc" }]
+    });
   });
 });
 
