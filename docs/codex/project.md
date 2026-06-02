@@ -38,6 +38,7 @@
   - The dashboard metric row summarizes source-packet coverage across scored claims using the same tested source-packet completeness rules.
   - Current seed evidence claims have structured extraction rows for all linked curated references; pending extraction behavior is preserved with synthetic source-packet tests.
   - Evidence cards use a consumer summary by default with expandable research detail for study context, applicability, score-change rationale, and source links.
+  - Evidence cards show their curated source-packet completeness badge so card-level citation/extraction readiness is visible before selection.
   - Product label analysis includes AU/TGA-specific cautions for unresolved AUST status, approval overclaims, and research-use/injectable peptide language; each finding should show either an official source link or a visible heuristic-check provenance label.
   - TGA/ARTG approval-overclaim detection has regression coverage for negated phrases including ASCII and curly apostrophes, so `isn't` and `isn\u2019t` wording should not be reported as approval overclaims.
   - Product label empty states should say no local label-risk warnings were found, not imply safety, efficacy, or Australia/TGA clearance.

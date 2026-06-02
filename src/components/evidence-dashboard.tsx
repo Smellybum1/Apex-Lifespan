@@ -285,6 +285,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             claims={filteredClaims}
             interventionsById={interventionsById}
             referencesById={referencesById}
+            studies={studies}
             activeClaimId={activeClaim.id}
             onSelectClaim={setActiveClaimId}
           />
@@ -860,12 +861,14 @@ function EvidenceCards({
   claims: visibleClaims,
   interventionsById,
   referencesById,
+  studies,
   activeClaimId,
   onSelectClaim
 }: {
   claims: Claim[];
   interventionsById: Map<string, Intervention>;
   referencesById: Map<string, Reference>;
+  studies: Study[];
   activeClaimId: string;
   onSelectClaim: (claimId: string) => void;
 }) {
@@ -878,6 +881,11 @@ function EvidenceCards({
           const claimReferences = claim.keyReferenceIds
             .map((referenceId) => referencesById.get(referenceId))
             .filter((reference): reference is Reference => Boolean(reference));
+          const sourcePacket = buildClaimSourcePacket({
+            claim,
+            referencesById,
+            studies
+          });
 
           return (
             <article
@@ -908,6 +916,9 @@ function EvidenceCards({
               <div className="mt-3 flex flex-wrap gap-2">
                 <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
                   {claim.reviewStatus}
+                </span>
+                <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", sourcePacketCompletenessTone(sourcePacket.completeness.status))}>
+                  Source packet: {sourcePacket.completeness.label}
                 </span>
                 <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs text-slate-600">
                   Confidence: {claim.confidenceLevel}
