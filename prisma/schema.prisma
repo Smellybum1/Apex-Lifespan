@@ -179,6 +179,7 @@ model Intervention {
   products                    Product[]
   safetyAlerts                SafetyAlert[]
   sourceCandidates            SourceCandidate[]
+  ingestionJobs               IngestionJob[]
   australiaRegulatoryStatuses AustraliaRegulatoryStatus[]
 
   @@index([category])
@@ -221,6 +222,7 @@ model Claim {
   intervention     Intervention      @relation(fields: [interventionId], references: [id], onDelete: Cascade)
   references       ClaimReference[]
   sourceCandidates SourceCandidate[]
+  ingestionJobs    IngestionJob[]
 
   @@unique([interventionId, outcome, claimText])
   @@index([outcome])
@@ -473,6 +475,8 @@ model IngestionJob {
   status           IngestionStatus   @default(QUEUED)
   query            String
   region           String            @default("AU")
+  interventionId   String?
+  claimId          String?
   startedAt        DateTime?
   completedAt      DateTime?
   recordsFound     Int               @default(0)
@@ -481,10 +485,14 @@ model IngestionJob {
   metadata         Json?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
+
+  intervention     Intervention?     @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+  claim            Claim?            @relation(fields: [claimId], references: [id], onDelete: SetNull)
   sourceCandidates SourceCandidate[]
 
-  @@unique([source, query, region])
   @@index([source])
   @@index([status])
   @@index([region])
+  @@index([interventionId])
+  @@index([claimId])
 }

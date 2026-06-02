@@ -120,30 +120,49 @@ export async function queueSourceCandidateIngestionJob(
   const query = normaliseQueueQuery(input.query);
   const region = normaliseRegion(input.region);
   const requestedContext = queueContext(input);
-  const where = {
-    source_query_region: {
-      source,
-      query,
-      region
-    }
-  };
-  const existingJob = await prisma.ingestionJob.findUnique({
-    where
+  const identityWhere = queueIdentityWhere({
+    source,
+    query,
+    region,
+    context: requestedContext
+  });
+  const existingJob = await prisma.ingestionJob.findFirst({
+    where: identityWhere
   });
 
   if (existingJob) {
     return mapQueuedJob(existingJob, false, requestedContext);
   }
 
-  const job = await prisma.ingestionJob.create({
-    data: {
-      source,
-      status: DbIngestionStatus.QUEUED,
-      query,
-      region,
-      metadata: queueMetadata(requestedContext)
+  let job: DbIngestionJob;
+
+  try {
+    job = await prisma.ingestionJob.create({
+      data: {
+        source,
+        status: DbIngestionStatus.QUEUED,
+        query,
+        region,
+        interventionId: requestedContext.interventionId,
+        claimId: requestedContext.claimId,
+        metadata: queueMetadata(requestedContext)
+      }
+    });
+  } catch (error) {
+    if (!isPrismaUniqueConstraintError(error)) {
+      throw error;
     }
-  });
+
+    const racedJob = await prisma.ingestionJob.findFirst({
+      where: identityWhere
+    });
+
+    if (!racedJob) {
+      throw error;
+    }
+
+    return mapQueuedJob(racedJob, false, requestedContext);
+  }
 
   return mapQueuedJob(job, true, requestedContext);
 }
@@ -272,8 +291,8 @@ async function runSupportedSourceCandidateJob(
 function sourceCandidateContext(job: DbIngestionJob) {
   return {
     region: job.region,
-    interventionId: readStringMetadata(job.metadata, "interventionId"),
-    claimId: readStringMetadata(job.metadata, "claimId"),
+    interventionId: optionalTrimmedString(job.interventionId),
+    claimId: optionalTrimmedString(job.claimId),
     ingestionJobId: job.id
   };
 }
@@ -386,8 +405,28 @@ function queueContext(input: QueueSourceCandidateIngestionJobInput) {
 
 function sourceCandidateJobContext(job: DbIngestionJob): SourceCandidateJobContext {
   return {
-    interventionId: readStringMetadata(job.metadata, "interventionId"),
-    claimId: readStringMetadata(job.metadata, "claimId")
+    interventionId: optionalTrimmedString(job.interventionId),
+    claimId: optionalTrimmedString(job.claimId)
+  };
+}
+
+function queueIdentityWhere({
+  source,
+  query,
+  region,
+  context
+}: {
+  context: SourceCandidateJobContext;
+  query: string;
+  region: string;
+  source: DbSourceKind;
+}): Prisma.IngestionJobWhereInput {
+  return {
+    source,
+    query,
+    region,
+    interventionId: context.interventionId ?? null,
+    claimId: context.claimId ?? null
   };
 }
 
@@ -402,7 +441,7 @@ function contextMismatchFields(
   });
 }
 
-function optionalTrimmedString(value: string | undefined) {
+function optionalTrimmedString(value: string | null | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
 }
@@ -474,24 +513,18 @@ function isSupportedSourceCandidateJobSource(
   );
 }
 
-function readStringMetadata(metadata: Prisma.JsonValue | null, key: string) {
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return undefined;
-  }
-
-  const value = metadata[key];
-
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
 function normaliseErrorMessage(error: unknown) {
   const message =
     error instanceof Error && error.message ? error.message : String(error);
 
   return message.slice(0, 1000);
+}
+
+function isPrismaUniqueConstraintError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2002"
+  );
 }

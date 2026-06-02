@@ -59,6 +59,8 @@ describe("listSourceCandidateIngestionJobs", () => {
         source: "CLINICALTRIALS_GOV",
         status: "FAILED",
         query: "creatine aging",
+        interventionId: null,
+        claimId: null,
         metadata: null,
         recordsFound: 0,
         recordsChanged: 0,
@@ -147,7 +149,7 @@ describe("queueSourceCandidateIngestionJob", () => {
   });
 
   it("creates a queued PubMed ingestion job when one does not already exist", async () => {
-    mocks.findUnique.mockResolvedValue(null);
+    mocks.findFirst.mockResolvedValue(null);
     mocks.create.mockResolvedValue(dbIngestionJob());
 
     await expect(
@@ -170,13 +172,13 @@ describe("queueSourceCandidateIngestionJob", () => {
       status: "QUEUED"
     });
 
-    expect(mocks.findUnique).toHaveBeenCalledWith({
+    expect(mocks.findFirst).toHaveBeenCalledWith({
       where: {
-        source_query_region: {
-          source: "PUBMED",
-          query: "creatine strength",
-          region: "AU"
-        }
+        source: "PUBMED",
+        query: "creatine strength",
+        region: "AU",
+        interventionId: "creatine",
+        claimId: "creatine-strength"
       }
     });
     expect(mocks.create).toHaveBeenCalledWith({
@@ -185,6 +187,8 @@ describe("queueSourceCandidateIngestionJob", () => {
         status: "QUEUED",
         query: "creatine strength",
         region: "AU",
+        interventionId: "creatine",
+        claimId: "creatine-strength",
         metadata: {
           interventionId: "creatine",
           claimId: "creatine-strength"
@@ -194,12 +198,14 @@ describe("queueSourceCandidateIngestionJob", () => {
   });
 
   it("creates ClinicalTrials.gov jobs with default AU region and sparse metadata", async () => {
-    mocks.findUnique.mockResolvedValue(null);
+    mocks.findFirst.mockResolvedValue(null);
     mocks.create.mockResolvedValue(
       dbIngestionJob({
         id: "job-trials",
         source: "CLINICALTRIALS_GOV",
         query: "creatine aging",
+        interventionId: null,
+        claimId: null,
         metadata: {}
       })
     );
@@ -227,13 +233,129 @@ describe("queueSourceCandidateIngestionJob", () => {
         status: "QUEUED",
         query: "creatine aging",
         region: "AU",
+        interventionId: undefined,
+        claimId: undefined,
         metadata: {}
       }
     });
   });
 
-  it("returns an existing job without resetting status or metadata", async () => {
-    mocks.findUnique.mockResolvedValue(
+  it("creates a scoped job instead of returning an unscoped source/query/region match", async () => {
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.create.mockResolvedValue(
+      dbIngestionJob({
+        id: "job-pubmed-creatine-strength",
+        status: "QUEUED",
+        interventionId: "creatine",
+        claimId: "creatine-strength",
+        metadata: {
+          interventionId: "creatine",
+          claimId: "creatine-strength"
+        }
+      })
+    );
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength",
+        interventionId: "creatine",
+        claimId: "creatine-strength"
+      })
+    ).resolves.toEqual({
+      claimId: "creatine-strength",
+      contextMismatchFields: [],
+      created: true,
+      interventionId: "creatine",
+      jobId: "job-pubmed-creatine-strength",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "QUEUED"
+    });
+
+    expect(mocks.findFirst).toHaveBeenCalledWith({
+      where: {
+        source: "PUBMED",
+        query: "creatine strength",
+        region: "AU",
+        interventionId: "creatine",
+        claimId: "creatine-strength"
+      }
+    });
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: {
+        source: "PUBMED",
+        status: "QUEUED",
+        query: "creatine strength",
+        region: "AU",
+        interventionId: "creatine",
+        claimId: "creatine-strength",
+        metadata: {
+          interventionId: "creatine",
+          claimId: "creatine-strength"
+        }
+      }
+    });
+  });
+
+  it("returns a concurrently-created job when the context unique index wins a race", async () => {
+    const uniqueError = Object.assign(new Error("Unique constraint failed"), {
+      code: "P2002"
+    });
+    mocks.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(
+        dbIngestionJob({
+          id: "job-raced",
+          status: "QUEUED"
+        })
+      );
+    mocks.create.mockRejectedValue(uniqueError);
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength",
+        interventionId: "creatine",
+        claimId: "creatine-strength"
+      })
+    ).resolves.toEqual({
+      claimId: "creatine-strength",
+      contextMismatchFields: [],
+      created: false,
+      interventionId: "creatine",
+      jobId: "job-raced",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "QUEUED"
+    });
+
+    expect(mocks.findFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it("rethrows unique races when the context-matched job cannot be refetched", async () => {
+    const uniqueError = Object.assign(new Error("Unique constraint failed"), {
+      code: "P2002"
+    });
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.create.mockRejectedValue(uniqueError);
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength",
+        interventionId: "creatine",
+        claimId: "creatine-strength"
+      })
+    ).rejects.toThrow("Unique constraint failed");
+
+    expect(mocks.findFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns an existing context-matched job without resetting status or metadata", async () => {
+    mocks.findFirst.mockResolvedValue(
       dbIngestionJob({
         status: "SUCCEEDED",
         recordsFound: 5,
@@ -245,11 +367,12 @@ describe("queueSourceCandidateIngestionJob", () => {
       queueSourceCandidateIngestionJob({
         source: "PubMed",
         query: "creatine strength",
-        interventionId: "different-context"
+        interventionId: "creatine",
+        claimId: "creatine-strength"
       })
     ).resolves.toEqual({
       claimId: "creatine-strength",
-      contextMismatchFields: ["interventionId"],
+      contextMismatchFields: [],
       created: false,
       interventionId: "creatine",
       jobId: "job-pubmed",
@@ -265,7 +388,7 @@ describe("queueSourceCandidateIngestionJob", () => {
   });
 
   it("returns existing job context without mismatch when requested context matches", async () => {
-    mocks.findUnique.mockResolvedValue(
+    mocks.findFirst.mockResolvedValue(
       dbIngestionJob({
         status: "SUCCEEDED"
       })
@@ -291,10 +414,16 @@ describe("queueSourceCandidateIngestionJob", () => {
     });
   });
 
-  it("reports existing job context mismatch fields in stable order", async () => {
-    mocks.findUnique.mockResolvedValue(
+  it("uses first-class context instead of stale metadata", async () => {
+    mocks.findFirst.mockResolvedValue(
       dbIngestionJob({
-        status: "SUCCEEDED"
+        status: "SUCCEEDED",
+        interventionId: "creatine",
+        claimId: "creatine-strength",
+        metadata: {
+          interventionId: "stale-intervention",
+          claimId: "stale-claim"
+        }
       })
     );
 
@@ -302,33 +431,8 @@ describe("queueSourceCandidateIngestionJob", () => {
       queueSourceCandidateIngestionJob({
         source: "PubMed",
         query: "creatine strength",
-        interventionId: "different-intervention",
-        claimId: "different-claim"
-      })
-    ).resolves.toEqual({
-      claimId: "creatine-strength",
-      contextMismatchFields: ["interventionId", "claimId"],
-      created: false,
-      interventionId: "creatine",
-      jobId: "job-pubmed",
-      source: "PUBMED",
-      query: "creatine strength",
-      region: "AU",
-      status: "SUCCEEDED"
-    });
-  });
-
-  it("does not report context mismatches when no queue context is requested", async () => {
-    mocks.findUnique.mockResolvedValue(
-      dbIngestionJob({
-        status: "SUCCEEDED"
-      })
-    );
-
-    await expect(
-      queueSourceCandidateIngestionJob({
-        source: "PubMed",
-        query: "creatine strength"
+        interventionId: "creatine",
+        claimId: "creatine-strength"
       })
     ).resolves.toEqual({
       claimId: "creatine-strength",
@@ -343,9 +447,49 @@ describe("queueSourceCandidateIngestionJob", () => {
     });
   });
 
-  it("ignores blank or malformed stored context when reporting existing jobs", async () => {
-    mocks.findUnique.mockResolvedValue(
+  it("returns existing unscoped jobs when no queue context is requested", async () => {
+    mocks.findFirst.mockResolvedValue(
       dbIngestionJob({
+        status: "SUCCEEDED",
+        interventionId: null,
+        claimId: null,
+        metadata: {}
+      })
+    );
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength"
+      })
+    ).resolves.toEqual({
+      claimId: undefined,
+      contextMismatchFields: [],
+      created: false,
+      interventionId: undefined,
+      jobId: "job-pubmed",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "SUCCEEDED"
+    });
+
+    expect(mocks.findFirst).toHaveBeenCalledWith({
+      where: {
+        source: "PUBMED",
+        query: "creatine strength",
+        region: "AU",
+        interventionId: null,
+        claimId: null
+      }
+    });
+  });
+
+  it("ignores blank or malformed stored context when reporting existing jobs", async () => {
+    mocks.findFirst.mockResolvedValue(
+      dbIngestionJob({
+        interventionId: null,
+        claimId: null,
         metadata: {
           interventionId: " ",
           claimId: 123
@@ -389,6 +533,7 @@ describe("queueSourceCandidateIngestionJob", () => {
     );
 
     expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.findFirst).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
   });
 });
@@ -533,6 +678,8 @@ describe("runSourceCandidateIngestionJob", () => {
         id: "job-trials",
         source: "CLINICALTRIALS_GOV",
         query: "creatine aging",
+        interventionId: null,
+        claimId: null,
         metadata: null
       })
     );
@@ -569,6 +716,36 @@ describe("runSourceCandidateIngestionJob", () => {
       ingestionJobId: "job-trials"
     });
     expect(mocks.ingestPubMedSourceCandidates).not.toHaveBeenCalled();
+  });
+
+  it("runs first-class job context instead of stale metadata", async () => {
+    mocks.findUnique.mockResolvedValue(
+      dbIngestionJob({
+        interventionId: "creatine",
+        claimId: "creatine-strength",
+        metadata: {
+          interventionId: "stale-intervention",
+          claimId: "stale-claim"
+        }
+      })
+    );
+    mocks.ingestPubMedSourceCandidates.mockResolvedValue(sourceCandidateIngestionResult());
+
+    await expect(
+      runSourceCandidateIngestionJob("job-pubmed", { now })
+    ).resolves.toMatchObject({
+      jobId: "job-pubmed",
+      status: "SUCCEEDED"
+    });
+
+    expect(mocks.ingestPubMedSourceCandidates).toHaveBeenCalledWith({
+      term: "creatine strength",
+      retmax: undefined,
+      region: "AU",
+      interventionId: "creatine",
+      claimId: "creatine-strength",
+      ingestionJobId: "job-pubmed"
+    });
   });
 
   it("marks unsupported source-candidate jobs skipped", async () => {
@@ -688,6 +865,8 @@ function dbIngestionJob(overrides: Record<string, unknown> = {}) {
     status: "QUEUED",
     query: "creatine strength",
     region: "AU",
+    interventionId: "creatine",
+    claimId: "creatine-strength",
     startedAt: null,
     completedAt: null,
     recordsFound: 0,

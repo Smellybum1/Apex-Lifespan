@@ -102,9 +102,9 @@ npm run ingest:sources -- --summary
 ```
 
 The command reports job status, records found, and records changed. These are ingestion-operation counts, not evidence-quality scores.
-Queue options create a missing job or report the existing job for the same source, query, and region; they do not reset completed jobs or retarget stored intervention/claim context.
+Queue options create a missing job or report the existing job for the same source, query, region, intervention id, and claim id; they do not reset completed jobs or retarget stored intervention/claim context.
 The `--jobs` option is read-only and reports recent source-candidate ingestion job ids, statuses, workflow counts, stored intervention/claim context, and errors.
-If queueing finds an existing job with different requested intervention or claim context, output reports a `requestedContextMismatch` field so the operator can review the stored job context before using scoped candidate filters.
+The migration backfills valid older metadata-backed job context into first-class columns; new queue identity is context-aware so the same query can be queued separately for different claim-level curation work.
 The `--candidates` option is read-only and reports source-candidate review rows with triage scores, titles, URLs, and dedupe keys; it defaults to pending rows and can filter by source, ingestion job id, intervention id, claim id, or reviewed rows with `--candidate-decision accepted` or `--candidate-decision rejected`.
 The `--candidate-detail` option is read-only and reports one source-candidate record with triage reasons, review fields, and compact metadata.
 The `--candidate-curation-status` option is read-only and reports whether an accepted source candidate has claim context, whether its curated reference still matches the candidate source/external id, whether it is claim-linked, and whether it has structured study extraction for public source packets, including the next operator curation action.
