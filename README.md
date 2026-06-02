@@ -89,7 +89,7 @@ The command reports job status, records found, and records changed. These are in
 Queue options create a missing job or report the existing job for the same source, query, and region; they do not reset completed jobs.
 The `--jobs` option is read-only and reports recent source-candidate ingestion job ids, statuses, workflow counts, and errors.
 The `--candidates` option is read-only and reports pending source-candidate review rows with triage scores, titles, URLs, and dedupe keys.
-The `--accept-candidate` and `--reject-candidate` options are operator-only review actions for pending candidates. Accepted candidates require an existing curated reference id and do not automatically promote evidence cards.
+The `--accept-candidate` and `--reject-candidate` options are operator-only review actions for pending candidates. Accepted candidates require an existing curated reference id whose source and external identifier match the candidate; accepting does not automatically promote evidence cards.
 The `--summary` option is read-only and reports source-candidate workflow counts by source, region, decision, and review status.
 
 ## Australia regulatory lens

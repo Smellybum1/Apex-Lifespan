@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMocks = vi.hoisted(() => ({
+  referenceFindUnique: vi.fn(),
   sourceCandidateFindMany: vi.fn(),
+  sourceCandidateFindUnique: vi.fn(),
   sourceCandidateGroupBy: vi.fn(),
   sourceCandidateUpdate: vi.fn(),
   sourceCandidateUpsert: vi.fn(),
@@ -10,8 +12,12 @@ const prismaMocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db/prisma", () => ({
   prisma: {
+    reference: {
+      findUnique: prismaMocks.referenceFindUnique
+    },
     sourceCandidate: {
       findMany: prismaMocks.sourceCandidateFindMany,
+      findUnique: prismaMocks.sourceCandidateFindUnique,
       groupBy: prismaMocks.sourceCandidateGroupBy,
       update: prismaMocks.sourceCandidateUpdate,
       upsert: prismaMocks.sourceCandidateUpsert
@@ -33,6 +39,8 @@ beforeEach(() => {
   prismaMocks.sourceCandidateUpsert.mockImplementation((args) => ({
     id: args.where.dedupeKey
   }));
+  prismaMocks.sourceCandidateFindUnique.mockResolvedValue(dbSourceCandidate());
+  prismaMocks.referenceFindUnique.mockResolvedValue(dbReference());
   prismaMocks.transaction.mockImplementation(async (operations) => operations);
 });
 
@@ -303,6 +311,11 @@ describe("recordSourceCandidateDecision", () => {
         acceptedReferenceId: "ref-creatine-position-stand"
       }
     });
+    expect(prismaMocks.referenceFindUnique).toHaveBeenCalledWith({
+      where: {
+        id: "ref-creatine-position-stand"
+      }
+    });
   });
 
   it("records rejected candidates and clears curated reference links", async () => {
@@ -347,6 +360,7 @@ describe("recordSourceCandidateDecision", () => {
         acceptedReferenceId: null
       }
     });
+    expect(prismaMocks.referenceFindUnique).not.toHaveBeenCalled();
   });
 
   it("rejects accepted decisions without a curated reference link", async () => {
@@ -362,9 +376,12 @@ describe("recordSourceCandidateDecision", () => {
   });
 
   it("does not overwrite source candidates that are no longer pending review", async () => {
-    prismaMocks.sourceCandidateUpdate.mockRejectedValue({
-      code: "P2025"
-    });
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED"
+      })
+    );
 
     await expect(
       recordSourceCandidateDecision({
@@ -374,19 +391,235 @@ describe("recordSourceCandidateDecision", () => {
       })
     ).rejects.toThrow("Pending source candidate not found for review.");
 
-    expect(prismaMocks.sourceCandidateUpdate).toHaveBeenCalledWith({
-      where: {
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects accepted candidates when the curated reference is missing", async () => {
+    prismaMocks.referenceFindUnique.mockResolvedValue(null);
+
+    await expect(
+      recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
-        decision: "PENDING_REVIEW"
-      },
-      data: {
-        decision: "REJECTED",
+        decision: "Accepted",
+        acceptedReferenceId: "missing-reference"
+      })
+    ).rejects.toThrow("Accepted source candidate reference was not found.");
+
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects accepted candidates when the curated reference source does not match", async () => {
+    prismaMocks.referenceFindUnique.mockResolvedValue(
+      dbReference({
+        source: "NIH_ODS",
+        identifier: undefined,
+        url: "https://ods.od.nih.gov/factsheets/Creatine-HealthProfessional/"
+      })
+    );
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Accepted",
+        acceptedReferenceId: "ods-creatine"
+      })
+    ).rejects.toThrow(
+      "Accepted source candidate reference must match candidate source and external id."
+    );
+
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects accepted candidates when the curated reference external id does not match", async () => {
+    prismaMocks.referenceFindUnique.mockResolvedValue(
+      dbReference({
+        identifier: "PMID: 12345678",
+        url: "https://pubmed.ncbi.nlm.nih.gov/12345678/"
+      })
+    );
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Accepted",
+        acceptedReferenceId: "wrong-pubmed-reference"
+      })
+    ).rejects.toThrow(
+      "Accepted source candidate reference must match candidate source and external id."
+    );
+
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects accepted candidates when a PubMed id is only a substring match", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        externalId: "1234",
+        url: "https://pubmed.ncbi.nlm.nih.gov/1234/"
+      })
+    );
+    prismaMocks.referenceFindUnique.mockResolvedValue(
+      dbReference({
+        identifier: "PMID: 12345",
+        url: "https://pubmed.ncbi.nlm.nih.gov/12345/"
+      })
+    );
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|1234",
+        decision: "Accepted",
+        acceptedReferenceId: "substring-pubmed-reference"
+      })
+    ).rejects.toThrow(
+      "Accepted source candidate reference must match candidate source and external id."
+    );
+
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
+  it("accepts PubMed candidates when the curated reference identifier matches exactly", async () => {
+    const reviewedAt = new Date("2026-06-02T03:30:00.000Z");
+    prismaMocks.referenceFindUnique.mockResolvedValue(
+      dbReference({
+        identifier: "PMID: 28615996",
+        url: "https://example.org/publisher/creatine-position-stand"
+      })
+    );
+    prismaMocks.sourceCandidateUpdate.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
         reviewStatus: "HUMAN_REVIEWED",
-        reviewedAt: expect.any(Date),
-        reviewNote: "Duplicate.",
-        acceptedReferenceId: null
-      }
-    });
+        acceptedReferenceId: "ref-creatine-position-stand",
+        reviewedAt
+      })
+    );
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Accepted",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        reviewedAt
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        source: "PubMed",
+        externalId: "28615996",
+        acceptedReferenceId: "ref-creatine-position-stand"
+      })
+    );
+  });
+
+  it("accepts ClinicalTrials.gov candidates when the curated reference URL matches the NCT id", async () => {
+    const reviewedAt = new Date("2026-06-02T03:00:00.000Z");
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        source: "CLINICALTRIALS_GOV",
+        externalId: "nct123",
+        title: "Creatine and aging",
+        url: "https://clinicaltrials.gov/study/nct123"
+      })
+    );
+    prismaMocks.referenceFindUnique.mockResolvedValue(
+      dbReference({
+        id: "trial-nct123",
+        source: "CLINICALTRIALS_GOV",
+        identifier: undefined,
+        url: "https://clinicaltrials.gov/study/NCT123?term=creatine"
+      })
+    );
+    prismaMocks.sourceCandidateUpdate.mockResolvedValue(
+      dbSourceCandidate({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        source: "CLINICALTRIALS_GOV",
+        externalId: "NCT123",
+        title: "Creatine and aging",
+        url: "https://clinicaltrials.gov/study/NCT123",
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "trial-nct123",
+        reviewedAt
+      })
+    );
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        decision: "Accepted",
+        acceptedReferenceId: "trial-nct123",
+        reviewedAt
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        source: "ClinicalTrials.gov",
+        externalId: "NCT123",
+        acceptedReferenceId: "trial-nct123"
+      })
+    );
+  });
+
+  it("rejects ClinicalTrials.gov candidates when an NCT id is only a substring match", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        source: "CLINICALTRIALS_GOV",
+        externalId: "NCT123",
+        url: "https://clinicaltrials.gov/study/NCT123"
+      })
+    );
+    prismaMocks.referenceFindUnique.mockResolvedValue(
+      dbReference({
+        id: "trial-nct1234",
+        source: "CLINICALTRIALS_GOV",
+        identifier: "NCT1234",
+        url: "https://clinicaltrials.gov/study/NCT1234"
+      })
+    );
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        decision: "Accepted",
+        acceptedReferenceId: "trial-nct1234"
+      })
+    ).rejects.toThrow(
+      "Accepted source candidate reference must match candidate source and external id."
+    );
+
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects generic ClinicalTrials.gov references that do not identify the candidate NCT record", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        source: "CLINICALTRIALS_GOV",
+        externalId: "NCT123",
+        url: "https://clinicaltrials.gov/study/NCT123"
+      })
+    );
+    prismaMocks.referenceFindUnique.mockResolvedValue(
+      dbReference({
+        id: "clinicaltrials-api",
+        source: "CLINICALTRIALS_GOV",
+        identifier: undefined,
+        url: "https://clinicaltrials.gov/data-about-studies/learn-about-api"
+      })
+    );
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        decision: "Accepted",
+        acceptedReferenceId: "clinicaltrials-api"
+      })
+    ).rejects.toThrow(
+      "Accepted source candidate reference must match candidate source and external id."
+    );
+
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
   });
 });
 
@@ -439,6 +672,20 @@ function dbSourceCandidate(overrides: Record<string, unknown> = {}) {
     reviewedAt: null,
     reviewNote: null,
     discoveredAt: new Date("2026-06-02T00:00:00.000Z"),
+    createdAt: new Date("2026-06-02T00:00:00.000Z"),
+    updatedAt: new Date("2026-06-02T00:00:00.000Z"),
+    ...overrides
+  };
+}
+
+function dbReference(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "ref-creatine-position-stand",
+    title: "Creatine position stand",
+    source: "PUBMED",
+    identifier: "PMID: 28615996",
+    year: 2017,
+    url: "https://pubmed.ncbi.nlm.nih.gov/28615996/",
     createdAt: new Date("2026-06-02T00:00:00.000Z"),
     updatedAt: new Date("2026-06-02T00:00:00.000Z"),
     ...overrides

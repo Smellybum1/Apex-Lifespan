@@ -1,4 +1,5 @@
 import {
+  type Reference as DbReference,
   ReviewStatus as DbReviewStatus,
   SourceCandidateDecision as DbSourceCandidateDecision,
   SourceKind as DbSourceKind,
@@ -144,6 +145,34 @@ export async function recordSourceCandidateDecision({
 
   if (decision === "Accepted" && !acceptedReferenceIdOrUndefined) {
     throw new Error("Accepted source candidates require an acceptedReferenceId.");
+  }
+
+  const pendingCandidate = await prisma.sourceCandidate.findUnique({
+    where: {
+      dedupeKey
+    }
+  });
+
+  if (!pendingCandidate || pendingCandidate.decision !== DbSourceCandidateDecision.PENDING_REVIEW) {
+    throw new Error("Pending source candidate not found for review.");
+  }
+
+  if (decision === "Accepted") {
+    const acceptedReference = await prisma.reference.findUnique({
+      where: {
+        id: acceptedReferenceIdOrUndefined
+      }
+    });
+
+    if (!acceptedReference) {
+      throw new Error("Accepted source candidate reference was not found.");
+    }
+
+    if (!referenceMatchesSourceCandidate(acceptedReference, pendingCandidate)) {
+      throw new Error(
+        "Accepted source candidate reference must match candidate source and external id."
+      );
+    }
   }
 
   try {
@@ -298,6 +327,94 @@ function metadataObject(value: Prisma.JsonValue | null): Record<string, unknown>
   }
 
   return value as Record<string, unknown>;
+}
+
+function referenceMatchesSourceCandidate(
+  reference: DbReference,
+  candidate: DbSourceCandidate
+) {
+  if (reference.source !== candidate.source) {
+    return false;
+  }
+
+  const candidateUrl = normaliseUrl(candidate.url);
+  const referenceUrl = normaliseUrl(reference.url);
+
+  if (candidateUrl && referenceUrl && candidateUrl === referenceUrl) {
+    return true;
+  }
+
+  if (candidate.source === DbSourceKind.PUBMED) {
+    const candidatePmid = normalisePubMedId(candidate.externalId);
+
+    return Boolean(
+      candidatePmid && readPubMedReferenceIds(reference).includes(candidatePmid)
+    );
+  }
+
+  if (candidate.source === DbSourceKind.CLINICALTRIALS_GOV) {
+    const candidateNctId = normaliseNctId(candidate.externalId);
+
+    return Boolean(
+      candidateNctId && readClinicalTrialReferenceIds(reference).includes(candidateNctId)
+    );
+  }
+
+  return false;
+}
+
+function normaliseUrl(value: string | null | undefined) {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[?#].*$/, "")
+    .replace(/\/+$/, "");
+}
+
+function normalisePubMedId(value: string | null | undefined) {
+  const match = (value ?? "").trim().match(/\d+/);
+  return match?.[0];
+}
+
+function normaliseNctId(value: string | null | undefined) {
+  return value?.trim().match(/^NCT[A-Z0-9]+$/i)?.[0].toUpperCase();
+}
+
+function readPubMedReferenceIds(reference: DbReference) {
+  const ids: string[] = [];
+  const identifier = reference.identifier?.trim();
+
+  if (identifier) {
+    const pmidMatch = identifier.match(/\bPMID\s*:?\s*(\d+)\b/i);
+    const plainMatch = identifier.match(/^\d+$/);
+    const id = pmidMatch?.[1] ?? plainMatch?.[0];
+
+    if (id) {
+      ids.push(id);
+    }
+  }
+
+  const urlMatch = reference.url.match(/pubmed\.ncbi\.nlm\.nih\.gov\/(\d+)/i);
+
+  if (urlMatch?.[1]) {
+    ids.push(urlMatch[1]);
+  }
+
+  return ids;
+}
+
+function readClinicalTrialReferenceIds(reference: DbReference) {
+  const ids = new Set<string>();
+
+  for (const value of [reference.identifier, reference.url]) {
+    const matches = value?.match(/\bNCT[A-Z0-9]+\b/gi) ?? [];
+
+    for (const match of matches) {
+      ids.add(match.toUpperCase());
+    }
+  }
+
+  return Array.from(ids);
 }
 
 function jsonObject(value: Record<string, unknown>) {
