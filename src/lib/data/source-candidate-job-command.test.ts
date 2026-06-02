@@ -49,6 +49,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     });
   });
 
+  it("parses read-only source-candidate detail mode", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toEqual({
+      candidateDetailDedupeKey: "pubmed|au|creatine|28615996",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+  });
+
   it("parses source-candidate review modes", () => {
     expect(
       parseSourceCandidateJobCommandArgs([
@@ -207,6 +221,72 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--summary", "--job-id", "job-pubmed"])
     ).toThrow("--summary is read-only and cannot be combined with run options.");
+  });
+
+  it("does not combine source-candidate detail mode with other command modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996",
+        "--summary"
+      ])
+    ).toThrow("--candidate-detail cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996",
+        "--candidates"
+      ])
+    ).toThrow("--candidate-detail cannot be combined with --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996",
+        "--candidate-decision",
+        "accepted"
+      ])
+    ).toThrow("Candidate-list filters cannot be combined with --candidate-detail.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996",
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ])
+    ).toThrow("--candidate-detail cannot be combined with review options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996",
+        "--jobs"
+      ])
+    ).toThrow("--candidate-detail cannot be combined with --jobs.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996",
+        "--queue-pubmed",
+        "creatine"
+      ])
+    ).toThrow("--candidate-detail cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996",
+        "--region",
+        "AU"
+      ])
+    ).toThrow("--candidate-detail cannot be combined with queue metadata.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996",
+        "--limit",
+        "2"
+      ])
+    ).toThrow("--candidate-detail cannot be combined with run options.");
   });
 
   it("requires explicit and isolated source-candidate review options", () => {
@@ -446,6 +526,150 @@ describe("runSourceCandidateJobCommand", () => {
         "- PubMed AU Pending review / Unreviewed AI draft: 3",
         "- ClinicalTrials.gov AU Accepted / Human reviewed: 1"
       ].join("\n")
+    );
+  });
+
+  it("prints one read-only source-candidate detail record", async () => {
+    const stdout = vi.fn();
+    const getCandidate = vi.fn().mockResolvedValue(
+      sourceCandidate({
+        decision: "Accepted",
+        reviewStatus: "Human reviewed",
+        interventionId: "creatine",
+        claimId: "creatine-strength",
+        ingestionJobId: "job-pubmed",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        reviewedAt: "2026-06-02T03:00:00.000Z",
+        reviewNote: "Matched PMID and claim context.",
+        metadata: {
+          authors: ["Smith J", "Jones A"],
+          journal: "Example Journal",
+          nested: {
+            ignored: true
+          },
+          unknownScalar: "ignored",
+          publicationDate: "2017-06-13",
+          score: 3
+        }
+      })
+    );
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-detail", "pubmed|au|creatine|28615996"],
+        { stdout },
+        { getCandidate, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(getCandidate).toHaveBeenCalledWith("pubmed|au|creatine|28615996");
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate detail",
+        'dedupe="pubmed|au|creatine|28615996"',
+        'source="PubMed"',
+        'externalId="28615996"',
+        'region="AU"',
+        'query="creatine strength"',
+        'title="Creatine position stand"',
+        "url=https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        "triage=80/100",
+        'decision="Accepted"',
+        'reviewStatus="Human reviewed"',
+        "publishedYear=2017",
+        'sourceType="Review"',
+        "abstractAvailable=true",
+        "intervention=creatine",
+        "claim=creatine-strength",
+        "ingestionJob=job-pubmed",
+        "acceptedReference=ref-creatine-position-stand",
+        "reviewed=2026-06-02T03:00:00.000Z",
+        'reviewNote="Matched PMID and claim context."',
+        "triageReasons:",
+        '  - "Title matches query"',
+        "metadata:",
+        '  authors="Smith J, Jones A"',
+        '  journal="Example Journal"',
+        '  publicationDate="2017-06-13"'
+      ].join("\n")
+    );
+  });
+
+  it("escapes multiline detail values and bounds metadata arrays", async () => {
+    const stdout = vi.fn();
+    const getCandidate = vi.fn().mockResolvedValue(
+      sourceCandidate({
+        query: "creatine\tstrength",
+        title: "Creatine\nposition \u001b[31m",
+        triageReasons: ["First\nreason", "Second \u001b[31m"],
+        reviewNote: "Line 1\nLine 2",
+        metadata: {
+          authors: ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"],
+          doi: null,
+          journal: "Journal\nName",
+          nested: {
+            ignored: true
+          },
+          upstreamSource: "PubMed\u001b[0m"
+        }
+      })
+    );
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-detail", "pubmed|au|creatine|28615996"],
+        { stdout },
+        { getCandidate }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate detail",
+        'dedupe="pubmed|au|creatine|28615996"',
+        'source="PubMed"',
+        'externalId="28615996"',
+        'region="AU"',
+        'query="creatine\\tstrength"',
+        'title="Creatine\\nposition \\u001b[31m"',
+        "url=https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        "triage=80/100",
+        'decision="Pending review"',
+        'reviewStatus="Unreviewed AI draft"',
+        "publishedYear=2017",
+        'sourceType="Review"',
+        "abstractAvailable=true",
+        'reviewNote="Line 1\\nLine 2"',
+        "triageReasons:",
+        '  - "First\\nreason"',
+        '  - "Second \\u001b[31m"',
+        "metadata:",
+        '  authors="A1, A2, A3, A4, A5, A6, A7, A8, +2 more"',
+        '  journal="Journal\\nName"',
+        '  upstreamSource="PubMed\\u001b[0m"'
+      ].join("\n")
+    );
+  });
+
+  it("returns a failing exit code when source-candidate detail is missing", async () => {
+    const stderr = vi.fn();
+    const getCandidate = vi.fn().mockResolvedValue(null);
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-detail", "missing-candidate"],
+        { stderr },
+        { getCandidate, runNextJob }
+      )
+    ).resolves.toBe(1);
+
+    expect(getCandidate).toHaveBeenCalledWith("missing-candidate");
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(
+      'Source candidate not found: "missing-candidate"'
     );
   });
 

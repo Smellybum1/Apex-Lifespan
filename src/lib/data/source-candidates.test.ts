@@ -27,6 +27,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 import {
+  getSourceCandidateByDedupeKey,
   listSourceCandidateReviewQueue,
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
@@ -197,6 +198,45 @@ describe("listSourceCandidateReviewQueue", () => {
       orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
       take: 1
     });
+  });
+});
+
+describe("getSourceCandidateByDedupeKey", () => {
+  it("returns one source candidate by dedupe key", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        metadata: {
+          journal: "Example Journal"
+        }
+      })
+    );
+
+    await expect(
+      getSourceCandidateByDedupeKey(
+        "pubmed|au|creatine|28615996|creatine|creatine-strength"
+      )
+    ).resolves.toEqual(
+      expect.objectContaining({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        source: "PubMed",
+        externalId: "28615996",
+        metadata: {
+          journal: "Example Journal"
+        }
+      })
+    );
+
+    expect(prismaMocks.sourceCandidateFindUnique).toHaveBeenCalledWith({
+      where: {
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength"
+      }
+    });
+  });
+
+  it("returns null when the source candidate is missing", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(null);
+
+    await expect(getSourceCandidateByDedupeKey("missing-candidate")).resolves.toBeNull();
   });
 });
 

@@ -11,6 +11,7 @@ import {
   type SourceCandidateIngestionJobRunResult
 } from "@/lib/data/source-candidate-jobs";
 import {
+  getSourceCandidateByDedupeKey,
   listSourceCandidateReviewQueue,
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
@@ -27,6 +28,7 @@ import type {
 export interface SourceCandidateJobCommandOptions
   extends SourceCandidateIngestionJobOptions {
   acceptedReferenceId?: string;
+  candidateDetailDedupeKey?: string;
   candidateDecision?: SourceCandidateDecision;
   candidateSource?: SourceCandidateSource;
   candidates?: boolean;
@@ -53,6 +55,7 @@ export interface SourceCandidateJobCommandIo {
 }
 
 export interface SourceCandidateJobCommandRunners {
+  getCandidate?: (dedupeKey: string) => Promise<SourceCandidate | null>;
   listCandidates?: (options: {
     decision?: SourceCandidateDecision;
     limit?: number;
@@ -79,6 +82,30 @@ export interface SourceCandidateJobCommandRunners {
 
 const DEFAULT_JOB_LIMIT = 1;
 const MAX_JOB_LIMIT = 25;
+const MAX_METADATA_ARRAY_ITEMS = 8;
+const MAX_METADATA_VALUE_LENGTH = 240;
+const PRINTABLE_METADATA_KEYS = new Set([
+  "abstractAvailable",
+  "authors",
+  "completionDate",
+  "conditions",
+  "doi",
+  "enrollment",
+  "enrollmentCount",
+  "hasResults",
+  "interventions",
+  "journal",
+  "lastUpdateDate",
+  "phase",
+  "primaryOutcomes",
+  "publicationDate",
+  "publicationTypes",
+  "resultsFirstPostDate",
+  "sponsor",
+  "startDate",
+  "status",
+  "upstreamSource"
+]);
 
 export async function runSourceCandidateJobCommand(
   args: readonly string[] = process.argv.slice(2),
@@ -87,6 +114,7 @@ export async function runSourceCandidateJobCommand(
 ) {
   const stdout = io.stdout ?? console.log;
   const stderr = io.stderr ?? console.error;
+  const getCandidate = runners.getCandidate ?? getSourceCandidateByDedupeKey;
   const listCandidates = runners.listCandidates ?? listSourceCandidateReviewQueue;
   const listJobs = runners.listJobs ?? listSourceCandidateIngestionJobs;
   const queueJob = runners.queueJob ?? queueSourceCandidateIngestionJob;
@@ -111,6 +139,20 @@ export async function runSourceCandidateJobCommand(
   }
 
   try {
+    if (options.candidateDetailDedupeKey) {
+      const candidate = await getCandidate(options.candidateDetailDedupeKey);
+
+      if (!candidate) {
+        stderr(
+          `Source candidate not found: ${quote(options.candidateDetailDedupeKey)}`
+        );
+        return 1;
+      }
+
+      stdout(formatSourceCandidateDetail(candidate));
+      return 0;
+    }
+
     if (options.reviewDecision && options.reviewCandidateDedupeKey) {
       const candidate = await recordDecision({
         dedupeKey: options.reviewCandidateDedupeKey,
@@ -216,6 +258,12 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--summary") {
       options.summary = true;
+      continue;
+    }
+
+    if (arg === "--candidate-detail") {
+      options.candidateDetailDedupeKey = readRequiredValue(args, index, arg);
+      index += 1;
       continue;
     }
 
@@ -354,6 +402,47 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--job-id runs exactly one job and cannot be combined with --limit.");
   }
 
+  if (options.candidateDetailDedupeKey && options.summary) {
+    throw new Error("--candidate-detail cannot be combined with --summary.");
+  }
+
+  if (options.candidateDetailDedupeKey && options.candidates) {
+    throw new Error("--candidate-detail cannot be combined with --candidates.");
+  }
+
+  if (
+    options.candidateDetailDedupeKey &&
+    (candidatesLimitProvided || options.candidateSource || candidateDecisionProvided)
+  ) {
+    throw new Error("Candidate-list filters cannot be combined with --candidate-detail.");
+  }
+
+  if (options.candidateDetailDedupeKey && options.reviewDecision) {
+    throw new Error("--candidate-detail cannot be combined with review options.");
+  }
+
+  if (options.candidateDetailDedupeKey && options.jobs) {
+    throw new Error("--candidate-detail cannot be combined with --jobs.");
+  }
+
+  if (options.candidateDetailDedupeKey && options.queueSource) {
+    throw new Error("--candidate-detail cannot be combined with queue options.");
+  }
+
+  if (
+    options.candidateDetailDedupeKey &&
+    (options.region || options.interventionId || options.claimId)
+  ) {
+    throw new Error("--candidate-detail cannot be combined with queue metadata.");
+  }
+
+  if (
+    options.candidateDetailDedupeKey &&
+    (options.jobId || limitProvided || sourceLimitProvided)
+  ) {
+    throw new Error("--candidate-detail cannot be combined with run options.");
+  }
+
   if (acceptedReferenceIdProvided && options.reviewDecision !== "Accepted") {
     throw new Error("--accepted-reference-id requires --accept-candidate.");
   }
@@ -464,6 +553,7 @@ export function commandUsage() {
     "Options:",
     "  --job-id <id>                     Run one specific ingestion job.",
     "  --limit <count>                   Run up to count queued jobs (default 1, max 25).",
+    "  --candidate-detail <dedupe-key>   Print one source-candidate detail record.",
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
     "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
     "  --accepted-reference-id <id>      Required curated reference id for --accept-candidate.",
@@ -563,6 +653,69 @@ function formatReviewedSourceCandidate(candidate: SourceCandidate) {
   }
 
   return parts.join(" ");
+}
+
+function formatSourceCandidateDetail(candidate: SourceCandidate) {
+  const lines = [
+    "Source-candidate detail",
+    `dedupe=${quote(candidate.dedupeKey)}`,
+    `source=${quote(candidate.source)}`,
+    `externalId=${quote(candidate.externalId)}`,
+    `region=${quote(candidate.region)}`,
+    `query=${quote(candidate.query)}`,
+    `title=${quote(candidate.title)}`,
+    `url=${candidate.url}`,
+    `triage=${candidate.triageScore}/100`,
+    `decision=${quote(candidate.decision)}`,
+    `reviewStatus=${quote(candidate.reviewStatus)}`
+  ];
+
+  if (candidate.publishedYear !== undefined) {
+    lines.push(`publishedYear=${candidate.publishedYear}`);
+  }
+
+  if (candidate.sourceType) {
+    lines.push(`sourceType=${quote(candidate.sourceType)}`);
+  }
+
+  if (candidate.abstractAvailable !== undefined) {
+    lines.push(`abstractAvailable=${candidate.abstractAvailable}`);
+  }
+
+  if (candidate.interventionId) {
+    lines.push(`intervention=${candidate.interventionId}`);
+  }
+
+  if (candidate.claimId) {
+    lines.push(`claim=${candidate.claimId}`);
+  }
+
+  if (candidate.ingestionJobId) {
+    lines.push(`ingestionJob=${candidate.ingestionJobId}`);
+  }
+
+  if (candidate.acceptedReferenceId) {
+    lines.push(`acceptedReference=${candidate.acceptedReferenceId}`);
+  }
+
+  if (candidate.reviewedAt) {
+    lines.push(`reviewed=${candidate.reviewedAt}`);
+  }
+
+  if (candidate.reviewNote) {
+    lines.push(`reviewNote=${quote(candidate.reviewNote)}`);
+  }
+
+  lines.push(formatStringList("triageReasons", candidate.triageReasons));
+
+  const metadataLines = formatMetadata(candidate.metadata);
+
+  if (metadataLines.length > 0) {
+    lines.push("metadata:");
+    lines.push(...metadataLines.map((line) => `  ${line}`));
+  }
+
+  return lines.join("\n");
 }
 
 function formatSourceCandidateReviewQueue(
@@ -668,6 +821,61 @@ function formatSourceCandidateBacklogSummary(summary: SourceCandidateBacklogSumm
   ].join("\n");
 }
 
+function formatStringList(label: string, values: string[]) {
+  if (values.length === 0) {
+    return `${label}: none`;
+  }
+
+  return [`${label}:`, ...values.map((value) => `  - ${quote(value)}`)].join("\n");
+}
+
+function formatMetadata(metadata: Record<string, unknown>) {
+  return Object.entries(metadata)
+    .filter(([key, value]) => PRINTABLE_METADATA_KEYS.has(key) && isPrintableMetadataValue(value))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}=${formatMetadataValue(value)}`);
+}
+
+function formatMetadataValue(value: unknown): string {
+  if (Array.isArray(value)) {
+    const visibleItems = value.slice(0, MAX_METADATA_ARRAY_ITEMS).map(formatMetadataScalar);
+    const suffix =
+      value.length > MAX_METADATA_ARRAY_ITEMS
+        ? `, +${value.length - MAX_METADATA_ARRAY_ITEMS} more`
+        : "";
+
+    return quote(`${visibleItems.join(", ")}${suffix}`);
+  }
+
+  if (typeof value === "string") {
+    return quote(formatMetadataScalar(value));
+  }
+
+  return formatMetadataScalar(value);
+}
+
+function isPrintableMetadataValue(value: unknown) {
+  if (value === null) {
+    return false;
+  }
+
+  if (["string", "number", "boolean"].includes(typeof value)) {
+    return true;
+  }
+
+  return Array.isArray(value) && value.every((item) => item !== null && typeof item !== "object");
+}
+
+function formatMetadataScalar(value: unknown) {
+  const text = String(value);
+
+  if (text.length <= MAX_METADATA_VALUE_LENGTH) {
+    return text;
+  }
+
+  return `${text.slice(0, MAX_METADATA_VALUE_LENGTH - 3)}...`;
+}
+
 function readRequiredValue(args: readonly string[], index: number, option: string) {
   const value = args[index + 1];
 
@@ -757,5 +965,5 @@ function setCandidateReviewOption(
 }
 
 function quote(value: string) {
-  return `"${value.replace(/"/g, '\\"')}"`;
+  return JSON.stringify(value);
 }

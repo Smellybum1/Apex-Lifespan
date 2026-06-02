@@ -113,6 +113,18 @@ export async function listSourceCandidateReviewQueue(
   return candidates.map(mapDbSourceCandidate);
 }
 
+export async function getSourceCandidateByDedupeKey(
+  dedupeKey: string
+): Promise<SourceCandidate | null> {
+  const candidate = await prisma.sourceCandidate.findUnique({
+    where: {
+      dedupeKey
+    }
+  });
+
+  return candidate ? mapDbSourceCandidate(candidate) : null;
+}
+
 export async function summarizeSourceCandidateBacklog(): Promise<SourceCandidateBacklogSummary> {
   const groups = await prisma.sourceCandidate.groupBy({
     by: ["source", "region", "decision", "reviewStatus"],
