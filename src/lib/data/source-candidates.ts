@@ -115,6 +115,41 @@ export interface SourceCandidateCurationStatus {
   studies: SourceCandidateCurationStudy[];
 }
 
+export interface SourceCandidateCurationClaimLinkDraft {
+  alreadyLinked: boolean;
+  claimId: string;
+  note: string;
+  referenceId: string;
+  relevance: number;
+}
+
+export interface SourceCandidateCurationDraftMetadataField {
+  label: string;
+  value: string;
+}
+
+export interface SourceCandidateCurationStudyExtractionDraft {
+  abstractAvailable?: boolean;
+  alreadyExtracted: boolean;
+  doi?: string;
+  manualFields: string[];
+  metadataFields: SourceCandidateCurationDraftMetadataField[];
+  nctId?: string;
+  pmid?: string;
+  referenceId: string;
+  source: SourceCandidateSource;
+  sourceTypeSuggestion: string;
+  title: string;
+  url: string;
+  year?: number;
+}
+
+export interface SourceCandidateCurationDraft {
+  claimLinkDraft?: SourceCandidateCurationClaimLinkDraft;
+  status: SourceCandidateCurationStatus;
+  studyExtractionDraft?: SourceCandidateCurationStudyExtractionDraft;
+}
+
 export interface SourceCandidateCurationHandoffOptions {
   claimId?: string;
   ingestionJobId?: string;
@@ -144,6 +179,15 @@ const MAX_CURATION_HANDOFF_LIMIT = 50;
 const DEFAULT_SIBLING_LIMIT = 25;
 const MAX_SIBLING_LIMIT = 50;
 const MAX_REFERENCE_MATCH_CANDIDATES = 50;
+const MANUAL_STUDY_EXTRACTION_FIELDS = [
+  "sampleSize",
+  "population",
+  "interventionName",
+  "outcomes",
+  "adverseEvents",
+  "fundingConflicts",
+  "riskOfBias"
+];
 const CURATION_HANDOFF_STATUS_ORDER: SourceCandidateCurationStatusKind[] = [
   "Accepted reference missing",
   "Accepted reference mismatch",
@@ -374,6 +418,22 @@ export async function getSourceCandidateCurationStatus(
     status: curationStatusKind(mappedClaimLinks, mappedStudies, candidateClaimLinked),
     studies: mappedStudies
   });
+}
+
+export async function getSourceCandidateCurationDraft(
+  dedupeKey: string
+): Promise<SourceCandidateCurationDraft | null> {
+  const status = await getSourceCandidateCurationStatus(dedupeKey);
+
+  if (!status) {
+    return null;
+  }
+
+  return {
+    claimLinkDraft: sourceCandidateClaimLinkDraft(status),
+    status,
+    studyExtractionDraft: sourceCandidateStudyExtractionDraft(status)
+  };
 }
 
 export async function listSourceCandidateCurationHandoff(
@@ -839,6 +899,172 @@ function sourceCandidateCurationStatus({
     status,
     studies
   };
+}
+
+function sourceCandidateClaimLinkDraft(
+  status: SourceCandidateCurationStatus
+): SourceCandidateCurationClaimLinkDraft | undefined {
+  const candidate = status.candidate;
+
+  if (
+    !isDraftableAcceptedReferenceStatus(status) ||
+    !candidate.claimId ||
+    !status.acceptedReferenceId
+  ) {
+    return undefined;
+  }
+
+  return {
+    alreadyLinked: status.candidateClaimLinked === true,
+    claimId: candidate.claimId,
+    note: `Accepted ${candidate.source} candidate ${candidate.externalId}: ${candidate.title}`,
+    referenceId: status.acceptedReferenceId,
+    relevance: 5
+  };
+}
+
+function sourceCandidateStudyExtractionDraft(
+  status: SourceCandidateCurationStatus
+): SourceCandidateCurationStudyExtractionDraft | undefined {
+  const candidate = status.candidate;
+
+  if (!isDraftableAcceptedReferenceStatus(status) || !status.acceptedReferenceId) {
+    return undefined;
+  }
+
+  return {
+    abstractAvailable: candidate.abstractAvailable,
+    alreadyExtracted: status.studies.length > 0,
+    doi: metadataString(candidate.metadata, "doi"),
+    manualFields: MANUAL_STUDY_EXTRACTION_FIELDS,
+    metadataFields: curationDraftMetadataFields(candidate),
+    nctId:
+      candidate.source === "ClinicalTrials.gov"
+        ? normaliseNctId(candidate.externalId)
+        : undefined,
+    pmid:
+      candidate.source === "PubMed"
+        ? normalisePubMedId(candidate.externalId)
+        : undefined,
+    referenceId: status.acceptedReferenceId,
+    source: candidate.source,
+    sourceTypeSuggestion: sourceCandidateStudyTypeSuggestion(candidate),
+    title: candidate.title,
+    url: candidate.url,
+    year: candidate.publishedYear
+  };
+}
+
+function isDraftableAcceptedReferenceStatus(status: SourceCandidateCurationStatus) {
+  return Boolean(
+    status.acceptedReference &&
+      status.status !== "Not accepted" &&
+      status.status !== "Accepted reference missing" &&
+      status.status !== "Accepted reference mismatch"
+  );
+}
+
+function sourceCandidateStudyTypeSuggestion(candidate: SourceCandidate) {
+  if (candidate.source === "ClinicalTrials.gov") {
+    return "CLINICAL_TRIAL_RECORD";
+  }
+
+  const sourceText = [
+    candidate.sourceType,
+    ...metadataStringArray(candidate.metadata, "publicationTypes")
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  if (sourceText.includes("meta-analysis")) {
+    return "META_ANALYSIS";
+  }
+
+  if (sourceText.includes("systematic review")) {
+    return "SYSTEMATIC_REVIEW";
+  }
+
+  if (sourceText.includes("randomized") || sourceText.includes("clinical trial")) {
+    return "RANDOMIZED_CONTROLLED_TRIAL";
+  }
+
+  if (sourceText.includes("review")) {
+    return "SYSTEMATIC_REVIEW";
+  }
+
+  return "Manual review required";
+}
+
+function curationDraftMetadataFields(
+  candidate: SourceCandidate
+): SourceCandidateCurationDraftMetadataField[] {
+  const fields: SourceCandidateCurationDraftMetadataField[] = [];
+
+  for (const key of [
+    "journal",
+    "publicationDate",
+    "publicationTypes",
+    "authors",
+    "doi",
+    "status",
+    "phase",
+    "enrollment",
+    "conditions",
+    "interventions",
+    "primaryOutcomes",
+    "hasResults",
+    "resultsFirstPostDate",
+    "sponsor",
+    "lastUpdateDate"
+  ]) {
+    const value = metadataDisplayValue(candidate.metadata, key);
+
+    if (value) {
+      fields.push({
+        label: key,
+        value
+      });
+    }
+  }
+
+  return fields;
+}
+
+function metadataDisplayValue(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+
+  if (Array.isArray(value)) {
+    const items = value.filter(
+      (item): item is string | number | boolean =>
+        ["string", "number", "boolean"].includes(typeof item)
+    );
+
+    return items.length > 0 ? items.join(", ") : undefined;
+  }
+
+  if (["string", "number", "boolean"].includes(typeof value)) {
+    return String(value);
+  }
+
+  return undefined;
+}
+
+function metadataString(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function metadataStringArray(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is string => typeof item === "string" && item.trim().length > 0
+  );
 }
 
 function curationNextAction(status: SourceCandidateCurationStatusKind) {

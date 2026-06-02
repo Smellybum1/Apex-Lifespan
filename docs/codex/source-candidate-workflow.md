@@ -46,6 +46,7 @@ npm run ingest:sources -- --candidates --candidate-claim-id <claim-id>
 npm run ingest:sources -- --candidates --candidate-decision accepted
 npm run ingest:sources -- --candidates --candidate-decision rejected
 npm run ingest:sources -- --candidate-detail <dedupe-key>
+npm run ingest:sources -- --candidate-curation-draft <dedupe-key>
 npm run ingest:sources -- --candidate-siblings <dedupe-key>
 npm run ingest:sources -- --candidate-siblings <dedupe-key> --candidate-siblings-limit 10
 npm run ingest:sources -- --candidate-reference-matches <dedupe-key>
@@ -80,6 +81,7 @@ npm run ingest:sources -- --clinical-trial-page-size 10
 - `--jobs` reports recent job ids, statuses, counts, stored context, and errors.
 - `--candidates` defaults to pending rows and can filter by source, job, intervention, claim, or decision.
 - `--candidate-detail` prints one candidate with triage reasons, review fields, and compact metadata.
+- `--candidate-curation-draft` prints one candidate's accepted-reference status plus read-only claim-link and study-extraction draft fields; it does not create references, claim links, studies, or decisions.
 - `--candidate-siblings` prints the target candidate plus same-source/external-id and same-query/context sibling rows with match reasons; it is read-only curation context, not review automation.
 - `--candidate-reference-matches` prints candidate identity plus curated references eligible for acceptance.
 - `--candidate-curation-status` reports candidate-claim, accepted-reference, claim-link, extraction, readiness, and next action for one candidate.

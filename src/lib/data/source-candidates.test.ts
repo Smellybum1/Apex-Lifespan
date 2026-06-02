@@ -37,6 +37,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 import {
+  getSourceCandidateCurationDraft,
   getSourceCandidateCurationStatus,
   getSourceCandidateByDedupeKey,
   listSourceCandidateAcceptedReferenceMatches,
@@ -859,6 +860,121 @@ describe("getSourceCandidateCurationStatus", () => {
     await expect(
       getSourceCandidateCurationStatus("missing-candidate")
     ).resolves.toBeNull();
+  });
+});
+
+describe("getSourceCandidateCurationDraft", () => {
+  it("drafts claim-link and study-extraction fields for accepted candidates", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        sourceType: "Review",
+        metadata: {
+          authors: ["Kreider RB", "Kalman DS"],
+          doi: "10.1186/s12970-017-0173-z",
+          journal: "Journal of the International Society of Sports Nutrition",
+          publicationDate: "2017 Jun 13",
+          publicationTypes: ["Journal Article", "Review"]
+        }
+      })
+    );
+    prismaMocks.claimReferenceFindMany.mockResolvedValue([]);
+    prismaMocks.studyFindMany.mockResolvedValue([]);
+
+    await expect(
+      getSourceCandidateCurationDraft(
+        "pubmed|au|creatine|28615996|creatine|creatine-strength"
+      )
+    ).resolves.toEqual({
+      claimLinkDraft: {
+        alreadyLinked: false,
+        claimId: "creatine-strength",
+        note:
+          "Accepted PubMed candidate 28615996: Creatine position stand",
+        referenceId: "ref-creatine-position-stand",
+        relevance: 5
+      },
+      status: expect.objectContaining({
+        acceptedReferenceId: "ref-creatine-position-stand",
+        candidateClaimLinked: false,
+        publicSourcePacketReady: false,
+        status: "Claim link missing"
+      }),
+      studyExtractionDraft: {
+        abstractAvailable: true,
+        alreadyExtracted: false,
+        doi: "10.1186/s12970-017-0173-z",
+        manualFields: [
+          "sampleSize",
+          "population",
+          "interventionName",
+          "outcomes",
+          "adverseEvents",
+          "fundingConflicts",
+          "riskOfBias"
+        ],
+        metadataFields: [
+          {
+            label: "journal",
+            value: "Journal of the International Society of Sports Nutrition"
+          },
+          {
+            label: "publicationDate",
+            value: "2017 Jun 13"
+          },
+          {
+            label: "publicationTypes",
+            value: "Journal Article, Review"
+          },
+          {
+            label: "authors",
+            value: "Kreider RB, Kalman DS"
+          },
+          {
+            label: "doi",
+            value: "10.1186/s12970-017-0173-z"
+          }
+        ],
+        nctId: undefined,
+        pmid: "28615996",
+        referenceId: "ref-creatine-position-stand",
+        source: "PubMed",
+        sourceTypeSuggestion: "SYSTEMATIC_REVIEW",
+        title: "Creatine position stand",
+        url: "https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        year: 2017
+      }
+    });
+  });
+
+  it("reports blockers without draft fields for candidates that are not accepted", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(dbSourceCandidate());
+
+    await expect(
+      getSourceCandidateCurationDraft(
+        "pubmed|au|creatine|28615996|creatine|creatine-strength"
+      )
+    ).resolves.toEqual({
+      claimLinkDraft: undefined,
+      status: expect.objectContaining({
+        nextAction: "Accept with a matching curated reference before curation handoff.",
+        publicSourcePacketReady: false,
+        status: "Not accepted"
+      }),
+      studyExtractionDraft: undefined
+    });
+
+    expect(prismaMocks.referenceFindUnique).not.toHaveBeenCalled();
+    expect(prismaMocks.claimReferenceFindMany).not.toHaveBeenCalled();
+    expect(prismaMocks.studyFindMany).not.toHaveBeenCalled();
+  });
+
+  it("returns null when the source candidate is missing", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(null);
+
+    await expect(getSourceCandidateCurationDraft("missing-candidate")).resolves.toBeNull();
   });
 });
 

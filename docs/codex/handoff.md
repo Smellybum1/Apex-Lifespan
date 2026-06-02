@@ -32,6 +32,9 @@ Created for a new Codex thread on 2026-06-02.
 - Added a read-only same-identity candidate sibling view:
   - `--candidate-siblings <dedupe-key>` shows same-source/external-id and same-query/context rows with match reasons;
   - output stays local/operator-only and does not automate source-candidate decisions.
+- Added a read-only source-candidate curation draft view:
+  - `--candidate-curation-draft <dedupe-key>` shows accepted-reference blockers plus claim-link and study-extraction draft fields;
+  - output stays local/operator-only and does not create references, claim links, study extractions, or decisions.
 - Scoped source-candidate ingestion-job identity:
   - `IngestionJob` now has first-class `interventionId` and `claimId`;
   - migration `20260602061000_ingestion_job_context_identity` backfills valid legacy metadata context;
@@ -63,7 +66,7 @@ Created for a new Codex thread on 2026-06-02.
   - `docker compose up -d postgres`
   - `npm run db:migrate`
   - `npm run db:seed`
-- Later, design an operator workflow to create or curate references/extractions from accepted candidates without auto-promoting public evidence.
+- Later, decide whether to add guarded local write commands for claim links or study extractions; keep public promotion human-reviewed and never automatic.
 
 ## Guardrails
 

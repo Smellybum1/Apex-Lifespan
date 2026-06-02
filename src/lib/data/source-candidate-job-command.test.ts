@@ -15,6 +15,9 @@ describe("commandUsage", () => {
       "--candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons."
     );
     expect(commandUsage()).toContain(
+      "--candidate-curation-draft <dedupe-key> Print read-only claim-link and study-extraction draft fields."
+    );
+    expect(commandUsage()).toContain(
       "--candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
     );
     expect(commandUsage()).toContain(
@@ -119,6 +122,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       ])
     ).toEqual({
       candidateCurationStatusDedupeKey: "pubmed|au|creatine|28615996",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+  });
+
+  it("parses read-only source-candidate curation draft mode", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toEqual({
+      candidateCurationDraftDedupeKey: "pubmed|au|creatine|28615996",
       help: false,
       limit: 1,
       summary: false
@@ -527,6 +544,110 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "2"
       ])
     ).toThrow("--candidate-curation-status cannot be combined with run options.");
+  });
+
+  it("does not combine source-candidate curation draft mode with other command modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996",
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow("--candidate-curation-draft cannot be combined with --candidate-detail.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996",
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow(
+      "--candidate-curation-draft cannot be combined with --candidate-curation-status."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996",
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow(
+      "--candidate-curation-draft cannot be combined with --candidate-reference-matches."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996",
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow("--candidate-curation-draft cannot be combined with --candidate-siblings.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996",
+        "--summary"
+      ])
+    ).toThrow("--candidate-curation-draft cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996",
+        "--candidates"
+      ])
+    ).toThrow("--candidate-curation-draft cannot be combined with --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996",
+        "--candidate-claim-id",
+        "creatine-strength"
+      ])
+    ).toThrow(
+      "Candidate-list filters cannot be combined with --candidate-curation-draft."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996",
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ])
+    ).toThrow("--candidate-curation-draft cannot be combined with review options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996",
+        "--jobs"
+      ])
+    ).toThrow("--candidate-curation-draft cannot be combined with --jobs.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996",
+        "--queue-pubmed",
+        "creatine"
+      ])
+    ).toThrow("--candidate-curation-draft cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996",
+        "--region",
+        "AU"
+      ])
+    ).toThrow("--candidate-curation-draft cannot be combined with queue metadata.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-draft",
+        "pubmed|au|creatine|28615996",
+        "--limit",
+        "2"
+      ])
+    ).toThrow("--candidate-curation-draft cannot be combined with run options.");
   });
 
   it("does not combine source-candidate curation handoff mode with other command modes", () => {
@@ -1467,6 +1588,181 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(1);
 
     expect(getCurationStatus).toHaveBeenCalledWith("missing-candidate");
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(
+      'Source candidate not found: "missing-candidate"'
+    );
+  });
+
+  it("prints a read-only curation draft for accepted candidates", async () => {
+    const stdout = vi.fn();
+    const getCurationDraft = vi.fn().mockResolvedValue({
+      claimLinkDraft: {
+        alreadyLinked: false,
+        claimId: "creatine-strength",
+        note: "Accepted PubMed candidate 28615996: Creatine position stand",
+        referenceId: "ref-creatine-position-stand",
+        relevance: 5
+      },
+      status: {
+        acceptedReference: {
+          id: "ref-creatine-position-stand",
+          title: "Creatine position stand",
+          source: "PubMed",
+          identifier: "PMID: 28615996",
+          year: 2017,
+          url: "https://pubmed.ncbi.nlm.nih.gov/28615996/"
+        },
+        acceptedReferenceId: "ref-creatine-position-stand",
+        candidate: sourceCandidate({
+          decision: "Accepted",
+          reviewStatus: "Human reviewed",
+          acceptedReferenceId: "ref-creatine-position-stand",
+          claimId: "creatine-strength"
+        }),
+        candidateClaimLinked: false,
+        claimLinks: [],
+        nextAction:
+          "Link the accepted reference to the candidate claim before public packet review.",
+        publicSourcePacketReady: false,
+        status: "Claim link missing",
+        studies: []
+      },
+      studyExtractionDraft: {
+        abstractAvailable: true,
+        alreadyExtracted: false,
+        doi: "10.1186/s12970-017-0173-z",
+        manualFields: [
+          "sampleSize",
+          "population",
+          "interventionName",
+          "outcomes",
+          "adverseEvents",
+          "fundingConflicts",
+          "riskOfBias"
+        ],
+        metadataFields: [
+          {
+            label: "journal",
+            value: "Journal of the International Society of Sports Nutrition"
+          },
+          {
+            label: "publicationTypes",
+            value: "Journal Article, Review"
+          }
+        ],
+        pmid: "28615996",
+        referenceId: "ref-creatine-position-stand",
+        source: "PubMed",
+        sourceTypeSuggestion: "SYSTEMATIC_REVIEW",
+        title: "Creatine position stand",
+        url: "https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        year: 2017
+      }
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-curation-draft", "pubmed|au|creatine|28615996"],
+        { stdout },
+        { getCurationDraft, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(getCurationDraft).toHaveBeenCalledWith("pubmed|au|creatine|28615996");
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate curation draft",
+        "readOnly=true",
+        'dedupe="pubmed|au|creatine|28615996"',
+        'decision="Accepted"',
+        'reviewStatus="Human reviewed"',
+        'status="Claim link missing"',
+        'nextAction="Link the accepted reference to the candidate claim before public packet review."',
+        "publicSourcePacketReady=false",
+        "acceptedReference=ref-creatine-position-stand",
+        'acceptedReferenceTitle="Creatine position stand"',
+        "acceptedReferenceUrl=https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        "candidateClaim=creatine-strength",
+        "candidateClaimLinked=false",
+        "claimLinkDraft:",
+        "  reference=ref-creatine-position-stand",
+        "  claim=creatine-strength",
+        "  relevance=5",
+        "  alreadyLinked=false",
+        '  note="Accepted PubMed candidate 28615996: Creatine position stand"',
+        "studyExtractionDraft:",
+        "  reference=ref-creatine-position-stand",
+        '  title="Creatine position stand"',
+        '  source="PubMed"',
+        '  sourceTypeSuggestion="SYSTEMATIC_REVIEW"',
+        "  alreadyExtracted=false",
+        "  url=https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        "  year=2017",
+        "  pmid=28615996",
+        '  doi="10.1186/s12970-017-0173-z"',
+        "  abstractAvailable=true",
+        '  manualFields="sampleSize, population, interventionName, outcomes, adverseEvents, fundingConflicts, riskOfBias"',
+        "  metadataFields:",
+        '    journal="Journal of the International Society of Sports Nutrition"',
+        '    publicationTypes="Journal Article, Review"'
+      ].join("\n")
+    );
+  });
+
+  it("prints curation draft blockers without draft fields", async () => {
+    const stdout = vi.fn();
+    const getCurationDraft = vi.fn().mockResolvedValue({
+      status: {
+        candidate: sourceCandidate(),
+        claimLinks: [],
+        nextAction: "Accept with a matching curated reference before curation handoff.",
+        publicSourcePacketReady: false,
+        status: "Not accepted",
+        studies: []
+      }
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-curation-draft", "pubmed|au|creatine|28615996"],
+        { stdout },
+        { getCurationDraft }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate curation draft",
+        "readOnly=true",
+        'dedupe="pubmed|au|creatine|28615996"',
+        'decision="Pending review"',
+        'reviewStatus="Unreviewed AI draft"',
+        'status="Not accepted"',
+        'nextAction="Accept with a matching curated reference before curation handoff."',
+        "publicSourcePacketReady=false",
+        "claimLinkDraft: unavailable",
+        "studyExtractionDraft: unavailable"
+      ].join("\n")
+    );
+  });
+
+  it("returns a failing exit code when curation draft targets a missing candidate", async () => {
+    const stderr = vi.fn();
+    const getCurationDraft = vi.fn().mockResolvedValue(null);
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-curation-draft", "missing-candidate"],
+        { stderr },
+        { getCurationDraft, runNextJob }
+      )
+    ).resolves.toBe(1);
+
+    expect(getCurationDraft).toHaveBeenCalledWith("missing-candidate");
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stderr).toHaveBeenCalledWith(
       'Source candidate not found: "missing-candidate"'
