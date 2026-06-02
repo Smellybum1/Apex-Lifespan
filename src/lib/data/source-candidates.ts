@@ -81,6 +81,14 @@ export interface SourceCandidateCurationStatus {
   studies: SourceCandidateCurationStudy[];
 }
 
+export interface SourceCandidateCurationHandoffOptions {
+  claimId?: string;
+  ingestionJobId?: string;
+  interventionId?: string;
+  limit?: number;
+  source?: SourceCandidateSource;
+}
+
 export type ReviewedSourceCandidateDecision = Exclude<
   SourceCandidateDecision,
   "Pending review"
@@ -96,6 +104,8 @@ export interface RecordSourceCandidateDecisionInput {
 
 const DEFAULT_REVIEW_QUEUE_LIMIT = 25;
 const MAX_REVIEW_QUEUE_LIMIT = 100;
+const DEFAULT_CURATION_HANDOFF_LIMIT = 25;
+const MAX_CURATION_HANDOFF_LIMIT = 50;
 const MAX_REFERENCE_MATCH_CANDIDATES = 50;
 
 const sourceMap: Record<SourceCandidateSource, DbSourceKind> = {
@@ -275,6 +285,120 @@ export async function getSourceCandidateCurationStatus(
   });
 }
 
+export async function listSourceCandidateCurationHandoff(
+  options: SourceCandidateCurationHandoffOptions = {}
+): Promise<SourceCandidateCurationStatus[]> {
+  const where: Prisma.SourceCandidateWhereInput = {
+    decision: DbSourceCandidateDecision.ACCEPTED
+  };
+
+  if (options.source) {
+    where.source = sourceMap[options.source];
+  }
+
+  if (options.ingestionJobId) {
+    where.ingestionJobId = options.ingestionJobId;
+  }
+
+  if (options.interventionId) {
+    where.interventionId = options.interventionId;
+  }
+
+  if (options.claimId) {
+    where.claimId = options.claimId;
+  }
+
+  const candidates = await prisma.sourceCandidate.findMany({
+    where,
+    orderBy: [{ reviewedAt: "asc" }, { updatedAt: "desc" }],
+    take: normaliseCurationHandoffLimit(options.limit)
+  });
+  const acceptedReferenceIds = uniqueStringValues(
+    candidates.map((candidate) => candidate.acceptedReferenceId)
+  );
+
+  if (acceptedReferenceIds.length === 0) {
+    return candidates.map((candidate) =>
+      sourceCandidateCurationStatus({
+        candidate: mapDbSourceCandidate(candidate),
+        status: "Accepted reference missing"
+      })
+    );
+  }
+
+  const [acceptedReferences, claimLinks, studies] = await Promise.all([
+    prisma.reference.findMany({
+      where: {
+        id: {
+          in: acceptedReferenceIds
+        }
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }]
+    }),
+    prisma.claimReference.findMany({
+      where: {
+        referenceId: {
+          in: acceptedReferenceIds
+        }
+      },
+      orderBy: [{ referenceId: "asc" }, { claimId: "asc" }]
+    }),
+    prisma.study.findMany({
+      where: {
+        referenceId: {
+          in: acceptedReferenceIds
+        }
+      },
+      orderBy: [{ referenceId: "asc" }, { year: "desc" }, { title: "asc" }]
+    })
+  ]);
+  const referencesById = new Map(
+    acceptedReferences.map((reference) => [reference.id, reference])
+  );
+  const claimLinksByReferenceId = groupByReferenceId(claimLinks);
+  const studiesByReferenceId = groupByReferenceId(studies);
+
+  return candidates.map((candidate) => {
+    const mappedCandidate = mapDbSourceCandidate(candidate);
+    const acceptedReferenceId = candidate.acceptedReferenceId ?? undefined;
+
+    if (!acceptedReferenceId) {
+      return sourceCandidateCurationStatus({
+        candidate: mappedCandidate,
+        status: "Accepted reference missing"
+      });
+    }
+
+    const acceptedReference = referencesById.get(acceptedReferenceId);
+
+    if (!acceptedReference) {
+      return sourceCandidateCurationStatus({
+        acceptedReferenceId,
+        candidate: mappedCandidate,
+        status: "Accepted reference missing"
+      });
+    }
+
+    const mappedClaimLinks = (claimLinksByReferenceId.get(acceptedReferenceId) ?? [])
+      .map(mapDbClaimReference);
+    const mappedStudies = (studiesByReferenceId.get(acceptedReferenceId) ?? [])
+      .map(mapDbCurationStudy);
+    const candidateClaimLinked = candidate.claimId
+      ? mappedClaimLinks.some((link) => link.claimId === candidate.claimId)
+      : undefined;
+
+    return sourceCandidateCurationStatus({
+      acceptedReference: mapDbReference(acceptedReference),
+      acceptedReferenceId,
+      candidate: mappedCandidate,
+      candidateClaimLinked,
+      claimLinks: mappedClaimLinks,
+      status: curationStatusKind(mappedClaimLinks, mappedStudies, candidateClaimLinked),
+      studies: mappedStudies
+    });
+  });
+}
+
 export async function summarizeSourceCandidateBacklog(): Promise<SourceCandidateBacklogSummary> {
   const groups = await prisma.sourceCandidate.groupBy({
     by: ["source", "region", "decision", "reviewStatus"],
@@ -408,6 +532,14 @@ function normaliseReviewQueueLimit(limit: number | undefined) {
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_REVIEW_QUEUE_LIMIT);
 }
 
+function normaliseCurationHandoffLimit(limit: number | undefined) {
+  if (limit === undefined || !Number.isFinite(limit)) {
+    return DEFAULT_CURATION_HANDOFF_LIMIT;
+  }
+
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_CURATION_HANDOFF_LIMIT);
+}
+
 function mapDbSourceCandidateBacklogGroup(group: {
   _count: {
     _all: number;
@@ -525,6 +657,24 @@ function curationStatusKind(
   }
 
   return "Public source packet ready";
+}
+
+function uniqueStringValues(values: Array<string | null>) {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+}
+
+function groupByReferenceId<T extends { referenceId: string | null }>(items: T[]) {
+  const grouped = new Map<string, T[]>();
+
+  for (const item of items) {
+    if (!item.referenceId) {
+      continue;
+    }
+
+    grouped.set(item.referenceId, [...(grouped.get(item.referenceId) ?? []), item]);
+  }
+
+  return grouped;
 }
 
 function sourceFromDb(source: DbSourceKind): SourceCandidateSource {

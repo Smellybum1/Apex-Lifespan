@@ -91,6 +91,40 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     });
   });
 
+  it("parses read-only source-candidate curation handoff mode", () => {
+    expect(parseSourceCandidateJobCommandArgs(["--candidate-curation-handoff"])).toEqual({
+      candidateCurationHandoff: true,
+      help: false,
+      limit: 1,
+      summary: false
+    });
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidate-curation-handoff-limit",
+        "200",
+        "--candidate-source",
+        "pubmed",
+        "--candidate-job-id",
+        "job-pubmed",
+        "--candidate-intervention-id",
+        "creatine",
+        "--candidate-claim-id",
+        "creatine-strength"
+      ])
+    ).toEqual({
+      candidateClaimId: "creatine-strength",
+      candidateCurationHandoff: true,
+      candidateCurationHandoffLimit: 50,
+      candidateInterventionId: "creatine",
+      candidateJobId: "job-pubmed",
+      candidateSource: "PubMed",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+  });
+
   it("parses source-candidate review modes", () => {
     expect(
       parseSourceCandidateJobCommandArgs([
@@ -418,6 +452,125 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "2"
       ])
     ).toThrow("--candidate-curation-status cannot be combined with run options.");
+  });
+
+  it("does not combine source-candidate curation handoff mode with other command modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow("--candidate-curation-handoff cannot be combined with --candidate-detail.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow(
+      "--candidate-curation-handoff cannot be combined with --candidate-curation-status."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow(
+      "--candidate-curation-handoff cannot be combined with --candidate-reference-matches."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--summary"
+      ])
+    ).toThrow("--candidate-curation-handoff cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidates"
+      ])
+    ).toThrow("--candidate-curation-handoff cannot be combined with --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidate-decision",
+        "accepted"
+      ])
+    ).toThrow(
+      "--candidate-decision cannot be combined with --candidate-curation-handoff."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidates-limit",
+        "5"
+      ])
+    ).toThrow(
+      "--candidates-limit cannot be combined with --candidate-curation-handoff."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ])
+    ).toThrow("--candidate-curation-handoff cannot be combined with review options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-curation-handoff", "--jobs"])
+    ).toThrow("--candidate-curation-handoff cannot be combined with --jobs.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--queue-pubmed",
+        "creatine"
+      ])
+    ).toThrow("--candidate-curation-handoff cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--region",
+        "AU"
+      ])
+    ).toThrow(
+      "--candidate-curation-handoff cannot be combined with queue metadata."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--limit",
+        "2"
+      ])
+    ).toThrow("--candidate-curation-handoff cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--job-id",
+        "job-pubmed"
+      ])
+    ).toThrow("--candidate-curation-handoff cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--pubmed-retmax",
+        "2"
+      ])
+    ).toThrow("--candidate-curation-handoff cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--clinical-trial-page-size",
+        "2"
+      ])
+    ).toThrow("--candidate-curation-handoff cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-curation-handoff-limit", "5"])
+    ).toThrow(
+      "--candidate-curation-handoff-limit requires --candidate-curation-handoff."
+    );
   });
 
   it("does not combine source-candidate reference match mode with other command modes", () => {
@@ -1032,6 +1185,117 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stderr).toHaveBeenCalledWith(
       'Source candidate not found: "missing-candidate"'
+    );
+  });
+
+  it("prints read-only source-candidate curation handoff rows", async () => {
+    const stdout = vi.fn();
+    const listCurationHandoff = vi.fn().mockResolvedValue([
+      {
+        acceptedReferenceId: "ref-creatine-position-stand",
+        candidate: sourceCandidate({
+          decision: "Accepted",
+          reviewStatus: "Human reviewed",
+          acceptedReferenceId: "ref-creatine-position-stand",
+          claimId: "creatine-strength"
+        }),
+        candidateClaimLinked: true,
+        claimLinks: [
+          {
+            claimId: "creatine-strength",
+            relevance: 5
+          }
+        ],
+        publicSourcePacketReady: false,
+        status: "Extraction pending",
+        studies: []
+      },
+      {
+        acceptedReferenceId: "trial-nct123",
+        candidate: sourceCandidate({
+          dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+          source: "ClinicalTrials.gov",
+          externalId: "NCT123",
+          title: "Creatine and aging",
+          url: "https://clinicaltrials.gov/study/NCT123",
+          decision: "Accepted",
+          reviewStatus: "Human reviewed",
+          acceptedReferenceId: "trial-nct123",
+          claimId: "creatine-aging"
+        }),
+        candidateClaimLinked: false,
+        claimLinks: [],
+        publicSourcePacketReady: false,
+        status: "Claim link missing",
+        studies: [
+          {
+            id: "study-trial-nct123",
+            referenceId: "trial-nct123",
+            title: "Creatine and aging extraction"
+          }
+        ]
+      }
+    ]);
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--candidate-curation-handoff",
+          "--candidate-curation-handoff-limit",
+          "2",
+          "--candidate-source",
+          "pubmed",
+          "--candidate-job-id",
+          "job-pubmed",
+          "--candidate-intervention-id",
+          "creatine",
+          "--candidate-claim-id",
+          "creatine-strength"
+        ],
+        { stdout },
+        { listCurationHandoff, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(listCurationHandoff).toHaveBeenCalledWith({
+      claimId: "creatine-strength",
+      ingestionJobId: "job-pubmed",
+      interventionId: "creatine",
+      limit: 2,
+      source: "PubMed"
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate curation handoff: total=2",
+        '- status="Extraction pending" publicSourcePacketReady=false PubMed AU dedupe="pubmed|au|creatine|28615996" title="Creatine position stand" acceptedReference=ref-creatine-position-stand candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0',
+        '- status="Claim link missing" publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" title="Creatine and aging" acceptedReference=trial-nct123 candidateClaim=creatine-aging candidateClaimLinked=false claimLinks=0 studies=1'
+      ].join("\n")
+    );
+  });
+
+  it("prints an empty source-candidate curation handoff list", async () => {
+    const stdout = vi.fn();
+    const listCurationHandoff = vi.fn().mockResolvedValue([]);
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-curation-handoff"],
+        { stdout },
+        { listCurationHandoff }
+      )
+    ).resolves.toBe(0);
+
+    expect(listCurationHandoff).toHaveBeenCalledWith({
+      claimId: undefined,
+      ingestionJobId: undefined,
+      interventionId: undefined,
+      source: undefined,
+      limit: undefined
+    });
+    expect(stdout).toHaveBeenCalledWith(
+      "Source-candidate curation handoff: total=0"
     );
   });
 
