@@ -110,12 +110,15 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "--candidate-intervention-id",
         "creatine",
         "--candidate-claim-id",
-        "creatine-strength"
+        "creatine-strength",
+        "--candidate-curation-handoff-status",
+        "ready"
       ])
     ).toEqual({
       candidateClaimId: "creatine-strength",
       candidateCurationHandoff: true,
       candidateCurationHandoffLimit: 50,
+      candidateCurationHandoffStatus: "Public source packet ready",
       candidateInterventionId: "creatine",
       candidateJobId: "job-pubmed",
       candidateSource: "PubMed",
@@ -123,6 +126,30 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       limit: 1,
       summary: false
     });
+  });
+
+  it("parses source-candidate curation handoff status aliases", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidate-curation-handoff-status",
+        "missing-reference"
+      ]).candidateCurationHandoffStatus
+    ).toBe("Accepted reference missing");
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidate-curation-handoff-status",
+        "claim-link-missing"
+      ]).candidateCurationHandoffStatus
+    ).toBe("Claim link missing");
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidate-curation-handoff-status",
+        "extraction-pending"
+      ]).candidateCurationHandoffStatus
+    ).toBe("Extraction pending");
   });
 
   it("parses source-candidate review modes", () => {
@@ -570,6 +597,23 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       parseSourceCandidateJobCommandArgs(["--candidate-curation-handoff-limit", "5"])
     ).toThrow(
       "--candidate-curation-handoff-limit requires --candidate-curation-handoff."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff-status",
+        "ready"
+      ])
+    ).toThrow(
+      "--candidate-curation-handoff-status requires --candidate-curation-handoff."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidate-curation-handoff-status",
+        "excellent"
+      ])
+    ).toThrow(
+      "--candidate-curation-handoff-status must be missing-reference, claim-link-missing, extraction-pending, or ready."
     );
   });
 
@@ -1276,7 +1320,9 @@ describe("runSourceCandidateJobCommand", () => {
           "--candidate-intervention-id",
           "creatine",
           "--candidate-claim-id",
-          "creatine-strength"
+          "creatine-strength",
+          "--candidate-curation-handoff-status",
+          "extraction-pending"
         ],
         { stdout },
         { listCurationHandoff, runNextJob }
@@ -1288,7 +1334,8 @@ describe("runSourceCandidateJobCommand", () => {
       ingestionJobId: "job-pubmed",
       interventionId: "creatine",
       limit: 2,
-      source: "PubMed"
+      source: "PubMed",
+      status: "Extraction pending"
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
@@ -1317,6 +1364,7 @@ describe("runSourceCandidateJobCommand", () => {
       ingestionJobId: undefined,
       interventionId: undefined,
       source: undefined,
+      status: undefined,
       limit: undefined
     });
     expect(stdout).toHaveBeenCalledWith(

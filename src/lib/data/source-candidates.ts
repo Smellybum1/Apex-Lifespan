@@ -98,6 +98,7 @@ export interface SourceCandidateCurationHandoffOptions {
   interventionId?: string;
   limit?: number;
   source?: SourceCandidateSource;
+  status?: SourceCandidateCurationStatusKind;
 }
 
 export type ReviewedSourceCandidateDecision = Exclude<
@@ -331,8 +332,11 @@ export async function listSourceCandidateCurationHandoff(
     orderBy: [{ reviewedAt: "asc" }, { updatedAt: "desc" }],
     take: normaliseCurationHandoffLimit(options.limit)
   });
+  const statuses = await sourceCandidateCurationStatuses(candidates);
 
-  return sourceCandidateCurationStatuses(candidates);
+  return options.status
+    ? statuses.filter((status) => status.status === options.status)
+    : statuses;
 }
 
 export async function summarizeSourceCandidateCurationHandoff(): Promise<SourceCandidateCurationHandoffSummary> {

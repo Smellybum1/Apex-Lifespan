@@ -88,6 +88,7 @@ npm run ingest:sources -- --candidate-detail <dedupe-key>
 npm run ingest:sources -- --candidate-curation-status <dedupe-key>
 npm run ingest:sources -- --candidate-curation-handoff
 npm run ingest:sources -- --candidate-curation-handoff --candidate-claim-id <claim-id>
+npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-status extraction-pending
 npm run ingest:sources -- --candidate-reference-matches <dedupe-key>
 npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id>
 npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Not relevant to this claim."
@@ -105,7 +106,7 @@ If queueing finds an existing job with different requested intervention or claim
 The `--candidates` option is read-only and reports source-candidate review rows with triage scores, titles, URLs, and dedupe keys; it defaults to pending rows and can filter by source, ingestion job id, intervention id, claim id, or reviewed rows with `--candidate-decision accepted` or `--candidate-decision rejected`.
 The `--candidate-detail` option is read-only and reports one source-candidate record with triage reasons, review fields, and compact metadata.
 The `--candidate-curation-status` option is read-only and reports whether an accepted source candidate's curated reference is claim-linked and has structured study extraction for public source packets.
-The `--candidate-curation-handoff` option is read-only and lists accepted source candidates with claim-link and study-extraction readiness for curation handoff; it can reuse the source, ingestion job, intervention, and claim filters.
+The `--candidate-curation-handoff` option is read-only and lists accepted source candidates with claim-link and study-extraction readiness for curation handoff; it can reuse the source, ingestion job, intervention, and claim filters and can filter by `--candidate-curation-handoff-status missing-reference`, `claim-link-missing`, `extraction-pending`, or `ready`.
 The `--candidate-reference-matches` option is read-only and reports curated reference ids that satisfy the same source and external-id match required by `--accept-candidate`.
 The `--accept-candidate` and `--reject-candidate` options are operator-only review actions for pending candidates. Accepted candidates require an existing curated reference id whose source and external identifier match the candidate; accepting does not automatically promote evidence cards.
 The `--summary` option is read-only and reports source-candidate workflow counts by source, region, decision, and review status plus accepted-candidate curation handoff readiness counts.

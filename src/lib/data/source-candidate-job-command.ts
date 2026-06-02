@@ -25,7 +25,8 @@ import {
   type SourceCandidateBacklogSummary,
   type SourceCandidateCurationHandoffOptions,
   type SourceCandidateCurationHandoffSummary,
-  type SourceCandidateCurationStatus
+  type SourceCandidateCurationStatus,
+  type SourceCandidateCurationStatusKind
 } from "@/lib/data/source-candidates";
 import type {
   Reference,
@@ -39,6 +40,7 @@ export interface SourceCandidateJobCommandOptions
   acceptedReferenceId?: string;
   candidateCurationHandoff?: boolean;
   candidateCurationHandoffLimit?: number;
+  candidateCurationHandoffStatus?: SourceCandidateCurationStatusKind;
   candidateCurationStatusDedupeKey?: string;
   candidateDetailDedupeKey?: string;
   candidateDecision?: SourceCandidateDecision;
@@ -182,6 +184,7 @@ export async function runSourceCandidateJobCommand(
         ingestionJobId: options.candidateJobId,
         interventionId: options.candidateInterventionId,
         source: options.candidateSource,
+        status: options.candidateCurationHandoffStatus,
         limit: options.candidateCurationHandoffLimit
       });
 
@@ -335,6 +338,7 @@ export function parseSourceCandidateJobCommandArgs(
   let candidateInterventionIdProvided = false;
   let candidateJobIdProvided = false;
   let candidateCurationHandoffLimitProvided = false;
+  let candidateCurationHandoffStatusProvided = false;
   let acceptedReferenceIdProvided = false;
   let limitProvided = false;
   let jobsLimitProvided = false;
@@ -385,6 +389,15 @@ export function parseSourceCandidateJobCommandArgs(
         50
       );
       candidateCurationHandoffLimitProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-curation-handoff-status") {
+      options.candidateCurationHandoffStatus = readCurationHandoffStatus(
+        readRequiredValue(args, index, arg)
+      );
+      candidateCurationHandoffStatusProvided = true;
       index += 1;
       continue;
     }
@@ -554,6 +567,12 @@ export function parseSourceCandidateJobCommandArgs(
   if (candidateCurationHandoffLimitProvided && !options.candidateCurationHandoff) {
     throw new Error(
       "--candidate-curation-handoff-limit requires --candidate-curation-handoff."
+    );
+  }
+
+  if (candidateCurationHandoffStatusProvided && !options.candidateCurationHandoff) {
+    throw new Error(
+      "--candidate-curation-handoff-status requires --candidate-curation-handoff."
     );
   }
 
@@ -937,6 +956,7 @@ export function commandUsage() {
     "  --candidate-curation-status <dedupe-key> Print accepted candidate curation handoff status.",
     "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows.",
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
+    "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, claim-link-missing, extraction-pending, or ready.",
     "  --candidate-reference-matches <dedupe-key> Print curated reference ids eligible for candidate acceptance.",
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
     "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
@@ -1523,6 +1543,40 @@ function readCandidateDecision(value: string): SourceCandidateDecision {
   }
 
   throw new Error("--candidate-decision must be pending, accepted, or rejected.");
+}
+
+function readCurationHandoffStatus(value: string): SourceCandidateCurationStatusKind {
+  const normalised = value.trim().toLowerCase();
+
+  if (
+    normalised === "accepted-reference-missing" ||
+    normalised === "missing-reference" ||
+    normalised === "reference-missing"
+  ) {
+    return "Accepted reference missing";
+  }
+
+  if (normalised === "claim-link-missing" || normalised === "claim-missing") {
+    return "Claim link missing";
+  }
+
+  if (
+    normalised === "extraction-pending" ||
+    normalised === "study-extraction-pending"
+  ) {
+    return "Extraction pending";
+  }
+
+  if (
+    normalised === "ready" ||
+    normalised === "public-source-packet-ready"
+  ) {
+    return "Public source packet ready";
+  }
+
+  throw new Error(
+    "--candidate-curation-handoff-status must be missing-reference, claim-link-missing, extraction-pending, or ready."
+  );
 }
 
 function hasCandidateListFilter({
