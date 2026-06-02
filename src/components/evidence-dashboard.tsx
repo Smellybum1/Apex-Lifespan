@@ -81,6 +81,8 @@ type ClaimTableRow = {
   intervention: string;
   outcome: string;
   label: EvidenceLabel;
+  sourcePacketStatus: ClaimSourcePacket["completeness"]["status"];
+  sourcePacketLabel: string;
   composite: number;
   safety: number;
   regulatoryRisk: number;
@@ -172,18 +174,28 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
 
   const tableRows = useMemo(
     () =>
-      filteredClaims.map((claim) => ({
-        id: claim.id,
-        intervention: interventionsById.get(claim.interventionId)?.name ?? "Unknown",
-        outcome: claim.outcome,
-        label: claim.finalLabel,
-        composite: compositeScore(claim.scores),
-        safety: claim.scores.safety,
-        regulatoryRisk: claim.scores.regulatoryRisk,
-        confidence: claim.confidenceLevel,
-        updated: claim.lastUpdated
-      })),
-    [filteredClaims, interventionsById]
+      filteredClaims.map((claim) => {
+        const sourcePacket = buildClaimSourcePacket({
+          claim,
+          referencesById,
+          studies
+        });
+
+        return {
+          id: claim.id,
+          intervention: interventionsById.get(claim.interventionId)?.name ?? "Unknown",
+          outcome: claim.outcome,
+          label: claim.finalLabel,
+          sourcePacketStatus: sourcePacket.completeness.status,
+          sourcePacketLabel: sourcePacket.completeness.label,
+          composite: compositeScore(claim.scores),
+          safety: claim.scores.safety,
+          regulatoryRisk: claim.scores.regulatoryRisk,
+          confidence: claim.confidenceLevel,
+          updated: claim.lastUpdated
+        };
+      }),
+    [filteredClaims, interventionsById, referencesById, studies]
   );
 
   return (
@@ -718,6 +730,15 @@ function ClaimTable({
         )
       },
       {
+        accessorKey: "sourcePacketLabel",
+        header: "Sources",
+        cell: ({ row }) => (
+          <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", sourcePacketCompletenessTone(row.original.sourcePacketStatus))}>
+            {row.original.sourcePacketLabel}
+          </span>
+        )
+      },
+      {
         accessorKey: "composite",
         header: "Score",
         cell: ({ row }) => row.original.composite.toFixed(1)
@@ -756,7 +777,7 @@ function ClaimTable({
         </div>
       </div>
       <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[860px] border-separate border-spacing-0 text-sm">
+        <table className="w-full min-w-[960px] border-separate border-spacing-0 text-sm">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>

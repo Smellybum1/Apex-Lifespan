@@ -45,6 +45,7 @@
   - Product label cards show product-market context separately from AU/TGA status; seed and Prisma product regions use verification-pending wording rather than implying Australian authorisation.
   - Review-status dashboard counts use tested summary logic so human-reviewed and draft-awaiting-review claims remain separate.
   - Claim score table rows are mouse and keyboard selectable; preserve Enter/Space activation and visible focus state.
+  - Claim score table includes a `Sources` column for source-packet completeness so citation/extraction readiness is scannable in the dense table.
   - MVP mode: public read-only.
   - Default regulatory lens: Australia/TGA.
   - UI tone: consumer-friendly by default, with expandable investor-grade research detail planned.
