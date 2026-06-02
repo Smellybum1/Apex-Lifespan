@@ -18,7 +18,7 @@ Created for a new Codex thread on 2026-06-02.
 - Default lens is Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Public live-source API routes must stay read-only and must not import or call source-candidate persistence.
 - Source-candidate ingestion and review remain local operator-only under `npm run ingest:sources`.
-- The recent ingestion-job context migration exists and was validated/generated/built, but was not applied to a local PostgreSQL database in this thread. Apply migrations locally before DB-backed manual checks.
+- The recent ingestion-job context migration exists and was validated/generated/built, but was not applied to a local PostgreSQL database; this pass also could not start Postgres because `docker` was unavailable on PATH. Apply migrations locally before DB-backed manual checks.
 
 ## Recent Work
 
@@ -26,6 +26,9 @@ Created for a new Codex thread on 2026-06-02.
   - accepted-reference mismatch blocks readiness;
   - accepted candidates without a claim id report `Candidate claim missing`;
   - curation handoff status remains source-packet readiness, not evidence quality.
+- Added database-mode regression coverage for public source-packet mapping:
+  - mocked Prisma rows now verify claim reference links and structured study extraction rows map into a complete source packet;
+  - coverage confirms database dashboard data preserves curated reference identity needed by the public Sources panel.
 - Scoped source-candidate ingestion-job identity:
   - `IngestionJob` now has first-class `interventionId` and `claimId`;
   - migration `20260602061000_ingestion_job_context_identity` backfills valid legacy metadata context;
@@ -41,9 +44,11 @@ Created for a new Codex thread on 2026-06-02.
 - `npm run db:generate`
 - `npm run test -- src/lib/data/source-candidate-jobs.test.ts`
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run test -- src/lib/data/dashboard.test.ts`
 - `npm run test`
 - `npm run lint`
 - `npm run typecheck`
+- `npm run db:validate`
 - `npm run build`
 - HTTP smoke for `http://localhost:3000` returned `200`
 
@@ -53,7 +58,6 @@ Created for a new Codex thread on 2026-06-02.
   - `docker compose up -d postgres`
   - `npm run db:migrate`
   - `npm run db:seed`
-- Add database-mode regression coverage for public source-packet mapping in `src/lib/data/dashboard.ts`.
 - Consider a read-only same-identity candidate view for source-candidate siblings by source, external id, query, and context.
 - Later, design an operator workflow to create or curate references/extractions from accepted candidates without auto-promoting public evidence.
 

@@ -22,6 +22,7 @@
   - `prisma/seed.ts` runs a seed integrity check after upserts so missing required IDs or stale seed-owned IDs fail loudly.
   - Dashboard reads through `src/lib/data/dashboard.ts`; it prefers Prisma when PostgreSQL is reachable and falls back to seed data unless `APEX_DATA_SOURCE=database`.
   - Dashboard data-source behavior has fallback tests for forced seed mode, missing `DATABASE_URL`, unreachable configured databases, and strict database mode failure.
+  - Dashboard database-mode mapping has regression coverage that verifies Prisma claim references and structured study rows flow into complete public source packets.
   - Australia/TGA regulatory status is structured in `AustraliaRegulatoryStatus` records and surfaced as active-card detail plus product chips; do not infer ARTG status from intervention evidence alone.
   - PubMed search is surfaced as a read-only triage preview in the Sources panel; it shows live citation candidates and metadata but does not persist them yet.
   - Live PubMed and ClinicalTrials.gov preview results should be labeled as unreviewed leads, and `/100` values should be described as triage scores rather than evidence quality.
