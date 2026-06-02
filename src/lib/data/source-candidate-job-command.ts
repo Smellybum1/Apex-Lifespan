@@ -12,12 +12,16 @@ import {
 } from "@/lib/data/source-candidate-jobs";
 import {
   summarizeSourceCandidateBacklog,
+  listSourceCandidateReviewQueue,
   type SourceCandidateBacklogSummary
 } from "@/lib/data/source-candidates";
-import type { SourceCandidateSource } from "@/lib/types";
+import type { SourceCandidate, SourceCandidateSource } from "@/lib/types";
 
 export interface SourceCandidateJobCommandOptions
   extends SourceCandidateIngestionJobOptions {
+  candidateSource?: SourceCandidateSource;
+  candidates?: boolean;
+  candidatesLimit?: number;
   claimId?: string;
   help: boolean;
   interventionId?: string;
@@ -37,6 +41,10 @@ export interface SourceCandidateJobCommandIo {
 }
 
 export interface SourceCandidateJobCommandRunners {
+  listCandidates?: (options: {
+    limit?: number;
+    source?: SourceCandidateSource;
+  }) => Promise<SourceCandidate[]>;
   listJobs?: (
     options: SourceCandidateIngestionJobListOptions
   ) => Promise<SourceCandidateIngestionJobListItem[]>;
@@ -63,6 +71,7 @@ export async function runSourceCandidateJobCommand(
 ) {
   const stdout = io.stdout ?? console.log;
   const stderr = io.stderr ?? console.error;
+  const listCandidates = runners.listCandidates ?? listSourceCandidateReviewQueue;
   const listJobs = runners.listJobs ?? listSourceCandidateIngestionJobs;
   const queueJob = runners.queueJob ?? queueSourceCandidateIngestionJob;
   const runJobById = runners.runJobById ?? runSourceCandidateIngestionJob;
@@ -85,6 +94,16 @@ export async function runSourceCandidateJobCommand(
   }
 
   try {
+    if (options.candidates) {
+      const candidates = await listCandidates({
+        limit: options.candidatesLimit,
+        source: options.candidateSource
+      });
+
+      stdout(formatSourceCandidateReviewQueue(candidates));
+      return 0;
+    }
+
     if (options.jobs) {
       const jobs = await listJobs({
         limit: options.jobsLimit
@@ -143,6 +162,7 @@ export function parseSourceCandidateJobCommandArgs(
     limit: DEFAULT_JOB_LIMIT,
     summary: false
   };
+  let candidatesLimitProvided = false;
   let limitProvided = false;
   let jobsLimitProvided = false;
   let sourceLimitProvided = false;
@@ -163,6 +183,24 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--summary") {
       options.summary = true;
+      continue;
+    }
+
+    if (arg === "--candidates") {
+      options.candidates = true;
+      continue;
+    }
+
+    if (arg === "--candidates-limit") {
+      options.candidatesLimit = readPositiveInteger(args, index, arg, 50);
+      candidatesLimitProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-source") {
+      options.candidateSource = readCandidateSource(readRequiredValue(args, index, arg));
+      index += 1;
       continue;
     }
 
@@ -240,6 +278,26 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--job-id runs exactly one job and cannot be combined with --limit.");
   }
 
+  if ((candidatesLimitProvided || options.candidateSource) && !options.candidates) {
+    throw new Error("--candidates-limit and --candidate-source require --candidates.");
+  }
+
+  if (options.candidates && options.summary) {
+    throw new Error("--candidates cannot be combined with --summary.");
+  }
+
+  if (options.candidates && options.jobs) {
+    throw new Error("--candidates cannot be combined with --jobs.");
+  }
+
+  if (options.candidates && options.queueSource) {
+    throw new Error("--candidates is read-only and cannot be combined with queue options.");
+  }
+
+  if (options.candidates && (options.jobId || limitProvided || sourceLimitProvided)) {
+    throw new Error("--candidates is read-only and cannot be combined with run options.");
+  }
+
   if (jobsLimitProvided && !options.jobs) {
     throw new Error("--jobs-limit requires --jobs.");
   }
@@ -282,6 +340,9 @@ export function commandUsage() {
     "Options:",
     "  --job-id <id>                     Run one specific ingestion job.",
     "  --limit <count>                   Run up to count queued jobs (default 1, max 25).",
+    "  --candidates                      Print pending source-candidate review queue rows.",
+    "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
+    "  --candidate-source <source>       Candidate source: pubmed or clinical-trials.",
     "  --jobs                            Print recent source-candidate ingestion jobs.",
     "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
     "  --queue-pubmed <term>             Queue a PubMed source-candidate job.",
@@ -354,6 +415,38 @@ function formatQueuedSourceCandidateJob(result: QueuedSourceCandidateIngestionJo
   ].join(" ");
 }
 
+function formatSourceCandidateReviewQueue(candidates: SourceCandidate[]) {
+  if (candidates.length === 0) {
+    return "Source-candidate review queue: total=0";
+  }
+
+  return [
+    `Source-candidate review queue: total=${candidates.length}`,
+    ...candidates.map(formatSourceCandidateReviewQueueItem)
+  ].join("\n");
+}
+
+function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
+  const parts = [
+    `- triage=${candidate.triageScore}/100`,
+    candidate.source,
+    candidate.region,
+    `dedupe=${quote(candidate.dedupeKey)}`,
+    `title=${quote(candidate.title)}`,
+    `url=${candidate.url}`
+  ];
+
+  if (candidate.interventionId) {
+    parts.push(`intervention=${candidate.interventionId}`);
+  }
+
+  if (candidate.claimId) {
+    parts.push(`claim=${candidate.claimId}`);
+  }
+
+  return parts.join(" ");
+}
+
 function formatSourceCandidateIngestionJobs(jobs: SourceCandidateIngestionJobListItem[]) {
   if (jobs.length === 0) {
     return "Source-candidate ingestion jobs: total=0";
@@ -422,6 +515,24 @@ function readPositiveInteger(
   }
 
   return Math.min(numberValue, max);
+}
+
+function readCandidateSource(value: string): SourceCandidateSource {
+  const normalised = value.trim().toLowerCase();
+
+  if (normalised === "pubmed") {
+    return "PubMed";
+  }
+
+  if (
+    normalised === "clinical-trials" ||
+    normalised === "clinicaltrials" ||
+    normalised === "clinicaltrials.gov"
+  ) {
+    return "ClinicalTrials.gov";
+  }
+
+  throw new Error("--candidate-source must be pubmed or clinical-trials.");
 }
 
 function setQueueOption(

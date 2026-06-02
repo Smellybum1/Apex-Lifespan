@@ -49,6 +49,31 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     });
   });
 
+  it("parses read-only candidate review queue mode", () => {
+    expect(parseSourceCandidateJobCommandArgs(["--candidates"])).toEqual({
+      candidates: true,
+      help: false,
+      limit: 1,
+      summary: false
+    });
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidates",
+        "--candidates-limit",
+        "200",
+        "--candidate-source",
+        "clinical-trials"
+      ])
+    ).toEqual({
+      candidates: true,
+      candidatesLimit: 50,
+      candidateSource: "ClinicalTrials.gov",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+  });
+
   it("parses read-only recent job mode", () => {
     expect(parseSourceCandidateJobCommandArgs(["--jobs"])).toEqual({
       help: false,
@@ -129,6 +154,33 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--summary", "--job-id", "job-pubmed"])
     ).toThrow("--summary is read-only and cannot be combined with run options.");
+  });
+
+  it("does not combine candidate review queue mode with other command modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidates-limit", "2"])
+    ).toThrow("--candidates-limit and --candidate-source require --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-source", "pubmed"])
+    ).toThrow("--candidates-limit and --candidate-source require --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidates", "--summary"])
+    ).toThrow("--candidates cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidates", "--jobs"])
+    ).toThrow("--candidates cannot be combined with --jobs.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidates", "--queue-pubmed", "creatine"])
+    ).toThrow("--candidates is read-only and cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidates", "--limit", "2"])
+    ).toThrow("--candidates is read-only and cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidates", "--pubmed-retmax", "5"])
+    ).toThrow("--candidates is read-only and cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidates", "--candidate-source", "other"])
+    ).toThrow("--candidate-source must be pubmed or clinical-trials.");
   });
 
   it("does not combine queue mode with other command modes", () => {
@@ -223,6 +275,69 @@ describe("runSourceCandidateJobCommand", () => {
         "- ClinicalTrials.gov AU Accepted / Human reviewed: 1"
       ].join("\n")
     );
+  });
+
+  it("prints read-only source-candidate review queue rows without running jobs", async () => {
+    const stdout = vi.fn();
+    const listCandidates = vi.fn().mockResolvedValue([
+      sourceCandidate({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        source: "PubMed",
+        region: "AU",
+        title: "Creatine position stand",
+        triageScore: 80,
+        url: "https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        interventionId: "creatine",
+        claimId: "creatine-strength"
+      }),
+      sourceCandidate({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        source: "ClinicalTrials.gov",
+        region: "AU",
+        title: "Creatine and aging",
+        triageScore: 70,
+        url: "https://clinicaltrials.gov/study/NCT123"
+      })
+    ]);
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--candidates",
+          "--candidates-limit",
+          "2",
+          "--candidate-source",
+          "pubmed"
+        ],
+        { stdout },
+        { listCandidates, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(listCandidates).toHaveBeenCalledWith({
+      limit: 2,
+      source: "PubMed"
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate review queue: total=2",
+        '- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine|creatine-strength" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ intervention=creatine claim=creatine-strength',
+        '- triage=70/100 ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" title="Creatine and aging" url=https://clinicaltrials.gov/study/NCT123'
+      ].join("\n")
+    );
+  });
+
+  it("prints an empty source-candidate review queue", async () => {
+    const stdout = vi.fn();
+    const listCandidates = vi.fn().mockResolvedValue([]);
+
+    await expect(
+      runSourceCandidateJobCommand(["--candidates"], { stdout }, { listCandidates })
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith("Source-candidate review queue: total=0");
   });
 
   it("prints read-only recent ingestion jobs without running jobs", async () => {
@@ -510,6 +625,27 @@ function jobResult(overrides: Record<string, unknown> = {}) {
     recordsFound: 1,
     recordsChanged: 1,
     error: undefined,
+    ...overrides
+  };
+}
+
+function sourceCandidate(overrides: Record<string, unknown> = {}) {
+  return {
+    dedupeKey: "pubmed|au|creatine|28615996",
+    source: "PubMed",
+    externalId: "28615996",
+    query: "creatine strength",
+    region: "AU",
+    title: "Creatine position stand",
+    url: "https://pubmed.ncbi.nlm.nih.gov/28615996/",
+    publishedYear: 2017,
+    sourceType: "Review",
+    abstractAvailable: true,
+    triageScore: 80,
+    triageReasons: ["Title matches query"],
+    decision: "Pending review",
+    reviewStatus: "Unreviewed AI draft",
+    metadata: {},
     ...overrides
   };
 }
