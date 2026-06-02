@@ -87,6 +87,7 @@ export interface SourceCandidateCurationStatus {
   candidate: SourceCandidate;
   candidateClaimLinked?: boolean;
   claimLinks: SourceCandidateCurationClaimLink[];
+  nextAction: string;
   publicSourcePacketReady: boolean;
   status: SourceCandidateCurationStatusKind;
   studies: SourceCandidateCurationStudy[];
@@ -692,10 +693,26 @@ function sourceCandidateCurationStatus({
     candidate,
     candidateClaimLinked,
     claimLinks,
+    nextAction: curationNextAction(status),
     publicSourcePacketReady: status === "Public source packet ready",
     status,
     studies
   };
+}
+
+function curationNextAction(status: SourceCandidateCurationStatusKind) {
+  switch (status) {
+    case "Not accepted":
+      return "Accept with a matching curated reference before curation handoff.";
+    case "Accepted reference missing":
+      return "Attach or restore the matching curated reference before public packet review.";
+    case "Claim link missing":
+      return "Link the accepted reference to the candidate claim before public packet review.";
+    case "Extraction pending":
+      return "Add structured study extraction for the accepted reference.";
+    case "Public source packet ready":
+      return "Review for public source packet inclusion.";
+  }
 }
 
 function curationStatusKind(

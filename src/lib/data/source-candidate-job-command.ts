@@ -953,8 +953,8 @@ export function commandUsage() {
     "  --job-id <id>                     Run one specific ingestion job.",
     "  --limit <count>                   Run up to count queued jobs (default 1, max 25).",
     "  --candidate-detail <dedupe-key>   Print one source-candidate detail record.",
-    "  --candidate-curation-status <dedupe-key> Print accepted candidate curation handoff status.",
-    "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows.",
+    "  --candidate-curation-status <dedupe-key> Print accepted candidate curation handoff status and next action.",
+    "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows and next actions.",
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
     "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, claim-link-missing, extraction-pending, or ready.",
     "  --candidate-reference-matches <dedupe-key> Print curated reference ids eligible for candidate acceptance.",
@@ -1142,6 +1142,7 @@ function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStat
     `decision=${quote(status.candidate.decision)}`,
     `reviewStatus=${quote(status.candidate.reviewStatus)}`,
     `status=${quote(status.status)}`,
+    `nextAction=${quote(status.nextAction)}`,
     `publicSourcePacketReady=${status.publicSourcePacketReady}`
   ];
 
@@ -1199,6 +1200,7 @@ function formatSourceCandidateCurationHandoffItem(
   const candidate = status.candidate;
   const parts = [
     `- status=${quote(status.status)}`,
+    `nextAction=${quote(status.nextAction)}`,
     `publicSourcePacketReady=${status.publicSourcePacketReady}`,
     candidate.source,
     candidate.region,

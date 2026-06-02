@@ -1157,6 +1157,7 @@ describe("runSourceCandidateJobCommand", () => {
           note: "Primary source."
         }
       ],
+      nextAction: "Review for public source packet inclusion.",
       publicSourcePacketReady: true,
       status: "Public source packet ready",
       studies: [
@@ -1187,6 +1188,7 @@ describe("runSourceCandidateJobCommand", () => {
         'decision="Accepted"',
         'reviewStatus="Human reviewed"',
         'status="Public source packet ready"',
+        'nextAction="Review for public source packet inclusion."',
         "publicSourcePacketReady=true",
         "acceptedReference=ref-creatine-position-stand",
         'acceptedReferenceTitle="Creatine position stand"',
@@ -1208,6 +1210,7 @@ describe("runSourceCandidateJobCommand", () => {
     const getCurationStatus = vi.fn().mockResolvedValue({
       candidate: sourceCandidate(),
       claimLinks: [],
+      nextAction: "Accept with a matching curated reference before curation handoff.",
       publicSourcePacketReady: false,
       status: "Not accepted",
       studies: []
@@ -1230,6 +1233,7 @@ describe("runSourceCandidateJobCommand", () => {
         'decision="Pending review"',
         'reviewStatus="Unreviewed AI draft"',
         'status="Not accepted"',
+        'nextAction="Accept with a matching curated reference before curation handoff."',
         "publicSourcePacketReady=false",
         "claimLinks=0",
         "studies=0"
@@ -1275,6 +1279,7 @@ describe("runSourceCandidateJobCommand", () => {
             relevance: 5
           }
         ],
+        nextAction: "Add structured study extraction for the accepted reference.",
         publicSourcePacketReady: false,
         status: "Extraction pending",
         studies: []
@@ -1294,6 +1299,8 @@ describe("runSourceCandidateJobCommand", () => {
         }),
         candidateClaimLinked: false,
         claimLinks: [],
+        nextAction:
+          "Link the accepted reference to the candidate claim before public packet review.",
         publicSourcePacketReady: false,
         status: "Claim link missing",
         studies: [
@@ -1341,8 +1348,8 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate curation handoff: total=2",
-        '- status="Extraction pending" publicSourcePacketReady=false PubMed AU dedupe="pubmed|au|creatine|28615996" title="Creatine position stand" acceptedReference=ref-creatine-position-stand candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0',
-        '- status="Claim link missing" publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" title="Creatine and aging" acceptedReference=trial-nct123 candidateClaim=creatine-aging candidateClaimLinked=false claimLinks=0 studies=1'
+        '- status="Extraction pending" nextAction="Add structured study extraction for the accepted reference." publicSourcePacketReady=false PubMed AU dedupe="pubmed|au|creatine|28615996" title="Creatine position stand" acceptedReference=ref-creatine-position-stand candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0',
+        '- status="Claim link missing" nextAction="Link the accepted reference to the candidate claim before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" title="Creatine and aging" acceptedReference=trial-nct123 candidateClaim=creatine-aging candidateClaimLinked=false claimLinks=0 studies=1'
       ].join("\n")
     );
   });

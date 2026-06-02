@@ -473,6 +473,7 @@ describe("getSourceCandidateCurationStatus", () => {
           relevance: 5
         }
       ],
+      nextAction: "Review for public source packet inclusion.",
       publicSourcePacketReady: true,
       status: "Public source packet ready",
       studies: [
@@ -522,6 +523,7 @@ describe("getSourceCandidateCurationStatus", () => {
     ).resolves.toMatchObject({
       acceptedReferenceId: "ref-creatine-position-stand",
       candidateClaimLinked: true,
+      nextAction: "Add structured study extraction for the accepted reference.",
       publicSourcePacketReady: false,
       status: "Extraction pending",
       studies: []
@@ -547,6 +549,8 @@ describe("getSourceCandidateCurationStatus", () => {
       acceptedReferenceId: "ref-creatine-position-stand",
       candidateClaimLinked: false,
       claimLinks: [],
+      nextAction:
+        "Link the accepted reference to the candidate claim before public packet review.",
       publicSourcePacketReady: false,
       status: "Claim link missing"
     });
@@ -580,6 +584,8 @@ describe("getSourceCandidateCurationStatus", () => {
           relevance: 5
         }
       ],
+      nextAction:
+        "Link the accepted reference to the candidate claim before public packet review.",
       publicSourcePacketReady: false,
       status: "Claim link missing"
     });
@@ -600,6 +606,8 @@ describe("getSourceCandidateCurationStatus", () => {
     ).resolves.toMatchObject({
       acceptedReferenceId: "missing-reference",
       claimLinks: [],
+      nextAction:
+        "Attach or restore the matching curated reference before public packet review.",
       publicSourcePacketReady: false,
       status: "Accepted reference missing",
       studies: []
@@ -617,6 +625,7 @@ describe("getSourceCandidateCurationStatus", () => {
     ).resolves.toMatchObject({
       acceptedReferenceId: undefined,
       claimLinks: [],
+      nextAction: "Accept with a matching curated reference before curation handoff.",
       publicSourcePacketReady: false,
       status: "Not accepted",
       studies: []
@@ -719,6 +728,7 @@ describe("listSourceCandidateCurationHandoff", () => {
             relevance: 5
           }
         ],
+        nextAction: "Review for public source packet inclusion.",
         publicSourcePacketReady: true,
         status: "Public source packet ready",
         studies: [
@@ -731,6 +741,7 @@ describe("listSourceCandidateCurationHandoff", () => {
       expect.objectContaining({
         acceptedReferenceId: "ref-pending-extraction",
         candidateClaimLinked: true,
+        nextAction: "Add structured study extraction for the accepted reference.",
         publicSourcePacketReady: false,
         status: "Extraction pending",
         studies: []
@@ -745,12 +756,16 @@ describe("listSourceCandidateCurationHandoff", () => {
             relevance: 5
           }
         ],
+        nextAction:
+          "Link the accepted reference to the candidate claim before public packet review.",
         publicSourcePacketReady: false,
         status: "Claim link missing"
       }),
       expect.objectContaining({
         acceptedReferenceId: "ref-missing",
         claimLinks: [],
+        nextAction:
+          "Attach or restore the matching curated reference before public packet review.",
         publicSourcePacketReady: false,
         status: "Accepted reference missing",
         studies: []
@@ -761,6 +776,8 @@ describe("listSourceCandidateCurationHandoff", () => {
           dedupeKey: "pubmed|au|creatine|missing-reference-id"
         }),
         claimLinks: [],
+        nextAction:
+          "Attach or restore the matching curated reference before public packet review.",
         publicSourcePacketReady: false,
         status: "Accepted reference missing",
         studies: []
