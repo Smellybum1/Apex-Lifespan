@@ -25,6 +25,7 @@
   - Live PubMed and ClinicalTrials.gov preview results should be labeled as unreviewed leads, and `/100` values should be described as triage scores rather than evidence quality.
   - ClinicalTrials.gov search is surfaced as a read-only preview in the Sources panel; keep it separate from the curated Trial Watcher until live records are reviewed/persisted.
   - Public live-source API routes share request parsing that normalises whitespace and rejects missing or overlong search terms before calling external integrations.
+  - Public live-source API routes have a static regression test that blocks source-candidate persistence imports/usages under `src/app/api`; keep ingestion and review writes in local operator commands.
   - Live source previews start idle and only fetch after an explicit form submit or suggested-search click; do not auto-refetch live sources on initial load or every evidence-card selection.
   - `SourceCandidate` is the backend persistence target for future reviewed ingestion of live PubMed and ClinicalTrials.gov candidates; helper mapping keeps candidates unreviewed with a separate pending-review decision and preserves triage metadata without auto-persisting public preview results.
   - `upsertSourceCandidateDrafts` is a server-side data helper for gated ingestion paths; rediscovery updates candidate metadata and triage fields without overwriting reviewer decision, accepted reference, or review status.
