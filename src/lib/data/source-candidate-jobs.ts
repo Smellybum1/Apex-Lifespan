@@ -45,9 +45,11 @@ export interface SourceCandidateIngestionJobListOptions {
 }
 
 export interface SourceCandidateIngestionJobListItem {
+  claimId?: string;
   completedAt?: string;
   createdAt: string;
   error?: string;
+  interventionId?: string;
   jobId: string;
   query: string;
   recordsChanged: number;
@@ -68,12 +70,22 @@ export interface QueueSourceCandidateIngestionJobInput {
 }
 
 export interface QueuedSourceCandidateIngestionJob {
+  claimId?: string;
+  contextMismatchFields: SourceCandidateJobContextField[];
   created: boolean;
+  interventionId?: string;
   jobId: string;
   query: string;
   region: string;
   source: DbSourceKind;
   status: DbIngestionStatus;
+}
+
+export type SourceCandidateJobContextField = "interventionId" | "claimId";
+
+interface SourceCandidateJobContext {
+  claimId?: string;
+  interventionId?: string;
 }
 
 const SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES = [
@@ -107,6 +119,7 @@ export async function queueSourceCandidateIngestionJob(
   const source = sourceKindFromSourceCandidateSource(input.source);
   const query = normaliseQueueQuery(input.query);
   const region = normaliseRegion(input.region);
+  const requestedContext = queueContext(input);
   const where = {
     source_query_region: {
       source,
@@ -119,7 +132,7 @@ export async function queueSourceCandidateIngestionJob(
   });
 
   if (existingJob) {
-    return mapQueuedJob(existingJob, false);
+    return mapQueuedJob(existingJob, false, requestedContext);
   }
 
   const job = await prisma.ingestionJob.create({
@@ -128,11 +141,11 @@ export async function queueSourceCandidateIngestionJob(
       status: DbIngestionStatus.QUEUED,
       query,
       region,
-      metadata: queueMetadata(input)
+      metadata: queueMetadata(requestedContext)
     }
   });
 
-  return mapQueuedJob(job, true);
+  return mapQueuedJob(job, true, requestedContext);
 }
 
 export async function runNextSourceCandidateIngestionJob(
@@ -276,10 +289,18 @@ function sourceKindFromSourceCandidateSource(source: SourceCandidateSource) {
 
 function mapQueuedJob(
   job: DbIngestionJob,
-  created: boolean
+  created: boolean,
+  requestedContext: SourceCandidateJobContext
 ): QueuedSourceCandidateIngestionJob {
+  const context = sourceCandidateJobContext(job);
+
   return {
+    claimId: context.claimId,
+    contextMismatchFields: created
+      ? []
+      : contextMismatchFields(context, requestedContext),
     created,
+    interventionId: context.interventionId,
     jobId: job.id,
     query: job.query,
     region: job.region,
@@ -289,10 +310,14 @@ function mapQueuedJob(
 }
 
 function mapJobListItem(job: DbIngestionJob): SourceCandidateIngestionJobListItem {
+  const context = sourceCandidateJobContext(job);
+
   return {
+    claimId: context.claimId,
     completedAt: dateToIso(job.completedAt),
     createdAt: job.createdAt.toISOString(),
     error: job.error ?? undefined,
+    interventionId: context.interventionId,
     jobId: job.id,
     query: job.query,
     recordsChanged: job.recordsChanged,
@@ -343,13 +368,38 @@ function normaliseRegion(region: string | undefined) {
   return normalised;
 }
 
-function queueMetadata(input: QueueSourceCandidateIngestionJobInput) {
+function queueMetadata(context: SourceCandidateJobContext) {
   return Object.fromEntries(
     [
-      ["interventionId", optionalTrimmedString(input.interventionId)],
-      ["claimId", optionalTrimmedString(input.claimId)]
+      ["interventionId", context.interventionId],
+      ["claimId", context.claimId]
     ].filter(([, value]) => value !== undefined)
   ) as Prisma.InputJsonObject;
+}
+
+function queueContext(input: QueueSourceCandidateIngestionJobInput) {
+  return {
+    interventionId: optionalTrimmedString(input.interventionId),
+    claimId: optionalTrimmedString(input.claimId)
+  };
+}
+
+function sourceCandidateJobContext(job: DbIngestionJob): SourceCandidateJobContext {
+  return {
+    interventionId: readStringMetadata(job.metadata, "interventionId"),
+    claimId: readStringMetadata(job.metadata, "claimId")
+  };
+}
+
+function contextMismatchFields(
+  storedContext: SourceCandidateJobContext,
+  requestedContext: SourceCandidateJobContext
+): SourceCandidateJobContextField[] {
+  return (["interventionId", "claimId"] as const).filter((field) => {
+    const requestedValue = requestedContext[field];
+
+    return requestedValue !== undefined && requestedValue !== storedContext[field];
+  });
 }
 
 function optionalTrimmedString(value: string | undefined) {

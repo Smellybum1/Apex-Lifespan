@@ -59,6 +59,7 @@ describe("listSourceCandidateIngestionJobs", () => {
         source: "CLINICALTRIALS_GOV",
         status: "FAILED",
         query: "creatine aging",
+        metadata: null,
         recordsFound: 0,
         recordsChanged: 0,
         error: "ClinicalTrials unavailable",
@@ -69,9 +70,11 @@ describe("listSourceCandidateIngestionJobs", () => {
 
     await expect(listSourceCandidateIngestionJobs()).resolves.toEqual([
       {
+        claimId: "creatine-strength",
         completedAt: "2026-06-02T01:02:00.000Z",
         createdAt: "2026-06-02T00:00:00.000Z",
         error: undefined,
+        interventionId: "creatine",
         jobId: "job-pubmed",
         query: "creatine strength",
         recordsChanged: 3,
@@ -83,9 +86,11 @@ describe("listSourceCandidateIngestionJobs", () => {
         updatedAt: "2026-06-02T01:02:00.000Z"
       },
       {
+        claimId: undefined,
         completedAt: undefined,
         createdAt: "2026-06-02T02:00:00.000Z",
         error: "ClinicalTrials unavailable",
+        interventionId: undefined,
         jobId: "job-trials",
         query: "creatine aging",
         recordsChanged: 0,
@@ -154,7 +159,10 @@ describe("queueSourceCandidateIngestionJob", () => {
         claimId: "creatine-strength"
       })
     ).resolves.toEqual({
+      claimId: "creatine-strength",
+      contextMismatchFields: [],
       created: true,
+      interventionId: "creatine",
       jobId: "job-pubmed",
       source: "PUBMED",
       query: "creatine strength",
@@ -202,7 +210,10 @@ describe("queueSourceCandidateIngestionJob", () => {
         query: "creatine aging"
       })
     ).resolves.toEqual({
+      claimId: undefined,
+      contextMismatchFields: [],
       created: true,
+      interventionId: undefined,
       jobId: "job-trials",
       source: "CLINICALTRIALS_GOV",
       query: "creatine aging",
@@ -237,7 +248,10 @@ describe("queueSourceCandidateIngestionJob", () => {
         interventionId: "different-context"
       })
     ).resolves.toEqual({
+      claimId: "creatine-strength",
+      contextMismatchFields: ["interventionId"],
       created: false,
+      interventionId: "creatine",
       jobId: "job-pubmed",
       source: "PUBMED",
       query: "creatine strength",
@@ -248,6 +262,113 @@ describe("queueSourceCandidateIngestionJob", () => {
     expect(mocks.create).not.toHaveBeenCalled();
     expect(mocks.update).not.toHaveBeenCalled();
     expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("returns existing job context without mismatch when requested context matches", async () => {
+    mocks.findUnique.mockResolvedValue(
+      dbIngestionJob({
+        status: "SUCCEEDED"
+      })
+    );
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength",
+        interventionId: " creatine ",
+        claimId: "creatine-strength"
+      })
+    ).resolves.toEqual({
+      claimId: "creatine-strength",
+      contextMismatchFields: [],
+      created: false,
+      interventionId: "creatine",
+      jobId: "job-pubmed",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "SUCCEEDED"
+    });
+  });
+
+  it("reports existing job context mismatch fields in stable order", async () => {
+    mocks.findUnique.mockResolvedValue(
+      dbIngestionJob({
+        status: "SUCCEEDED"
+      })
+    );
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength",
+        interventionId: "different-intervention",
+        claimId: "different-claim"
+      })
+    ).resolves.toEqual({
+      claimId: "creatine-strength",
+      contextMismatchFields: ["interventionId", "claimId"],
+      created: false,
+      interventionId: "creatine",
+      jobId: "job-pubmed",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "SUCCEEDED"
+    });
+  });
+
+  it("does not report context mismatches when no queue context is requested", async () => {
+    mocks.findUnique.mockResolvedValue(
+      dbIngestionJob({
+        status: "SUCCEEDED"
+      })
+    );
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength"
+      })
+    ).resolves.toEqual({
+      claimId: "creatine-strength",
+      contextMismatchFields: [],
+      created: false,
+      interventionId: "creatine",
+      jobId: "job-pubmed",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "SUCCEEDED"
+    });
+  });
+
+  it("ignores blank or malformed stored context when reporting existing jobs", async () => {
+    mocks.findUnique.mockResolvedValue(
+      dbIngestionJob({
+        metadata: {
+          interventionId: " ",
+          claimId: 123
+        }
+      })
+    );
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength"
+      })
+    ).resolves.toEqual({
+      claimId: undefined,
+      contextMismatchFields: [],
+      created: false,
+      interventionId: undefined,
+      jobId: "job-pubmed",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "QUEUED"
+    });
   });
 
   it("rejects empty and overlong queue terms", async () => {

@@ -1415,7 +1415,9 @@ describe("runSourceCandidateJobCommand", () => {
     const stdout = vi.fn();
     const listJobs = vi.fn().mockResolvedValue([
       {
+        claimId: "creatine-strength",
         jobId: "job-pubmed",
+        interventionId: "creatine",
         source: "PUBMED",
         query: "creatine strength",
         region: "AU",
@@ -1457,7 +1459,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate ingestion jobs: total=2",
-        '- [SUCCEEDED] job-pubmed PUBMED AU "creatine strength" found=5 changed=3 updated=2026-06-02T01:02:00.000Z',
+        '- [SUCCEEDED] job-pubmed PUBMED AU "creatine strength" found=5 changed=3 updated=2026-06-02T01:02:00.000Z intervention=creatine claim=creatine-strength',
         '- [FAILED] job-trials CLINICALTRIALS_GOV AU "creatine aging" found=0 changed=0 updated=2026-06-02T02:01:00.000Z error=ClinicalTrials unavailable'
       ].join("\n")
     );
@@ -1477,7 +1479,10 @@ describe("runSourceCandidateJobCommand", () => {
   it("queues a source-candidate ingestion job without running jobs", async () => {
     const stdout = vi.fn();
     const queueJob = vi.fn().mockResolvedValue({
+      claimId: "creatine-strength",
+      contextMismatchFields: [],
       created: true,
+      interventionId: "creatine",
       jobId: "job-pubmed",
       source: "PUBMED",
       query: "creatine strength",
@@ -1512,14 +1517,17 @@ describe("runSourceCandidateJobCommand", () => {
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
-      '[QUEUED] job-pubmed PUBMED AU "creatine strength" created=true'
+      '[QUEUED] job-pubmed PUBMED AU "creatine strength" created=true intervention=creatine claim=creatine-strength'
     );
   });
 
   it("reports existing queued jobs without claiming them", async () => {
     const stdout = vi.fn();
     const queueJob = vi.fn().mockResolvedValue({
+      claimId: "creatine-strength",
+      contextMismatchFields: ["interventionId"],
       created: false,
+      interventionId: "creatine",
       jobId: "job-pubmed",
       source: "PUBMED",
       query: "creatine strength",
@@ -1530,15 +1538,22 @@ describe("runSourceCandidateJobCommand", () => {
 
     await expect(
       runSourceCandidateJobCommand(
-        ["--queue-pubmed", "creatine strength"],
+        ["--queue-pubmed", "creatine strength", "--intervention-id", "different-context"],
         { stdout },
         { queueJob, runJobById }
       )
     ).resolves.toBe(0);
 
+    expect(queueJob).toHaveBeenCalledWith({
+      source: "PubMed",
+      query: "creatine strength",
+      region: undefined,
+      interventionId: "different-context",
+      claimId: undefined
+    });
     expect(runJobById).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
-      '[SUCCEEDED] job-pubmed PUBMED AU "creatine strength" created=false'
+      '[SUCCEEDED] job-pubmed PUBMED AU "creatine strength" created=false intervention=creatine claim=creatine-strength requestedContextMismatch="interventionId"'
     );
   });
 

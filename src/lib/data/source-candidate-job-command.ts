@@ -879,14 +879,24 @@ function formatSourceCandidateJobResult(result: SourceCandidateIngestionJobRunRe
 }
 
 function formatQueuedSourceCandidateJob(result: QueuedSourceCandidateIngestionJob) {
-  return [
+  const parts = [
     `[${result.status}]`,
     result.jobId,
     result.source,
     result.region,
     quote(result.query),
     `created=${result.created}`
-  ].join(" ");
+  ];
+
+  appendJobContext(parts, result);
+
+  if (result.contextMismatchFields.length > 0) {
+    parts.push(
+      `requestedContextMismatch=${quote(result.contextMismatchFields.join(","))}`
+    );
+  }
+
+  return parts.join(" ");
 }
 
 function formatReviewedSourceCandidate(candidate: SourceCandidate) {
@@ -1160,11 +1170,26 @@ function formatSourceCandidateIngestionJob(job: SourceCandidateIngestionJobListI
     `updated=${job.updatedAt}`
   ];
 
+  appendJobContext(parts, job);
+
   if (job.error) {
     parts.push(`error=${job.error}`);
   }
 
   return parts.join(" ");
+}
+
+function appendJobContext(
+  parts: string[],
+  job: Pick<QueuedSourceCandidateIngestionJob, "claimId" | "interventionId">
+) {
+  if (job.interventionId) {
+    parts.push(`intervention=${job.interventionId}`);
+  }
+
+  if (job.claimId) {
+    parts.push(`claim=${job.claimId}`);
+  }
 }
 
 function formatSourceCandidateBacklogSummary(summary: SourceCandidateBacklogSummary) {
