@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  create: vi.fn(),
   findFirst: vi.fn(),
   findUnique: vi.fn(),
   update: vi.fn(),
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/db/prisma", () => ({
   prisma: {
     ingestionJob: {
+      create: mocks.create,
       findFirst: mocks.findFirst,
       findUnique: mocks.findUnique,
       update: mocks.update,
@@ -26,12 +28,149 @@ vi.mock("@/lib/data/source-candidate-ingestion", () => ({
 }));
 
 import {
+  queueSourceCandidateIngestionJob,
   runNextSourceCandidateIngestionJob,
   runSourceCandidateIngestionJob
 } from "@/lib/data/source-candidate-jobs";
 
 const timestamp = new Date("2026-06-02T03:00:00.000Z");
 const now = () => timestamp;
+
+describe("queueSourceCandidateIngestionJob", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("creates a queued PubMed ingestion job when one does not already exist", async () => {
+    mocks.findUnique.mockResolvedValue(null);
+    mocks.create.mockResolvedValue(dbIngestionJob());
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "  creatine   strength  ",
+        region: "au",
+        interventionId: " creatine ",
+        claimId: "creatine-strength"
+      })
+    ).resolves.toEqual({
+      created: true,
+      jobId: "job-pubmed",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "QUEUED"
+    });
+
+    expect(mocks.findUnique).toHaveBeenCalledWith({
+      where: {
+        source_query_region: {
+          source: "PUBMED",
+          query: "creatine strength",
+          region: "AU"
+        }
+      }
+    });
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: {
+        source: "PUBMED",
+        status: "QUEUED",
+        query: "creatine strength",
+        region: "AU",
+        metadata: {
+          interventionId: "creatine",
+          claimId: "creatine-strength"
+        }
+      }
+    });
+  });
+
+  it("creates ClinicalTrials.gov jobs with default AU region and sparse metadata", async () => {
+    mocks.findUnique.mockResolvedValue(null);
+    mocks.create.mockResolvedValue(
+      dbIngestionJob({
+        id: "job-trials",
+        source: "CLINICALTRIALS_GOV",
+        query: "creatine aging",
+        metadata: {}
+      })
+    );
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "ClinicalTrials.gov",
+        query: "creatine aging"
+      })
+    ).resolves.toEqual({
+      created: true,
+      jobId: "job-trials",
+      source: "CLINICALTRIALS_GOV",
+      query: "creatine aging",
+      region: "AU",
+      status: "QUEUED"
+    });
+
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: {
+        source: "CLINICALTRIALS_GOV",
+        status: "QUEUED",
+        query: "creatine aging",
+        region: "AU",
+        metadata: {}
+      }
+    });
+  });
+
+  it("returns an existing job without resetting status or metadata", async () => {
+    mocks.findUnique.mockResolvedValue(
+      dbIngestionJob({
+        status: "SUCCEEDED",
+        recordsFound: 5,
+        recordsChanged: 5
+      })
+    );
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength",
+        interventionId: "different-context"
+      })
+    ).resolves.toEqual({
+      created: false,
+      jobId: "job-pubmed",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "SUCCEEDED"
+    });
+
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty and overlong queue terms", async () => {
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: " "
+      })
+    ).rejects.toThrow("Source-candidate ingestion job query is required.");
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "a".repeat(241)
+      })
+    ).rejects.toThrow(
+      "Source-candidate ingestion job query must be 240 characters or fewer."
+    );
+
+    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+});
 
 describe("runNextSourceCandidateIngestionJob", () => {
   beforeEach(() => {

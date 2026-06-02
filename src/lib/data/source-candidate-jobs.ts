@@ -11,6 +11,8 @@ import {
   type SourceCandidateIngestionResult
 } from "@/lib/data/source-candidate-ingestion";
 import { prisma } from "@/lib/db/prisma";
+import { MAX_LIVE_SOURCE_TERM_LENGTH } from "@/lib/live-source-request";
+import type { SourceCandidateSource } from "@/lib/types";
 
 type SupportedSourceCandidateJobSource =
   | typeof DbSourceKind.PUBMED
@@ -38,11 +40,63 @@ export interface SourceCandidateIngestionJobRunResult {
   error?: string;
 }
 
+export interface QueueSourceCandidateIngestionJobInput {
+  claimId?: string;
+  interventionId?: string;
+  query: string;
+  region?: string;
+  source: SourceCandidateSource;
+}
+
+export interface QueuedSourceCandidateIngestionJob {
+  created: boolean;
+  jobId: string;
+  query: string;
+  region: string;
+  source: DbSourceKind;
+  status: DbIngestionStatus;
+}
+
 const SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES = [
   DbSourceKind.PUBMED,
   DbSourceKind.CLINICALTRIALS_GOV
 ] satisfies SupportedSourceCandidateJobSource[];
 const MAX_NEXT_JOB_CLAIM_ATTEMPTS = 3;
+const DEFAULT_REGION = "AU";
+
+export async function queueSourceCandidateIngestionJob(
+  input: QueueSourceCandidateIngestionJobInput
+): Promise<QueuedSourceCandidateIngestionJob> {
+  const source = sourceKindFromSourceCandidateSource(input.source);
+  const query = normaliseQueueQuery(input.query);
+  const region = normaliseRegion(input.region);
+  const where = {
+    source_query_region: {
+      source,
+      query,
+      region
+    }
+  };
+  const existingJob = await prisma.ingestionJob.findUnique({
+    where
+  });
+
+  if (existingJob) {
+    return mapQueuedJob(existingJob, false);
+  }
+
+  const job = await prisma.ingestionJob.create({
+    data: {
+      source,
+      status: DbIngestionStatus.QUEUED,
+      query,
+      region,
+      metadata: queueMetadata(input)
+    }
+  });
+
+  return mapQueuedJob(job, true);
+}
 
 export async function runNextSourceCandidateIngestionJob(
   options: SourceCandidateIngestionJobOptions = {}
@@ -172,6 +226,69 @@ function sourceCandidateContext(job: DbIngestionJob) {
     claimId: readStringMetadata(job.metadata, "claimId"),
     ingestionJobId: job.id
   };
+}
+
+function sourceKindFromSourceCandidateSource(source: SourceCandidateSource) {
+  switch (source) {
+    case "PubMed":
+      return DbSourceKind.PUBMED;
+    case "ClinicalTrials.gov":
+      return DbSourceKind.CLINICALTRIALS_GOV;
+  }
+}
+
+function mapQueuedJob(
+  job: DbIngestionJob,
+  created: boolean
+): QueuedSourceCandidateIngestionJob {
+  return {
+    created,
+    jobId: job.id,
+    query: job.query,
+    region: job.region,
+    source: job.source,
+    status: job.status
+  };
+}
+
+function normaliseQueueQuery(query: string) {
+  const normalised = query.replace(/\s+/g, " ").trim();
+
+  if (!normalised) {
+    throw new Error("Source-candidate ingestion job query is required.");
+  }
+
+  if (normalised.length > MAX_LIVE_SOURCE_TERM_LENGTH) {
+    throw new Error(
+      `Source-candidate ingestion job query must be ${MAX_LIVE_SOURCE_TERM_LENGTH} characters or fewer.`
+    );
+  }
+
+  return normalised;
+}
+
+function normaliseRegion(region: string | undefined) {
+  const normalised = (region ?? DEFAULT_REGION).trim().toUpperCase();
+
+  if (!normalised) {
+    throw new Error("Source-candidate ingestion job region is required.");
+  }
+
+  return normalised;
+}
+
+function queueMetadata(input: QueueSourceCandidateIngestionJobInput) {
+  return Object.fromEntries(
+    [
+      ["interventionId", optionalTrimmedString(input.interventionId)],
+      ["claimId", optionalTrimmedString(input.claimId)]
+    ].filter(([, value]) => value !== undefined)
+  ) as Prisma.InputJsonObject;
+}
+
+function optionalTrimmedString(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 async function claimQueuedJob(jobId: string, startedAt: Date) {

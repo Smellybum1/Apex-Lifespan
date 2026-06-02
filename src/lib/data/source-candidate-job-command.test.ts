@@ -49,6 +49,43 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     });
   });
 
+  it("parses queue mode and queue metadata", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--queue-pubmed",
+        "creatine strength",
+        "--region",
+        "au",
+        "--intervention-id",
+        "creatine",
+        "--claim-id",
+        "creatine-strength"
+      ])
+    ).toEqual({
+      help: false,
+      limit: 1,
+      queueSource: "PubMed",
+      queueQuery: "creatine strength",
+      region: "au",
+      interventionId: "creatine",
+      claimId: "creatine-strength",
+      summary: false
+    });
+
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--queue-clinical-trials",
+        "creatine aging"
+      ])
+    ).toEqual({
+      help: false,
+      limit: 1,
+      queueSource: "ClinicalTrials.gov",
+      queueQuery: "creatine aging",
+      summary: false
+    });
+  });
+
   it("fails closed on unknown options and invalid numbers", () => {
     expect(() => parseSourceCandidateJobCommandArgs(["--wat"])).toThrow(
       "Unknown option: --wat"
@@ -74,6 +111,26 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--summary", "--job-id", "job-pubmed"])
     ).toThrow("--summary is read-only and cannot be combined with run options.");
+  });
+
+  it("does not combine queue mode with other command modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--queue-pubmed",
+        "creatine",
+        "--queue-clinical-trials",
+        "creatine"
+      ])
+    ).toThrow("Only one queue option can be used at a time.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--queue-pubmed", "creatine", "--limit", "2"])
+    ).toThrow("Queue options cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--queue-pubmed", "creatine", "--summary"])
+    ).toThrow("--summary is read-only and cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--region", "AU"])
+    ).toThrow("--region, --intervention-id, and --claim-id require a queue option.");
   });
 });
 
@@ -130,6 +187,89 @@ describe("runSourceCandidateJobCommand", () => {
         "- ClinicalTrials.gov AU Accepted / Human reviewed: 1"
       ].join("\n")
     );
+  });
+
+  it("queues a source-candidate ingestion job without running jobs", async () => {
+    const stdout = vi.fn();
+    const queueJob = vi.fn().mockResolvedValue({
+      created: true,
+      jobId: "job-pubmed",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "QUEUED"
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--queue-pubmed",
+          "creatine strength",
+          "--region",
+          "au",
+          "--intervention-id",
+          "creatine",
+          "--claim-id",
+          "creatine-strength"
+        ],
+        { stdout },
+        { queueJob, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(queueJob).toHaveBeenCalledWith({
+      source: "PubMed",
+      query: "creatine strength",
+      region: "au",
+      interventionId: "creatine",
+      claimId: "creatine-strength"
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      '[QUEUED] job-pubmed PUBMED AU "creatine strength" created=true'
+    );
+  });
+
+  it("reports existing queued jobs without claiming them", async () => {
+    const stdout = vi.fn();
+    const queueJob = vi.fn().mockResolvedValue({
+      created: false,
+      jobId: "job-pubmed",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "SUCCEEDED"
+    });
+    const runJobById = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--queue-pubmed", "creatine strength"],
+        { stdout },
+        { queueJob, runJobById }
+      )
+    ).resolves.toBe(0);
+
+    expect(runJobById).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      '[SUCCEEDED] job-pubmed PUBMED AU "creatine strength" created=false'
+    );
+  });
+
+  it("returns a failing exit code when queueing fails", async () => {
+    const stderr = vi.fn();
+    const queueJob = vi.fn().mockRejectedValue(new Error("database unavailable"));
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--queue-pubmed", "creatine strength"],
+        { stderr },
+        { queueJob }
+      )
+    ).resolves.toBe(1);
+
+    expect(stderr).toHaveBeenCalledWith("database unavailable");
   });
 
   it("prints an empty backlog summary", async () => {

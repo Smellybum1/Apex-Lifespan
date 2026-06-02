@@ -71,6 +71,8 @@ npm run ingest:sources
 Useful options:
 
 ```bash
+npm run ingest:sources -- --queue-pubmed "creatine strength randomized trial systematic review"
+npm run ingest:sources -- --queue-clinical-trials "creatine aging"
 npm run ingest:sources -- --limit 5
 npm run ingest:sources -- --job-id <ingestion-job-id>
 npm run ingest:sources -- --pubmed-retmax 10
@@ -79,6 +81,7 @@ npm run ingest:sources -- --summary
 ```
 
 The command reports job status, records found, and records changed. These are ingestion-operation counts, not evidence-quality scores.
+Queue options create a missing job or report the existing job for the same source, query, and region; they do not reset completed jobs.
 The `--summary` option is read-only and reports source-candidate workflow counts by source, region, decision, and review status.
 
 ## Australia regulatory lens
