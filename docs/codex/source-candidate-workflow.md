@@ -32,7 +32,7 @@ Queue metadata:
 npm run ingest:sources -- --queue-pubmed "creatine strength" --region AU --intervention-id <intervention-id> --claim-id <claim-id>
 ```
 
-Queue options create a missing job or report the existing job for the same source, query, region, intervention id, and claim id. They do not reset completed jobs or retarget stored intervention/claim context. The migration backfills valid older metadata-backed job context into first-class columns, and new queue identity is context-aware so the same query can be queued separately for different claim-level curation work.
+Queue options create a missing job or report the existing job for the same source, query, region, intervention id, and claim id. They do not reset completed jobs or retarget stored intervention/claim context. When queueing with both intervention and claim context, the claim must belong to that intervention; missing claim or intervention context fails before a job is created. The migration backfills valid older metadata-backed job context into first-class columns, and new queue identity is context-aware so the same query can be queued separately for different claim-level curation work.
 
 Read-only operator views:
 

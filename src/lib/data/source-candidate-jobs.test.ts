@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  claimFindUnique: vi.fn(),
   create: vi.fn(),
   findFirst: vi.fn(),
   findMany: vi.fn(),
   findUnique: vi.fn(),
+  interventionFindUnique: vi.fn(),
   update: vi.fn(),
   updateMany: vi.fn(),
   ingestClinicalTrialSourceCandidates: vi.fn(),
@@ -13,6 +15,9 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/db/prisma", () => ({
   prisma: {
+    claim: {
+      findUnique: mocks.claimFindUnique
+    },
     ingestionJob: {
       create: mocks.create,
       findFirst: mocks.findFirst,
@@ -20,6 +25,9 @@ vi.mock("@/lib/db/prisma", () => ({
       findUnique: mocks.findUnique,
       update: mocks.update,
       updateMany: mocks.updateMany
+    },
+    intervention: {
+      findUnique: mocks.interventionFindUnique
     }
   }
 }));
@@ -146,6 +154,12 @@ describe("listSourceCandidateIngestionJobs", () => {
 describe("queueSourceCandidateIngestionJob", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.claimFindUnique.mockResolvedValue({
+      interventionId: "creatine"
+    });
+    mocks.interventionFindUnique.mockResolvedValue({
+      id: "creatine"
+    });
   });
 
   it("creates a queued PubMed ingestion job when one does not already exist", async () => {
@@ -181,6 +195,15 @@ describe("queueSourceCandidateIngestionJob", () => {
         claimId: "creatine-strength"
       }
     });
+    expect(mocks.claimFindUnique).toHaveBeenCalledWith({
+      where: {
+        id: "creatine-strength"
+      },
+      select: {
+        interventionId: true
+      }
+    });
+    expect(mocks.interventionFindUnique).not.toHaveBeenCalled();
     expect(mocks.create).toHaveBeenCalledWith({
       data: {
         source: "PUBMED",
@@ -238,6 +261,163 @@ describe("queueSourceCandidateIngestionJob", () => {
         metadata: {}
       }
     });
+    expect(mocks.claimFindUnique).not.toHaveBeenCalled();
+    expect(mocks.interventionFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("creates intervention-scoped jobs after validating the intervention", async () => {
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.create.mockResolvedValue(
+      dbIngestionJob({
+        id: "job-pubmed-creatine",
+        interventionId: "creatine",
+        claimId: null,
+        metadata: {
+          interventionId: "creatine"
+        }
+      })
+    );
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength",
+        interventionId: "creatine"
+      })
+    ).resolves.toEqual({
+      claimId: undefined,
+      contextMismatchFields: [],
+      created: true,
+      interventionId: "creatine",
+      jobId: "job-pubmed-creatine",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "QUEUED"
+    });
+
+    expect(mocks.claimFindUnique).not.toHaveBeenCalled();
+    expect(mocks.interventionFindUnique).toHaveBeenCalledWith({
+      where: {
+        id: "creatine"
+      },
+      select: {
+        id: true
+      }
+    });
+    expect(mocks.findFirst).toHaveBeenCalledWith({
+      where: {
+        source: "PUBMED",
+        query: "creatine strength",
+        region: "AU",
+        interventionId: "creatine",
+        claimId: null
+      }
+    });
+  });
+
+  it("creates claim-scoped jobs after validating the claim", async () => {
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.create.mockResolvedValue(
+      dbIngestionJob({
+        id: "job-pubmed-creatine-strength-claim",
+        interventionId: null,
+        claimId: "creatine-strength",
+        metadata: {
+          claimId: "creatine-strength"
+        }
+      })
+    );
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength",
+        claimId: "creatine-strength"
+      })
+    ).resolves.toEqual({
+      claimId: "creatine-strength",
+      contextMismatchFields: [],
+      created: true,
+      interventionId: undefined,
+      jobId: "job-pubmed-creatine-strength-claim",
+      source: "PUBMED",
+      query: "creatine strength",
+      region: "AU",
+      status: "QUEUED"
+    });
+
+    expect(mocks.claimFindUnique).toHaveBeenCalledWith({
+      where: {
+        id: "creatine-strength"
+      },
+      select: {
+        interventionId: true
+      }
+    });
+    expect(mocks.interventionFindUnique).not.toHaveBeenCalled();
+    expect(mocks.findFirst).toHaveBeenCalledWith({
+      where: {
+        source: "PUBMED",
+        query: "creatine strength",
+        region: "AU",
+        interventionId: null,
+        claimId: "creatine-strength"
+      }
+    });
+  });
+
+  it("rejects queue context when the claim is missing", async () => {
+    mocks.claimFindUnique.mockResolvedValue(null);
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength",
+        claimId: "missing-claim"
+      })
+    ).rejects.toThrow("Source-candidate ingestion job claim not found: missing-claim.");
+
+    expect(mocks.findFirst).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects queue context when the intervention is missing", async () => {
+    mocks.interventionFindUnique.mockResolvedValue(null);
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength",
+        interventionId: "missing-intervention"
+      })
+    ).rejects.toThrow(
+      "Source-candidate ingestion job intervention not found: missing-intervention."
+    );
+
+    expect(mocks.findFirst).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects queue context when the claim belongs to a different intervention", async () => {
+    mocks.claimFindUnique.mockResolvedValue({
+      interventionId: "glycine"
+    });
+
+    await expect(
+      queueSourceCandidateIngestionJob({
+        source: "PubMed",
+        query: "creatine strength",
+        interventionId: "creatine",
+        claimId: "glycine-sleep"
+      })
+    ).rejects.toThrow(
+      "Source-candidate ingestion job claim glycine-sleep does not belong to intervention creatine."
+    );
+
+    expect(mocks.interventionFindUnique).not.toHaveBeenCalled();
+    expect(mocks.findFirst).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 
   it("creates a scoped job instead of returning an unscoped source/query/region match", async () => {

@@ -120,6 +120,7 @@ export async function queueSourceCandidateIngestionJob(
   const query = normaliseQueueQuery(input.query);
   const region = normaliseRegion(input.region);
   const requestedContext = queueContext(input);
+  await validateQueueContext(requestedContext);
   const identityWhere = queueIdentityWhere({
     source,
     query,
@@ -401,6 +402,52 @@ function queueContext(input: QueueSourceCandidateIngestionJobInput) {
     interventionId: optionalTrimmedString(input.interventionId),
     claimId: optionalTrimmedString(input.claimId)
   };
+}
+
+async function validateQueueContext(context: SourceCandidateJobContext) {
+  if (context.claimId) {
+    const claim = await prisma.claim.findUnique({
+      where: {
+        id: context.claimId
+      },
+      select: {
+        interventionId: true
+      }
+    });
+
+    if (!claim) {
+      throw new Error(
+        `Source-candidate ingestion job claim not found: ${context.claimId}.`
+      );
+    }
+
+    if (context.interventionId && claim.interventionId !== context.interventionId) {
+      throw new Error(
+        `Source-candidate ingestion job claim ${context.claimId} does not belong to intervention ${context.interventionId}.`
+      );
+    }
+
+    return;
+  }
+
+  if (!context.interventionId) {
+    return;
+  }
+
+  const intervention = await prisma.intervention.findUnique({
+    where: {
+      id: context.interventionId
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (!intervention) {
+    throw new Error(
+      `Source-candidate ingestion job intervention not found: ${context.interventionId}.`
+    );
+  }
 }
 
 function sourceCandidateJobContext(job: DbIngestionJob): SourceCandidateJobContext {
