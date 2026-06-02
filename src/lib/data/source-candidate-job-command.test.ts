@@ -12,6 +12,9 @@ describe("commandUsage", () => {
       "--candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance."
     );
     expect(commandUsage()).toContain(
+      "--candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
+    );
+    expect(commandUsage()).toContain(
       "--review-note <note>              Human review note; required for --reject-candidate."
     );
   });
@@ -147,6 +150,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "missing-reference"
       ]).candidateCurationHandoffStatus
     ).toBe("Accepted reference missing");
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidate-curation-handoff-status",
+        "reference-mismatch"
+      ]).candidateCurationHandoffStatus
+    ).toBe("Accepted reference mismatch");
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidate-curation-handoff-status",
+        "candidate-claim-missing"
+      ]).candidateCurationHandoffStatus
+    ).toBe("Candidate claim missing");
     expect(
       parseSourceCandidateJobCommandArgs([
         "--candidate-curation-handoff",
@@ -624,7 +641,7 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "excellent"
       ])
     ).toThrow(
-      "--candidate-curation-handoff-status must be missing-reference, claim-link-missing, extraction-pending, or ready."
+      "--candidate-curation-handoff-status must be missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
     );
   });
 
@@ -1226,6 +1243,59 @@ describe("runSourceCandidateJobCommand", () => {
         '  - claim=creatine-strength relevance=5 note="Primary source."',
         "studies:",
         '  - study=study-creatine-issn reference=ref-creatine-position-stand title="Creatine\\nposition stand extraction" year=2017'
+      ].join("\n")
+    );
+  });
+
+  it("prints accepted-reference mismatch curation status", async () => {
+    const stdout = vi.fn();
+    const getCurationStatus = vi.fn().mockResolvedValue({
+      acceptedReference: {
+        id: "wrong-pubmed-reference",
+        title: "Wrong PubMed reference",
+        source: "PubMed",
+        identifier: "PMID: 12345678",
+        year: 2020,
+        url: "https://pubmed.ncbi.nlm.nih.gov/12345678/"
+      },
+      acceptedReferenceId: "wrong-pubmed-reference",
+      candidate: sourceCandidate({
+        decision: "Accepted",
+        reviewStatus: "Human reviewed",
+        acceptedReferenceId: "wrong-pubmed-reference",
+        claimId: "creatine-strength"
+      }),
+      claimLinks: [],
+      nextAction:
+        "Replace the accepted reference with one matching the candidate source and external id.",
+      publicSourcePacketReady: false,
+      status: "Accepted reference mismatch",
+      studies: []
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-curation-status", "pubmed|au|creatine|28615996"],
+        { stdout },
+        { getCurationStatus }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate curation status",
+        'dedupe="pubmed|au|creatine|28615996"',
+        'decision="Accepted"',
+        'reviewStatus="Human reviewed"',
+        'status="Accepted reference mismatch"',
+        'nextAction="Replace the accepted reference with one matching the candidate source and external id."',
+        "publicSourcePacketReady=false",
+        "acceptedReference=wrong-pubmed-reference",
+        'acceptedReferenceTitle="Wrong PubMed reference"',
+        "acceptedReferenceUrl=https://pubmed.ncbi.nlm.nih.gov/12345678/",
+        "candidateClaim=creatine-strength",
+        "claimLinks=0",
+        "studies=0"
       ].join("\n")
     );
   });

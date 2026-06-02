@@ -64,6 +64,8 @@ export interface SourceCandidateAcceptedReferenceMatches {
 export type SourceCandidateCurationStatusKind =
   | "Not accepted"
   | "Accepted reference missing"
+  | "Accepted reference mismatch"
+  | "Candidate claim missing"
   | "Claim link missing"
   | "Extraction pending"
   | "Public source packet ready";
@@ -122,6 +124,8 @@ const MAX_CURATION_HANDOFF_LIMIT = 50;
 const MAX_REFERENCE_MATCH_CANDIDATES = 50;
 const CURATION_HANDOFF_STATUS_ORDER: SourceCandidateCurationStatusKind[] = [
   "Accepted reference missing",
+  "Accepted reference mismatch",
+  "Candidate claim missing",
   "Claim link missing",
   "Extraction pending",
   "Public source packet ready",
@@ -278,6 +282,15 @@ export async function getSourceCandidateCurationStatus(
       acceptedReferenceId,
       candidate: mappedCandidate,
       status: "Accepted reference missing"
+    });
+  }
+
+  if (!referenceMatchesSourceCandidate(acceptedReference, candidate)) {
+    return sourceCandidateCurationStatus({
+      acceptedReference: mapDbReference(acceptedReference),
+      acceptedReferenceId,
+      candidate: mappedCandidate,
+      status: "Accepted reference mismatch"
     });
   }
 
@@ -440,6 +453,15 @@ async function sourceCandidateCurationStatuses(
         acceptedReferenceId,
         candidate: mappedCandidate,
         status: "Accepted reference missing"
+      });
+    }
+
+    if (!referenceMatchesSourceCandidate(acceptedReference, candidate)) {
+      return sourceCandidateCurationStatus({
+        acceptedReference: mapDbReference(acceptedReference),
+        acceptedReferenceId,
+        candidate: mappedCandidate,
+        status: "Accepted reference mismatch"
       });
     }
 
@@ -719,6 +741,10 @@ function curationNextAction(status: SourceCandidateCurationStatusKind) {
       return "Accept with a matching curated reference before curation handoff.";
     case "Accepted reference missing":
       return "Attach or restore the matching curated reference before public packet review.";
+    case "Accepted reference mismatch":
+      return "Replace the accepted reference with one matching the candidate source and external id.";
+    case "Candidate claim missing":
+      return "Review or queue this candidate with a claim id before public packet review.";
     case "Claim link missing":
       return "Link the accepted reference to the candidate claim before public packet review.";
     case "Extraction pending":
@@ -733,6 +759,10 @@ function curationStatusKind(
   studies: SourceCandidateCurationStudy[],
   candidateClaimLinked: boolean | undefined
 ): SourceCandidateCurationStatusKind {
+  if (candidateClaimLinked === undefined) {
+    return "Candidate claim missing";
+  }
+
   if (claimLinks.length === 0 || candidateClaimLinked === false) {
     return "Claim link missing";
   }

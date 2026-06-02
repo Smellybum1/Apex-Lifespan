@@ -530,6 +530,41 @@ describe("getSourceCandidateCurationStatus", () => {
     });
   });
 
+  it("does not mark accepted candidates without claim context ready", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        claimId: null
+      })
+    );
+    prismaMocks.claimReferenceFindMany.mockResolvedValue([dbClaimReference()]);
+    prismaMocks.studyFindMany.mockResolvedValue([dbStudy()]);
+
+    await expect(
+      getSourceCandidateCurationStatus("pubmed|au|creatine|28615996")
+    ).resolves.toMatchObject({
+      acceptedReferenceId: "ref-creatine-position-stand",
+      candidateClaimLinked: undefined,
+      claimLinks: [
+        {
+          claimId: "creatine-strength",
+          relevance: 5
+        }
+      ],
+      nextAction:
+        "Review or queue this candidate with a claim id before public packet review.",
+      publicSourcePacketReady: false,
+      status: "Candidate claim missing",
+      studies: [
+        expect.objectContaining({
+          id: "study-creatine-issn"
+        })
+      ]
+    });
+  });
+
   it("reports accepted candidates that are not claim-linked yet", async () => {
     prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
       dbSourceCandidate({
@@ -617,6 +652,41 @@ describe("getSourceCandidateCurationStatus", () => {
     expect(prismaMocks.studyFindMany).not.toHaveBeenCalled();
   });
 
+  it("reports accepted candidates whose accepted reference no longer matches", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "wrong-pubmed-reference"
+      })
+    );
+    prismaMocks.referenceFindUnique.mockResolvedValue(
+      dbReference({
+        id: "wrong-pubmed-reference",
+        identifier: "PMID: 12345678",
+        url: "https://pubmed.ncbi.nlm.nih.gov/12345678/"
+      })
+    );
+
+    await expect(
+      getSourceCandidateCurationStatus("pubmed|au|creatine|28615996")
+    ).resolves.toMatchObject({
+      acceptedReference: expect.objectContaining({
+        id: "wrong-pubmed-reference"
+      }),
+      acceptedReferenceId: "wrong-pubmed-reference",
+      claimLinks: [],
+      nextAction:
+        "Replace the accepted reference with one matching the candidate source and external id.",
+      publicSourcePacketReady: false,
+      status: "Accepted reference mismatch",
+      studies: []
+    });
+
+    expect(prismaMocks.claimReferenceFindMany).not.toHaveBeenCalled();
+    expect(prismaMocks.studyFindMany).not.toHaveBeenCalled();
+  });
+
   it("reports accepted candidates without an accepted reference id as missing-reference curation gaps", async () => {
     prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
       dbSourceCandidate({
@@ -696,6 +766,21 @@ describe("listSourceCandidateCurationHandoff", () => {
         reviewedAt: new Date("2026-06-02T03:00:00.000Z")
       }),
       dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|reference-mismatch",
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-reference-mismatch",
+        reviewedAt: new Date("2026-06-02T03:30:00.000Z")
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|candidate-claim-missing",
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-candidate-claim-missing",
+        claimId: null,
+        reviewedAt: new Date("2026-06-02T03:45:00.000Z")
+      }),
+      dbSourceCandidate({
         dedupeKey: "pubmed|au|creatine|missing-reference",
         decision: "ACCEPTED",
         reviewStatus: "HUMAN_REVIEWED",
@@ -713,7 +798,13 @@ describe("listSourceCandidateCurationHandoff", () => {
     prismaMocks.referenceFindMany.mockResolvedValue([
       dbReference({ id: "ref-ready" }),
       dbReference({ id: "ref-pending-extraction" }),
-      dbReference({ id: "ref-claim-link-missing" })
+      dbReference({ id: "ref-claim-link-missing" }),
+      dbReference({
+        id: "ref-reference-mismatch",
+        identifier: "PMID: 12345678",
+        url: "https://pubmed.ncbi.nlm.nih.gov/12345678/"
+      }),
+      dbReference({ id: "ref-candidate-claim-missing" })
     ]);
     prismaMocks.claimReferenceFindMany.mockResolvedValue([
       dbClaimReference({ referenceId: "ref-ready" }),
@@ -721,6 +812,12 @@ describe("listSourceCandidateCurationHandoff", () => {
       dbClaimReference({
         claimId: "different-claim",
         referenceId: "ref-claim-link-missing"
+      }),
+      dbClaimReference({
+        referenceId: "ref-reference-mismatch"
+      }),
+      dbClaimReference({
+        referenceId: "ref-candidate-claim-missing"
       })
     ]);
     prismaMocks.studyFindMany.mockResolvedValue([
@@ -728,6 +825,14 @@ describe("listSourceCandidateCurationHandoff", () => {
       dbStudy({
         id: "study-claim-link-missing",
         referenceId: "ref-claim-link-missing"
+      }),
+      dbStudy({
+        id: "study-reference-mismatch",
+        referenceId: "ref-reference-mismatch"
+      }),
+      dbStudy({
+        id: "study-candidate-claim-missing",
+        referenceId: "ref-candidate-claim-missing"
       })
     ]);
 
@@ -788,6 +893,42 @@ describe("listSourceCandidateCurationHandoff", () => {
         status: "Claim link missing"
       }),
       expect.objectContaining({
+        acceptedReferenceId: "ref-reference-mismatch",
+        candidate: expect.objectContaining({
+          dedupeKey: "pubmed|au|creatine|reference-mismatch"
+        }),
+        claimLinks: [],
+        nextAction:
+          "Replace the accepted reference with one matching the candidate source and external id.",
+        publicSourcePacketReady: false,
+        status: "Accepted reference mismatch",
+        studies: []
+      }),
+      expect.objectContaining({
+        acceptedReferenceId: "ref-candidate-claim-missing",
+        candidate: expect.objectContaining({
+          dedupeKey: "pubmed|au|creatine|candidate-claim-missing"
+        }),
+        candidateClaimLinked: undefined,
+        claimLinks: [
+          {
+            claimId: "creatine-strength",
+            note: undefined,
+            relevance: 5
+          }
+        ],
+        nextAction:
+          "Review or queue this candidate with a claim id before public packet review.",
+        publicSourcePacketReady: false,
+        status: "Candidate claim missing",
+        studies: [
+          expect.objectContaining({
+            id: "study-candidate-claim-missing",
+            referenceId: "ref-candidate-claim-missing"
+          })
+        ]
+      }),
+      expect.objectContaining({
         acceptedReferenceId: "ref-missing",
         claimLinks: [],
         nextAction:
@@ -828,6 +969,8 @@ describe("listSourceCandidateCurationHandoff", () => {
             "ref-ready",
             "ref-pending-extraction",
             "ref-claim-link-missing",
+            "ref-reference-mismatch",
+            "ref-candidate-claim-missing",
             "ref-missing"
           ]
         }
@@ -841,6 +984,8 @@ describe("listSourceCandidateCurationHandoff", () => {
             "ref-ready",
             "ref-pending-extraction",
             "ref-claim-link-missing",
+            "ref-reference-mismatch",
+            "ref-candidate-claim-missing",
             "ref-missing"
           ]
         }
@@ -854,6 +999,8 @@ describe("listSourceCandidateCurationHandoff", () => {
             "ref-ready",
             "ref-pending-extraction",
             "ref-claim-link-missing",
+            "ref-reference-mismatch",
+            "ref-candidate-claim-missing",
             "ref-missing"
           ]
         }
@@ -1022,6 +1169,19 @@ describe("summarizeSourceCandidateCurationHandoff", () => {
         acceptedReferenceId: "ref-claim-link-missing"
       }),
       dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|reference-mismatch",
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-reference-mismatch"
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|candidate-claim-missing",
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-candidate-claim-missing",
+        claimId: null
+      }),
+      dbSourceCandidate({
         dedupeKey: "pubmed|au|creatine|missing-reference",
         decision: "ACCEPTED",
         reviewStatus: "HUMAN_REVIEWED",
@@ -1031,7 +1191,13 @@ describe("summarizeSourceCandidateCurationHandoff", () => {
     prismaMocks.referenceFindMany.mockResolvedValue([
       dbReference({ id: "ref-ready" }),
       dbReference({ id: "ref-pending-extraction" }),
-      dbReference({ id: "ref-claim-link-missing" })
+      dbReference({ id: "ref-claim-link-missing" }),
+      dbReference({
+        id: "ref-reference-mismatch",
+        identifier: "PMID: 12345678",
+        url: "https://pubmed.ncbi.nlm.nih.gov/12345678/"
+      }),
+      dbReference({ id: "ref-candidate-claim-missing" })
     ]);
     prismaMocks.claimReferenceFindMany.mockResolvedValue([
       dbClaimReference({ referenceId: "ref-ready" }),
@@ -1039,6 +1205,12 @@ describe("summarizeSourceCandidateCurationHandoff", () => {
       dbClaimReference({
         claimId: "different-claim",
         referenceId: "ref-claim-link-missing"
+      }),
+      dbClaimReference({
+        referenceId: "ref-reference-mismatch"
+      }),
+      dbClaimReference({
+        referenceId: "ref-candidate-claim-missing"
       })
     ]);
     prismaMocks.studyFindMany.mockResolvedValue([
@@ -1046,6 +1218,14 @@ describe("summarizeSourceCandidateCurationHandoff", () => {
       dbStudy({
         id: "study-claim-link-missing",
         referenceId: "ref-claim-link-missing"
+      }),
+      dbStudy({
+        id: "study-reference-mismatch",
+        referenceId: "ref-reference-mismatch"
+      }),
+      dbStudy({
+        id: "study-candidate-claim-missing",
+        referenceId: "ref-candidate-claim-missing"
       })
     ]);
 
@@ -1055,6 +1235,16 @@ describe("summarizeSourceCandidateCurationHandoff", () => {
           count: 1,
           publicSourcePacketReady: false,
           status: "Accepted reference missing"
+        },
+        {
+          count: 1,
+          publicSourcePacketReady: false,
+          status: "Accepted reference mismatch"
+        },
+        {
+          count: 1,
+          publicSourcePacketReady: false,
+          status: "Candidate claim missing"
         },
         {
           count: 1,
@@ -1072,7 +1262,7 @@ describe("summarizeSourceCandidateCurationHandoff", () => {
           status: "Public source packet ready"
         }
       ],
-      total: 4
+      total: 6
     });
 
     expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({

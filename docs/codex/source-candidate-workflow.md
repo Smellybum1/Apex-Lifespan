@@ -50,6 +50,8 @@ npm run ingest:sources -- --candidate-reference-matches <dedupe-key>
 npm run ingest:sources -- --candidate-curation-status <dedupe-key>
 npm run ingest:sources -- --candidate-curation-handoff
 npm run ingest:sources -- --candidate-curation-handoff --candidate-claim-id <claim-id>
+npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-status candidate-claim-missing
+npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-status reference-mismatch
 npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-status extraction-pending
 npm run ingest:sources -- --summary
 ```
@@ -77,7 +79,7 @@ npm run ingest:sources -- --clinical-trial-page-size 10
 - `--candidates` defaults to pending rows and can filter by source, job, intervention, claim, or decision.
 - `--candidate-detail` prints one candidate with triage reasons, review fields, and compact metadata.
 - `--candidate-reference-matches` prints candidate identity plus curated references eligible for acceptance.
-- `--candidate-curation-status` reports accepted-reference, claim-link, extraction, readiness, and next action for one candidate.
+- `--candidate-curation-status` reports candidate-claim, accepted-reference, claim-link, extraction, readiness, and next action for one candidate.
 - `--candidate-curation-handoff` lists accepted candidates by readiness and can filter before applying the row limit.
 - `--summary` groups backlog counts and accepted-candidate curation handoff counts.
 
@@ -85,6 +87,8 @@ npm run ingest:sources -- --clinical-trial-page-size 10
 
 - `Not accepted`: pending or rejected candidates.
 - `Accepted reference missing`: accepted candidate has no accepted reference id or the referenced row is missing.
+- `Accepted reference mismatch`: accepted reference exists but no longer matches the candidate source and external id.
+- `Candidate claim missing`: accepted candidate has no claim id, so it is not ready for claim-level public source packets.
 - `Claim link missing`: accepted reference is not linked to the candidate claim.
 - `Extraction pending`: accepted reference is claim-linked but lacks structured study extraction.
 - `Public source packet ready`: accepted reference is claim-linked and structurally extracted.

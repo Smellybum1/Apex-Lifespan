@@ -960,7 +960,7 @@ export function commandUsage() {
     "  --candidate-curation-status <dedupe-key> Print accepted candidate curation handoff status and next action.",
     "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows and next actions.",
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
-    "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, claim-link-missing, extraction-pending, or ready.",
+    "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
     "  --candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance.",
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
     "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
@@ -1584,6 +1584,22 @@ function readCurationHandoffStatus(value: string): SourceCandidateCurationStatus
     return "Accepted reference missing";
   }
 
+  if (
+    normalised === "accepted-reference-mismatch" ||
+    normalised === "reference-mismatch" ||
+    normalised === "mismatched-reference"
+  ) {
+    return "Accepted reference mismatch";
+  }
+
+  if (
+    normalised === "candidate-claim-missing" ||
+    normalised === "claim-context-missing" ||
+    normalised === "unscoped-candidate"
+  ) {
+    return "Candidate claim missing";
+  }
+
   if (normalised === "claim-link-missing" || normalised === "claim-missing") {
     return "Claim link missing";
   }
@@ -1603,7 +1619,7 @@ function readCurationHandoffStatus(value: string): SourceCandidateCurationStatus
   }
 
   throw new Error(
-    "--candidate-curation-handoff-status must be missing-reference, claim-link-missing, extraction-pending, or ready."
+    "--candidate-curation-handoff-status must be missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
   );
 }
 
