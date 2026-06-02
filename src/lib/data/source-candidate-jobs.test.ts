@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   findFirst: vi.fn(),
+  findMany: vi.fn(),
   findUnique: vi.fn(),
   update: vi.fn(),
   updateMany: vi.fn(),
@@ -15,6 +16,7 @@ vi.mock("@/lib/db/prisma", () => ({
     ingestionJob: {
       create: mocks.create,
       findFirst: mocks.findFirst,
+      findMany: mocks.findMany,
       findUnique: mocks.findUnique,
       update: mocks.update,
       updateMany: mocks.updateMany
@@ -28,6 +30,7 @@ vi.mock("@/lib/data/source-candidate-ingestion", () => ({
 }));
 
 import {
+  listSourceCandidateIngestionJobs,
   queueSourceCandidateIngestionJob,
   runNextSourceCandidateIngestionJob,
   runSourceCandidateIngestionJob
@@ -35,6 +38,103 @@ import {
 
 const timestamp = new Date("2026-06-02T03:00:00.000Z");
 const now = () => timestamp;
+
+describe("listSourceCandidateIngestionJobs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("lists recent supported source-candidate ingestion jobs with stable fields", async () => {
+    mocks.findMany.mockResolvedValue([
+      dbIngestionJob({
+        status: "SUCCEEDED",
+        startedAt: new Date("2026-06-02T01:00:00.000Z"),
+        completedAt: new Date("2026-06-02T01:02:00.000Z"),
+        updatedAt: new Date("2026-06-02T01:02:00.000Z"),
+        recordsFound: 5,
+        recordsChanged: 3
+      }),
+      dbIngestionJob({
+        id: "job-trials",
+        source: "CLINICALTRIALS_GOV",
+        status: "FAILED",
+        query: "creatine aging",
+        recordsFound: 0,
+        recordsChanged: 0,
+        error: "ClinicalTrials unavailable",
+        createdAt: new Date("2026-06-02T02:00:00.000Z"),
+        updatedAt: new Date("2026-06-02T02:01:00.000Z")
+      })
+    ]);
+
+    await expect(listSourceCandidateIngestionJobs()).resolves.toEqual([
+      {
+        completedAt: "2026-06-02T01:02:00.000Z",
+        createdAt: "2026-06-02T00:00:00.000Z",
+        error: undefined,
+        jobId: "job-pubmed",
+        query: "creatine strength",
+        recordsChanged: 3,
+        recordsFound: 5,
+        region: "AU",
+        source: "PUBMED",
+        startedAt: "2026-06-02T01:00:00.000Z",
+        status: "SUCCEEDED",
+        updatedAt: "2026-06-02T01:02:00.000Z"
+      },
+      {
+        completedAt: undefined,
+        createdAt: "2026-06-02T02:00:00.000Z",
+        error: "ClinicalTrials unavailable",
+        jobId: "job-trials",
+        query: "creatine aging",
+        recordsChanged: 0,
+        recordsFound: 0,
+        region: "AU",
+        source: "CLINICALTRIALS_GOV",
+        startedAt: undefined,
+        status: "FAILED",
+        updatedAt: "2026-06-02T02:01:00.000Z"
+      }
+    ]);
+
+    expect(mocks.findMany).toHaveBeenCalledWith({
+      where: {
+        source: {
+          in: ["PUBMED", "CLINICALTRIALS_GOV"]
+        }
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      take: 10
+    });
+  });
+
+  it("bounds the source-candidate ingestion job list limit", async () => {
+    mocks.findMany.mockResolvedValue([]);
+
+    await listSourceCandidateIngestionJobs({ limit: 250 });
+
+    expect(mocks.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 50
+      })
+    );
+
+    await listSourceCandidateIngestionJobs({ limit: 0 });
+
+    expect(mocks.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 1
+      })
+    );
+  });
+
+  it("returns an empty job list", async () => {
+    mocks.findMany.mockResolvedValue([]);
+
+    await expect(listSourceCandidateIngestionJobs()).resolves.toEqual([]);
+  });
+});
 
 describe("queueSourceCandidateIngestionJob", () => {
   beforeEach(() => {

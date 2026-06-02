@@ -40,6 +40,25 @@ export interface SourceCandidateIngestionJobRunResult {
   error?: string;
 }
 
+export interface SourceCandidateIngestionJobListOptions {
+  limit?: number;
+}
+
+export interface SourceCandidateIngestionJobListItem {
+  completedAt?: string;
+  createdAt: string;
+  error?: string;
+  jobId: string;
+  query: string;
+  recordsChanged: number;
+  recordsFound: number;
+  region: string;
+  source: DbSourceKind;
+  startedAt?: string;
+  status: DbIngestionStatus;
+  updatedAt: string;
+}
+
 export interface QueueSourceCandidateIngestionJobInput {
   claimId?: string;
   interventionId?: string;
@@ -62,7 +81,25 @@ const SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES = [
   DbSourceKind.CLINICALTRIALS_GOV
 ] satisfies SupportedSourceCandidateJobSource[];
 const MAX_NEXT_JOB_CLAIM_ATTEMPTS = 3;
+const DEFAULT_JOB_LIST_LIMIT = 10;
+const MAX_JOB_LIST_LIMIT = 50;
 const DEFAULT_REGION = "AU";
+
+export async function listSourceCandidateIngestionJobs(
+  options: SourceCandidateIngestionJobListOptions = {}
+): Promise<SourceCandidateIngestionJobListItem[]> {
+  const jobs = await prisma.ingestionJob.findMany({
+    where: {
+      source: {
+        in: SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES
+      }
+    },
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    take: normaliseJobListLimit(options.limit)
+  });
+
+  return jobs.map(mapJobListItem);
+}
 
 export async function queueSourceCandidateIngestionJob(
   input: QueueSourceCandidateIngestionJobInput
@@ -249,6 +286,35 @@ function mapQueuedJob(
     source: job.source,
     status: job.status
   };
+}
+
+function mapJobListItem(job: DbIngestionJob): SourceCandidateIngestionJobListItem {
+  return {
+    completedAt: dateToIso(job.completedAt),
+    createdAt: job.createdAt.toISOString(),
+    error: job.error ?? undefined,
+    jobId: job.id,
+    query: job.query,
+    recordsChanged: job.recordsChanged,
+    recordsFound: job.recordsFound,
+    region: job.region,
+    source: job.source,
+    startedAt: dateToIso(job.startedAt),
+    status: job.status,
+    updatedAt: job.updatedAt.toISOString()
+  };
+}
+
+function normaliseJobListLimit(limit: number | undefined) {
+  if (limit === undefined || !Number.isFinite(limit)) {
+    return DEFAULT_JOB_LIST_LIMIT;
+  }
+
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_JOB_LIST_LIMIT);
+}
+
+function dateToIso(value: Date | null) {
+  return value?.toISOString();
 }
 
 function normaliseQueueQuery(query: string) {

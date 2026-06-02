@@ -49,6 +49,24 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     });
   });
 
+  it("parses read-only recent job mode", () => {
+    expect(parseSourceCandidateJobCommandArgs(["--jobs"])).toEqual({
+      help: false,
+      jobs: true,
+      limit: 1,
+      summary: false
+    });
+    expect(
+      parseSourceCandidateJobCommandArgs(["--jobs", "--jobs-limit", "200"])
+    ).toEqual({
+      help: false,
+      jobs: true,
+      jobsLimit: 50,
+      limit: 1,
+      summary: false
+    });
+  });
+
   it("parses queue mode and queue metadata", () => {
     expect(
       parseSourceCandidateJobCommandArgs([
@@ -132,6 +150,24 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       parseSourceCandidateJobCommandArgs(["--region", "AU"])
     ).toThrow("--region, --intervention-id, and --claim-id require a queue option.");
   });
+
+  it("does not combine recent job mode with other command modes", () => {
+    expect(() => parseSourceCandidateJobCommandArgs(["--jobs-limit", "2"])).toThrow(
+      "--jobs-limit requires --jobs."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--jobs", "--summary"])
+    ).toThrow("--jobs cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--jobs", "--queue-pubmed", "creatine"])
+    ).toThrow("--jobs is read-only and cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--jobs", "--limit", "2"])
+    ).toThrow("--jobs is read-only and cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--jobs", "--pubmed-retmax", "5"])
+    ).toThrow("--jobs is read-only and cannot be combined with run options.");
+  });
 });
 
 describe("runSourceCandidateJobCommand", () => {
@@ -187,6 +223,69 @@ describe("runSourceCandidateJobCommand", () => {
         "- ClinicalTrials.gov AU Accepted / Human reviewed: 1"
       ].join("\n")
     );
+  });
+
+  it("prints read-only recent ingestion jobs without running jobs", async () => {
+    const stdout = vi.fn();
+    const listJobs = vi.fn().mockResolvedValue([
+      {
+        jobId: "job-pubmed",
+        source: "PUBMED",
+        query: "creatine strength",
+        region: "AU",
+        status: "SUCCEEDED",
+        recordsFound: 5,
+        recordsChanged: 3,
+        updatedAt: "2026-06-02T01:02:00.000Z",
+        createdAt: "2026-06-02T00:00:00.000Z",
+        completedAt: "2026-06-02T01:02:00.000Z",
+        startedAt: "2026-06-02T01:00:00.000Z"
+      },
+      {
+        jobId: "job-trials",
+        source: "CLINICALTRIALS_GOV",
+        query: "creatine aging",
+        region: "AU",
+        status: "FAILED",
+        recordsFound: 0,
+        recordsChanged: 0,
+        updatedAt: "2026-06-02T02:01:00.000Z",
+        createdAt: "2026-06-02T02:00:00.000Z",
+        error: "ClinicalTrials unavailable"
+      }
+    ]);
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--jobs", "--jobs-limit", "2"],
+        { stdout },
+        { listJobs, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(listJobs).toHaveBeenCalledWith({
+      limit: 2
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate ingestion jobs: total=2",
+        '- [SUCCEEDED] job-pubmed PUBMED AU "creatine strength" found=5 changed=3 updated=2026-06-02T01:02:00.000Z',
+        '- [FAILED] job-trials CLINICALTRIALS_GOV AU "creatine aging" found=0 changed=0 updated=2026-06-02T02:01:00.000Z error=ClinicalTrials unavailable'
+      ].join("\n")
+    );
+  });
+
+  it("prints an empty recent job list", async () => {
+    const stdout = vi.fn();
+    const listJobs = vi.fn().mockResolvedValue([]);
+
+    await expect(
+      runSourceCandidateJobCommand(["--jobs"], { stdout }, { listJobs })
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith("Source-candidate ingestion jobs: total=0");
   });
 
   it("queues a source-candidate ingestion job without running jobs", async () => {

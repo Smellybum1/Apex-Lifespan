@@ -6,7 +6,7 @@
   - Dev: `npm run dev`
   - Test: `npm run test`
   - Lint/typecheck/build: `npm run lint`, `npm run typecheck`, `npm run build`
-  - Local source-candidate ingestion: `npm run ingest:sources` (operator-only; runs queued PubMed/ClinicalTrials.gov jobs against configured PostgreSQL); queue jobs with `--queue-pubmed "<term>"` or `--queue-clinical-trials "<term>"`; `npm run ingest:sources -- --summary` prints read-only source-candidate workflow counts.
+  - Local source-candidate ingestion: `npm run ingest:sources` (operator-only; runs queued PubMed/ClinicalTrials.gov jobs against configured PostgreSQL); queue jobs with `--queue-pubmed "<term>"` or `--queue-clinical-trials "<term>"`; `--jobs` lists recent ingestion jobs and ids; `--summary` prints read-only source-candidate workflow counts.
   - Database: `npm run db:validate`, `npm run db:generate`, `npm run db:migrate`, `npm run db:migrate:deploy`, `npm run db:push`, `npm run db:seed`
   - Local PostgreSQL: `docker compose up -d postgres`, `docker compose ps`, `docker compose down`; reset with `docker compose down -v`
 - Architecture/patterns:
@@ -31,7 +31,7 @@
   - Source-candidate ingestion helpers compose live PubMed/ClinicalTrials.gov search, candidate mapping, and gated upsert for internal jobs; public preview GET routes remain read-only and unpersisted.
   - Source-candidate review helpers can list a bounded pending queue and record human accepted/rejected decisions; accepted candidates require an existing curated reference link and still do not auto-promote into curated evidence.
   - Source-candidate ingestion jobs claim queued PubMed/ClinicalTrials.gov jobs with a status-guarded update before calling external APIs, persist running/succeeded/failed/skipped status and counts, and safely skip unsupported sources rather than guessing.
-  - `npm run ingest:sources` is a private/local operator command for the source-candidate job runner; default execution is bounded to one queued job and writes only to configured PostgreSQL. Queue options create missing PubMed/ClinicalTrials.gov jobs or report the existing source/query/region job without resetting completed work. Its `--summary` mode is read-only and groups source-candidate backlog counts by source, region, decision, and review status.
+  - `npm run ingest:sources` is a private/local operator command for the source-candidate job runner; default execution is bounded to one queued job and writes only to configured PostgreSQL. Queue options create missing PubMed/ClinicalTrials.gov jobs or report the existing source/query/region job without resetting completed work. Its `--jobs` and `--summary` modes are read-only; `--jobs` lists recent ingestion job ids/statuses/counts/errors, while `--summary` groups source-candidate backlog counts by source, region, decision, and review status.
   - The Sources panel shows an active-card source packet first: linked curated references, extracted study records, extraction-pending references, unresolved reference IDs, and a tested completeness summary stay distinct from live preview results.
   - Current seed evidence claims have structured extraction rows for all linked curated references; pending extraction behavior is preserved with synthetic source-packet tests.
   - Evidence cards use a consumer summary by default with expandable research detail for study context, applicability, score-change rationale, and source links.

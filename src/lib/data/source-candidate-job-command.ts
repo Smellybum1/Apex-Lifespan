@@ -1,9 +1,12 @@
 import {
+  listSourceCandidateIngestionJobs,
   queueSourceCandidateIngestionJob,
   runNextSourceCandidateIngestionJob,
   runSourceCandidateIngestionJob,
   type QueueSourceCandidateIngestionJobInput,
   type QueuedSourceCandidateIngestionJob,
+  type SourceCandidateIngestionJobListItem,
+  type SourceCandidateIngestionJobListOptions,
   type SourceCandidateIngestionJobOptions,
   type SourceCandidateIngestionJobRunResult
 } from "@/lib/data/source-candidate-jobs";
@@ -19,6 +22,8 @@ export interface SourceCandidateJobCommandOptions
   help: boolean;
   interventionId?: string;
   jobId?: string;
+  jobs?: boolean;
+  jobsLimit?: number;
   limit: number;
   queueQuery?: string;
   queueSource?: SourceCandidateSource;
@@ -32,6 +37,9 @@ export interface SourceCandidateJobCommandIo {
 }
 
 export interface SourceCandidateJobCommandRunners {
+  listJobs?: (
+    options: SourceCandidateIngestionJobListOptions
+  ) => Promise<SourceCandidateIngestionJobListItem[]>;
   queueJob?: (
     input: QueueSourceCandidateIngestionJobInput
   ) => Promise<QueuedSourceCandidateIngestionJob>;
@@ -55,6 +63,7 @@ export async function runSourceCandidateJobCommand(
 ) {
   const stdout = io.stdout ?? console.log;
   const stderr = io.stderr ?? console.error;
+  const listJobs = runners.listJobs ?? listSourceCandidateIngestionJobs;
   const queueJob = runners.queueJob ?? queueSourceCandidateIngestionJob;
   const runJobById = runners.runJobById ?? runSourceCandidateIngestionJob;
   const runNextJob = runners.runNextJob ?? runNextSourceCandidateIngestionJob;
@@ -76,6 +85,15 @@ export async function runSourceCandidateJobCommand(
   }
 
   try {
+    if (options.jobs) {
+      const jobs = await listJobs({
+        limit: options.jobsLimit
+      });
+
+      stdout(formatSourceCandidateIngestionJobs(jobs));
+      return 0;
+    }
+
     if (options.queueSource && options.queueQuery) {
       const result = await queueJob({
         source: options.queueSource,
@@ -126,6 +144,8 @@ export function parseSourceCandidateJobCommandArgs(
     summary: false
   };
   let limitProvided = false;
+  let jobsLimitProvided = false;
+  let sourceLimitProvided = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -143,6 +163,18 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--summary") {
       options.summary = true;
+      continue;
+    }
+
+    if (arg === "--jobs") {
+      options.jobs = true;
+      continue;
+    }
+
+    if (arg === "--jobs-limit") {
+      options.jobsLimit = readPositiveInteger(args, index, arg, 50);
+      jobsLimitProvided = true;
+      index += 1;
       continue;
     }
 
@@ -189,12 +221,14 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--pubmed-retmax") {
       options.pubMedRetmax = readPositiveInteger(args, index, arg, 20);
+      sourceLimitProvided = true;
       index += 1;
       continue;
     }
 
     if (arg === "--clinical-trial-page-size") {
       options.clinicalTrialPageSize = readPositiveInteger(args, index, arg, 20);
+      sourceLimitProvided = true;
       index += 1;
       continue;
     }
@@ -206,11 +240,27 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--job-id runs exactly one job and cannot be combined with --limit.");
   }
 
+  if (jobsLimitProvided && !options.jobs) {
+    throw new Error("--jobs-limit requires --jobs.");
+  }
+
+  if (options.jobs && options.summary) {
+    throw new Error("--jobs cannot be combined with --summary.");
+  }
+
+  if (options.jobs && options.queueSource) {
+    throw new Error("--jobs is read-only and cannot be combined with queue options.");
+  }
+
+  if (options.jobs && (options.jobId || limitProvided || sourceLimitProvided)) {
+    throw new Error("--jobs is read-only and cannot be combined with run options.");
+  }
+
   if (options.queueSource && options.summary) {
     throw new Error("--summary is read-only and cannot be combined with queue options.");
   }
 
-  if (options.queueSource && (options.jobId || limitProvided)) {
+  if (options.queueSource && (options.jobId || limitProvided || sourceLimitProvided)) {
     throw new Error("Queue options cannot be combined with run options.");
   }
 
@@ -218,7 +268,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--region, --intervention-id, and --claim-id require a queue option.");
   }
 
-  if (options.summary && (options.jobId || limitProvided)) {
+  if (options.summary && (options.jobId || limitProvided || sourceLimitProvided)) {
     throw new Error("--summary is read-only and cannot be combined with run options.");
   }
 
@@ -232,6 +282,8 @@ export function commandUsage() {
     "Options:",
     "  --job-id <id>                     Run one specific ingestion job.",
     "  --limit <count>                   Run up to count queued jobs (default 1, max 25).",
+    "  --jobs                            Print recent source-candidate ingestion jobs.",
+    "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
     "  --queue-pubmed <term>             Queue a PubMed source-candidate job.",
     "  --queue-clinical-trials <term>    Queue a ClinicalTrials.gov source-candidate job.",
     "  --region <region>                 Region metadata for queued jobs (default AU).",
@@ -300,6 +352,36 @@ function formatQueuedSourceCandidateJob(result: QueuedSourceCandidateIngestionJo
     quote(result.query),
     `created=${result.created}`
   ].join(" ");
+}
+
+function formatSourceCandidateIngestionJobs(jobs: SourceCandidateIngestionJobListItem[]) {
+  if (jobs.length === 0) {
+    return "Source-candidate ingestion jobs: total=0";
+  }
+
+  return [
+    `Source-candidate ingestion jobs: total=${jobs.length}`,
+    ...jobs.map(formatSourceCandidateIngestionJob)
+  ].join("\n");
+}
+
+function formatSourceCandidateIngestionJob(job: SourceCandidateIngestionJobListItem) {
+  const parts = [
+    `- [${job.status}]`,
+    job.jobId,
+    job.source,
+    job.region,
+    quote(job.query),
+    `found=${job.recordsFound}`,
+    `changed=${job.recordsChanged}`,
+    `updated=${job.updatedAt}`
+  ];
+
+  if (job.error) {
+    parts.push(`error=${job.error}`);
+  }
+
+  return parts.join(" ");
 }
 
 function formatSourceCandidateBacklogSummary(summary: SourceCandidateBacklogSummary) {
