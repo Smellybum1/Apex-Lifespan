@@ -6,6 +6,17 @@ import {
   runSourceCandidateJobCommand
 } from "@/lib/data/source-candidate-job-command";
 
+describe("commandUsage", () => {
+  it("describes source-candidate review guardrails", () => {
+    expect(commandUsage()).toContain(
+      "--candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance."
+    );
+    expect(commandUsage()).toContain(
+      "--review-note <note>              Human review note; required for --reject-candidate."
+    );
+  });
+});
+
 describe("parseSourceCandidateJobCommandArgs", () => {
   it("uses bounded defaults for the local ingestion command", () => {
     expect(parseSourceCandidateJobCommandArgs([])).toEqual({

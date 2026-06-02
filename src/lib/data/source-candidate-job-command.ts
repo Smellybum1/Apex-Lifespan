@@ -961,7 +961,7 @@ export function commandUsage() {
     "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows and next actions.",
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
     "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, claim-link-missing, extraction-pending, or ready.",
-    "  --candidate-reference-matches <dedupe-key> Print curated reference ids eligible for candidate acceptance.",
+    "  --candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance.",
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
     "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
     "  --accepted-reference-id <id>      Required curated reference id for --accept-candidate.",
