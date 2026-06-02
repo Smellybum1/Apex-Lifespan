@@ -18,11 +18,16 @@ import {
   type ReviewedSourceCandidateDecision,
   type SourceCandidateBacklogSummary
 } from "@/lib/data/source-candidates";
-import type { SourceCandidate, SourceCandidateSource } from "@/lib/types";
+import type {
+  SourceCandidate,
+  SourceCandidateDecision,
+  SourceCandidateSource
+} from "@/lib/types";
 
 export interface SourceCandidateJobCommandOptions
   extends SourceCandidateIngestionJobOptions {
   acceptedReferenceId?: string;
+  candidateDecision?: SourceCandidateDecision;
   candidateSource?: SourceCandidateSource;
   candidates?: boolean;
   candidatesLimit?: number;
@@ -49,6 +54,7 @@ export interface SourceCandidateJobCommandIo {
 
 export interface SourceCandidateJobCommandRunners {
   listCandidates?: (options: {
+    decision?: SourceCandidateDecision;
     limit?: number;
     source?: SourceCandidateSource;
   }) => Promise<SourceCandidate[]>;
@@ -119,11 +125,12 @@ export async function runSourceCandidateJobCommand(
 
     if (options.candidates) {
       const candidates = await listCandidates({
+        decision: options.candidateDecision,
         limit: options.candidatesLimit,
         source: options.candidateSource
       });
 
-      stdout(formatSourceCandidateReviewQueue(candidates));
+      stdout(formatSourceCandidateReviewQueue(candidates, options.candidateDecision));
       return 0;
     }
 
@@ -186,6 +193,7 @@ export function parseSourceCandidateJobCommandArgs(
     summary: false
   };
   let candidatesLimitProvided = false;
+  let candidateDecisionProvided = false;
   let acceptedReferenceIdProvided = false;
   let limitProvided = false;
   let jobsLimitProvided = false;
@@ -259,6 +267,15 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--candidate-source") {
       options.candidateSource = readCandidateSource(readRequiredValue(args, index, arg));
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-decision") {
+      options.candidateDecision = readCandidateDecision(
+        readRequiredValue(args, index, arg)
+      );
+      candidateDecisionProvided = true;
       index += 1;
       continue;
     }
@@ -357,7 +374,10 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("Review options cannot be combined with --candidates.");
   }
 
-  if (options.reviewDecision && (candidatesLimitProvided || options.candidateSource)) {
+  if (
+    options.reviewDecision &&
+    (candidatesLimitProvided || options.candidateSource || candidateDecisionProvided)
+  ) {
     throw new Error("Candidate-list filters cannot be combined with review options.");
   }
 
@@ -377,8 +397,13 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("Review options cannot be combined with run options.");
   }
 
-  if ((candidatesLimitProvided || options.candidateSource) && !options.candidates) {
-    throw new Error("--candidates-limit and --candidate-source require --candidates.");
+  if (
+    (candidatesLimitProvided || options.candidateSource || candidateDecisionProvided) &&
+    !options.candidates
+  ) {
+    throw new Error(
+      "--candidates-limit, --candidate-source, and --candidate-decision require --candidates."
+    );
   }
 
   if (options.candidates && options.summary) {
@@ -446,6 +471,7 @@ export function commandUsage() {
     "  --candidates                      Print pending source-candidate review queue rows.",
     "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
     "  --candidate-source <source>       Candidate source: pubmed or clinical-trials.",
+    "  --candidate-decision <decision>   Candidate decision: pending, accepted, or rejected.",
     "  --jobs                            Print recent source-candidate ingestion jobs.",
     "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
     "  --queue-pubmed <term>             Queue a PubMed source-candidate job.",
@@ -539,13 +565,20 @@ function formatReviewedSourceCandidate(candidate: SourceCandidate) {
   return parts.join(" ");
 }
 
-function formatSourceCandidateReviewQueue(candidates: SourceCandidate[]) {
+function formatSourceCandidateReviewQueue(
+  candidates: SourceCandidate[],
+  decision?: SourceCandidateDecision
+) {
+  const heading = decision && decision !== "Pending review"
+    ? `Source-candidate review records: decision=${quote(decision)}`
+    : "Source-candidate review queue";
+
   if (candidates.length === 0) {
-    return "Source-candidate review queue: total=0";
+    return `${heading}: total=0`;
   }
 
   return [
-    `Source-candidate review queue: total=${candidates.length}`,
+    `${heading}: total=${candidates.length}`,
     ...candidates.map(formatSourceCandidateReviewQueueItem)
   ].join("\n");
 }
@@ -559,6 +592,26 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
     `title=${quote(candidate.title)}`,
     `url=${candidate.url}`
   ];
+
+  if (candidate.decision !== "Pending review") {
+    parts.push(`decision=${quote(candidate.decision)}`);
+  }
+
+  if (candidate.reviewStatus !== "Unreviewed AI draft") {
+    parts.push(`reviewStatus=${quote(candidate.reviewStatus)}`);
+  }
+
+  if (candidate.acceptedReferenceId) {
+    parts.push(`acceptedReference=${candidate.acceptedReferenceId}`);
+  }
+
+  if (candidate.reviewedAt) {
+    parts.push(`reviewed=${candidate.reviewedAt}`);
+  }
+
+  if (candidate.reviewNote) {
+    parts.push(`note=${quote(candidate.reviewNote)}`);
+  }
 
   if (candidate.interventionId) {
     parts.push(`intervention=${candidate.interventionId}`);
@@ -657,6 +710,24 @@ function readCandidateSource(value: string): SourceCandidateSource {
   }
 
   throw new Error("--candidate-source must be pubmed or clinical-trials.");
+}
+
+function readCandidateDecision(value: string): SourceCandidateDecision {
+  const normalised = value.trim().toLowerCase();
+
+  if (normalised === "pending" || normalised === "pending-review") {
+    return "Pending review";
+  }
+
+  if (normalised === "accepted") {
+    return "Accepted";
+  }
+
+  if (normalised === "rejected") {
+    return "Rejected";
+  }
+
+  throw new Error("--candidate-decision must be pending, accepted, or rejected.");
 }
 
 function setQueueOption(

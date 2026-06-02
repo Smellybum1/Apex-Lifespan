@@ -99,12 +99,28 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "--candidates-limit",
         "200",
         "--candidate-source",
-        "clinical-trials"
+        "clinical-trials",
+        "--candidate-decision",
+        "accepted"
       ])
     ).toEqual({
       candidates: true,
+      candidateDecision: "Accepted",
       candidatesLimit: 50,
       candidateSource: "ClinicalTrials.gov",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidates",
+        "--candidate-decision",
+        "pending-review"
+      ])
+    ).toEqual({
+      candidates: true,
+      candidateDecision: "Pending review",
       help: false,
       limit: 1,
       summary: false
@@ -231,6 +247,16 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "pubmed|au|creatine|28615996",
         "--accepted-reference-id",
         "ref-creatine-position-stand",
+        "--candidate-decision",
+        "accepted"
+      ])
+    ).toThrow("Candidate-list filters cannot be combined with review options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand",
         "--summary"
       ])
     ).toThrow("Review options cannot be combined with --summary.");
@@ -289,10 +315,19 @@ describe("parseSourceCandidateJobCommandArgs", () => {
   it("does not combine candidate review queue mode with other command modes", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidates-limit", "2"])
-    ).toThrow("--candidates-limit and --candidate-source require --candidates.");
+    ).toThrow(
+      "--candidates-limit, --candidate-source, and --candidate-decision require --candidates."
+    );
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidate-source", "pubmed"])
-    ).toThrow("--candidates-limit and --candidate-source require --candidates.");
+    ).toThrow(
+      "--candidates-limit, --candidate-source, and --candidate-decision require --candidates."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-decision", "accepted"])
+    ).toThrow(
+      "--candidates-limit, --candidate-source, and --candidate-decision require --candidates."
+    );
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidates", "--summary"])
     ).toThrow("--candidates cannot be combined with --summary.");
@@ -311,6 +346,13 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidates", "--candidate-source", "other"])
     ).toThrow("--candidate-source must be pubmed or clinical-trials.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidates",
+        "--candidate-decision",
+        "other"
+      ])
+    ).toThrow("--candidate-decision must be pending, accepted, or rejected.");
   });
 
   it("does not combine queue mode with other command modes", () => {
@@ -555,6 +597,7 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(0);
 
     expect(listCandidates).toHaveBeenCalledWith({
+      decision: undefined,
       limit: 2,
       source: "PubMed"
     });
@@ -568,6 +611,49 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("prints read-only reviewed source-candidate records", async () => {
+    const stdout = vi.fn();
+    const listCandidates = vi.fn().mockResolvedValue([
+      sourceCandidate({
+        decision: "Accepted",
+        reviewStatus: "Human reviewed",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        reviewedAt: "2026-06-02T03:00:00.000Z",
+        reviewNote: "Matched PMID and claim context.",
+        interventionId: "creatine",
+        claimId: "creatine-strength"
+      })
+    ]);
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--candidates",
+          "--candidate-decision",
+          "accepted",
+          "--candidates-limit",
+          "1"
+        ],
+        { stdout },
+        { listCandidates, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(listCandidates).toHaveBeenCalledWith({
+      decision: "Accepted",
+      limit: 1,
+      source: undefined
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        'Source-candidate review records: decision="Accepted": total=1',
+        '- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-creatine-position-stand reviewed=2026-06-02T03:00:00.000Z note="Matched PMID and claim context." intervention=creatine claim=creatine-strength'
+      ].join("\n")
+    );
+  });
+
   it("prints an empty source-candidate review queue", async () => {
     const stdout = vi.fn();
     const listCandidates = vi.fn().mockResolvedValue([]);
@@ -577,6 +663,58 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(0);
 
     expect(stdout).toHaveBeenCalledWith("Source-candidate review queue: total=0");
+  });
+
+  it("prints explicit pending source-candidate decisions as the review queue", async () => {
+    const stdout = vi.fn();
+    const listCandidates = vi.fn().mockResolvedValue([
+      sourceCandidate({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine-strength",
+        title: "Creatine position stand"
+      })
+    ]);
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidates", "--candidate-decision", "pending"],
+        { stdout },
+        { listCandidates }
+      )
+    ).resolves.toBe(0);
+
+    expect(listCandidates).toHaveBeenCalledWith({
+      decision: "Pending review",
+      limit: undefined,
+      source: undefined
+    });
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate review queue: total=1",
+        '- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine-strength" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/'
+      ].join("\n")
+    );
+  });
+
+  it("prints an empty reviewed source-candidate record list", async () => {
+    const stdout = vi.fn();
+    const listCandidates = vi.fn().mockResolvedValue([]);
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidates", "--candidate-decision", "rejected"],
+        { stdout },
+        { listCandidates }
+      )
+    ).resolves.toBe(0);
+
+    expect(listCandidates).toHaveBeenCalledWith({
+      decision: "Rejected",
+      limit: undefined,
+      source: undefined
+    });
+    expect(stdout).toHaveBeenCalledWith(
+      'Source-candidate review records: decision="Rejected": total=0'
+    );
   });
 
   it("prints read-only recent ingestion jobs without running jobs", async () => {
