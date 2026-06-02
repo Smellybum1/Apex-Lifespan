@@ -129,11 +129,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "--candidate-source",
         "clinical-trials",
         "--candidate-decision",
-        "accepted"
+        "accepted",
+        "--candidate-job-id",
+        "job-pubmed",
+        "--candidate-intervention-id",
+        "creatine",
+        "--candidate-claim-id",
+        "creatine-strength"
       ])
     ).toEqual({
       candidates: true,
+      candidateClaimId: "creatine-strength",
       candidateDecision: "Accepted",
+      candidateInterventionId: "creatine",
+      candidateJobId: "job-pubmed",
       candidatesLimit: 50,
       candidateSource: "ClinicalTrials.gov",
       help: false,
@@ -264,6 +273,14 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       parseSourceCandidateJobCommandArgs([
         "--candidate-detail",
         "pubmed|au|creatine|28615996",
+        "--candidate-job-id",
+        "job-pubmed"
+      ])
+    ).toThrow("Candidate-list filters cannot be combined with --candidate-detail.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996",
         "--accept-candidate",
         "pubmed|au|creatine|28615996",
         "--accepted-reference-id",
@@ -334,6 +351,16 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "pubmed|au|creatine|28615996",
         "--candidate-decision",
         "accepted"
+      ])
+    ).toThrow(
+      "Candidate-list filters cannot be combined with --candidate-reference-matches."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996",
+        "--candidate-claim-id",
+        "creatine-strength"
       ])
     ).toThrow(
       "Candidate-list filters cannot be combined with --candidate-reference-matches."
@@ -457,6 +484,16 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     ).toThrow("Candidate-list filters cannot be combined with review options.");
     expect(() =>
       parseSourceCandidateJobCommandArgs([
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand",
+        "--candidate-intervention-id",
+        "creatine"
+      ])
+    ).toThrow("Candidate-list filters cannot be combined with review options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
         "--reject-candidate",
         "pubmed|au|creatine|28615996",
         "--jobs"
@@ -491,19 +528,22 @@ describe("parseSourceCandidateJobCommandArgs", () => {
   it("does not combine candidate review queue mode with other command modes", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidates-limit", "2"])
-    ).toThrow(
-      "--candidates-limit, --candidate-source, and --candidate-decision require --candidates."
-    );
+    ).toThrow("Candidate-list filters require --candidates.");
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidate-source", "pubmed"])
-    ).toThrow(
-      "--candidates-limit, --candidate-source, and --candidate-decision require --candidates."
-    );
+    ).toThrow("Candidate-list filters require --candidates.");
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidate-decision", "accepted"])
-    ).toThrow(
-      "--candidates-limit, --candidate-source, and --candidate-decision require --candidates."
-    );
+    ).toThrow("Candidate-list filters require --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-job-id", "job-pubmed"])
+    ).toThrow("Candidate-list filters require --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-intervention-id", "creatine"])
+    ).toThrow("Candidate-list filters require --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-claim-id", "creatine-strength"])
+    ).toThrow("Candidate-list filters require --candidates.");
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidates", "--summary"])
     ).toThrow("--candidates cannot be combined with --summary.");
@@ -999,7 +1039,13 @@ describe("runSourceCandidateJobCommand", () => {
           "--candidates-limit",
           "2",
           "--candidate-source",
-          "pubmed"
+          "pubmed",
+          "--candidate-job-id",
+          "job-pubmed",
+          "--candidate-intervention-id",
+          "creatine",
+          "--candidate-claim-id",
+          "creatine-strength"
         ],
         { stdout },
         { listCandidates, runNextJob }
@@ -1007,7 +1053,10 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(0);
 
     expect(listCandidates).toHaveBeenCalledWith({
+      claimId: "creatine-strength",
       decision: undefined,
+      ingestionJobId: "job-pubmed",
+      interventionId: "creatine",
       limit: 2,
       source: "PubMed"
     });
@@ -1051,7 +1100,10 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(0);
 
     expect(listCandidates).toHaveBeenCalledWith({
+      claimId: undefined,
       decision: "Accepted",
+      ingestionJobId: undefined,
+      interventionId: undefined,
       limit: 1,
       source: undefined
     });
@@ -1093,7 +1145,10 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(0);
 
     expect(listCandidates).toHaveBeenCalledWith({
+      claimId: undefined,
       decision: "Pending review",
+      ingestionJobId: undefined,
+      interventionId: undefined,
       limit: undefined,
       source: undefined
     });
@@ -1118,7 +1173,10 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(0);
 
     expect(listCandidates).toHaveBeenCalledWith({
+      claimId: undefined,
       decision: "Rejected",
+      ingestionJobId: undefined,
+      interventionId: undefined,
       limit: undefined,
       source: undefined
     });

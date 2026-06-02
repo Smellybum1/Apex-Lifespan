@@ -35,7 +35,10 @@ export interface SourceCandidateBacklogSummary {
 }
 
 export interface SourceCandidateReviewQueueOptions {
+  claimId?: string;
   decision?: SourceCandidateDecision;
+  ingestionJobId?: string;
+  interventionId?: string;
   limit?: number;
   source?: SourceCandidateSource;
 }
@@ -109,6 +112,18 @@ export async function listSourceCandidateReviewQueue(
 
   if (options.source) {
     where.source = sourceMap[options.source];
+  }
+
+  if (options.ingestionJobId) {
+    where.ingestionJobId = options.ingestionJobId;
+  }
+
+  if (options.interventionId) {
+    where.interventionId = options.interventionId;
+  }
+
+  if (options.claimId) {
+    where.claimId = options.claimId;
   }
 
   const candidates = await prisma.sourceCandidate.findMany({

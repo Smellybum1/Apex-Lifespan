@@ -173,18 +173,24 @@ describe("listSourceCandidateReviewQueue", () => {
     });
   });
 
-  it("bounds queue limits and can filter by source and decision", async () => {
+  it("bounds queue limits and can filter by source, decision, and review scope", async () => {
     prismaMocks.sourceCandidateFindMany.mockResolvedValue([]);
 
     await listSourceCandidateReviewQueue({
+      claimId: "creatine-strength",
       decision: "Rejected",
+      ingestionJobId: "job-pubmed",
+      interventionId: "creatine",
       limit: 250,
       source: "ClinicalTrials.gov"
     });
 
     expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
       where: {
+        claimId: "creatine-strength",
         decision: "REJECTED",
+        ingestionJobId: "job-pubmed",
+        interventionId: "creatine",
         source: "CLINICALTRIALS_GOV"
       },
       orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],

@@ -33,6 +33,9 @@ export interface SourceCandidateJobCommandOptions
   acceptedReferenceId?: string;
   candidateDetailDedupeKey?: string;
   candidateDecision?: SourceCandidateDecision;
+  candidateClaimId?: string;
+  candidateInterventionId?: string;
+  candidateJobId?: string;
   candidateReferenceMatchesDedupeKey?: string;
   candidateSource?: SourceCandidateSource;
   candidates?: boolean;
@@ -61,7 +64,10 @@ export interface SourceCandidateJobCommandIo {
 export interface SourceCandidateJobCommandRunners {
   getCandidate?: (dedupeKey: string) => Promise<SourceCandidate | null>;
   listCandidates?: (options: {
+    claimId?: string;
     decision?: SourceCandidateDecision;
+    ingestionJobId?: string;
+    interventionId?: string;
     limit?: number;
     source?: SourceCandidateSource;
   }) => Promise<SourceCandidate[]>;
@@ -195,6 +201,9 @@ export async function runSourceCandidateJobCommand(
     if (options.candidates) {
       const candidates = await listCandidates({
         decision: options.candidateDecision,
+        claimId: options.candidateClaimId,
+        ingestionJobId: options.candidateJobId,
+        interventionId: options.candidateInterventionId,
         limit: options.candidatesLimit,
         source: options.candidateSource
       });
@@ -263,6 +272,9 @@ export function parseSourceCandidateJobCommandArgs(
   };
   let candidatesLimitProvided = false;
   let candidateDecisionProvided = false;
+  let candidateClaimIdProvided = false;
+  let candidateInterventionIdProvided = false;
+  let candidateJobIdProvided = false;
   let acceptedReferenceIdProvided = false;
   let limitProvided = false;
   let jobsLimitProvided = false;
@@ -361,6 +373,27 @@ export function parseSourceCandidateJobCommandArgs(
       continue;
     }
 
+    if (arg === "--candidate-job-id") {
+      options.candidateJobId = readRequiredValue(args, index, arg);
+      candidateJobIdProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-intervention-id") {
+      options.candidateInterventionId = readRequiredValue(args, index, arg);
+      candidateInterventionIdProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-claim-id") {
+      options.candidateClaimId = readRequiredValue(args, index, arg);
+      candidateClaimIdProvided = true;
+      index += 1;
+      continue;
+    }
+
     if (arg === "--jobs") {
       options.jobs = true;
       continue;
@@ -451,7 +484,14 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateDetailDedupeKey &&
-    (candidatesLimitProvided || options.candidateSource || candidateDecisionProvided)
+    hasCandidateListFilter({
+      candidatesLimitProvided,
+      candidateDecisionProvided,
+      candidateJobIdProvided,
+      candidateInterventionIdProvided,
+      candidateClaimIdProvided,
+      candidateSource: options.candidateSource
+    })
   ) {
     throw new Error("Candidate-list filters cannot be combined with --candidate-detail.");
   }
@@ -492,7 +532,14 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateReferenceMatchesDedupeKey &&
-    (candidatesLimitProvided || options.candidateSource || candidateDecisionProvided)
+    hasCandidateListFilter({
+      candidatesLimitProvided,
+      candidateDecisionProvided,
+      candidateJobIdProvided,
+      candidateInterventionIdProvided,
+      candidateClaimIdProvided,
+      candidateSource: options.candidateSource
+    })
   ) {
     throw new Error(
       "Candidate-list filters cannot be combined with --candidate-reference-matches."
@@ -553,7 +600,14 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.reviewDecision &&
-    (candidatesLimitProvided || options.candidateSource || candidateDecisionProvided)
+    hasCandidateListFilter({
+      candidatesLimitProvided,
+      candidateDecisionProvided,
+      candidateJobIdProvided,
+      candidateInterventionIdProvided,
+      candidateClaimIdProvided,
+      candidateSource: options.candidateSource
+    })
   ) {
     throw new Error("Candidate-list filters cannot be combined with review options.");
   }
@@ -575,11 +629,18 @@ export function parseSourceCandidateJobCommandArgs(
   }
 
   if (
-    (candidatesLimitProvided || options.candidateSource || candidateDecisionProvided) &&
+    hasCandidateListFilter({
+      candidatesLimitProvided,
+      candidateDecisionProvided,
+      candidateJobIdProvided,
+      candidateInterventionIdProvided,
+      candidateClaimIdProvided,
+      candidateSource: options.candidateSource
+    }) &&
     !options.candidates
   ) {
     throw new Error(
-      "--candidates-limit, --candidate-source, and --candidate-decision require --candidates."
+      "Candidate-list filters require --candidates."
     );
   }
 
@@ -651,6 +712,9 @@ export function commandUsage() {
     "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
     "  --candidate-source <source>       Candidate source: pubmed or clinical-trials.",
     "  --candidate-decision <decision>   Candidate decision: pending, accepted, or rejected.",
+    "  --candidate-job-id <id>           Filter --candidates by ingestion job id.",
+    "  --candidate-intervention-id <id>  Filter --candidates by intervention id.",
+    "  --candidate-claim-id <id>         Filter --candidates by claim id.",
     "  --jobs                            Print recent source-candidate ingestion jobs.",
     "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
     "  --queue-pubmed <term>             Queue a PubMed source-candidate job.",
@@ -1059,6 +1123,31 @@ function readCandidateDecision(value: string): SourceCandidateDecision {
   }
 
   throw new Error("--candidate-decision must be pending, accepted, or rejected.");
+}
+
+function hasCandidateListFilter({
+  candidatesLimitProvided,
+  candidateDecisionProvided,
+  candidateJobIdProvided,
+  candidateInterventionIdProvided,
+  candidateClaimIdProvided,
+  candidateSource
+}: {
+  candidatesLimitProvided: boolean;
+  candidateDecisionProvided: boolean;
+  candidateJobIdProvided: boolean;
+  candidateInterventionIdProvided: boolean;
+  candidateClaimIdProvided: boolean;
+  candidateSource?: SourceCandidateSource;
+}) {
+  return Boolean(
+    candidatesLimitProvided ||
+      candidateSource ||
+      candidateDecisionProvided ||
+      candidateJobIdProvided ||
+      candidateInterventionIdProvided ||
+      candidateClaimIdProvided
+  );
 }
 
 function setQueueOption(
