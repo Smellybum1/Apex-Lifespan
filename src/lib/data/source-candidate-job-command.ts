@@ -16,6 +16,7 @@ import {
   listSourceCandidateAcceptedReferenceMatches,
   listSourceCandidateCurationHandoff,
   listSourceCandidateReviewQueue,
+  listSourceCandidateSiblings,
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
   summarizeSourceCandidateCurationHandoff,
@@ -26,7 +27,9 @@ import {
   type SourceCandidateCurationHandoffOptions,
   type SourceCandidateCurationHandoffSummary,
   type SourceCandidateCurationStatus,
-  type SourceCandidateCurationStatusKind
+  type SourceCandidateCurationStatusKind,
+  type SourceCandidateSiblingOptions,
+  type SourceCandidateSiblings
 } from "@/lib/data/source-candidates";
 import type {
   Reference,
@@ -48,6 +51,8 @@ export interface SourceCandidateJobCommandOptions
   candidateInterventionId?: string;
   candidateJobId?: string;
   candidateReferenceMatchesDedupeKey?: string;
+  candidateSiblingsDedupeKey?: string;
+  candidateSiblingsLimit?: number;
   candidateSource?: SourceCandidateSource;
   candidates?: boolean;
   candidatesLimit?: number;
@@ -94,6 +99,10 @@ export interface SourceCandidateJobCommandRunners {
   listReferenceMatches?: (
     dedupeKey: string
   ) => Promise<SourceCandidateAcceptedReferenceMatches | null>;
+  listSiblings?: (
+    dedupeKey: string,
+    options: SourceCandidateSiblingOptions
+  ) => Promise<SourceCandidateSiblings | null>;
   queueJob?: (
     input: QueueSourceCandidateIngestionJobInput
   ) => Promise<QueuedSourceCandidateIngestionJob>;
@@ -154,6 +163,7 @@ export async function runSourceCandidateJobCommand(
   const listJobs = runners.listJobs ?? listSourceCandidateIngestionJobs;
   const listReferenceMatches =
     runners.listReferenceMatches ?? listSourceCandidateAcceptedReferenceMatches;
+  const listSiblings = runners.listSiblings ?? listSourceCandidateSiblings;
   const queueJob = runners.queueJob ?? queueSourceCandidateIngestionJob;
   const recordDecision = runners.recordDecision ?? recordSourceCandidateDecision;
   const runJobById = runners.runJobById ?? runSourceCandidateIngestionJob;
@@ -223,6 +233,22 @@ export async function runSourceCandidateJobCommand(
       }
 
       stdout(formatSourceCandidateReferenceMatches(matches));
+      return 0;
+    }
+
+    if (options.candidateSiblingsDedupeKey) {
+      const siblings = await listSiblings(options.candidateSiblingsDedupeKey, {
+        limit: options.candidateSiblingsLimit
+      });
+
+      if (!siblings) {
+        stderr(
+          `Source candidate not found: ${quote(options.candidateSiblingsDedupeKey)}`
+        );
+        return 1;
+      }
+
+      stdout(formatSourceCandidateSiblings(siblings));
       return 0;
     }
 
@@ -339,6 +365,7 @@ export function parseSourceCandidateJobCommandArgs(
   let candidateJobIdProvided = false;
   let candidateCurationHandoffLimitProvided = false;
   let candidateCurationHandoffStatusProvided = false;
+  let candidateSiblingsLimitProvided = false;
   let acceptedReferenceIdProvided = false;
   let limitProvided = false;
   let jobsLimitProvided = false;
@@ -404,6 +431,19 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--candidate-reference-matches") {
       options.candidateReferenceMatchesDedupeKey = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-siblings") {
+      options.candidateSiblingsDedupeKey = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-siblings-limit") {
+      options.candidateSiblingsLimit = readPositiveInteger(args, index, arg, 50);
+      candidateSiblingsLimitProvided = true;
       index += 1;
       continue;
     }
@@ -576,6 +616,10 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (candidateSiblingsLimitProvided && !options.candidateSiblingsDedupeKey) {
+    throw new Error("--candidate-siblings-limit requires --candidate-siblings.");
+  }
+
   if (options.candidateCurationHandoff && options.candidateDetailDedupeKey) {
     throw new Error(
       "--candidate-curation-handoff cannot be combined with --candidate-detail."
@@ -591,6 +635,12 @@ export function parseSourceCandidateJobCommandArgs(
   if (options.candidateCurationHandoff && options.candidateReferenceMatchesDedupeKey) {
     throw new Error(
       "--candidate-curation-handoff cannot be combined with --candidate-reference-matches."
+    );
+  }
+
+  if (options.candidateCurationHandoff && options.candidateSiblingsDedupeKey) {
+    throw new Error(
+      "--candidate-curation-handoff cannot be combined with --candidate-siblings."
     );
   }
 
@@ -658,6 +708,10 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (options.candidateDetailDedupeKey && options.candidateSiblingsDedupeKey) {
+    throw new Error("--candidate-siblings cannot be combined with --candidate-detail.");
+  }
+
   if (options.candidateDetailDedupeKey && options.summary) {
     throw new Error("--candidate-detail cannot be combined with --summary.");
   }
@@ -712,6 +766,15 @@ export function parseSourceCandidateJobCommandArgs(
   ) {
     throw new Error(
       "--candidate-curation-status cannot be combined with --candidate-reference-matches."
+    );
+  }
+
+  if (
+    options.candidateCurationStatusDedupeKey &&
+    options.candidateSiblingsDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-siblings cannot be combined with --candidate-curation-status."
     );
   }
 
@@ -825,6 +888,65 @@ export function parseSourceCandidateJobCommandArgs(
     (options.jobId || limitProvided || sourceLimitProvided)
   ) {
     throw new Error("--candidate-reference-matches cannot be combined with run options.");
+  }
+
+  if (
+    options.candidateReferenceMatchesDedupeKey &&
+    options.candidateSiblingsDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-siblings cannot be combined with --candidate-reference-matches."
+    );
+  }
+
+  if (options.candidateSiblingsDedupeKey && options.summary) {
+    throw new Error("--candidate-siblings cannot be combined with --summary.");
+  }
+
+  if (options.candidateSiblingsDedupeKey && options.candidates) {
+    throw new Error("--candidate-siblings cannot be combined with --candidates.");
+  }
+
+  if (
+    options.candidateSiblingsDedupeKey &&
+    hasCandidateListFilter({
+      candidatesLimitProvided,
+      candidateDecisionProvided,
+      candidateJobIdProvided,
+      candidateInterventionIdProvided,
+      candidateClaimIdProvided,
+      candidateSource: options.candidateSource
+    })
+  ) {
+    throw new Error(
+      "Candidate-list filters cannot be combined with --candidate-siblings."
+    );
+  }
+
+  if (options.candidateSiblingsDedupeKey && options.reviewDecision) {
+    throw new Error("--candidate-siblings cannot be combined with review options.");
+  }
+
+  if (options.candidateSiblingsDedupeKey && options.jobs) {
+    throw new Error("--candidate-siblings cannot be combined with --jobs.");
+  }
+
+  if (options.candidateSiblingsDedupeKey && options.queueSource) {
+    throw new Error("--candidate-siblings cannot be combined with queue options.");
+  }
+
+  if (
+    options.candidateSiblingsDedupeKey &&
+    (options.region || options.interventionId || options.claimId)
+  ) {
+    throw new Error("--candidate-siblings cannot be combined with queue metadata.");
+  }
+
+  if (
+    options.candidateSiblingsDedupeKey &&
+    (options.jobId || limitProvided || sourceLimitProvided)
+  ) {
+    throw new Error("--candidate-siblings cannot be combined with run options.");
   }
 
   if (acceptedReferenceIdProvided && options.reviewDecision !== "Accepted") {
@@ -962,6 +1084,8 @@ export function commandUsage() {
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
     "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
     "  --candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance.",
+    "  --candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons.",
+    "  --candidate-siblings-limit <count> Sibling row count (default 25, max 50).",
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
     "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
     "  --accepted-reference-id <id>      Required curated reference id for --accept-candidate.",
@@ -1307,6 +1431,83 @@ function formatSourceCandidateReferenceMatch(reference: Reference) {
 
   if (reference.year !== undefined) {
     parts.push(`year=${reference.year}`);
+  }
+
+  return parts.join(" ");
+}
+
+function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
+  const target = siblings.target;
+  const headingParts = [
+    `Source-candidate siblings: total=${siblings.siblings.length}`,
+    `target=${quote(target.dedupeKey)}`,
+    `candidate=${quote(target.title)}`,
+    `source=${quote(target.source)}`,
+    `externalId=${quote(target.externalId)}`,
+    `query=${quote(target.query)}`,
+    `region=${quote(target.region)}`,
+    `decision=${quote(target.decision)}`,
+    `reviewStatus=${quote(target.reviewStatus)}`
+  ];
+
+  if (target.interventionId) {
+    headingParts.push(`intervention=${target.interventionId}`);
+  }
+
+  if (target.claimId) {
+    headingParts.push(`claim=${target.claimId}`);
+  }
+
+  if (target.acceptedReferenceId) {
+    headingParts.push(`acceptedReference=${target.acceptedReferenceId}`);
+  }
+
+  const heading = headingParts.join(" ");
+
+  if (siblings.siblings.length === 0) {
+    return heading;
+  }
+
+  return [
+    heading,
+    ...siblings.siblings.map(formatSourceCandidateSibling)
+  ].join("\n");
+}
+
+function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings"][number]) {
+  const candidate = sibling.candidate;
+  const parts = [
+    `- match=${quote(sibling.matchReasons.join(", "))}`,
+    `triage=${candidate.triageScore}/100`,
+    candidate.source,
+    candidate.region,
+    `dedupe=${quote(candidate.dedupeKey)}`,
+    `externalId=${quote(candidate.externalId)}`,
+    `query=${quote(candidate.query)}`,
+    `title=${quote(candidate.title)}`,
+    `url=${candidate.url}`,
+    `decision=${quote(candidate.decision)}`,
+    `reviewStatus=${quote(candidate.reviewStatus)}`
+  ];
+
+  if (candidate.acceptedReferenceId) {
+    parts.push(`acceptedReference=${candidate.acceptedReferenceId}`);
+  }
+
+  if (candidate.reviewedAt) {
+    parts.push(`reviewed=${candidate.reviewedAt}`);
+  }
+
+  if (candidate.reviewNote) {
+    parts.push(`note=${quote(candidate.reviewNote)}`);
+  }
+
+  if (candidate.interventionId) {
+    parts.push(`intervention=${candidate.interventionId}`);
+  }
+
+  if (candidate.claimId) {
+    parts.push(`claim=${candidate.claimId}`);
   }
 
   return parts.join(" ");

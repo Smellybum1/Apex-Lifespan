@@ -42,6 +42,7 @@ import {
   listSourceCandidateAcceptedReferenceMatches,
   listSourceCandidateCurationHandoff,
   listSourceCandidateReviewQueue,
+  listSourceCandidateSiblings,
   summarizeSourceCandidateCurationHandoff,
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
@@ -431,6 +432,126 @@ describe("listSourceCandidateAcceptedReferenceMatches", () => {
     ).resolves.toBeNull();
 
     expect(prismaMocks.referenceFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("listSourceCandidateSiblings", () => {
+  it("lists same-source external-id and query-context siblings with match reasons", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        externalId: "28615996",
+        query: "creatine strength",
+        region: "AU",
+        interventionId: "creatine",
+        claimId: "creatine-strength"
+      })
+    );
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine-aging|28615996|creatine|creatine-aging",
+        externalId: "28615996",
+        query: "creatine aging",
+        claimId: "creatine-aging"
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine-strength|999999|creatine|creatine-strength",
+        externalId: "999999",
+        query: "creatine strength"
+      })
+    ]);
+
+    await expect(
+      listSourceCandidateSiblings(
+        "pubmed|au|creatine|28615996|creatine|creatine-strength"
+      )
+    ).resolves.toEqual({
+      target: expect.objectContaining({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        externalId: "28615996",
+        query: "creatine strength",
+        source: "PubMed"
+      }),
+      siblings: [
+        {
+          candidate: expect.objectContaining({
+            dedupeKey:
+              "pubmed|au|creatine-aging|28615996|creatine|creatine-aging",
+            externalId: "28615996",
+            query: "creatine aging"
+          }),
+          matchReasons: ["Same source/external id", "Same intervention context"]
+        },
+        {
+          candidate: expect.objectContaining({
+            dedupeKey:
+              "pubmed|au|creatine-strength|999999|creatine|creatine-strength",
+            externalId: "999999",
+            query: "creatine strength"
+          }),
+          matchReasons: [
+            "Same query/region",
+            "Same intervention context",
+            "Same claim context"
+          ]
+        }
+      ]
+    });
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        source: "PUBMED",
+        dedupeKey: {
+          not: "pubmed|au|creatine|28615996|creatine|creatine-strength"
+        },
+        OR: [
+          {
+            externalId: "28615996"
+          },
+          {
+            claimId: "creatine-strength",
+            interventionId: "creatine",
+            query: "creatine strength",
+            region: "AU"
+          }
+        ]
+      },
+      orderBy: [{ externalId: "asc" }, { triageScore: "desc" }, { updatedAt: "desc" }],
+      take: 25
+    });
+  });
+
+  it("bounds sibling limits", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(dbSourceCandidate());
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([]);
+
+    await listSourceCandidateSiblings(
+      "pubmed|au|creatine|28615996|creatine|creatine-strength",
+      { limit: 0 }
+    );
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 1
+      })
+    );
+
+    await listSourceCandidateSiblings(
+      "pubmed|au|creatine|28615996|creatine|creatine-strength",
+      { limit: 250 }
+    );
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        take: 50
+      })
+    );
+  });
+
+  it("returns null without reading sibling rows when the target candidate is missing", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(null);
+
+    await expect(listSourceCandidateSiblings("missing-candidate")).resolves.toBeNull();
+
+    expect(prismaMocks.sourceCandidateFindMany).not.toHaveBeenCalled();
   });
 });
 

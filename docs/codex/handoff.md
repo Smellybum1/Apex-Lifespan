@@ -29,6 +29,9 @@ Created for a new Codex thread on 2026-06-02.
 - Added database-mode regression coverage for public source-packet mapping:
   - mocked Prisma rows now verify claim reference links and structured study extraction rows map into a complete source packet;
   - coverage confirms database dashboard data preserves curated reference identity needed by the public Sources panel.
+- Added a read-only same-identity candidate sibling view:
+  - `--candidate-siblings <dedupe-key>` shows same-source/external-id and same-query/context rows with match reasons;
+  - output stays local/operator-only and does not automate source-candidate decisions.
 - Scoped source-candidate ingestion-job identity:
   - `IngestionJob` now has first-class `interventionId` and `claimId`;
   - migration `20260602061000_ingestion_job_context_identity` backfills valid legacy metadata context;
@@ -44,7 +47,9 @@ Created for a new Codex thread on 2026-06-02.
 - `npm run db:generate`
 - `npm run test -- src/lib/data/source-candidate-jobs.test.ts`
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run test -- src/lib/data/source-candidates.test.ts`
 - `npm run test -- src/lib/data/dashboard.test.ts`
+- `npm run ingest:sources -- --help`
 - `npm run test`
 - `npm run lint`
 - `npm run typecheck`
@@ -58,7 +63,6 @@ Created for a new Codex thread on 2026-06-02.
   - `docker compose up -d postgres`
   - `npm run db:migrate`
   - `npm run db:seed`
-- Consider a read-only same-identity candidate view for source-candidate siblings by source, external id, query, and context.
 - Later, design an operator workflow to create or curate references/extractions from accepted candidates without auto-promoting public evidence.
 
 ## Guardrails

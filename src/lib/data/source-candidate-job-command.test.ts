@@ -12,6 +12,9 @@ describe("commandUsage", () => {
       "--candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance."
     );
     expect(commandUsage()).toContain(
+      "--candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons."
+    );
+    expect(commandUsage()).toContain(
       "--candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
     );
     expect(commandUsage()).toContain(
@@ -85,6 +88,23 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       ])
     ).toEqual({
       candidateReferenceMatchesDedupeKey: "pubmed|au|creatine|28615996",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+  });
+
+  it("parses read-only source-candidate sibling mode", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996",
+        "--candidate-siblings-limit",
+        "200"
+      ])
+    ).toEqual({
+      candidateSiblingsDedupeKey: "pubmed|au|creatine|28615996",
+      candidateSiblingsLimit: 50,
       help: false,
       limit: 1,
       summary: false
@@ -735,6 +755,103 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "2"
       ])
     ).toThrow("--candidate-reference-matches cannot be combined with run options.");
+  });
+
+  it("does not combine source-candidate sibling mode with other command modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996",
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow("--candidate-siblings cannot be combined with --candidate-detail.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996",
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow(
+      "--candidate-siblings cannot be combined with --candidate-curation-status."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996",
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow(
+      "--candidate-siblings cannot be combined with --candidate-reference-matches."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996",
+        "--summary"
+      ])
+    ).toThrow("--candidate-siblings cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996",
+        "--candidates"
+      ])
+    ).toThrow("--candidate-siblings cannot be combined with --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996",
+        "--candidate-source",
+        "pubmed"
+      ])
+    ).toThrow("Candidate-list filters cannot be combined with --candidate-siblings.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996",
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ])
+    ).toThrow("--candidate-siblings cannot be combined with review options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996",
+        "--jobs"
+      ])
+    ).toThrow("--candidate-siblings cannot be combined with --jobs.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996",
+        "--queue-pubmed",
+        "creatine"
+      ])
+    ).toThrow("--candidate-siblings cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996",
+        "--region",
+        "AU"
+      ])
+    ).toThrow("--candidate-siblings cannot be combined with queue metadata.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996",
+        "--limit",
+        "2"
+      ])
+    ).toThrow("--candidate-siblings cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-siblings-limit", "5"])
+    ).toThrow("--candidate-siblings-limit requires --candidate-siblings.");
   });
 
   it("requires explicit and isolated source-candidate review options", () => {
@@ -1566,6 +1683,128 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(1);
 
     expect(listReferenceMatches).toHaveBeenCalledWith("missing-candidate");
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(
+      'Source candidate not found: "missing-candidate"'
+    );
+  });
+
+  it("prints read-only same-identity source-candidate siblings", async () => {
+    const stdout = vi.fn();
+    const listSiblings = vi.fn().mockResolvedValue({
+      target: sourceCandidate({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Accepted",
+        reviewStatus: "Human reviewed",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        interventionId: "creatine",
+        claimId: "creatine-strength"
+      }),
+      siblings: [
+        {
+          candidate: sourceCandidate({
+            dedupeKey: "pubmed|au|creatine-aging|28615996|creatine|aging",
+            externalId: "28615996",
+            query: "creatine aging",
+            title: "Creatine position stand duplicate",
+            interventionId: "creatine",
+            claimId: "creatine-aging"
+          }),
+          matchReasons: ["Same source/external id", "Same intervention context"]
+        },
+        {
+          candidate: sourceCandidate({
+            dedupeKey: "pubmed|au|creatine|999999|creatine|creatine-strength",
+            externalId: "999999",
+            query: "creatine strength",
+            title: "Creatine strength companion",
+            decision: "Rejected",
+            reviewStatus: "Human reviewed",
+            reviewedAt: "2026-06-02T04:00:00.000Z",
+            reviewNote: "Wrong population.",
+            interventionId: "creatine",
+            claimId: "creatine-strength"
+          }),
+          matchReasons: [
+            "Same query/region",
+            "Same intervention context",
+            "Same claim context"
+          ]
+        }
+      ]
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--candidate-siblings",
+          "pubmed|au|creatine|28615996|creatine|creatine-strength",
+          "--candidate-siblings-limit",
+          "2"
+        ],
+        { stdout },
+        { listSiblings, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(listSiblings).toHaveBeenCalledWith(
+      "pubmed|au|creatine|28615996|creatine|creatine-strength",
+      { limit: 2 }
+    );
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        'Source-candidate siblings: total=2 target="pubmed|au|creatine|28615996|creatine|creatine-strength" candidate="Creatine position stand" source="PubMed" externalId="28615996" query="creatine strength" region="AU" decision="Accepted" reviewStatus="Human reviewed" intervention=creatine claim=creatine-strength acceptedReference=ref-creatine-position-stand',
+        '- match="Same source/external id, Same intervention context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine-aging|28615996|creatine|aging" externalId="28615996" query="creatine aging" title="Creatine position stand duplicate" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-aging',
+        '- match="Same query/region, Same intervention context, Same claim context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine|999999|creatine|creatine-strength" externalId="999999" query="creatine strength" title="Creatine strength companion" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Rejected" reviewStatus="Human reviewed" reviewed=2026-06-02T04:00:00.000Z note="Wrong population." intervention=creatine claim=creatine-strength'
+      ].join("\n")
+    );
+  });
+
+  it("prints an empty same-identity source-candidate sibling list", async () => {
+    const stdout = vi.fn();
+    const listSiblings = vi.fn().mockResolvedValue({
+      target: sourceCandidate({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        source: "ClinicalTrials.gov",
+        externalId: "NCT123",
+        query: "creatine aging",
+        title: "Creatine and aging",
+        url: "https://clinicaltrials.gov/study/NCT123"
+      }),
+      siblings: []
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-siblings", "clinicaltrials.gov|au|creatine|nct123"],
+        { stdout },
+        { listSiblings }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      'Source-candidate siblings: total=0 target="clinicaltrials.gov|au|creatine|nct123" candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" query="creatine aging" region="AU" decision="Pending review" reviewStatus="Unreviewed AI draft"'
+    );
+  });
+
+  it("returns a failing exit code when sibling lookup targets a missing candidate", async () => {
+    const stderr = vi.fn();
+    const listSiblings = vi.fn().mockResolvedValue(null);
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-siblings", "missing-candidate"],
+        { stderr },
+        { listSiblings, runNextJob }
+      )
+    ).resolves.toBe(1);
+
+    expect(listSiblings).toHaveBeenCalledWith("missing-candidate", {
+      limit: undefined
+    });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stderr).toHaveBeenCalledWith(
       'Source candidate not found: "missing-candidate"'

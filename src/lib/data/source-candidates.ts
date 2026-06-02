@@ -61,6 +61,26 @@ export interface SourceCandidateAcceptedReferenceMatches {
   references: Reference[];
 }
 
+export type SourceCandidateSiblingMatchReason =
+  | "Same source/external id"
+  | "Same query/region"
+  | "Same intervention context"
+  | "Same claim context";
+
+export interface SourceCandidateSibling {
+  candidate: SourceCandidate;
+  matchReasons: SourceCandidateSiblingMatchReason[];
+}
+
+export interface SourceCandidateSiblings {
+  siblings: SourceCandidateSibling[];
+  target: SourceCandidate;
+}
+
+export interface SourceCandidateSiblingOptions {
+  limit?: number;
+}
+
 export type SourceCandidateCurationStatusKind =
   | "Not accepted"
   | "Accepted reference missing"
@@ -121,6 +141,8 @@ const DEFAULT_REVIEW_QUEUE_LIMIT = 25;
 const MAX_REVIEW_QUEUE_LIMIT = 100;
 const DEFAULT_CURATION_HANDOFF_LIMIT = 25;
 const MAX_CURATION_HANDOFF_LIMIT = 50;
+const DEFAULT_SIBLING_LIMIT = 25;
+const MAX_SIBLING_LIMIT = 50;
 const MAX_REFERENCE_MATCH_CANDIDATES = 50;
 const CURATION_HANDOFF_STATUS_ORDER: SourceCandidateCurationStatusKind[] = [
   "Accepted reference missing",
@@ -238,6 +260,35 @@ export async function listSourceCandidateAcceptedReferenceMatches(
     references: references
       .filter((reference) => referenceMatchesSourceCandidate(reference, candidate))
       .map(mapDbReference)
+  };
+}
+
+export async function listSourceCandidateSiblings(
+  dedupeKey: string,
+  options: SourceCandidateSiblingOptions = {}
+): Promise<SourceCandidateSiblings | null> {
+  const target = await prisma.sourceCandidate.findUnique({
+    where: {
+      dedupeKey
+    }
+  });
+
+  if (!target) {
+    return null;
+  }
+
+  const siblings = await prisma.sourceCandidate.findMany({
+    where: sourceCandidateSiblingWhere(target),
+    orderBy: [{ externalId: "asc" }, { triageScore: "desc" }, { updatedAt: "desc" }],
+    take: normaliseSiblingLimit(options.limit)
+  });
+
+  return {
+    siblings: siblings.map((candidate) => ({
+      candidate: mapDbSourceCandidate(candidate),
+      matchReasons: sourceCandidateSiblingMatchReasons(target, candidate)
+    })),
+    target: mapDbSourceCandidate(target)
   };
 }
 
@@ -629,6 +680,61 @@ function normaliseCurationHandoffLimit(limit: number | undefined) {
   }
 
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_CURATION_HANDOFF_LIMIT);
+}
+
+function normaliseSiblingLimit(limit: number | undefined) {
+  if (limit === undefined || !Number.isFinite(limit)) {
+    return DEFAULT_SIBLING_LIMIT;
+  }
+
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_SIBLING_LIMIT);
+}
+
+function sourceCandidateSiblingWhere(
+  target: DbSourceCandidate
+): Prisma.SourceCandidateWhereInput {
+  return {
+    source: target.source,
+    dedupeKey: {
+      not: target.dedupeKey
+    },
+    OR: [
+      {
+        externalId: target.externalId
+      },
+      {
+        claimId: target.claimId,
+        interventionId: target.interventionId,
+        query: target.query,
+        region: target.region
+      }
+    ]
+  };
+}
+
+function sourceCandidateSiblingMatchReasons(
+  target: DbSourceCandidate,
+  candidate: DbSourceCandidate
+): SourceCandidateSiblingMatchReason[] {
+  const reasons: SourceCandidateSiblingMatchReason[] = [];
+
+  if (candidate.source === target.source && candidate.externalId === target.externalId) {
+    reasons.push("Same source/external id");
+  }
+
+  if (candidate.query === target.query && candidate.region === target.region) {
+    reasons.push("Same query/region");
+  }
+
+  if (candidate.interventionId && candidate.interventionId === target.interventionId) {
+    reasons.push("Same intervention context");
+  }
+
+  if (candidate.claimId && candidate.claimId === target.claimId) {
+    reasons.push("Same claim context");
+  }
+
+  return reasons;
 }
 
 function mapDbSourceCandidateBacklogGroup(group: {
