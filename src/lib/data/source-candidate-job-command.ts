@@ -877,6 +877,10 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("Review options cannot be combined with run options.");
   }
 
+  if (options.reviewDecision === "Rejected" && !options.reviewNote?.trim()) {
+    throw new Error("--reject-candidate requires --review-note.");
+  }
+
   if (
     hasCandidateListFilter({
       candidatesLimitProvided,
@@ -961,7 +965,7 @@ export function commandUsage() {
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
     "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
     "  --accepted-reference-id <id>      Required curated reference id for --accept-candidate.",
-    "  --review-note <note>              Human review note for accepted/rejected candidates.",
+    "  --review-note <note>              Human review note; required for --reject-candidate.",
     "  --candidates                      Print pending source-candidate review queue rows.",
     "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
     "  --candidate-source <source>       Filter candidates or handoff by source: pubmed or clinical-trials.",

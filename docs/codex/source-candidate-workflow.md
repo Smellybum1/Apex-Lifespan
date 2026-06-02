@@ -8,6 +8,7 @@ Source-candidate ingestion is a private local operator workflow. It writes to co
 - Ingestion and review writes live under `npm run ingest:sources`.
 - Accepted candidates do not auto-promote into curated evidence cards.
 - Accepted candidates must link to an existing curated reference whose source and external id match the candidate.
+- Rejected candidates require a nonblank human review note.
 - Curation handoff status is readiness for public source packets, not evidence quality.
 
 ## Commands

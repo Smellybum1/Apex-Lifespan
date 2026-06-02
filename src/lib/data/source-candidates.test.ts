@@ -1260,6 +1260,26 @@ describe("recordSourceCandidateDecision", () => {
     expect(prismaMocks.referenceFindUnique).not.toHaveBeenCalled();
   });
 
+  it("requires a nonblank review note when rejecting candidates", async () => {
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Rejected"
+      })
+    ).rejects.toThrow("Rejected source candidates require a reviewNote.");
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Rejected",
+        reviewNote: " "
+      })
+    ).rejects.toThrow("Rejected source candidates require a reviewNote.");
+
+    expect(prismaMocks.sourceCandidateFindUnique).not.toHaveBeenCalled();
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
   it("rejects accepted decisions without a curated reference link", async () => {
     await expect(
       recordSourceCandidateDecision({

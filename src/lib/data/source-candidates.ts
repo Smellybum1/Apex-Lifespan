@@ -492,9 +492,14 @@ export async function recordSourceCandidateDecision({
   reviewedAt = new Date()
 }: RecordSourceCandidateDecisionInput): Promise<SourceCandidate> {
   const acceptedReferenceIdOrUndefined = acceptedReferenceId?.trim();
+  const reviewNoteOrUndefined = reviewNote?.trim();
 
   if (decision === "Accepted" && !acceptedReferenceIdOrUndefined) {
     throw new Error("Accepted source candidates require an acceptedReferenceId.");
+  }
+
+  if (decision === "Rejected" && !reviewNoteOrUndefined) {
+    throw new Error("Rejected source candidates require a reviewNote.");
   }
 
   const pendingCandidate = await prisma.sourceCandidate.findUnique({
@@ -535,7 +540,7 @@ export async function recordSourceCandidateDecision({
         decision: decisionMap[decision],
         reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
         reviewedAt,
-        reviewNote,
+        reviewNote: decision === "Rejected" ? reviewNoteOrUndefined : reviewNote,
         acceptedReferenceId:
           decision === "Accepted" ? acceptedReferenceIdOrUndefined : null
       }

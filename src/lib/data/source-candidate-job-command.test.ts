@@ -728,6 +728,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs([
         "--reject-candidate",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow("--reject-candidate requires --review-note.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--reject-candidate",
+        "pubmed|au|creatine|28615996",
+        "--review-note",
+        " "
+      ])
+    ).toThrow("--reject-candidate requires --review-note.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--reject-candidate",
         "pubmed|au|creatine|28615996",
         "--accepted-reference-id",
         "ref-creatine-position-stand"
