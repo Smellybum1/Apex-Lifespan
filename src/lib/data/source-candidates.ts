@@ -1,8 +1,10 @@
 import {
+  type ClaimReference as DbClaimReference,
   type Reference as DbReference,
   ReviewStatus as DbReviewStatus,
   SourceCandidateDecision as DbSourceCandidateDecision,
   SourceKind as DbSourceKind,
+  type Study as DbStudy,
   type SourceCandidate as DbSourceCandidate,
   type Prisma
 } from "@prisma/client";
@@ -46,6 +48,37 @@ export interface SourceCandidateReviewQueueOptions {
 export interface SourceCandidateAcceptedReferenceMatches {
   candidate: SourceCandidate;
   references: Reference[];
+}
+
+export type SourceCandidateCurationStatusKind =
+  | "Not accepted"
+  | "Accepted reference missing"
+  | "Claim link missing"
+  | "Extraction pending"
+  | "Public source packet ready";
+
+export interface SourceCandidateCurationClaimLink {
+  claimId: string;
+  note?: string;
+  relevance: number;
+}
+
+export interface SourceCandidateCurationStudy {
+  id: string;
+  referenceId: string;
+  title: string;
+  year?: number;
+}
+
+export interface SourceCandidateCurationStatus {
+  acceptedReference?: Reference;
+  acceptedReferenceId?: string;
+  candidate: SourceCandidate;
+  candidateClaimLinked?: boolean;
+  claimLinks: SourceCandidateCurationClaimLink[];
+  publicSourcePacketReady: boolean;
+  status: SourceCandidateCurationStatusKind;
+  studies: SourceCandidateCurationStudy[];
 }
 
 export type ReviewedSourceCandidateDecision = Exclude<
@@ -172,6 +205,74 @@ export async function listSourceCandidateAcceptedReferenceMatches(
       .filter((reference) => referenceMatchesSourceCandidate(reference, candidate))
       .map(mapDbReference)
   };
+}
+
+export async function getSourceCandidateCurationStatus(
+  dedupeKey: string
+): Promise<SourceCandidateCurationStatus | null> {
+  const candidate = await prisma.sourceCandidate.findUnique({
+    where: {
+      dedupeKey
+    }
+  });
+
+  if (!candidate) {
+    return null;
+  }
+
+  const mappedCandidate = mapDbSourceCandidate(candidate);
+  const acceptedReferenceId = candidate.acceptedReferenceId ?? undefined;
+
+  if (candidate.decision !== DbSourceCandidateDecision.ACCEPTED || !acceptedReferenceId) {
+    return sourceCandidateCurationStatus({
+      candidate: mappedCandidate,
+      status: "Not accepted"
+    });
+  }
+
+  const acceptedReference = await prisma.reference.findUnique({
+    where: {
+      id: acceptedReferenceId
+    }
+  });
+
+  if (!acceptedReference) {
+    return sourceCandidateCurationStatus({
+      acceptedReferenceId,
+      candidate: mappedCandidate,
+      status: "Accepted reference missing"
+    });
+  }
+
+  const [claimLinks, studies] = await Promise.all([
+    prisma.claimReference.findMany({
+      where: {
+        referenceId: acceptedReference.id
+      },
+      orderBy: [{ claimId: "asc" }]
+    }),
+    prisma.study.findMany({
+      where: {
+        referenceId: acceptedReference.id
+      },
+      orderBy: [{ year: "desc" }, { title: "asc" }]
+    })
+  ]);
+  const mappedClaimLinks = claimLinks.map(mapDbClaimReference);
+  const mappedStudies = studies.map(mapDbCurationStudy);
+  const candidateClaimLinked = candidate.claimId
+    ? mappedClaimLinks.some((link) => link.claimId === candidate.claimId)
+    : undefined;
+
+  return sourceCandidateCurationStatus({
+    acceptedReference: mapDbReference(acceptedReference),
+    acceptedReferenceId,
+    candidate: mappedCandidate,
+    candidateClaimLinked,
+    claimLinks: mappedClaimLinks,
+    status: curationStatusKind(mappedClaimLinks, mappedStudies, candidateClaimLinked),
+    studies: mappedStudies
+  });
 }
 
 export async function summarizeSourceCandidateBacklog(): Promise<SourceCandidateBacklogSummary> {
@@ -360,6 +461,70 @@ function mapDbReference(reference: DbReference): Reference {
     year: reference.year ?? undefined,
     url: reference.url
   };
+}
+
+function mapDbClaimReference(
+  claimReference: DbClaimReference
+): SourceCandidateCurationClaimLink {
+  return {
+    claimId: claimReference.claimId,
+    note: claimReference.note ?? undefined,
+    relevance: claimReference.relevance
+  };
+}
+
+function mapDbCurationStudy(study: DbStudy): SourceCandidateCurationStudy {
+  return {
+    id: study.id,
+    referenceId: study.referenceId ?? "",
+    title: study.title,
+    year: study.year ?? undefined
+  };
+}
+
+function sourceCandidateCurationStatus({
+  acceptedReference,
+  acceptedReferenceId,
+  candidate,
+  candidateClaimLinked,
+  claimLinks = [],
+  status,
+  studies = []
+}: {
+  acceptedReference?: Reference;
+  acceptedReferenceId?: string;
+  candidate: SourceCandidate;
+  candidateClaimLinked?: boolean;
+  claimLinks?: SourceCandidateCurationClaimLink[];
+  status: SourceCandidateCurationStatusKind;
+  studies?: SourceCandidateCurationStudy[];
+}): SourceCandidateCurationStatus {
+  return {
+    acceptedReference,
+    acceptedReferenceId,
+    candidate,
+    candidateClaimLinked,
+    claimLinks,
+    publicSourcePacketReady: status === "Public source packet ready",
+    status,
+    studies
+  };
+}
+
+function curationStatusKind(
+  claimLinks: SourceCandidateCurationClaimLink[],
+  studies: SourceCandidateCurationStudy[],
+  candidateClaimLinked: boolean | undefined
+): SourceCandidateCurationStatusKind {
+  if (claimLinks.length === 0 || candidateClaimLinked === false) {
+    return "Claim link missing";
+  }
+
+  if (studies.length === 0) {
+    return "Extraction pending";
+  }
+
+  return "Public source packet ready";
 }
 
 function sourceFromDb(source: DbSourceKind): SourceCandidateSource {

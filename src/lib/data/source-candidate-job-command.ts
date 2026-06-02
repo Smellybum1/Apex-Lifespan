@@ -11,6 +11,7 @@ import {
   type SourceCandidateIngestionJobRunResult
 } from "@/lib/data/source-candidate-jobs";
 import {
+  getSourceCandidateCurationStatus,
   getSourceCandidateByDedupeKey,
   listSourceCandidateAcceptedReferenceMatches,
   listSourceCandidateReviewQueue,
@@ -19,7 +20,8 @@ import {
   type RecordSourceCandidateDecisionInput,
   type ReviewedSourceCandidateDecision,
   type SourceCandidateAcceptedReferenceMatches,
-  type SourceCandidateBacklogSummary
+  type SourceCandidateBacklogSummary,
+  type SourceCandidateCurationStatus
 } from "@/lib/data/source-candidates";
 import type {
   Reference,
@@ -31,6 +33,7 @@ import type {
 export interface SourceCandidateJobCommandOptions
   extends SourceCandidateIngestionJobOptions {
   acceptedReferenceId?: string;
+  candidateCurationStatusDedupeKey?: string;
   candidateDetailDedupeKey?: string;
   candidateDecision?: SourceCandidateDecision;
   candidateClaimId?: string;
@@ -62,6 +65,9 @@ export interface SourceCandidateJobCommandIo {
 }
 
 export interface SourceCandidateJobCommandRunners {
+  getCurationStatus?: (
+    dedupeKey: string
+  ) => Promise<SourceCandidateCurationStatus | null>;
   getCandidate?: (dedupeKey: string) => Promise<SourceCandidate | null>;
   listCandidates?: (options: {
     claimId?: string;
@@ -127,6 +133,8 @@ export async function runSourceCandidateJobCommand(
 ) {
   const stdout = io.stdout ?? console.log;
   const stderr = io.stderr ?? console.error;
+  const getCurationStatus =
+    runners.getCurationStatus ?? getSourceCandidateCurationStatus;
   const getCandidate = runners.getCandidate ?? getSourceCandidateByDedupeKey;
   const listCandidates = runners.listCandidates ?? listSourceCandidateReviewQueue;
   const listJobs = runners.listJobs ?? listSourceCandidateIngestionJobs;
@@ -154,6 +162,22 @@ export async function runSourceCandidateJobCommand(
   }
 
   try {
+    if (options.candidateCurationStatusDedupeKey) {
+      const status = await getCurationStatus(options.candidateCurationStatusDedupeKey);
+
+      if (!status) {
+        stderr(
+          `Source candidate not found: ${quote(
+            options.candidateCurationStatusDedupeKey
+          )}`
+        );
+        return 1;
+      }
+
+      stdout(formatSourceCandidateCurationStatus(status));
+      return 0;
+    }
+
     if (options.candidateReferenceMatchesDedupeKey) {
       const matches = await listReferenceMatches(
         options.candidateReferenceMatchesDedupeKey
@@ -302,6 +326,12 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--candidate-detail") {
       options.candidateDetailDedupeKey = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-curation-status") {
+      options.candidateCurationStatusDedupeKey = readRequiredValue(args, index, arg);
       index += 1;
       continue;
     }
@@ -468,6 +498,12 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--job-id runs exactly one job and cannot be combined with --limit.");
   }
 
+  if (options.candidateDetailDedupeKey && options.candidateCurationStatusDedupeKey) {
+    throw new Error(
+      "--candidate-curation-status cannot be combined with --candidate-detail."
+    );
+  }
+
   if (options.candidateDetailDedupeKey && options.candidateReferenceMatchesDedupeKey) {
     throw new Error(
       "--candidate-reference-matches cannot be combined with --candidate-detail."
@@ -520,6 +556,71 @@ export function parseSourceCandidateJobCommandArgs(
     (options.jobId || limitProvided || sourceLimitProvided)
   ) {
     throw new Error("--candidate-detail cannot be combined with run options.");
+  }
+
+  if (
+    options.candidateCurationStatusDedupeKey &&
+    options.candidateReferenceMatchesDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-curation-status cannot be combined with --candidate-reference-matches."
+    );
+  }
+
+  if (options.candidateCurationStatusDedupeKey && options.summary) {
+    throw new Error("--candidate-curation-status cannot be combined with --summary.");
+  }
+
+  if (options.candidateCurationStatusDedupeKey && options.candidates) {
+    throw new Error("--candidate-curation-status cannot be combined with --candidates.");
+  }
+
+  if (
+    options.candidateCurationStatusDedupeKey &&
+    hasCandidateListFilter({
+      candidatesLimitProvided,
+      candidateDecisionProvided,
+      candidateJobIdProvided,
+      candidateInterventionIdProvided,
+      candidateClaimIdProvided,
+      candidateSource: options.candidateSource
+    })
+  ) {
+    throw new Error(
+      "Candidate-list filters cannot be combined with --candidate-curation-status."
+    );
+  }
+
+  if (options.candidateCurationStatusDedupeKey && options.reviewDecision) {
+    throw new Error(
+      "--candidate-curation-status cannot be combined with review options."
+    );
+  }
+
+  if (options.candidateCurationStatusDedupeKey && options.jobs) {
+    throw new Error("--candidate-curation-status cannot be combined with --jobs.");
+  }
+
+  if (options.candidateCurationStatusDedupeKey && options.queueSource) {
+    throw new Error(
+      "--candidate-curation-status cannot be combined with queue options."
+    );
+  }
+
+  if (
+    options.candidateCurationStatusDedupeKey &&
+    (options.region || options.interventionId || options.claimId)
+  ) {
+    throw new Error(
+      "--candidate-curation-status cannot be combined with queue metadata."
+    );
+  }
+
+  if (
+    options.candidateCurationStatusDedupeKey &&
+    (options.jobId || limitProvided || sourceLimitProvided)
+  ) {
+    throw new Error("--candidate-curation-status cannot be combined with run options.");
   }
 
   if (options.candidateReferenceMatchesDedupeKey && options.summary) {
@@ -703,6 +804,7 @@ export function commandUsage() {
     "  --job-id <id>                     Run one specific ingestion job.",
     "  --limit <count>                   Run up to count queued jobs (default 1, max 25).",
     "  --candidate-detail <dedupe-key>   Print one source-candidate detail record.",
+    "  --candidate-curation-status <dedupe-key> Print accepted candidate curation handoff status.",
     "  --candidate-reference-matches <dedupe-key> Print curated reference ids eligible for candidate acceptance.",
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
     "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
@@ -869,6 +971,77 @@ function formatSourceCandidateDetail(candidate: SourceCandidate) {
   }
 
   return lines.join("\n");
+}
+
+function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStatus) {
+  const lines = [
+    "Source-candidate curation status",
+    `dedupe=${quote(status.candidate.dedupeKey)}`,
+    `decision=${quote(status.candidate.decision)}`,
+    `reviewStatus=${quote(status.candidate.reviewStatus)}`,
+    `status=${quote(status.status)}`,
+    `publicSourcePacketReady=${status.publicSourcePacketReady}`
+  ];
+
+  if (status.acceptedReferenceId) {
+    lines.push(`acceptedReference=${status.acceptedReferenceId}`);
+  }
+
+  if (status.acceptedReference) {
+    lines.push(`acceptedReferenceTitle=${quote(status.acceptedReference.title)}`);
+    lines.push(`acceptedReferenceUrl=${status.acceptedReference.url}`);
+  }
+
+  if (status.candidate.claimId) {
+    lines.push(`candidateClaim=${status.candidate.claimId}`);
+  }
+
+  if (status.candidateClaimLinked !== undefined) {
+    lines.push(`candidateClaimLinked=${status.candidateClaimLinked}`);
+  }
+
+  lines.push(`claimLinks=${status.claimLinks.length}`);
+  lines.push(`studies=${status.studies.length}`);
+
+  if (status.claimLinks.length > 0) {
+    lines.push("claimLinks:");
+    lines.push(
+      ...status.claimLinks.map((link) => `  ${formatCurationClaimLink(link)}`)
+    );
+  }
+
+  if (status.studies.length > 0) {
+    lines.push("studies:");
+    lines.push(...status.studies.map((study) => `  ${formatCurationStudy(study)}`));
+  }
+
+  return lines.join("\n");
+}
+
+function formatCurationClaimLink(
+  link: SourceCandidateCurationStatus["claimLinks"][number]
+) {
+  const parts = [`- claim=${link.claimId}`, `relevance=${link.relevance}`];
+
+  if (link.note) {
+    parts.push(`note=${quote(link.note)}`);
+  }
+
+  return parts.join(" ");
+}
+
+function formatCurationStudy(status: SourceCandidateCurationStatus["studies"][number]) {
+  const parts = [
+    `- study=${status.id}`,
+    `reference=${status.referenceId}`,
+    `title=${quote(status.title)}`
+  ];
+
+  if (status.year !== undefined) {
+    parts.push(`year=${status.year}`);
+  }
+
+  return parts.join(" ");
 }
 
 function formatSourceCandidateReferenceMatches(

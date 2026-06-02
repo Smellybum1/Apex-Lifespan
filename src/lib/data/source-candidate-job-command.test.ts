@@ -77,6 +77,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     });
   });
 
+  it("parses read-only source-candidate curation status mode", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toEqual({
+      candidateCurationStatusDedupeKey: "pubmed|au|creatine|28615996",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+  });
+
   it("parses source-candidate review modes", () => {
     expect(
       parseSourceCandidateJobCommandArgs([
@@ -318,6 +332,92 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "2"
       ])
     ).toThrow("--candidate-detail cannot be combined with run options.");
+  });
+
+  it("does not combine source-candidate curation status mode with other command modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996",
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow("--candidate-curation-status cannot be combined with --candidate-detail.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996",
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow(
+      "--candidate-curation-status cannot be combined with --candidate-reference-matches."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996",
+        "--summary"
+      ])
+    ).toThrow("--candidate-curation-status cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996",
+        "--candidates"
+      ])
+    ).toThrow("--candidate-curation-status cannot be combined with --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996",
+        "--candidate-claim-id",
+        "creatine-strength"
+      ])
+    ).toThrow(
+      "Candidate-list filters cannot be combined with --candidate-curation-status."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996",
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ])
+    ).toThrow("--candidate-curation-status cannot be combined with review options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996",
+        "--jobs"
+      ])
+    ).toThrow("--candidate-curation-status cannot be combined with --jobs.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996",
+        "--queue-pubmed",
+        "creatine"
+      ])
+    ).toThrow("--candidate-curation-status cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996",
+        "--region",
+        "AU"
+      ])
+    ).toThrow("--candidate-curation-status cannot be combined with queue metadata.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-status",
+        "pubmed|au|creatine|28615996",
+        "--limit",
+        "2"
+      ])
+    ).toThrow("--candidate-curation-status cannot be combined with run options.");
   });
 
   it("does not combine source-candidate reference match mode with other command modes", () => {
@@ -803,6 +903,132 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(1);
 
     expect(getCandidate).toHaveBeenCalledWith("missing-candidate");
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(
+      'Source candidate not found: "missing-candidate"'
+    );
+  });
+
+  it("prints read-only source-candidate curation status for public-ready accepted candidates", async () => {
+    const stdout = vi.fn();
+    const getCurationStatus = vi.fn().mockResolvedValue({
+      acceptedReference: {
+        id: "ref-creatine-position-stand",
+        title: "Creatine position stand",
+        source: "PubMed",
+        identifier: "PMID: 28615996",
+        year: 2017,
+        url: "https://pubmed.ncbi.nlm.nih.gov/28615996/"
+      },
+      acceptedReferenceId: "ref-creatine-position-stand",
+      candidate: sourceCandidate({
+        decision: "Accepted",
+        reviewStatus: "Human reviewed",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        claimId: "creatine-strength"
+      }),
+      candidateClaimLinked: true,
+      claimLinks: [
+        {
+          claimId: "creatine-strength",
+          relevance: 5,
+          note: "Primary source."
+        }
+      ],
+      publicSourcePacketReady: true,
+      status: "Public source packet ready",
+      studies: [
+        {
+          id: "study-creatine-issn",
+          referenceId: "ref-creatine-position-stand",
+          title: "Creatine\nposition stand extraction",
+          year: 2017
+        }
+      ]
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-curation-status", "pubmed|au|creatine|28615996"],
+        { stdout },
+        { getCurationStatus, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(getCurationStatus).toHaveBeenCalledWith("pubmed|au|creatine|28615996");
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate curation status",
+        'dedupe="pubmed|au|creatine|28615996"',
+        'decision="Accepted"',
+        'reviewStatus="Human reviewed"',
+        'status="Public source packet ready"',
+        "publicSourcePacketReady=true",
+        "acceptedReference=ref-creatine-position-stand",
+        'acceptedReferenceTitle="Creatine position stand"',
+        "acceptedReferenceUrl=https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        "candidateClaim=creatine-strength",
+        "candidateClaimLinked=true",
+        "claimLinks=1",
+        "studies=1",
+        "claimLinks:",
+        '  - claim=creatine-strength relevance=5 note="Primary source."',
+        "studies:",
+        '  - study=study-creatine-issn reference=ref-creatine-position-stand title="Creatine\\nposition stand extraction" year=2017'
+      ].join("\n")
+    );
+  });
+
+  it("prints read-only curation status for source candidates that are not accepted", async () => {
+    const stdout = vi.fn();
+    const getCurationStatus = vi.fn().mockResolvedValue({
+      candidate: sourceCandidate(),
+      claimLinks: [],
+      publicSourcePacketReady: false,
+      status: "Not accepted",
+      studies: []
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-curation-status", "pubmed|au|creatine|28615996"],
+        { stdout },
+        { getCurationStatus, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate curation status",
+        'dedupe="pubmed|au|creatine|28615996"',
+        'decision="Pending review"',
+        'reviewStatus="Unreviewed AI draft"',
+        'status="Not accepted"',
+        "publicSourcePacketReady=false",
+        "claimLinks=0",
+        "studies=0"
+      ].join("\n")
+    );
+  });
+
+  it("returns a failing exit code when curation status targets a missing candidate", async () => {
+    const stderr = vi.fn();
+    const getCurationStatus = vi.fn().mockResolvedValue(null);
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-curation-status", "missing-candidate"],
+        { stderr },
+        { getCurationStatus, runNextJob }
+      )
+    ).resolves.toBe(1);
+
+    expect(getCurationStatus).toHaveBeenCalledWith("missing-candidate");
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stderr).toHaveBeenCalledWith(
       'Source candidate not found: "missing-candidate"'
