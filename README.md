@@ -107,7 +107,7 @@ The `--candidates` option is read-only and reports source-candidate review rows 
 The `--candidate-detail` option is read-only and reports one source-candidate record with triage reasons, review fields, and compact metadata.
 The `--candidate-curation-status` option is read-only and reports whether an accepted source candidate's curated reference is claim-linked and has structured study extraction for public source packets, including the next operator curation action.
 The `--candidate-curation-handoff` option is read-only and lists accepted source candidates with claim-link and study-extraction readiness plus the next operator curation action; it can reuse the source, ingestion job, intervention, and claim filters and can filter by `--candidate-curation-handoff-status missing-reference`, `claim-link-missing`, `extraction-pending`, or `ready`. Status filtering is applied before the handoff row limit.
-The `--candidate-reference-matches` option is read-only and reports curated reference ids that satisfy the same source and external-id match required by `--accept-candidate`.
+The `--candidate-reference-matches` option is read-only and reports candidate identity plus curated reference ids that satisfy the same source and external-id match required by `--accept-candidate`.
 The `--accept-candidate` and `--reject-candidate` options are operator-only review actions for pending candidates. Accepted candidates require an existing curated reference id whose source and external identifier match the candidate; accepting does not automatically promote evidence cards.
 The `--summary` option is read-only and reports source-candidate workflow counts by source, region, decision, and review status plus accepted-candidate curation handoff readiness counts.
 

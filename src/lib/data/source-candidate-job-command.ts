@@ -1255,7 +1255,7 @@ function formatCurationStudy(status: SourceCandidateCurationStatus["studies"][nu
 function formatSourceCandidateReferenceMatches(
   matches: SourceCandidateAcceptedReferenceMatches
 ) {
-  const heading = `Source-candidate accepted-reference matches: total=${matches.references.length} dedupe=${quote(matches.candidate.dedupeKey)}`;
+  const heading = formatSourceCandidateReferenceMatchHeading(matches);
 
   if (matches.references.length === 0) {
     return heading;
@@ -1265,6 +1265,28 @@ function formatSourceCandidateReferenceMatches(
     heading,
     ...matches.references.map(formatSourceCandidateReferenceMatch)
   ].join("\n");
+}
+
+function formatSourceCandidateReferenceMatchHeading(
+  matches: SourceCandidateAcceptedReferenceMatches
+) {
+  const candidate = matches.candidate;
+  const parts = [
+    `Source-candidate accepted-reference matches: total=${matches.references.length}`,
+    `dedupe=${quote(candidate.dedupeKey)}`,
+    `candidate=${quote(candidate.title)}`,
+    `source=${quote(candidate.source)}`,
+    `externalId=${quote(candidate.externalId)}`,
+    `url=${candidate.url}`,
+    `decision=${quote(candidate.decision)}`,
+    `reviewStatus=${quote(candidate.reviewStatus)}`
+  ];
+
+  if (candidate.acceptedReferenceId) {
+    parts.push(`acceptedReference=${candidate.acceptedReferenceId}`);
+  }
+
+  return parts.join(" ");
 }
 
 function formatSourceCandidateReferenceMatch(reference: Reference) {

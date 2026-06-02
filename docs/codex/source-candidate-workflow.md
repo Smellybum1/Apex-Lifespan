@@ -75,7 +75,7 @@ npm run ingest:sources -- --clinical-trial-page-size 10
 - `--jobs` reports recent job ids, statuses, counts, stored context, and errors.
 - `--candidates` defaults to pending rows and can filter by source, job, intervention, claim, or decision.
 - `--candidate-detail` prints one candidate with triage reasons, review fields, and compact metadata.
-- `--candidate-reference-matches` prints curated references eligible for acceptance.
+- `--candidate-reference-matches` prints candidate identity plus curated references eligible for acceptance.
 - `--candidate-curation-status` reports accepted-reference, claim-link, extraction, readiness, and next action for one candidate.
 - `--candidate-curation-handoff` lists accepted candidates by readiness and can filter before applying the row limit.
 - `--summary` groups backlog counts and accepted-candidate curation handoff counts.

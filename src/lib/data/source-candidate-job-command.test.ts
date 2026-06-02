@@ -1384,7 +1384,10 @@ describe("runSourceCandidateJobCommand", () => {
     const listReferenceMatches = vi.fn().mockResolvedValue({
       candidate: sourceCandidate({
         dedupeKey: "pubmed|au|creatine|28615996",
-        source: "PubMed"
+        source: "PubMed",
+        decision: "Accepted",
+        reviewStatus: "Human reviewed",
+        acceptedReferenceId: "ref-existing"
       }),
       references: [
         {
@@ -1419,7 +1422,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
-        'Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996"',
+        'Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996" candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-existing',
         '- reference="ref-creatine-position-stand" source="PubMed" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ identifier="PMID: 28615996" year=2017',
         '- reference="ref-creatine-publisher" source="PubMed" title="Creatine\\npublisher record" url=https://publisher.example/creatine-position-stand'
       ].join("\n")
@@ -1431,7 +1434,12 @@ describe("runSourceCandidateJobCommand", () => {
     const listReferenceMatches = vi.fn().mockResolvedValue({
       candidate: sourceCandidate({
         dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
-        source: "ClinicalTrials.gov"
+        source: "ClinicalTrials.gov",
+        externalId: "NCT123",
+        title: "Creatine and aging",
+        url: "https://clinicaltrials.gov/study/NCT123",
+        decision: "Accepted",
+        reviewStatus: "Human reviewed"
       }),
       references: []
     });
@@ -1445,7 +1453,7 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(0);
 
     expect(stdout).toHaveBeenCalledWith(
-      'Source-candidate accepted-reference matches: total=0 dedupe="clinicaltrials.gov|au|creatine|nct123"'
+      'Source-candidate accepted-reference matches: total=0 dedupe="clinicaltrials.gov|au|creatine|nct123" candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" url=https://clinicaltrials.gov/study/NCT123 decision="Accepted" reviewStatus="Human reviewed"'
     );
   });
 
