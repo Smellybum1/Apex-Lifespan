@@ -12,13 +12,17 @@ Non-trivial work means multi-file changes, user-facing behavior, unclear require
 
 ## Helper Agents
 
-When tooling supports it, use helper agents for bounded parallel work such as repo reconnaissance, option comparison, test-failure triage, diff review, UI QA, or docs checks.
+Use helper agents only when the delegated work is bounded, nonblocking, and likely to save more time or catch more risk than it costs. Do not spawn helpers for tiny fixes or immediate critical-path work.
+
+Good uses include repo reconnaissance while local implementation continues, option comparison, test-failure triage, diff review after a larger patch, UI QA, or docs checks.
 
 Give each helper a narrow question and synthesize results in the main thread. Delegation does not replace local validation or final judgment.
 
 ## Planning
 
-For non-trivial work, create `docs/codex/plans/YYYY-MM-DD-slug.md` before editing. Keep the plan brief and update it only when the direction materially changes.
+Always think through a plan before editing. Use the lightest planning artifact that keeps the work safe.
+
+Use a brief inline plan for quick fixes, docs-only changes, or tiny one-code-path changes with obvious validation. Create `docs/codex/plans/YYYY-MM-DD-slug.md` before editing when work is risky, multi-surface, user-facing UI, schema/API/security related, an unclear refactor, or validation is not obvious. Keep formal plan files brief and update them only when the direction materially changes.
 
 A plan should cover:
 - Goal
@@ -42,6 +46,18 @@ Make small coherent diffs and preserve local naming, structure, formatting, and 
 Run the narrowest useful check first, then broader relevant checks before final. Record exact commands and results in the final response or the plan when useful.
 
 If commands are unknown, discover them from repo files. If they cannot be discovered, mark them as TODO in `docs/codex/project.md` rather than guessing.
+
+Use this matrix to avoid overchecking tiny slices while preserving safety:
+
+| Change type | Typical checks |
+| --- | --- |
+| Docs-only workflow or project-memory edits | Diff review and `git diff --check`; run app checks only when docs describe changed commands or generated behavior. |
+| Small pure logic/data-helper change | Targeted test file first; run full tests when behavior is shared or risk touches citation, review status, or medical/regulatory guardrails; run typecheck when signatures or exported types changed. |
+| UI/rendering change | Targeted tests if present, lint/typecheck when TypeScript or props changed, plus browser smoke or screenshot for visible layout changes. |
+| API, security, public read-only, or data-boundary change | Targeted route/boundary tests, full tests, lint, and typecheck. |
+| Prisma schema, migrations, dependency, build config, or app routing change | `db:validate`/`db:generate` as relevant, full tests, lint, typecheck, and build; run `docker compose config` after Compose changes and `npm audit` after dependency changes. |
+
+On Windows, stop the dev server with `npm run dev:stop` before Prisma-generating checks such as `npm run typecheck` or `npm run build`.
 
 ## Review
 

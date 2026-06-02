@@ -4,8 +4,8 @@
 - Use `$project-workflow` for non-trivial features, bugs, refactors, tests, reviews, PR prep, or fuzzy implementation work. If local skills are unavailable, follow `.agents/skills/project-workflow/SKILL.md` manually.
 - Keep this file under 80 lines; move workflow detail and learnings to `docs/codex/`.
 - Inspect existing patterns before editing. Do not invent commands, architecture, or facts.
-- Plan before multi-file or risky changes. Ask only blocking questions.
-- When tooling supports it, use helper agents for bounded parallel research, review, test triage, or alternatives; keep final decisions and edits in this thread.
+- Plan before multi-file or risky changes. Use formal `docs/codex/plans/` files only when the workflow calls for them. Ask only blocking questions.
+- Use helper agents only for bounded, nonblocking research, review, test triage, UI QA, or alternatives; keep final decisions and edits in this thread.
 - Run the narrowest relevant checks first, then broader relevant checks before final.
 - Treat instructions as compact trainable state: update only from validated evidence.
 - Record rejected or obsolete instruction ideas in `docs/codex/rejected-edits.md`.
