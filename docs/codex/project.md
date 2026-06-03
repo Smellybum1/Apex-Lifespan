@@ -1,82 +1,66 @@
 # Project Memory
 
+Keep this file as compact, stable Codex state. Put command catalogs in dedicated docs, current thread state in `docs/codex/handoff.md`, and completed plan detail in `docs/codex/plans/archive/`.
+
+## Shape
+
 - Stack: Next.js, TypeScript, Tailwind CSS, TanStack Table, Recharts, PostgreSQL, Prisma, Node/npm.
-- Handoff: read `docs/codex/handoff.md` when starting a fresh Codex thread or rehydrating after archive/compaction.
-- Commands:
-  - Install: `npm install`
-  - Dev: `npm run dev`
-  - Stop dev server: `npm run dev:stop` (stops the port 3000 Node listener before Prisma-generating checks)
-  - Test: `npm run test`
-  - Lint/typecheck/build: `npm run lint`, `npm run typecheck`, `npm run build`
-  - Local source-candidate ingestion: `npm run ingest:sources` (operator-only; see `docs/codex/source-candidate-workflow.md` for modes and output rules).
-  - Database: `npm run db:validate`, `npm run db:generate`, `npm run db:migrate`, `npm run db:migrate:deploy`, `npm run db:push`, `npm run db:seed`
-  - Local PostgreSQL: `docker compose up -d postgres`, `docker compose ps`, `docker compose down`; reset with `docker compose down -v`
-- Architecture/patterns:
-  - Next.js App Router under `src/app/`.
-  - Dashboard UI in `src/components/evidence-dashboard.tsx`.
-  - Domain types, seed data, scoring, and label analysis under `src/lib/`.
-  - Public source wrappers under `src/lib/integrations/` and API routes under `src/app/api/`.
-  - Prisma schema and seed script under `prisma/`.
-  - Prisma migrations live under `prisma/migrations/`; use migrations for reproducible database state and reserve `db:push` for temporary local prototypes.
-  - AU regulatory uniqueness uses hand-authored PostgreSQL partial indexes in the migration because nullable product/intervention/ARTG fields cannot be represented safely with a normal Prisma `@@unique`.
-  - `prisma/seed.ts` runs a seed integrity check after upserts so missing required IDs or stale seed-owned IDs fail loudly.
-  - Dashboard reads through `src/lib/data/dashboard.ts`; it prefers Prisma when PostgreSQL is reachable and falls back to seed data unless `APEX_DATA_SOURCE=database`.
-  - Dashboard data-source behavior has fallback tests for forced seed mode, missing `DATABASE_URL`, unreachable configured databases, and strict database mode failure.
-  - Dashboard database-mode mapping has regression coverage that verifies Prisma claim references and structured study rows flow into complete public source packets.
-  - Australia/TGA regulatory status is structured in `AustraliaRegulatoryStatus` records and surfaced as active-card detail plus product chips; do not infer ARTG status from intervention evidence alone.
-  - PubMed search is surfaced as a read-only triage preview in the Sources panel; it shows live citation candidates and metadata but does not persist them yet.
-  - Live PubMed and ClinicalTrials.gov preview results should be labeled as unreviewed leads, and `/100` values should be described as triage scores rather than evidence quality.
-  - ClinicalTrials.gov search is surfaced as a read-only preview in the Sources panel; keep it separate from the curated Trial Watcher until live records are reviewed/persisted.
-  - Public live-source API routes share request parsing that normalises whitespace and rejects missing or overlong search terms before calling external integrations.
-  - Public live-source API routes have a static regression test that blocks source-candidate persistence imports/usages under `src/app/api`; keep ingestion and review writes in local operator commands.
-  - Live source previews start idle and only fetch after an explicit form submit or suggested-search click; do not auto-refetch live sources on initial load or every evidence-card selection.
-  - `SourceCandidate` is the backend persistence target for future reviewed ingestion of live PubMed and ClinicalTrials.gov candidates; helper mapping keeps candidates unreviewed with a separate pending-review decision and preserves triage metadata without auto-persisting public preview results.
-  - `upsertSourceCandidateDrafts` is a server-side data helper for gated ingestion paths; rediscovery updates candidate metadata and triage fields without overwriting reviewer decision, accepted reference, or review status.
-  - Source-candidate ingestion helpers compose live PubMed/ClinicalTrials.gov search, candidate mapping, and gated upsert for internal jobs; public preview GET routes remain read-only and unpersisted.
-  - Source-candidate review helpers can list a bounded pending queue and record human accepted/rejected decisions only while candidates are still pending; accepted candidates require an existing curated reference link whose source and external id match the candidate, rejected candidates require a nonblank review note, and neither path auto-promotes into curated evidence.
-  - Source-candidate curation status should classify accepted candidates with a missing accepted reference id as `Accepted reference missing`, matching curation handoff list behavior; reserve `Not accepted` for pending/rejected candidates.
-  - Source-candidate curation status should classify accepted candidates whose accepted reference row no longer matches candidate source/external id as `Accepted reference mismatch`; this blocks public source-packet readiness until the accepted reference link is corrected.
-  - Source-candidate curation status should classify accepted candidates without a claim id as `Candidate claim missing`; public source-packet readiness is claim-scoped even when the accepted reference has other claim links and study extraction.
-  - Source-candidate ingestion jobs claim queued PubMed/ClinicalTrials.gov jobs with a status-guarded update before calling external APIs, persist running/succeeded/failed/skipped status and counts, and safely skip unsupported sources rather than guessing.
-  - Source-candidate ingestion job identity is source/query/region plus optional intervention and claim context; PostgreSQL partial unique indexes enforce separate unscoped, intervention-scoped, claim-scoped, and intervention+claim-scoped queue buckets after migration backfills valid legacy metadata context into first-class columns.
-  - Source-candidate ingestion job queueing validates requested context before lookup/create: missing claim or intervention ids fail, and a claim paired with an intervention id must belong to that intervention.
-  - `npm run ingest:sources` is bounded, private/local, and documented in `docs/codex/source-candidate-workflow.md`; read-only modes inspect jobs, candidates, candidate curation drafts, candidate siblings, reference matches, curation status, handoff, and summary, while review modes remain operator-only writes.
-  - `npm run ingest:sources -- --candidate-curation-draft <dedupe-key>` shows accepted-reference blockers plus read-only claim-link and study-extraction draft fields; it never writes reference, claim-link, study, or decision rows.
-  - `npm run ingest:sources -- --link-candidate-claim <dedupe-key>` is a guarded local write that creates or updates only the accepted reference's `ClaimReference` after accepted/matching-reference/claim-context validation; it does not create references, studies, or public promotions.
-  - `npm run ingest:sources -- --candidate-siblings <dedupe-key>` shows same-source/external-id and same-query/context candidate siblings with match reasons so operators can spot rediscovery and context variants before review.
-  - The Sources panel shows an active-card source packet first: linked curated references, extracted study records, extraction-pending references, unresolved reference IDs, a tested completeness summary, and a next source step stay distinct from live preview results.
-  - The dashboard metric row summarizes source-packet coverage across scored claims using the same tested source-packet completeness rules.
-  - Current seed evidence claims have structured extraction rows for all linked curated references; pending extraction behavior is preserved with synthetic source-packet tests.
-  - Evidence cards use a consumer summary by default with expandable research detail for study context, applicability, score-change rationale, and source links.
-  - Evidence cards show their curated source-packet completeness badge so card-level citation/extraction readiness is visible before selection.
-  - Product label analysis includes AU/TGA-specific cautions for unresolved AUST status, approval overclaims, and research-use/injectable peptide language; each finding should show either an official source link or a visible heuristic-check provenance label.
-  - TGA/ARTG approval-overclaim detection has regression coverage for negated phrases including ASCII and curly apostrophes, so `isn't` and `isn\u2019t` wording should not be reported as approval overclaims.
-  - Product label empty states should say no local label-risk warnings were found, not imply safety, efficacy, or Australia/TGA clearance.
-  - Product label cards show product-market context separately from AU/TGA status; seed and Prisma product regions use verification-pending wording rather than implying Australian authorisation.
-  - Review-status dashboard counts use tested summary logic so human-reviewed and draft-awaiting-review claims remain separate.
-  - Claim score table rows are mouse and keyboard selectable; preserve Enter/Space activation and visible focus state.
-  - Claim score table includes a `Sources` column for source-packet completeness so citation/extraction readiness is scannable in the dense table.
-  - MVP mode: public read-only.
-  - Default regulatory lens: Australia/TGA.
-  - UI tone: consumer-friendly by default, with expandable investor-grade research detail planned.
-  - First ingestion workflow priority: PubMed, because citation-backed evidence cards should come before broader product or personalization workflows.
-- Validation strategy:
-  - Use the scoped validation matrix in `docs/codex/workflow.md`; run targeted checks first, then broaden according to change risk.
-  - For Prisma schema, migrations, build config, routing, or shared app-contract changes, include `npm run db:validate`, `npm run db:generate`, `npm run test`, `npm run lint`, `npm run typecheck`, and `npm run build` as relevant.
-  - On Windows, stop `npm run dev` with `npm run dev:stop` and run Prisma-generating commands such as `npm run typecheck` sequentially; concurrent dev/build processes can lock Prisma's generated query-engine DLL, and the stable npm command avoids PID-specific `Stop-Process` approvals.
-  - Run `docker compose config` after Docker Compose changes.
-  - Run `npm audit` after dependency changes.
-- Local database assumptions:
-  - `.env.example` points Prisma at the Docker Compose PostgreSQL service through `localhost:5432`.
-  - Docker Desktop or Docker Compose must be available locally.
-  - The default `postgres/postgres` credentials and `apex_lifespan` database are development-only.
-  - If port `5432` is occupied, change the Compose host port and local `.env` `DATABASE_URL` together.
-- Risk areas:
-  - Medical claim accuracy and currentness.
-  - Citation traceability and review status.
-  - ARTG/AUST status accuracy for Australia-facing product claims.
-  - Peptide/drug regulatory guardrails.
-  - Avoiding individualized medical advice.
-  - Package advisories in the frontend toolchain.
-- Open questions:
-  - First production deployment target.
+- App Router lives under `src/app/`; dashboard UI is in `src/components/evidence-dashboard.tsx`.
+- Domain types, seed data, scoring, regulatory labels, and data helpers live under `src/lib/`.
+- Public source wrappers live under `src/lib/integrations/`; public API routes live under `src/app/api/`.
+- Prisma schema, migrations, and seed script live under `prisma/`.
+
+## Commands
+
+- Install/dev: `npm install`, `npm run dev`, `npm run dev:stop`.
+- Test/build: `npm run test`, `npm run lint`, `npm run typecheck`, `npm run build`.
+- Database: `npm run db:validate`, `npm run db:generate`, `npm run db:migrate`, `npm run db:migrate:deploy`, `npm run db:push`, `npm run db:seed`.
+- Local PostgreSQL: `docker compose up -d postgres`, `docker compose ps`, `docker compose down`; reset with `docker compose down -v`.
+- Local source-candidate ingestion: `npm run ingest:sources`; use `npm run ingest:sources -- --help` and `docs/codex/source-candidate-workflow.md` for modes and output rules.
+
+## Data And Boundaries
+
+- MVP mode is public read-only; admin/review writes stay local operator-only.
+- Dashboard reads through `src/lib/data/dashboard.ts`; it prefers Prisma when PostgreSQL is reachable and falls back to seed data unless `APEX_DATA_SOURCE=database`.
+- Prisma migrations are the reproducible database path; reserve `db:push` for temporary local prototypes.
+- `prisma/seed.ts` runs integrity checks so missing required seed IDs or stale seed-owned IDs fail loudly.
+- Public live-source API routes must stay read-only and must not import or call source-candidate persistence.
+- Live PubMed and ClinicalTrials.gov previews are unreviewed leads; `/100` values are triage scores, not evidence quality.
+- Source-candidate ingestion/review writes live under `npm run ingest:sources` only.
+- Accepted source candidates require a matching curated reference and do not auto-promote into public evidence cards.
+- `--link-candidate-claim` is the only current guarded curation write after review; it upserts `ClaimReference` only, not references, studies, or public promotions.
+
+## Product Rules
+
+- Default regulatory lens: Australia/TGA.
+- Do not infer ARTG/AUST status from generic intervention evidence; product-level confidence needs product-level evidence.
+- Product labels should show product-market context separately from AU/TGA status.
+- Evidence cards stay consumer-friendly by default and citation-traceable, with review status visible.
+- Label-risk empty states say no local warnings were found; they do not imply safety, efficacy, or TGA clearance.
+- Claim score table rows stay mouse/keyboard selectable and include source-packet completeness.
+
+## Validation
+
+- Use the matrix in `docs/codex/workflow.md`; run targeted checks first, then broader checks according to risk.
+- On Windows, stop the dev server with `npm run dev:stop` before Prisma-generating checks such as `npm run typecheck` or `npm run build`.
+- Include `db:validate`/`db:generate` for Prisma schema, migration, or generated-client changes.
+- Run `docker compose config` after Compose changes and `npm audit` after dependency changes.
+
+## Local Database Assumptions
+
+- `.env.example` points Prisma at `postgresql://postgres:postgres@localhost:5432/apex_lifespan?schema=public`.
+- Docker Desktop or Docker Compose must be available locally.
+- The default `postgres/postgres` credentials are development-only.
+- If port `5432` is occupied, change the Compose host port and local `.env` `DATABASE_URL` together.
+
+## Risk Areas
+
+- Medical claim accuracy and currentness.
+- Citation traceability and human review status.
+- ARTG/AUST status accuracy for Australia-facing product claims.
+- Peptide/drug regulatory guardrails and avoiding individualized medical advice.
+- Package advisories in the frontend toolchain.
+
+## Open Questions
+
+- First production deployment target.

@@ -65,54 +65,28 @@ On Windows, stop the dev server with `npm run dev:stop` before running Prisma-ge
 
 Source-candidate ingestion is an operator-only local workflow. It writes to the configured PostgreSQL database and is not exposed through public app routes.
 
-Run one queued PubMed or ClinicalTrials.gov ingestion job:
+Use the built-in help and the dedicated workflow doc as the command reference:
+
+```bash
+npm run ingest:sources -- --help
+```
+
+See `docs/codex/source-candidate-workflow.md` for queueing, review, curation, output, and safety rules.
+
+Common examples:
 
 ```bash
 npm run ingest:sources
-```
-
-Useful options:
-
-```bash
 npm run ingest:sources -- --queue-pubmed "creatine strength randomized trial systematic review"
-npm run ingest:sources -- --queue-clinical-trials "creatine aging"
 npm run ingest:sources -- --jobs
 npm run ingest:sources -- --candidates
-npm run ingest:sources -- --candidates --candidate-source pubmed --candidates-limit 10
-npm run ingest:sources -- --candidates --candidate-job-id <ingestion-job-id>
-npm run ingest:sources -- --candidates --candidate-intervention-id <intervention-id>
-npm run ingest:sources -- --candidates --candidate-claim-id <claim-id>
-npm run ingest:sources -- --candidates --candidate-decision accepted
-npm run ingest:sources -- --candidates --candidate-decision rejected
 npm run ingest:sources -- --candidate-detail <dedupe-key>
-npm run ingest:sources -- --candidate-curation-status <dedupe-key>
 npm run ingest:sources -- --candidate-curation-handoff
-npm run ingest:sources -- --candidate-curation-handoff --candidate-claim-id <claim-id>
-npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-status candidate-claim-missing
-npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-status reference-mismatch
-npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-status extraction-pending
-npm run ingest:sources -- --candidate-reference-matches <dedupe-key>
 npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id>
 npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Not relevant to this claim."
-npm run ingest:sources -- --limit 5
-npm run ingest:sources -- --job-id <ingestion-job-id>
-npm run ingest:sources -- --pubmed-retmax 10
-npm run ingest:sources -- --clinical-trial-page-size 10
-npm run ingest:sources -- --summary
 ```
 
-The command reports job status, records found, and records changed. These are ingestion-operation counts, not evidence-quality scores.
-Queue options create a missing job or report the existing job for the same source, query, region, intervention id, and claim id; they do not reset completed jobs or retarget stored intervention/claim context.
-When queueing with both `--intervention-id` and `--claim-id`, the claim must belong to that intervention; missing claim or intervention context fails before a job is created.
-The `--jobs` option is read-only and reports recent source-candidate ingestion job ids, statuses, workflow counts, stored intervention/claim context, and errors.
-The migration backfills valid older metadata-backed job context into first-class columns; new queue identity is context-aware so the same query can be queued separately for different claim-level curation work.
-The `--candidates` option is read-only and reports source-candidate review rows with triage scores, titles, URLs, and dedupe keys; it defaults to pending rows and can filter by source, ingestion job id, intervention id, claim id, or reviewed rows with `--candidate-decision accepted` or `--candidate-decision rejected`.
-The `--candidate-detail` option is read-only and reports one source-candidate record with triage reasons, review fields, and compact metadata.
-The `--candidate-curation-status` option is read-only and reports whether an accepted source candidate has claim context, whether its curated reference still matches the candidate source/external id, whether it is claim-linked, and whether it has structured study extraction for public source packets, including the next operator curation action.
-The `--candidate-curation-handoff` option is read-only and lists accepted source candidates with candidate-claim, accepted-reference, claim-link, and study-extraction readiness plus the next operator curation action; it can reuse the source, ingestion job, intervention, and claim filters and can filter by `--candidate-curation-handoff-status missing-reference`, `reference-mismatch`, `candidate-claim-missing`, `claim-link-missing`, `extraction-pending`, or `ready`. Status filtering is applied before the handoff row limit.
-The `--candidate-reference-matches` option is read-only and reports candidate identity plus curated reference ids that satisfy the same source and external-id match required by `--accept-candidate`.
-The `--accept-candidate` and `--reject-candidate` options are operator-only review actions for pending candidates. Accepted candidates require an existing curated reference id whose source and external identifier match the candidate; rejecting requires a nonblank human review note; accepting does not automatically promote evidence cards.
-The `--summary` option is read-only and reports source-candidate workflow counts by source, region, decision, and review status plus accepted-candidate curation handoff readiness counts.
+The command reports ingestion-operation counts, not evidence-quality scores. Accepted candidates never auto-promote into public evidence cards.
 
 ## Australia regulatory lens
 

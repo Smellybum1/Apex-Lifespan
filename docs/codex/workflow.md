@@ -22,7 +22,7 @@ Give each helper a narrow question and synthesize results in the main thread. De
 
 Always think through a plan before editing. Use the lightest planning artifact that keeps the work safe.
 
-Use a brief inline plan for quick fixes, docs-only changes, or tiny one-code-path changes with obvious validation. Create `docs/codex/plans/YYYY-MM-DD-slug.md` before editing when work is risky, multi-surface, user-facing UI, schema/API/security related, an unclear refactor, or validation is not obvious. Keep formal plan files brief and update them only when the direction materially changes.
+Use a brief inline plan for quick fixes, docs-only changes, or tiny one-code-path changes with obvious validation. Create `docs/codex/plans/YYYY-MM-DD-slug.md` before editing when work is risky, multi-surface, user-facing UI, schema/API/security related, an unclear refactor, or validation is not obvious. Keep formal plan files brief, update them only when the direction materially changes, and add a `## Result` before archiving or deleting completed plans.
 
 A plan should cover:
 - Goal

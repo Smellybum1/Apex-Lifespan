@@ -1,51 +1,35 @@
 # Thread Handoff
 
-Created for a new Codex thread on 2026-06-02.
+Refreshed on 2026-06-03. Treat the worktree as authoritative: run `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Start Here
 
 1. Read `AGENTS.md`.
-2. Use `$project-workflow`; if the skill is unavailable, read `.agents/skills/project-workflow/SKILL.md`.
-3. Read `docs/codex/project.md` and `docs/codex/source-candidate-workflow.md`.
-4. Run `git status -sb` before edits.
+2. Use `$project-workflow`; if unavailable, read `.agents/skills/project-workflow/SKILL.md`.
+3. Read `docs/codex/project.md` for stable memory.
+4. Read `docs/codex/source-candidate-workflow.md` before ingestion or curation work.
 5. For docs-only memory edits, review the diff and run `git diff --check`.
 
 ## Current State
 
-- Expected handoff state: `main` clean and even with `origin/main` after this docs-only handoff commit is pushed.
-- Last feature commit before this handoff: `5f4832e Validate source candidate job context`.
 - The app is a public read-only Next.js evidence dashboard with PostgreSQL/Prisma support and seed fallback.
 - Default lens is Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Public live-source API routes must stay read-only and must not import or call source-candidate persistence.
 - Source-candidate ingestion and review remain local operator-only under `npm run ingest:sources`.
-- The recent ingestion-job context migration exists and was validated/generated/built, but was not applied to a local PostgreSQL database; this pass also could not start Postgres because `docker` was unavailable on PATH. Apply migrations locally before DB-backed manual checks.
+- The committed ingestion-job context migration still needs local PostgreSQL application before DB-backed manual checks.
 
-## Recent Work
+## Recent Source-Candidate Work
 
-- Guarded source-candidate curation readiness:
+- Curation readiness is guarded:
   - accepted-reference mismatch blocks readiness;
   - accepted candidates without a claim id report `Candidate claim missing`;
-  - curation handoff status remains source-packet readiness, not evidence quality.
-- Added database-mode regression coverage for public source-packet mapping:
-  - mocked Prisma rows now verify claim reference links and structured study extraction rows map into a complete source packet;
-  - coverage confirms database dashboard data preserves curated reference identity needed by the public Sources panel.
-- Added a read-only same-identity candidate sibling view:
-  - `--candidate-siblings <dedupe-key>` shows same-source/external-id and same-query/context rows with match reasons;
-  - output stays local/operator-only and does not automate source-candidate decisions.
-- Added a read-only source-candidate curation draft view:
-  - `--candidate-curation-draft <dedupe-key>` shows accepted-reference blockers plus claim-link and study-extraction draft fields;
-  - output stays local/operator-only and does not create references, claim links, study extractions, or decisions.
-- Added a guarded local claim-link write:
-  - `--link-candidate-claim <dedupe-key>` creates or updates only the accepted reference's `ClaimReference`;
-  - it requires an accepted, claim-scoped candidate with a matching accepted reference and does not create references, studies, or public promotions.
-- Scoped source-candidate ingestion-job identity:
-  - `IngestionJob` now has first-class `interventionId` and `claimId`;
-  - migration `20260602061000_ingestion_job_context_identity` backfills valid legacy metadata context;
-  - PostgreSQL partial unique indexes separate unscoped, intervention, claim, and intervention+claim queue buckets.
-- Validated queue context:
-  - missing claim or intervention ids fail before job creation;
-  - claim+intervention queueing requires the claim to belong to that intervention;
-  - claim-only queueing remains allowed after validating the claim exists.
+  - handoff/status wording stays source-packet readiness, not evidence quality.
+- Database-mode dashboard regression coverage verifies claim reference links and structured study extraction rows map into complete public source packets.
+- Operator-only curation views now include candidate detail, siblings, reference matches, curation status, curation draft, curation handoff, and summary.
+- Review actions can accept/reject pending candidates with human constraints.
+- `--link-candidate-claim <dedupe-key>` is a guarded local write that upserts only the accepted reference's `ClaimReference`; it does not create references, studies, or public promotions.
+- Ingestion job identity is source/query/region plus optional intervention and claim context; PostgreSQL partial unique indexes separate unscoped, intervention, claim, and intervention+claim queue buckets.
+- Queueing validates requested intervention/claim context before job creation.
 
 ## Recent Validation
 
@@ -59,7 +43,6 @@ Created for a new Codex thread on 2026-06-02.
 - `npm run test`
 - `npm run lint`
 - `npm run typecheck`
-- `npm run db:validate`
 - `npm run build`
 - HTTP smoke for `http://localhost:3000` returned `200`
 
