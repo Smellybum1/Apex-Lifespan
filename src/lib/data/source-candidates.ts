@@ -1554,6 +1554,12 @@ function assertStudyExtractionManualInput(
   requireStudyText(input.population, "--study-population");
   requireStudyText(input.riskOfBias, "--study-risk-of-bias");
   requireStudyText(input.sampleSize, "--study-sample-size");
+
+  if (input.sourceType !== undefined && !isStudySourceType(input.sourceType)) {
+    throw new Error(
+      "Study extraction requires --study-source-type because source type cannot be inferred."
+    );
+  }
 }
 
 function normaliseStudySourceType(
@@ -1571,10 +1577,8 @@ function normaliseStudySourceType(
   );
 }
 
-function isStudySourceType(
-  value: string
-): value is SourceCandidateStudyExtractionSourceType {
-  return value in studyTypeMap;
+function isStudySourceType(value: unknown): value is SourceCandidateStudyExtractionSourceType {
+  return typeof value === "string" && value in studyTypeMap;
 }
 
 function normaliseStudyOutcomes(outcomes: string[] | undefined) {

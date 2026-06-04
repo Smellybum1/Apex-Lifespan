@@ -1688,6 +1688,15 @@ describe("extractAcceptedSourceCandidateStudy", () => {
       })
     ).rejects.toThrow("Study extraction requires at least one --study-outcome.");
 
+    await expect(
+      extractAcceptedSourceCandidateStudy({
+        ...studyExtractionInput(),
+        sourceType: "NOT_A_STUDY_TYPE"
+      } as unknown as Parameters<typeof extractAcceptedSourceCandidateStudy>[0])
+    ).rejects.toThrow(
+      "Study extraction requires --study-source-type because source type cannot be inferred."
+    );
+
     expect(prismaMocks.sourceCandidateFindUnique).not.toHaveBeenCalled();
     expect(prismaMocks.studyCreate).not.toHaveBeenCalled();
     expect(prismaMocks.studyUpdate).not.toHaveBeenCalled();
