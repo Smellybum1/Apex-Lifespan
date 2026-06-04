@@ -2562,6 +2562,7 @@ describe("runSourceCandidateJobCommand", () => {
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
         `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'groupList="--candidates --candidate-claim-id creatine-strength --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
         `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Accepted"',
@@ -2625,6 +2626,7 @@ describe("runSourceCandidateJobCommand", () => {
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
         `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'groupList="--candidates --candidate-claim-id creatine-strength --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
         `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Accepted"',
@@ -2683,6 +2685,7 @@ describe("runSourceCandidateJobCommand", () => {
         `key=${safeCandidateKey(candidateKey)}`,
         `packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}"`,
+        `siblings="--candidate-siblings ${safeCandidateKey(candidateKey)}"`,
         'groupList="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10"',
         `curationDraft="--candidate-curation-draft ${safeCandidateKey(candidateKey)}"`,
         'decision="Accepted"',
@@ -2728,6 +2731,7 @@ describe("runSourceCandidateJobCommand", () => {
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
         `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'groupList="--candidates --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
         `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Pending review"',
@@ -2847,6 +2851,7 @@ describe("runSourceCandidateJobCommand", () => {
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
         `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'groupList="--candidates --candidate-claim-id creatine-strength --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
         `curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Accepted"',
@@ -2913,6 +2918,7 @@ describe("runSourceCandidateJobCommand", () => {
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
         `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'groupList="--candidates --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
         `curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Pending review"',
@@ -2971,6 +2977,7 @@ describe("runSourceCandidateJobCommand", () => {
         `key=${safeCandidateKey(candidateKey)}`,
         `packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}"`,
+        `siblings="--candidate-siblings ${safeCandidateKey(candidateKey)}"`,
         'groupList="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10"',
         `curationStatus="--candidate-curation-status ${safeCandidateKey(candidateKey)}"`,
         'decision="Accepted"',
@@ -3099,8 +3106,8 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate curation handoff: total=2",
-        `- status="Extraction pending" nextAction="Add structured study extraction for the accepted reference." publicSourcePacketReady=false PubMed AU dedupe="pubmed|au|creatine|28615996" key=${creatineKey} packet="--candidate-review-packet ${creatineKey}" referenceMatches="--candidate-reference-matches ${creatineKey}" curationStatus="--candidate-curation-status ${creatineKey}" curationDraft="--candidate-curation-draft ${creatineKey}" title="Creatine position stand" acceptedReference=ref-creatine-position-stand candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0`,
-        `- status="Claim link missing" nextAction="Link the accepted reference to the candidate claim before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${agingKey} packet="--candidate-review-packet ${agingKey}" referenceMatches="--candidate-reference-matches ${agingKey}" curationStatus="--candidate-curation-status ${agingKey}" curationDraft="--candidate-curation-draft ${agingKey}" title="Creatine and aging" acceptedReference=trial-nct123 candidateClaim=creatine-aging candidateClaimLinked=false claimLinks=0 studies=1`
+        `- status="Extraction pending" nextAction="Add structured study extraction for the accepted reference." publicSourcePacketReady=false PubMed AU dedupe="pubmed|au|creatine|28615996" key=${creatineKey} packet="--candidate-review-packet ${creatineKey}" referenceMatches="--candidate-reference-matches ${creatineKey}" siblings="--candidate-siblings ${creatineKey}" curationStatus="--candidate-curation-status ${creatineKey}" curationDraft="--candidate-curation-draft ${creatineKey}" title="Creatine position stand" acceptedReference=ref-creatine-position-stand candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0`,
+        `- status="Claim link missing" nextAction="Link the accepted reference to the candidate claim before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${agingKey} packet="--candidate-review-packet ${agingKey}" referenceMatches="--candidate-reference-matches ${agingKey}" siblings="--candidate-siblings ${agingKey}" curationStatus="--candidate-curation-status ${agingKey}" curationDraft="--candidate-curation-draft ${agingKey}" title="Creatine and aging" acceptedReference=trial-nct123 candidateClaim=creatine-aging candidateClaimLinked=false claimLinks=0 studies=1`
       ].join("\n")
     );
   });
@@ -3171,7 +3178,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate curation handoff: total=1",
-        `- status="Accepted reference missing" nextAction="Attach or restore the matching curated reference before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="${candidateKey}" key=${safeCandidateKey(candidateKey)} packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}" curationStatus="--candidate-curation-status ${safeCandidateKey(candidateKey)}" curationDraft="--candidate-curation-draft ${safeCandidateKey(candidateKey)}" title="Calcium fracture prevention trial" reviewFlags="broad-safety-query, low-title-query-overlap" flags="--candidate-review-flags --candidate-review-flags-limit 10" acceptedReference=trial-nct00715676 candidateClaim=vitamin-d-deficiency claimLinks=0 studies=0`
+        `- status="Accepted reference missing" nextAction="Attach or restore the matching curated reference before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="${candidateKey}" key=${safeCandidateKey(candidateKey)} packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}" siblings="--candidate-siblings ${safeCandidateKey(candidateKey)}" curationStatus="--candidate-curation-status ${safeCandidateKey(candidateKey)}" curationDraft="--candidate-curation-draft ${safeCandidateKey(candidateKey)}" title="Calcium fracture prevention trial" reviewFlags="broad-safety-query, low-title-query-overlap" flags="--candidate-review-flags --candidate-review-flags-limit 10" acceptedReference=trial-nct00715676 candidateClaim=vitamin-d-deficiency claimLinks=0 studies=0`
       ].join("\n")
     );
   });

@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding sibling hints to duplicate identity rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding sibling hints to curation rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -28,8 +28,8 @@ Refreshed on 2026-06-04 after adding sibling hints to duplicate identity rows. V
 - Review packets print safe read-only follow-up commands, curation-status/draft hints, duplicate hints when the identity repeats, review-flag hints when the candidate is flagged, and explicit human-reviewed accept/reject templates.
 - Sibling headings print read-only `targetPacket="..."` hints, and sibling rows print `packet="..."` hints plus compact `targetReviewFlags`/`reviewFlags` and `flags="..."` drill-ins when applicable.
 - Duplicate identity output prints read-only `identityList="..."`, per-candidate `packet="..."`, `referenceMatches="..."`, and `siblings="..."` hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
-- Curation handoff rows print read-only packet, reference-match, curation-status, curation-draft hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
-- Curation status and draft output print read-only packet, reference-match, group-list, paired curation-view hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
+- Curation handoff rows print read-only packet, reference-match, sibling, curation-status, curation-draft hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
+- Curation status and draft output print read-only packet, reference-match, sibling, group-list, paired curation-view hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Claim-scoped source queries now append compact claim-text anchors after outcome terms before queueing.
 - Local Docker/PostgreSQL setup was verified earlier; migrations and seed were applied locally.
 
@@ -52,7 +52,7 @@ Last CLI snapshot after local ingestion:
 - Read-only summary smoke still returned curation handoff `total=0`; non-empty curation bucket filter hints are covered by exact output tests.
 - Read-only detail smoke for repeated PMID `42141930` showed packet/reference/sibling/group/curation hints without writes.
 - Read-only reference-match smoke for repeated PMID `42141930` showed packet/group-list hints and draft-only reference context without writes.
-- Read-only curation status/draft smoke for repeated PMID `42141930` showed packet/reference/group/paired-curation hints without writes.
+- Read-only curation status/draft smoke for repeated PMID `42141930` showed packet/reference/sibling/group/paired-curation hints without writes.
 - Read-only curation handoff smoke returned `total=0`; non-empty handoff row hints are covered by exact output tests.
 - Read-only review overview smoke returned 9 pending groups across 50 candidates; the `creatine-strength` PubMed top identity showed `topIdentityCandidates=2` and a duplicate-list hint for PMID `42141930`.
 - Read-only review overview smoke showed packet/reference-match/sibling hints plus `topReviewFlags="broad-safety-query"` and `flags="..."` drill-ins on broad `vitamin-d-deficiency` ClinicalTrials.gov and PubMed groups; omega-3 triglycerides did not carry a low-overlap flag after token-root overlap handling.
