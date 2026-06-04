@@ -65,6 +65,8 @@ const SOURCE_CANDIDATE_REVIEW_FLAG_CODES = [
 ] as const;
 const SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION =
   "Same source/external id appears in multiple candidate contexts; compare duplicate identity rows before accepting or rejecting any candidate.";
+const SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION =
+  "Review duplicate identity rows together before changing any candidate decision.";
 
 type SourceCandidateReviewFlagCode =
   (typeof SOURCE_CANDIDATE_REVIEW_FLAG_CODES)[number];
@@ -2978,6 +2980,15 @@ function formatSourceCandidateReviewPacketCommandHints(
       )}`,
       `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
     );
+
+    if (sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(packet.siblings)) {
+      lines.push(
+        "duplicateIdentityMixedDecision=true",
+        `duplicateIdentityNextAction=${quote(
+          SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+        )}`
+      );
+    }
   }
 
   if (reviewFlagCodes.length > 0) {
@@ -3018,9 +3029,28 @@ function sourceCandidateReviewPacketDuplicateIdentityCount(
 function sourceCandidateSiblingDuplicateIdentityCount(
   siblings: SourceCandidateSiblings
 ) {
-  return 1 + siblings.siblings.filter((sibling) =>
-    sibling.matchReasons.includes("Same source/external id")
-  ).length;
+  return sourceCandidateSiblingDuplicateIdentityCandidates(siblings).length;
+}
+
+function sourceCandidateSiblingDuplicateIdentityCandidates(
+  siblings: SourceCandidateSiblings
+) {
+  return [
+    siblings.target,
+    ...siblings.siblings
+      .filter((sibling) => sibling.matchReasons.includes("Same source/external id"))
+      .map((sibling) => sibling.candidate)
+  ];
+}
+
+function sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(
+  siblings: SourceCandidateSiblings
+) {
+  return sourceCandidateIdentityHasMixedDecisions(
+    sourceCandidateIdentityDecisionCounts(
+      sourceCandidateSiblingDuplicateIdentityCandidates(siblings)
+    )
+  );
 }
 
 async function sourceCandidateDuplicateIdentityCandidateCountForDedupeKey(
@@ -3775,6 +3805,8 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
   const target = siblings.target;
   const targetKey = safeCandidateKey(target.dedupeKey);
   const targetReviewFlags = sourceCandidateReviewFlags(target);
+  const duplicateIdentityCandidateCount =
+    sourceCandidateSiblingDuplicateIdentityCount(siblings);
   const headingParts = [
     `Source-candidate siblings: total=${siblings.siblings.length}`,
     `target=${quote(target.dedupeKey)}`,
@@ -3785,7 +3817,7 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
     `targetCurationDraft=${quote(`--candidate-curation-draft ${targetKey}`)}`,
     ...formatSourceCandidateDuplicateIdentityFields(
       target,
-      sourceCandidateSiblingDuplicateIdentityCount(siblings)
+      duplicateIdentityCandidateCount
     ),
     `candidate=${quote(target.title)}`,
     `source=${quote(target.source)}`,
@@ -3795,6 +3827,18 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
     `decision=${quote(target.decision)}`,
     `reviewStatus=${quote(target.reviewStatus)}`
   ];
+
+  if (
+    duplicateIdentityCandidateCount > 1 &&
+    sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(siblings)
+  ) {
+    headingParts.push(
+      "duplicateIdentityMixedDecision=true",
+      `duplicateIdentityNextAction=${quote(
+        SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+      )}`
+    );
+  }
 
   if (target.interventionId) {
     headingParts.push(`intervention=${target.interventionId}`);
@@ -3948,9 +3992,7 @@ function formatSourceCandidateIdentityGroup(group: SourceCandidateIdentityGroup)
   if (sourceCandidateIdentityHasMixedDecisions(counts)) {
     parts.push(
       "mixedDecision=true",
-      `nextAction=${quote(
-        "Review duplicate identity rows together before changing any candidate decision."
-      )}`
+      `nextAction=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION)}`
     );
   }
 
