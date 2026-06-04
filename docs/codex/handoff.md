@@ -16,7 +16,7 @@ Refreshed on 2026-06-04 after adding source-candidate review flags. Verify local
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
-- Summary output is read-only and prints next-command hints for overview, duplicate scan, queued jobs, and curation handoff; non-empty curation status bucket rows include filtered handoff hints.
+- Summary output is read-only and prints next-command hints for overview, duplicate scan, queued jobs, and curation handoff; non-empty curation status bucket rows include filtered handoff hints, and the bounded review flag focus block counts flagged top review groups.
 - Job rows are read-only and print candidate-list, context-jobs, and status-jobs hints.
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; exact output tests cover these write-result surfaces without live write smokes.
 - Review overview is read-only and prints region-qualified `list="..."` filtered queue hints, `packet="..."` top-candidate hints, duplicate hints when the top identity repeats, and compact `topReviewFlags` when applicable.
@@ -46,7 +46,7 @@ Last CLI snapshot after local ingestion:
 - Read-only jobs smoke showed recent job rows with candidates/context-jobs/status-jobs hints without writes.
 - Queue/run result hints are covered by exact output tests; live validation used read-only jobs/help only.
 - Read-only candidate list smoke for job `cmpyzoc7500039jwcbu1ii4o7` showed query and ingestion-job trace fields without writes.
-- Read-only summary smoke showed next-command hints after counts without writes.
+- Read-only summary smoke showed next-command hints and review flag focus counts after counts without writes.
 - Read-only summary smoke still returned curation handoff `total=0`; non-empty curation bucket filter hints are covered by exact output tests.
 - Read-only detail smoke for repeated PMID `42141930` showed packet/reference/sibling/group/curation hints without writes.
 - Read-only reference-match smoke for repeated PMID `42141930` showed packet/group-list hints and draft-only reference context without writes.
@@ -60,6 +60,7 @@ Last CLI snapshot after local ingestion:
 - Exact output tests cover `reviewFlags` on duplicate identity rows; no live duplicate write smoke was needed.
 - Exact output tests cover `reviewFlags` on accepted-reference match headings, curation status, curation draft, and curation handoff rows.
 - Read-only `NCT00715676` reference-match, curation-status, and curation-draft smokes showed compact `reviewFlags="broad-safety-query"` without writes.
+- Read-only summary smoke showed `flag="broad-safety-query"` with 2 top groups / 20 pending in top groups and `flag="low-title-query-overlap"` with 1 top group / 1 pending in top groups.
 - Read-only sibling smoke for repeated PMID `42141930` showed packet hints on each sibling row without writes.
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 - New `creatine-lifespan` candidate: `NCT07451496`, triage 80/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBsb25nZXZpdHklMjBtb3J0YWxpdHklMjBsaWZlc3BhbnxuY3QwNzQ1MTQ5NnxjcmVhdGluZXxjcmVhdGluZS1saWZlc3Bhbg`; review packet showed no accepted-reference match and no siblings.

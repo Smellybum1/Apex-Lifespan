@@ -214,6 +214,7 @@ const MAX_METADATA_ARRAY_ITEMS = 8;
 const MAX_METADATA_VALUE_LENGTH = 240;
 const MIN_REVIEW_QUERY_TOKENS_FOR_OVERLAP_FLAG = 3;
 const DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT = 10;
+const SUMMARY_REVIEW_FLAG_GROUP_LIMIT = 50;
 const reviewQueryTokenStopwords = new Set([
   "and",
   "clinical",
@@ -570,17 +571,24 @@ export async function runSourceCandidateJobCommand(
     }
 
     if (options.summary) {
-      const [jobSummary, backlogSummary, curationHandoffSummary] = await Promise.all([
+      const [
+        jobSummary,
+        backlogSummary,
+        curationHandoffSummary,
+        reviewOverview
+      ] = await Promise.all([
         summarizeJobs(),
         summarizeBacklog(),
-        summarizeCurationHandoff()
+        summarizeCurationHandoff(),
+        listReviewOverview({ limit: SUMMARY_REVIEW_FLAG_GROUP_LIMIT })
       ]);
 
       stdout(
         formatSourceCandidateWorkflowSummary(
           jobSummary,
           backlogSummary,
-          curationHandoffSummary
+          curationHandoffSummary,
+          reviewOverview
         )
       );
       return 0;
@@ -3558,14 +3566,73 @@ function appendJobContext(
 function formatSourceCandidateWorkflowSummary(
   jobSummary: SourceCandidateIngestionJobSummary,
   backlogSummary: SourceCandidateBacklogSummary,
-  curationHandoffSummary: SourceCandidateCurationHandoffSummary
+  curationHandoffSummary: SourceCandidateCurationHandoffSummary,
+  reviewOverview: SourceCandidateReviewOverview
 ) {
   return [
     formatSourceCandidateIngestionJobSummary(jobSummary),
     formatSourceCandidateBacklogSummary(backlogSummary),
     formatSourceCandidateCurationHandoffSummary(curationHandoffSummary),
+    formatSourceCandidateReviewFlagSummary(reviewOverview),
     formatSourceCandidateWorkflowSummaryCommandHints()
   ].join("\n");
+}
+
+function formatSourceCandidateReviewFlagSummary(
+  reviewOverview: SourceCandidateReviewOverview
+) {
+  const groups = sourceCandidateReviewFlagSummaryGroups(reviewOverview);
+  const flaggedTopGroups = reviewOverview.groups.filter(
+    (group) => sourceCandidateReviewFlagCodes(group.topCandidate).length > 0
+  ).length;
+  const heading =
+    `Source-candidate review flag focus: totalGroups=${reviewOverview.totalGroups}` +
+    ` candidateCount=${reviewOverview.candidateCount}` +
+    ` flaggedTopGroups=${flaggedTopGroups}`;
+
+  if (groups.length === 0) {
+    return heading;
+  }
+
+  return [
+    heading,
+    ...groups.map(
+      (group) =>
+        `- flag=${quote(group.flag)} topGroups=${group.topGroups}` +
+        ` pendingInTopGroups=${group.pendingInTopGroups}` +
+        ` overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
+    )
+  ].join("\n");
+}
+
+function sourceCandidateReviewFlagSummaryGroups(
+  reviewOverview: SourceCandidateReviewOverview
+) {
+  const groupsByFlag = new Map<
+    string,
+    { flag: string; pendingInTopGroups: number; topGroups: number }
+  >();
+
+  for (const group of reviewOverview.groups) {
+    for (const flag of sourceCandidateReviewFlagCodes(group.topCandidate)) {
+      const current = groupsByFlag.get(flag) ?? {
+        flag,
+        pendingInTopGroups: 0,
+        topGroups: 0
+      };
+
+      current.pendingInTopGroups += group.count;
+      current.topGroups += 1;
+      groupsByFlag.set(flag, current);
+    }
+  }
+
+  return Array.from(groupsByFlag.values()).sort(
+    (left, right) =>
+      right.pendingInTopGroups - left.pendingInTopGroups ||
+      right.topGroups - left.topGroups ||
+      left.flag.localeCompare(right.flag)
+  );
 }
 
 function formatSourceCandidateWorkflowSummaryCommandHints() {

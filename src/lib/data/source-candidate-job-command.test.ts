@@ -1866,12 +1866,78 @@ describe("runSourceCandidateJobCommand", () => {
         }
       ]
     });
+    const listReviewOverview = vi.fn().mockResolvedValue({
+      candidateCount: 15,
+      totalGroups: 3,
+      groups: [
+        {
+          claimId: "vitamin-d-deficiency",
+          count: 10,
+          interventionId: "vitamin-d",
+          region: "AU",
+          source: "ClinicalTrials.gov",
+          topCandidate: sourceCandidate({
+            dedupeKey:
+              "clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency",
+            source: "ClinicalTrials.gov",
+            externalId: "NCT00715676",
+            query: "Vitamin D safety adverse effects",
+            title: "Phase 2 Safety and Efficacy Study of a Vitamin D Compound",
+            interventionId: "vitamin-d",
+            claimId: "vitamin-d-deficiency"
+          }),
+          topIdentityCandidateCount: 1,
+          topTriageScore: 100
+        },
+        {
+          claimId: "creatine-lifespan",
+          count: 1,
+          interventionId: "creatine",
+          region: "AU",
+          source: "ClinicalTrials.gov",
+          topCandidate: sourceCandidate({
+            dedupeKey:
+              "clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan",
+            source: "ClinicalTrials.gov",
+            externalId: "NCT07451496",
+            query: "Creatine monohydrate longevity mortality lifespan",
+            title:
+              "PRecision gerOMedicinE: Tailored Healthy agEing With Lifestyle, sUpplements and drugS",
+            interventionId: "creatine",
+            claimId: "creatine-lifespan"
+          }),
+          topIdentityCandidateCount: 1,
+          topTriageScore: 80
+        },
+        {
+          claimId: "omega-3-cv-events",
+          count: 4,
+          interventionId: "omega-3",
+          region: "AU",
+          source: "PubMed",
+          topCandidate: sourceCandidate({
+            query: "Omega-3 cardiovascular events prevention",
+            title: "Omega-3 cardiovascular outcomes meta-analysis",
+            interventionId: "omega-3",
+            claimId: "omega-3-cv-events"
+          }),
+          topIdentityCandidateCount: 1,
+          topTriageScore: 80
+        }
+      ]
+    });
 
     await expect(
       runSourceCandidateJobCommand(
         ["--summary"],
         { stdout },
-        { runNextJob, summarizeBacklog, summarizeCurationHandoff, summarizeJobs }
+        {
+          listReviewOverview,
+          runNextJob,
+          summarizeBacklog,
+          summarizeCurationHandoff,
+          summarizeJobs
+        }
       )
     ).resolves.toBe(0);
 
@@ -1879,6 +1945,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(summarizeJobs).toHaveBeenCalledTimes(1);
     expect(summarizeBacklog).toHaveBeenCalledTimes(1);
     expect(summarizeCurationHandoff).toHaveBeenCalledTimes(1);
+    expect(listReviewOverview).toHaveBeenCalledWith({ limit: 50 });
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate ingestion jobs: total=5",
@@ -1894,6 +1961,9 @@ describe("runSourceCandidateJobCommand", () => {
         '- status="Claim link missing" publicSourcePacketReady=false: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status claim-link-missing"',
         '- status="Extraction pending" publicSourcePacketReady=false: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status extraction-pending"',
         '- status="Public source packet ready" publicSourcePacketReady=true: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status ready"',
+        "Source-candidate review flag focus: totalGroups=3 candidateCount=15 flaggedTopGroups=2",
+        '- flag="broad-safety-query" topGroups=1 pendingInTopGroups=10 overview="--candidate-review-overview --candidate-review-overview-limit 10"',
+        '- flag="low-title-query-overlap" topGroups=1 pendingInTopGroups=1 overview="--candidate-review-overview --candidate-review-overview-limit 10"',
         "Source-candidate read-only next commands",
         'reviewOverview="--candidate-review-overview --candidate-review-overview-limit 10"',
         'duplicates="--candidates --candidate-duplicates"',
@@ -4395,20 +4465,27 @@ describe("runSourceCandidateJobCommand", () => {
       total: 0,
       groups: []
     });
+    const listReviewOverview = vi.fn().mockResolvedValue({
+      candidateCount: 0,
+      groups: [],
+      totalGroups: 0
+    });
 
     await expect(
       runSourceCandidateJobCommand(
         ["--summary"],
         { stdout },
-        { summarizeBacklog, summarizeCurationHandoff, summarizeJobs }
+        { listReviewOverview, summarizeBacklog, summarizeCurationHandoff, summarizeJobs }
       )
     ).resolves.toBe(0);
 
+    expect(listReviewOverview).toHaveBeenCalledWith({ limit: 50 });
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate ingestion jobs: total=0",
         "Source-candidate backlog: total=0",
         "Source-candidate curation handoff: total=0",
+        "Source-candidate review flag focus: totalGroups=0 candidateCount=0 flaggedTopGroups=0",
         "Source-candidate read-only next commands",
         'reviewOverview="--candidate-review-overview --candidate-review-overview-limit 10"',
         'duplicates="--candidates --candidate-duplicates"',
