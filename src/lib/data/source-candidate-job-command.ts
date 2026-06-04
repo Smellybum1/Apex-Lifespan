@@ -3945,10 +3945,28 @@ function formatSourceCandidateIdentityGroup(group: SourceCandidateIdentityGroup)
     `title=${quote(title)}`
   ];
 
+  if (sourceCandidateIdentityHasMixedDecisions(counts)) {
+    parts.push(
+      "mixedDecision=true",
+      `nextAction=${quote(
+        "Review duplicate identity rows together before changing any candidate decision."
+      )}`
+    );
+  }
+
   return [
     parts.join(" "),
     ...group.candidates.map(formatSourceCandidateIdentityGroupCandidate)
   ];
+}
+
+function sourceCandidateIdentityHasMixedDecisions(
+  counts: ReturnType<typeof sourceCandidateIdentityDecisionCounts>
+) {
+  return (
+    [counts.pending, counts.accepted, counts.rejected].filter((count) => count > 0)
+      .length > 1
+  );
 }
 
 function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate) {
