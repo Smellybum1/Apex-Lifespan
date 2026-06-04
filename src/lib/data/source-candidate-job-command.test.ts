@@ -2109,7 +2109,7 @@ describe("runSourceCandidateJobCommand", () => {
           '  - "Title matches query"'
         ].join("\n"),
         [
-          'Source-candidate accepted-reference matches: total=1 dedupe="pubmed|au|creatine|28615996" key=b64:cHVibWVkfGF1fGNyZWF0aW5lfDI4NjE1OTk2 candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Pending review" reviewStatus="Unreviewed AI draft"',
+          `Source-candidate accepted-reference matches: total=1 dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}" groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-id creatine --candidate-region AU --candidate-source pubmed --candidates-limit 10" decision="Pending review" reviewStatus="Unreviewed AI draft"`,
           '- reference="ref-creatine-position-stand" source="PubMed" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ identifier="PMID: 28615996" year=2017'
         ].join("\n"),
         [
@@ -2692,7 +2692,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
-        `Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-existing`,
+        `Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}" groupList="--candidates --candidate-region AU --candidate-source pubmed --candidates-limit 10" decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-existing`,
         '- reference="ref-creatine-position-stand" source="PubMed" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ identifier="PMID: 28615996" year=2017',
         '- reference="ref-creatine-publisher" source="PubMed" title="Creatine\\npublisher record" url=https://publisher.example/creatine-position-stand'
       ].join("\n")
@@ -2724,7 +2724,7 @@ describe("runSourceCandidateJobCommand", () => {
 
     expect(stdout).toHaveBeenCalledWith(
       [
-        `Source-candidate accepted-reference matches: total=0 dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" url=https://clinicaltrials.gov/study/NCT123 decision="Accepted" reviewStatus="Human reviewed"`,
+        `Source-candidate accepted-reference matches: total=0 dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" url=https://clinicaltrials.gov/study/NCT123 packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" groupList="--candidates --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" decision="Accepted" reviewStatus="Human reviewed"`,
         '- referenceDraft="ref-clinicaltrials-gov-nct123" source="ClinicalTrials.gov" identifier="NCT123" title="Creatine and aging" url=https://clinicaltrials.gov/study/NCT123 note="Draft only; verify before adding a curated reference." year=2017'
       ].join("\n")
     );

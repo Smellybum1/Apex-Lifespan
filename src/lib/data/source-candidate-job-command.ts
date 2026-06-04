@@ -2738,6 +2738,8 @@ function formatSourceCandidateReferenceMatchHeading(
     `source=${quote(candidate.source)}`,
     `externalId=${quote(candidate.externalId)}`,
     `url=${candidate.url}`,
+    `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`,
+    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
