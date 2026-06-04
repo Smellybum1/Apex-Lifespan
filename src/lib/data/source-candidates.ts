@@ -386,7 +386,9 @@ export async function listSourceCandidateReviewOverview(
       take: MAX_REVIEW_OVERVIEW_SCAN_CANDIDATES
     })
   ).map(mapDbSourceCandidate);
-  const identityCandidateCounts = sourceCandidateIdentityCounts(candidates);
+  const identityCandidateCounts = await sourceCandidateIdentityCountsAcrossDecisions(
+    candidates
+  );
   const groupsByContext = new Map<string, SourceCandidateReviewOverviewGroup>();
 
   for (const candidate of candidates) {
@@ -415,7 +417,13 @@ export async function listSourceCandidateReviewOverview(
 
     currentGroup.count += 1;
 
-    if (compareSourceCandidateReviewOverviewTop(candidate, currentGroup.topCandidate) < 0) {
+    if (
+      compareSourceCandidateReviewOverviewTop(
+        candidate,
+        currentGroup.topCandidate,
+        identityCandidateCounts
+      ) < 0
+    ) {
       currentGroup.topCandidate = candidate;
       currentGroup.topIdentityCandidateCount =
         identityCandidateCounts.get(sourceCandidateIdentityKey(candidate)) ?? 1;
@@ -469,6 +477,35 @@ function sourceCandidateIdentityCounts(candidates: SourceCandidate[]) {
   }
 
   return counts;
+}
+
+async function sourceCandidateIdentityCountsAcrossDecisions(
+  candidates: SourceCandidate[]
+) {
+  if (candidates.length === 0) {
+    return sourceCandidateIdentityCounts(candidates);
+  }
+
+  const identities = Array.from(
+    new Map(
+      candidates.map((candidate) => [
+        sourceCandidateIdentityKey(candidate),
+        {
+          externalId: candidate.externalId,
+          source: sourceMap[candidate.source]
+        }
+      ])
+    ).values()
+  );
+  const identityCandidates = (
+    await prisma.sourceCandidate.findMany({
+      where: {
+        OR: identities
+      }
+    })
+  ).map(mapDbSourceCandidate);
+
+  return sourceCandidateIdentityCounts(identityCandidates);
 }
 
 function sourceCandidateIdentityKey(candidate: SourceCandidate) {
@@ -1301,12 +1338,21 @@ function compareSourceCandidateReviewOverviewGroups(
 
 function compareSourceCandidateReviewOverviewTop(
   left: SourceCandidate,
-  right: SourceCandidate
+  right: SourceCandidate,
+  identityCandidateCounts: Map<string, number>
 ) {
   const triageDelta = right.triageScore - left.triageScore;
 
   if (triageDelta !== 0) {
     return triageDelta;
+  }
+
+  const identityCountDelta =
+    (identityCandidateCounts.get(sourceCandidateIdentityKey(right)) ?? 1) -
+    (identityCandidateCounts.get(sourceCandidateIdentityKey(left)) ?? 1);
+
+  if (identityCountDelta !== 0) {
+    return identityCountDelta;
   }
 
   return 0;

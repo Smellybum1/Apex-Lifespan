@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candidate and improving mixed-decision duplicate identity review. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candidate and improving mixed-decision duplicate identity review/overview surfacing. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -23,6 +23,7 @@ Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candid
 - Candidate filters support read-only `--candidate-claim-missing` and `--candidate-intervention-missing`; generated list hints use them when a group or candidate lacks claim/intervention context.
 - Duplicate identity review surfaces include `duplicateCaution` prompts plus exact read-only duplicate/list hints, accepted-reference/review-note fields for reviewed rows, and explicit `intervention`/`claim` values, including `none`, so repeated PMID/NCT identities can be reviewed in scoped or unscoped context before any decision.
 - Duplicate identity scans now surface mixed-decision identities by default, while explicit `--candidate-decision` filters still narrow the scan.
+- Review overview top-candidate selection now prefers repeated PMID/NCT identities when triage scores tie, so mixed accepted/pending duplicates are more visible from the overview.
 - Flagged summary, overview, and candidate-level rows include caution text plus context-scoped read-only `flagFocus="..."` hints while preserving broader `flags="..."` drill-ins; filtered review-flag rows focus the selected flag.
 - Claim-scoped source queries append compact claim-text anchors after outcome terms before queueing.
 - Completed 2026-06-04 source-candidate plan files have been moved out of top-level `docs/codex/plans/` into `docs/codex/plans/archive/2026-06-04/`; keep the top-level plans folder for active plans only.
@@ -38,6 +39,7 @@ Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candid
 - Review overview currently has 9 pending groups. Useful entry point: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
 - Review flags currently show 3 flagged top groups: two broad `vitamin-d-deficiency` safety-query groups and one `creatine-lifespan` low-title-overlap group. Useful focus command: `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`.
 - Duplicate scan currently shows one mixed PubMed identity group for `PMID 42141930`, with one pending unscoped row and one accepted scoped `creatine-strength` row. Useful command: `npm run ingest:sources -- --candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 42141930 --candidates-limit 2`.
+- Review overview now surfaces the pending unscoped `PMID 42141930` row as the top `claim=none`/`intervention=none` PubMed group candidate with `topIdentityCandidates=2`.
 - Treat `vitamin-d-deficiency` results as broad-query leads; review title, population, outcomes, source identity, siblings, and reference matches carefully before any accept/reject decision.
 - Notable current groups: `creatine-lifespan` has one ClinicalTrials.gov lead (`NCT07451496`); `omega-3-triglycerides` has ClinicalTrials.gov leads; `omega-3-cv-events` has PubMed and ClinicalTrials.gov leads. Regenerate exact packet keys from the overview or candidate lists.
 
@@ -65,6 +67,15 @@ Current code validation for duplicate identity audit fields:
 - `npm run dev:stop`
 - `npm run typecheck`
 - Read-only CLI smoke for exact `PMID 42141930` duplicate scan.
+
+Current code validation for overview duplicate tie-breaks:
+- `npm run test -- src/lib/data/source-candidates.test.ts`
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- Read-only CLI smoke for review overview.
+- `git diff --check` (only LF-to-CRLF warnings for modified files)
 
 Current code validation for source-candidate duplicate identity cautions:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`

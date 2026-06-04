@@ -422,6 +422,88 @@ describe("listSourceCandidateReviewOverview", () => {
     });
   });
 
+  it("prefers duplicate identity candidates for tied overview top triage", async () => {
+    prismaMocks.sourceCandidateFindMany
+      .mockResolvedValueOnce([
+        dbSourceCandidate({
+          dedupeKey: "pubmed|au|creatine-meta|42158825||",
+          externalId: "42158825",
+          query: "creatine meta",
+          claimId: null,
+          interventionId: null,
+          triageScore: 80,
+          updatedAt: new Date("2026-06-03T00:00:00.000Z")
+        }),
+        dbSourceCandidate({
+          dedupeKey: "pubmed|au|creatine-meta|42141930||",
+          externalId: "42141930",
+          query: "creatine meta",
+          claimId: null,
+          interventionId: null,
+          triageScore: 80,
+          updatedAt: new Date("2026-06-02T00:00:00.000Z")
+        })
+      ])
+      .mockResolvedValueOnce([
+        dbSourceCandidate({
+          dedupeKey: "pubmed|au|creatine-meta|42158825||",
+          externalId: "42158825",
+          query: "creatine meta",
+          claimId: null,
+          interventionId: null,
+          triageScore: 80
+        }),
+        dbSourceCandidate({
+          dedupeKey: "pubmed|au|creatine-meta|42141930||",
+          externalId: "42141930",
+          query: "creatine meta",
+          claimId: null,
+          interventionId: null,
+          triageScore: 80
+        }),
+        dbSourceCandidate({
+          dedupeKey:
+            "pubmed|au|creatine-strength|42141930|creatine|creatine-strength",
+          externalId: "42141930",
+          query: "creatine strength",
+          claimId: "creatine-strength",
+          interventionId: "creatine",
+          decision: "ACCEPTED",
+          reviewStatus: "HUMAN_REVIEWED",
+          triageScore: 80
+        })
+      ]);
+
+    await expect(listSourceCandidateReviewOverview()).resolves.toMatchObject({
+      groups: [
+        expect.objectContaining({
+          claimId: undefined,
+          count: 2,
+          topCandidate: expect.objectContaining({
+            dedupeKey: "pubmed|au|creatine-meta|42141930||"
+          }),
+          topIdentityCandidateCount: 2,
+          topTriageScore: 80
+        })
+      ]
+    });
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        OR: [
+          {
+            externalId: "42158825",
+            source: "PUBMED"
+          },
+          {
+            externalId: "42141930",
+            source: "PUBMED"
+          }
+        ]
+      }
+    });
+  });
+
   it("bounds overview group limits", async () => {
     prismaMocks.sourceCandidateFindMany.mockResolvedValue([
       dbSourceCandidate({
