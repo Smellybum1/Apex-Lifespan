@@ -2423,7 +2423,7 @@ export function commandUsage() {
     "  <dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse.",
     "  --candidate-source <source>       Filter candidates, overview, flags, or handoff by source: pubmed or clinical-trials.",
     "  --candidate-decision <decision>   Candidate decision: pending, accepted, or rejected.",
-    "  --candidate-duplicates            With --candidates, print duplicate source/external-id groups with packet hints.",
+    "  --candidate-duplicates            With --candidates, print duplicate source/external-id groups with review hints.",
     "  --candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id.",
     "  --candidate-job-id <id>           Filter candidates, overview, flags, or handoff by ingestion job id.",
     "  --candidate-intervention-id <id>  Filter candidates, overview, flags, or handoff by intervention id.",
@@ -3316,6 +3316,7 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
     `key=${key}`,
     `packet=${quote(`--candidate-review-packet ${key}`)}`,
     `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
+    `siblings=${quote(`--candidate-siblings ${key}`)}`,
     `query=${quote(candidate.query)}`,
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`

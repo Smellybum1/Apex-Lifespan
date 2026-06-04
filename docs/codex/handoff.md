@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding sibling hints to review priority rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding sibling hints to duplicate identity rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -27,7 +27,7 @@ Refreshed on 2026-06-04 after adding sibling hints to review priority rows. Veri
 - Reference-match headings print read-only `packet="..."`, `groupList="..."`, curation-status/draft hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable; reference drafts remain draft-only.
 - Review packets print safe read-only follow-up commands, curation-status/draft hints, duplicate hints when the identity repeats, review-flag hints when the candidate is flagged, and explicit human-reviewed accept/reject templates.
 - Sibling headings print read-only `targetPacket="..."` hints, and sibling rows print `packet="..."` hints plus compact `targetReviewFlags`/`reviewFlags` and `flags="..."` drill-ins when applicable.
-- Duplicate identity output prints read-only `identityList="..."`, per-candidate `packet="..."` and `referenceMatches="..."` hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
+- Duplicate identity output prints read-only `identityList="..."`, per-candidate `packet="..."`, `referenceMatches="..."`, and `siblings="..."` hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Curation handoff rows print read-only packet, reference-match, curation-status, curation-draft hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Curation status and draft output print read-only packet, reference-match, group-list, paired curation-view hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Claim-scoped source queries now append compact claim-text anchors after outcome terms before queueing.
@@ -75,7 +75,7 @@ Last CLI snapshot after local ingestion:
 - Top `omega-3-cv-events` ClinicalTrials.gov candidate: `NCT01492361`, triage 100/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fG9tZWdhLTMlMjBlcGElMkZkaGElMjBjYXJkaW92YXNjdWxhciUyMGV2ZW50cyUyMHByZXZlbnRpb258bmN0MDE0OTIzNjF8b21lZ2EtM3xvbWVnYS0zLWN2LWV2ZW50cw`; review packet showed no accepted-reference match and 8 same-query siblings.
 - Top `omega-3-cv-events` PubMed candidate: PMID `32634581`, triage 80/100, key `b64:cHVibWVkfGF1fG9tZWdhLTMlMjBlcGElMkZkaGElMjBjYXJkaW92YXNjdWxhciUyMGV2ZW50cyUyMHByZXZlbnRpb24lMjByYW5kb21pemVkJTIwdHJpYWwlMjBzeXN0ZW1hdGljJTIwcmV2aWV3fDMyNjM0NTgxfG9tZWdhLTN8b21lZ2EtMy1jdi1ldmVudHM`; review packet showed no accepted-reference match and 4 same-query siblings.
 - Read-only `omega-3-cv-events` PubMed list smoke showed packet hints on each candidate row.
-- Duplicate scan currently shows one pending PubMed identity group for PMID `42141930`; output includes copyable duplicate-list, packet, and reference-match hints.
+- Duplicate scan currently shows one pending PubMed identity group for PMID `42141930`; output includes copyable duplicate-list, packet, reference-match, and sibling hints.
 - Curation handoff: 0 accepted candidates ready for next curation status buckets.
 - Useful current views: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`, `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`, and `npm run ingest:sources -- --candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10`.
 
