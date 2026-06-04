@@ -79,7 +79,11 @@ export interface SourceCandidateJobCommandOptions
   interventionId?: string;
   jobId?: string;
   jobs?: boolean;
+  jobsClaimId?: string;
+  jobsInterventionId?: string;
   jobsLimit?: number;
+  jobsRegion?: string;
+  jobsSource?: SourceCandidateSource;
   jobsStatus?: SourceCandidateIngestionJobListOptions["status"];
   linkCandidateClaimDedupeKey?: string;
   limit: number;
@@ -403,6 +407,22 @@ export async function runSourceCandidateJobCommand(
         limit: options.jobsLimit
       };
 
+      if (options.jobsClaimId) {
+        listJobOptions.claimId = options.jobsClaimId;
+      }
+
+      if (options.jobsInterventionId) {
+        listJobOptions.interventionId = options.jobsInterventionId;
+      }
+
+      if (options.jobsRegion) {
+        listJobOptions.region = options.jobsRegion;
+      }
+
+      if (options.jobsSource) {
+        listJobOptions.source = options.jobsSource;
+      }
+
       if (options.jobsStatus) {
         listJobOptions.status = options.jobsStatus;
       }
@@ -494,7 +514,11 @@ export function parseSourceCandidateJobCommandArgs(
   let claimLinkNoteProvided = false;
   let claimLinkRelevanceProvided = false;
   let limitProvided = false;
+  let jobsClaimIdProvided = false;
+  let jobsInterventionIdProvided = false;
   let jobsLimitProvided = false;
+  let jobsRegionProvided = false;
+  let jobsSourceProvided = false;
   let jobsStatusProvided = false;
   let reviewNoteProvided = false;
   let sourceLimitProvided = false;
@@ -783,6 +807,34 @@ export function parseSourceCandidateJobCommandArgs(
     if (arg === "--jobs-limit") {
       options.jobsLimit = readPositiveInteger(args, index, arg, 50);
       jobsLimitProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--jobs-source") {
+      options.jobsSource = readJobSource(readRequiredValue(args, index, arg));
+      jobsSourceProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--jobs-region") {
+      options.jobsRegion = readRequiredValue(args, index, arg);
+      jobsRegionProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--jobs-intervention-id") {
+      options.jobsInterventionId = readRequiredValue(args, index, arg);
+      jobsInterventionIdProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--jobs-claim-id") {
+      options.jobsClaimId = readRequiredValue(args, index, arg);
+      jobsClaimIdProvided = true;
       index += 1;
       continue;
     }
@@ -1619,6 +1671,16 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--jobs-limit requires --jobs.");
   }
 
+  if (
+    (jobsClaimIdProvided ||
+      jobsInterventionIdProvided ||
+      jobsRegionProvided ||
+      jobsSourceProvided) &&
+    !options.jobs
+  ) {
+    throw new Error("Job-list filters require --jobs.");
+  }
+
   if (jobsStatusProvided && !options.jobs) {
     throw new Error("--jobs-status requires --jobs.");
   }
@@ -1710,6 +1772,10 @@ export function commandUsage() {
     "  --candidate-claim-id <id>         Filter --candidates or handoff by claim id.",
     "  --jobs                            Print recent source-candidate ingestion jobs.",
     "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
+    "  --jobs-source <source>            Filter --jobs by source: pubmed or clinical-trials.",
+    "  --jobs-region <region>            Filter --jobs by region.",
+    "  --jobs-intervention-id <id>       Filter --jobs by intervention id.",
+    "  --jobs-claim-id <id>              Filter --jobs by claim id.",
     "  --jobs-status <status>            Filter --jobs by queued, running, succeeded, failed, or skipped.",
     "  --queue-pubmed <term>             Queue a PubMed source-candidate job.",
     "  --queue-clinical-trials <term>    Queue a ClinicalTrials.gov source-candidate job.",
@@ -2518,6 +2584,17 @@ function readPositiveInteger(
 }
 
 function readCandidateSource(value: string): SourceCandidateSource {
+  return readSourceCandidateSource(value, "--candidate-source");
+}
+
+function readJobSource(value: string): SourceCandidateSource {
+  return readSourceCandidateSource(value, "--jobs-source");
+}
+
+function readSourceCandidateSource(
+  value: string,
+  option: "--candidate-source" | "--jobs-source"
+): SourceCandidateSource {
   const normalised = value.trim().toLowerCase();
 
   if (normalised === "pubmed") {
@@ -2532,7 +2609,7 @@ function readCandidateSource(value: string): SourceCandidateSource {
     return "ClinicalTrials.gov";
   }
 
-  throw new Error("--candidate-source must be pubmed or clinical-trials.");
+  throw new Error(`${option} must be pubmed or clinical-trials.`);
 }
 
 function readCandidateDecision(value: string): SourceCandidateDecision {

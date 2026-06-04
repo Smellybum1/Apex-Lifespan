@@ -171,6 +171,34 @@ describe("listSourceCandidateIngestionJobs", () => {
     });
   });
 
+  it("filters source-candidate ingestion jobs by source, region, and context", async () => {
+    mocks.findMany.mockResolvedValue([
+      dbIngestionJob({
+        status: "QUEUED"
+      })
+    ]);
+
+    await listSourceCandidateIngestionJobs({
+      claimId: " creatine-strength ",
+      interventionId: "creatine",
+      region: "au",
+      source: "PubMed",
+      status: "QUEUED"
+    });
+
+    expect(mocks.findMany).toHaveBeenCalledWith({
+      where: {
+        source: "PUBMED",
+        region: "AU",
+        interventionId: "creatine",
+        claimId: "creatine-strength",
+        status: "QUEUED"
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      take: 10
+    });
+  });
+
   it("returns an empty job list", async () => {
     mocks.findMany.mockResolvedValue([]);
 

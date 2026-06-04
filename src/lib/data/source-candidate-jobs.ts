@@ -43,7 +43,11 @@ export interface SourceCandidateIngestionJobRunResult {
 }
 
 export interface SourceCandidateIngestionJobListOptions {
+  claimId?: string;
+  interventionId?: string;
   limit?: number;
+  region?: string;
+  source?: SourceCandidateSource;
   status?: DbIngestionStatus;
 }
 
@@ -157,13 +161,36 @@ const outcomeMap: Record<DbOutcomeArea, OutcomeArea> = {
 export async function listSourceCandidateIngestionJobs(
   options: SourceCandidateIngestionJobListOptions = {}
 ): Promise<SourceCandidateIngestionJobListItem[]> {
+  const source = options.source
+    ? sourceKindFromSourceCandidateSource(options.source)
+    : undefined;
+  const where: Prisma.IngestionJobWhereInput = {
+    source: source ?? {
+      in: SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES
+    }
+  };
+  const region = optionalTrimmedString(options.region)?.toUpperCase();
+  const interventionId = optionalTrimmedString(options.interventionId);
+  const claimId = optionalTrimmedString(options.claimId);
+
+  if (options.status) {
+    where.status = options.status;
+  }
+
+  if (region) {
+    where.region = region;
+  }
+
+  if (interventionId) {
+    where.interventionId = interventionId;
+  }
+
+  if (claimId) {
+    where.claimId = claimId;
+  }
+
   const jobs = await prisma.ingestionJob.findMany({
-    where: {
-      source: {
-        in: SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES
-      },
-      ...(options.status ? { status: options.status } : {})
-    },
+    where,
     orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
     take: normaliseJobListLimit(options.limit)
   });
