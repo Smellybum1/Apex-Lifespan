@@ -438,7 +438,7 @@ export async function listSourceCandidateIdentityGroups(
   options: SourceCandidateReviewQueueOptions = {}
 ): Promise<SourceCandidateIdentityGroup[]> {
   const candidates = await prisma.sourceCandidate.findMany({
-    where: sourceCandidateReviewQueueWhere(options),
+    where: sourceCandidateReviewQueueWhere(options, { defaultDecision: null }),
     orderBy: [{ source: "asc" }, { externalId: "asc" }, { triageScore: "desc" }],
     take: MAX_IDENTITY_SCAN_CANDIDATES
   });
@@ -1186,11 +1186,17 @@ function sourceCandidateRediscoveryScalars(candidate: SourceCandidate) {
 }
 
 function sourceCandidateReviewQueueWhere(
-  options: SourceCandidateReviewQueueOptions
+  options: SourceCandidateReviewQueueOptions,
+  config: { defaultDecision?: SourceCandidateDecision | null } = {}
 ): Prisma.SourceCandidateWhereInput {
-  const where: Prisma.SourceCandidateWhereInput = {
-    decision: decisionMap[options.decision ?? "Pending review"]
-  };
+  const defaultDecision =
+    config.defaultDecision === undefined ? "Pending review" : config.defaultDecision;
+  const decision = options.decision ?? defaultDecision;
+  const where: Prisma.SourceCandidateWhereInput = {};
+
+  if (decision) {
+    where.decision = decisionMap[decision];
+  }
 
   if (options.source) {
     where.source = sourceMap[options.source];

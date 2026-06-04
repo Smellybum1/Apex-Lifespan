@@ -484,7 +484,7 @@ describe("listSourceCandidateReviewOverview", () => {
 });
 
 describe("listSourceCandidateIdentityGroups", () => {
-  it("lists duplicate source/external-id groups for review candidates", async () => {
+  it("lists duplicate source/external-id groups across decisions by default", async () => {
     prismaMocks.sourceCandidateFindMany.mockResolvedValue([
       dbSourceCandidate({
         dedupeKey: "pubmed|au|creatine-meta|42141930||",
@@ -498,7 +498,10 @@ describe("listSourceCandidateIdentityGroups", () => {
         dedupeKey: "pubmed|au|creatine-strength|42141930|creatine|creatine-strength",
         externalId: "42141930",
         query: "creatine strength",
-        ingestionJobId: "job-claim"
+        ingestionJobId: "job-claim",
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-pubmed-42141930"
       }),
       dbSourceCandidate({
         dedupeKey: "pubmed|au|creatine|30762623|creatine|creatine-strength",
@@ -528,6 +531,7 @@ describe("listSourceCandidateIdentityGroups", () => {
               "pubmed|au|creatine-strength|42141930|creatine|creatine-strength",
             externalId: "42141930",
             claimId: "creatine-strength",
+            decision: "Accepted",
             interventionId: "creatine"
           })
         ],
@@ -538,7 +542,28 @@ describe("listSourceCandidateIdentityGroups", () => {
 
     expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
       where: {
-        decision: "PENDING_REVIEW",
+        externalId: "42141930",
+        source: "PUBMED"
+      },
+      orderBy: [{ source: "asc" }, { externalId: "asc" }, { triageScore: "desc" }],
+      take: 500
+    });
+  });
+
+  it("honors explicit decision filters for duplicate identity groups", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([]);
+
+    await expect(
+      listSourceCandidateIdentityGroups({
+        decision: "Accepted",
+        externalId: "42141930",
+        source: "PubMed"
+      })
+    ).resolves.toEqual([]);
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        decision: "ACCEPTED",
         externalId: "42141930",
         source: "PUBMED"
       },

@@ -4097,7 +4097,9 @@ describe("runSourceCandidateJobCommand", () => {
             title: "Creatine meta-analysis",
             ingestionJobId: "job-claim",
             interventionId: "creatine",
-            claimId: "creatine-strength"
+            claimId: "creatine-strength",
+            decision: "Accepted",
+            reviewStatus: "Human reviewed"
           })
         ]
       }
@@ -4136,9 +4138,9 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate duplicate identities: total=1",
-        `- PubMed externalId="42141930" candidates=2 pending=2 accepted=0 rejected=0 identityList="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 42141930 --candidates-limit 2" duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}" title="Creatine meta-analysis"`,
+        `- PubMed externalId="42141930" candidates=2 pending=1 accepted=1 rejected=0 identityList="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 42141930 --candidates-limit 2" duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}" title="Creatine meta-analysis"`,
         `  - triage=80/100 dedupe="pubmed|au|creatine-meta|42141930||" key=${safeCandidateKey("pubmed|au|creatine-meta|42141930||")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-meta|42141930||")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine-meta|42141930||")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine-meta|42141930||")}" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine-meta|42141930||")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine-meta|42141930||")}" groupList="--candidates --candidate-claim-missing --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10" query="creatine meta" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=none claim=none ingestionJob=job-unscoped`,
-        `  - triage=80/100 dedupe="pubmed|au|creatine-strength|42141930|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-id creatine --candidate-region AU --candidate-source pubmed --candidates-limit 10" query="creatine strength" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-strength ingestionJob=job-claim`
+        `  - triage=80/100 dedupe="pubmed|au|creatine-strength|42141930|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-id creatine --candidate-region AU --candidate-source pubmed --candidates-limit 10" query="creatine strength" decision="Accepted" reviewStatus="Human reviewed" intervention=creatine claim=creatine-strength ingestionJob=job-claim`
       ].join("\n")
     );
   });
