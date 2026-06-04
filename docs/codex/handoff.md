@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after making source-candidate CLI no-arg mode read-only summary and queued runs explicit. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding top-level read-only review caution text to source-candidate summary/overview/flag rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -22,7 +22,7 @@ Refreshed on 2026-06-04 after making source-candidate CLI no-arg mode read-only 
 - Packet command hints include accepted-reference match counts and explicit accept-gate booleans; packet/reference/sibling/curation drill-ins share one local formatter helper in `src/lib/data/source-candidate-job-command.ts`, and exact CLI output is covered by source-candidate command tests.
 - Candidate filters support read-only `--candidate-claim-missing` and `--candidate-intervention-missing`; generated list hints use them when a group or candidate lacks claim/intervention context.
 - Duplicate identity candidate rows include exact read-only `groupList="..."` hints and explicit `intervention`/`claim` values, including `none`, so repeated PMID/NCT identities can be reviewed in scoped or unscoped context.
-- Flagged summary, overview, and candidate-level rows include context-scoped read-only `flagFocus="..."` hints while preserving broader `flags="..."` drill-ins; filtered review-flag rows focus the selected flag.
+- Flagged summary, overview, and candidate-level rows include caution text plus context-scoped read-only `flagFocus="..."` hints while preserving broader `flags="..."` drill-ins; filtered review-flag rows focus the selected flag.
 - Claim-scoped source queries append compact claim-text anchors after outcome terms before queueing.
 - Local Docker/PostgreSQL setup was verified earlier; migrations and seed were applied locally.
 
@@ -39,7 +39,7 @@ Refreshed on 2026-06-04 after making source-candidate CLI no-arg mode read-only 
 
 ## Latest Local Validation
 
-Current code validation for read-only source-candidate CLI default:
+Current code validation for source-candidate top-level review cautions:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
 - `npm run test`, `npm run lint`, `npm run dev:stop`, `npm run typecheck`
 - `git diff --check` (only LF-to-CRLF warnings for modified files)

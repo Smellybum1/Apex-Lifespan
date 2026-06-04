@@ -2780,7 +2780,7 @@ function formatSourceCandidateDetail(
     lines.push(
       formatStringList(
         "reviewCautions",
-        reviewFlags.map((flag) => `${flag.code}: ${flag.message}`)
+        sourceCandidateReviewCautions(reviewFlags)
       )
     );
   }
@@ -3620,7 +3620,8 @@ function formatSourceCandidateReviewFlagGroup(
 ) {
   const candidate = group.topCandidate;
   const key = safeCandidateKey(candidate.dedupeKey);
-  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+  const reviewFlags = sourceCandidateReviewFlags(candidate);
+  const reviewFlagCodes = reviewFlags.map((reviewFlag) => reviewFlag.code);
   const focusFlag =
     requestedFlag && reviewFlagCodes.includes(requestedFlag)
       ? requestedFlag
@@ -3628,6 +3629,7 @@ function formatSourceCandidateReviewFlagGroup(
   const parts = [
     "-",
     `flags=${quote(reviewFlagCodes.join(", "))}`,
+    `topReviewCautions=${quote(sourceCandidateReviewCautions(reviewFlags).join(" | "))}`,
     `flagFocus=${quote(
       formatSourceCandidateReviewFlagsCommand(
         focusFlag,
@@ -3666,7 +3668,8 @@ function formatSourceCandidateReviewOverviewGroup(
 ) {
   const candidate = group.topCandidate;
   const key = safeCandidateKey(candidate.dedupeKey);
-  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+  const reviewFlags = sourceCandidateReviewFlags(candidate);
+  const reviewFlagCodes = reviewFlags.map((reviewFlag) => reviewFlag.code);
   const parts = [
     "-",
     `claim=${group.claimId ?? "none"}`,
@@ -3689,6 +3692,7 @@ function formatSourceCandidateReviewOverviewGroup(
   if (reviewFlagCodes.length > 0) {
     parts.push(
       `topReviewFlags=${quote(reviewFlagCodes.join(", "))}`,
+      `topReviewCautions=${quote(sourceCandidateReviewCautions(reviewFlags).join(" | "))}`,
       `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
       `flagFocus=${quote(
         formatSourceCandidateReviewFlagsCommand(
@@ -3875,6 +3879,12 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
 
 function sourceCandidateReviewFlagCodes(candidate: SourceCandidate) {
   return sourceCandidateReviewFlags(candidate).map((flag) => flag.code);
+}
+
+function sourceCandidateReviewCautions(
+  reviewFlags: ReturnType<typeof sourceCandidateReviewFlags>
+) {
+  return reviewFlags.map((flag) => `${flag.code}: ${flag.message}`);
 }
 
 interface SourceCandidateReviewFlagCommandContext {
@@ -4189,6 +4199,9 @@ function formatSourceCandidateReviewFlagSummaryGroup(
 ) {
   const exampleGroup = group.exampleGroup;
   const candidate = exampleGroup.topCandidate;
+  const caution = sourceCandidateReviewFlags(candidate).find(
+    (reviewFlag) => reviewFlag.code === group.flag
+  )?.message;
   const key = safeCandidateKey(candidate.dedupeKey);
   const drillInHints = formatSourceCandidateReviewDrillInHints(candidate, key)
     .map((hint) => ` ${hint}`)
@@ -4198,6 +4211,7 @@ function formatSourceCandidateReviewFlagSummaryGroup(
     `- flag=${quote(group.flag)} topGroups=${group.topGroups}` +
     ` pendingInTopGroups=${group.pendingInTopGroups}` +
     ` topGroup=${quote(formatSourceCandidateReviewFlagSummaryGroupLabel(exampleGroup))}` +
+    `${caution ? ` caution=${quote(caution)}` : ""}` +
     ` list=${quote(formatSourceCandidateReviewOverviewListCommand(exampleGroup))}` +
     drillInHints +
     ` flags=${quote(formatSourceCandidateReviewFlagsCommand(group.flag))}` +
