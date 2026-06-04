@@ -757,6 +757,8 @@ export async function extractAcceptedSourceCandidateStudy({
   dedupeKey,
   ...input
 }: ExtractAcceptedSourceCandidateStudyInput): Promise<ExtractedSourceCandidateStudy> {
+  assertStudyExtractionManualInput(input);
+
   const candidate = await prisma.sourceCandidate.findUnique({
     where: {
       dedupeKey
@@ -1542,6 +1544,18 @@ function sourceCandidateStudyExtractionInput(
   };
 }
 
+function assertStudyExtractionManualInput(
+  input: Omit<ExtractAcceptedSourceCandidateStudyInput, "dedupeKey">
+) {
+  requireStudyText(input.adverseEvents, "--study-adverse-events");
+  requireStudyText(input.fundingConflicts, "--study-funding-conflicts");
+  requireStudyText(input.interventionName, "--study-intervention-name");
+  normaliseStudyOutcomes(input.outcomes);
+  requireStudyText(input.population, "--study-population");
+  requireStudyText(input.riskOfBias, "--study-risk-of-bias");
+  requireStudyText(input.sampleSize, "--study-sample-size");
+}
+
 function normaliseStudySourceType(
   sourceType: SourceCandidateStudyExtractionSourceType | undefined,
   candidate: SourceCandidate
@@ -1563,9 +1577,9 @@ function isStudySourceType(
   return value in studyTypeMap;
 }
 
-function normaliseStudyOutcomes(outcomes: string[]) {
-  const normalised = outcomes
-    .map((outcome) => outcome.trim())
+function normaliseStudyOutcomes(outcomes: string[] | undefined) {
+  const normalised = (outcomes ?? [])
+    .map((outcome) => (typeof outcome === "string" ? outcome.trim() : ""))
     .filter((outcome) => outcome.length > 0);
 
   if (normalised.length === 0) {
@@ -1575,8 +1589,8 @@ function normaliseStudyOutcomes(outcomes: string[]) {
   return normalised;
 }
 
-function requireStudyText(value: string, option: string) {
-  const trimmed = value.trim();
+function requireStudyText(value: string | undefined, option: string) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
 
   if (!trimmed) {
     throw new Error(`Study extraction requires ${option}.`);

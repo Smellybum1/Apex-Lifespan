@@ -1673,6 +1673,26 @@ describe("extractAcceptedSourceCandidateStudy", () => {
     expect(prismaMocks.studyCreate).not.toHaveBeenCalled();
   });
 
+  it("requires operator-supplied extraction fields before database lookup", async () => {
+    await expect(
+      extractAcceptedSourceCandidateStudy({
+        ...studyExtractionInput(),
+        sampleSize: " "
+      })
+    ).rejects.toThrow("Study extraction requires --study-sample-size.");
+
+    await expect(
+      extractAcceptedSourceCandidateStudy({
+        ...studyExtractionInput(),
+        outcomes: [" "]
+      })
+    ).rejects.toThrow("Study extraction requires at least one --study-outcome.");
+
+    expect(prismaMocks.sourceCandidateFindUnique).not.toHaveBeenCalled();
+    expect(prismaMocks.studyCreate).not.toHaveBeenCalled();
+    expect(prismaMocks.studyUpdate).not.toHaveBeenCalled();
+  });
+
   it("refuses extraction when the claim link is missing", async () => {
     prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
       dbSourceCandidate({
