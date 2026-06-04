@@ -16,7 +16,7 @@ Open this only for source-candidate ingestion, review, or curation work. Use `np
 
 1. Inspect state: `npm run ingest:sources -- --summary`.
 2. Choose a review group: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
-3. Optional flag focus: `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`.
+3. Optional flag focus: `npm run ingest:sources -- --candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10`.
 4. List pending candidates: `npm run ingest:sources -- --candidates --candidates-limit 10`.
 5. Inspect one candidate: `npm run ingest:sources -- --candidate-review-packet <dedupe-key>`.
 6. Human review only after checking candidate, siblings, and reference matches.
@@ -30,6 +30,7 @@ npm run ingest:sources -- --jobs --jobs-status queued
 npm run ingest:sources -- --queue-claim-sources <claim-id>
 npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10
 npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10
+npm run ingest:sources -- --candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10
 npm run ingest:sources -- --candidates --candidate-duplicates
 npm run ingest:sources -- --candidate-review-packet <dedupe-key>
 npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id>
@@ -37,14 +38,14 @@ npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Reason.
 npm run ingest:sources -- --candidate-curation-handoff
 ```
 
-Summary output prints read-only next-command hints for overview, duplicate scan, queued jobs, and curation handoff; non-empty curation bucket rows include status-filtered handoff hints, and a bounded review flag focus block highlights flagged top review groups with list/packet drill-ins.
+Summary output prints read-only next-command hints for overview, duplicate scan, queued jobs, and curation handoff; non-empty curation bucket rows include status-filtered handoff hints, and a bounded review flag focus block highlights flagged top review groups with list/packet/flags drill-ins.
 Job rows print read-only candidate-list, context-jobs, and status-jobs hints.
 Queue and run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
 Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on Windows anywhere `<dedupe-key>` is accepted.
 Candidate detail output prints read-only packet, reference-match, sibling, group-list, curation-status, curation-draft hints, and explanatory `reviewCautions` when a claim-scoped candidate needs extra broad-query/off-claim scrutiny.
 Candidate list rows print `packet="..."` for read-only packet review plus source-query, ingestion-job trace fields, and compact `reviewFlags` when applicable.
 Review overview rows print `list="..."` for the filtered pending group, including region, `packet="..."` for the top candidate drill-in, duplicate hints when the top PMID/NCT identity repeats, and `topReviewFlags` when applicable.
-Review flag rows filter the bounded overview to flagged top candidates only and print compact `flags`, duplicate hints, `list="..."`, and `packet="..."` without changing review state.
+Review flag rows filter the bounded overview to flagged top candidates only, optionally narrow with `--candidate-review-flag`, and print compact `flags`, duplicate hints, `list="..."`, and `packet="..."` without changing review state.
 Reference-match headings print `packet="..."`, `groupList="..."`, and compact `reviewFlags` when applicable; draft references remain draft-only and require manual verification.
 Review packets print read-only follow-up commands, conditional duplicate hints, and accept/reject templates; write templates still require explicit human review.
 Sibling rows print `packet="..."` for read-only packet review of related candidates plus `targetReviewFlags`/`reviewFlags` when applicable.

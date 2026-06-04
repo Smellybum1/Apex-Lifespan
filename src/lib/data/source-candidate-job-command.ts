@@ -58,6 +58,14 @@ import type {
   SourceCandidateSource
 } from "@/lib/types";
 
+const SOURCE_CANDIDATE_REVIEW_FLAG_CODES = [
+  "broad-safety-query",
+  "low-title-query-overlap"
+] as const;
+
+type SourceCandidateReviewFlagCode =
+  (typeof SOURCE_CANDIDATE_REVIEW_FLAG_CODES)[number];
+
 export interface SourceCandidateJobCommandOptions
   extends SourceCandidateIngestionJobOptions {
   acceptedReferenceId?: string;
@@ -75,6 +83,7 @@ export interface SourceCandidateJobCommandOptions
   candidateJobId?: string;
   candidateReferenceMatchesDedupeKey?: string;
   candidateRegion?: string;
+  candidateReviewFlag?: SourceCandidateReviewFlagCode;
   candidateReviewFlags?: boolean;
   candidateReviewFlagsLimit?: number;
   candidateReviewOverview?: boolean;
@@ -371,7 +380,7 @@ export async function runSourceCandidateJobCommand(
         source: options.candidateSource
       });
 
-      stdout(formatSourceCandidateReviewFlags(overview));
+      stdout(formatSourceCandidateReviewFlags(overview, options.candidateReviewFlag));
       return 0;
     }
 
@@ -648,6 +657,7 @@ export function parseSourceCandidateJobCommandArgs(
   let candidateCurationHandoffLimitProvided = false;
   let candidateCurationHandoffStatusProvided = false;
   let candidateRegionProvided = false;
+  let candidateReviewFlagProvided = false;
   let candidateReviewFlagsLimitProvided = false;
   let candidateReviewOverviewLimitProvided = false;
   let candidateSiblingsLimitProvided = false;
@@ -747,6 +757,15 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--candidate-review-flags") {
       options.candidateReviewFlags = true;
+      continue;
+    }
+
+    if (arg === "--candidate-review-flag") {
+      options.candidateReviewFlag = readCandidateReviewFlag(
+        readRequiredValue(args, index, arg)
+      );
+      candidateReviewFlagProvided = true;
+      index += 1;
       continue;
     }
 
@@ -1138,6 +1157,10 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (candidateReviewFlagsLimitProvided && !options.candidateReviewFlags) {
     throw new Error("--candidate-review-flags-limit requires --candidate-review-flags.");
+  }
+
+  if (candidateReviewFlagProvided && !options.candidateReviewFlags) {
+    throw new Error("--candidate-review-flag requires --candidate-review-flags.");
   }
 
   if (candidateReviewOverviewLimitProvided && !options.candidateReviewOverview) {
@@ -2366,6 +2389,7 @@ export function commandUsage() {
     "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
     "  --candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance.",
     "  --candidate-review-flags        Print read-only pending review groups whose top candidate has reviewer flags.",
+    "  --candidate-review-flag <flag>  With --candidate-review-flags, filter by broad-safety-query or low-title-query-overlap.",
     "  --candidate-review-flags-limit <count> Review flag group count (default 25, max 50).",
     "  --candidate-review-overview     Print read-only pending review groups with list, packet, and duplicate hints.",
     "  --candidate-review-overview-limit <count> Review overview group count (default 25, max 50).",
@@ -3327,9 +3351,15 @@ function formatSourceCandidateReviewOverview(overview: SourceCandidateReviewOver
   ].join("\n");
 }
 
-function formatSourceCandidateReviewFlags(overview: SourceCandidateReviewOverview) {
+function formatSourceCandidateReviewFlags(
+  overview: SourceCandidateReviewOverview,
+  flag?: SourceCandidateReviewFlagCode
+) {
   const groups = overview.groups.filter(
-    (group) => sourceCandidateReviewFlagCodes(group.topCandidate).length > 0
+    (group) =>
+      sourceCandidateReviewFlagCodes(group.topCandidate).some(
+        (reviewFlag) => !flag || reviewFlag === flag
+      )
   );
   const suffix = overview.groups.length < overview.totalGroups
     ? ` shown=${overview.groups.length}`
@@ -3337,6 +3367,7 @@ function formatSourceCandidateReviewFlags(overview: SourceCandidateReviewOvervie
   const heading =
     `Source-candidate review flags: totalGroups=${overview.totalGroups}` +
     ` candidateCount=${overview.candidateCount}${suffix}` +
+    `${flag ? ` flag=${quote(flag)}` : ""}` +
     ` flaggedTopGroups=${groups.length}`;
 
   if (groups.length === 0) {
@@ -3585,7 +3616,7 @@ function sourceCandidateReviewFlags(candidate: SourceCandidate) {
     return [];
   }
 
-  const flags: { code: string; message: string }[] = [];
+  const flags: { code: SourceCandidateReviewFlagCode; message: string }[] = [];
   const queryTokens = sourceCandidateReviewTokens(candidate.query);
   const titleTokens = sourceCandidateReviewTokens(candidate.title);
 
@@ -3840,8 +3871,19 @@ function formatSourceCandidateReviewFlagSummaryGroup(
     ` topGroup=${quote(formatSourceCandidateReviewFlagSummaryGroupLabel(exampleGroup))}` +
     ` list=${quote(formatSourceCandidateReviewOverviewListCommand(exampleGroup))}` +
     ` packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}` +
+    ` flags=${quote(formatSourceCandidateReviewFlagsCommand(group.flag))}` +
     ` overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
   );
+}
+
+function formatSourceCandidateReviewFlagsCommand(flag: SourceCandidateReviewFlagCode) {
+  return [
+    "--candidate-review-flags",
+    "--candidate-review-flag",
+    flag,
+    "--candidate-review-flags-limit",
+    "10"
+  ].join(" ");
 }
 
 function formatSourceCandidateReviewFlagSummaryGroupLabel(
@@ -3862,7 +3904,7 @@ function sourceCandidateReviewFlagSummaryGroups(
     string,
     {
       exampleGroup: SourceCandidateReviewOverview["groups"][number];
-      flag: string;
+      flag: SourceCandidateReviewFlagCode;
       pendingInTopGroups: number;
       topGroups: number;
     }
@@ -4228,6 +4270,26 @@ function readCurationHandoffStatus(value: string): SourceCandidateCurationStatus
 
   throw new Error(
     "--candidate-curation-handoff-status must be missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
+  );
+}
+
+function readCandidateReviewFlag(value: string): SourceCandidateReviewFlagCode {
+  const normalised = value.trim().toLowerCase();
+
+  if (isSourceCandidateReviewFlagCode(normalised)) {
+    return normalised;
+  }
+
+  throw new Error(
+    "--candidate-review-flag must be broad-safety-query or low-title-query-overlap."
+  );
+}
+
+function isSourceCandidateReviewFlagCode(
+  value: string
+): value is SourceCandidateReviewFlagCode {
+  return SOURCE_CANDIDATE_REVIEW_FLAG_CODES.includes(
+    value as SourceCandidateReviewFlagCode
   );
 }
 

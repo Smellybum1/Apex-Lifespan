@@ -24,6 +24,9 @@ describe("commandUsage", () => {
       "--candidate-review-flags        Print read-only pending review groups whose top candidate has reviewer flags."
     );
     expect(commandUsage()).toContain(
+      "--candidate-review-flag <flag>  With --candidate-review-flags, filter by broad-safety-query or low-title-query-overlap."
+    );
+    expect(commandUsage()).toContain(
       "--candidate-review-overview     Print read-only pending review groups with list, packet, and duplicate hints."
     );
     expect(commandUsage()).toContain(
@@ -586,6 +589,8 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     expect(
       parseSourceCandidateJobCommandArgs([
         "--candidate-review-flags",
+        "--candidate-review-flag",
+        "broad-safety-query",
         "--candidate-review-flags-limit",
         "200",
         "--candidate-source",
@@ -604,6 +609,7 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       candidateInterventionId: "vitamin-d",
       candidateJobId: "job-trials",
       candidateRegion: "AU",
+      candidateReviewFlag: "broad-safety-query",
       candidateReviewFlags: true,
       candidateReviewFlagsLimit: 50,
       candidateSource: "ClinicalTrials.gov",
@@ -1740,6 +1746,18 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       parseSourceCandidateJobCommandArgs(["--candidate-review-flags-limit", "2"])
     ).toThrow("--candidate-review-flags-limit requires --candidate-review-flags.");
     expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-review-flag", "broad-safety-query"])
+    ).toThrow("--candidate-review-flag requires --candidate-review-flags.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-flags",
+        "--candidate-review-flag",
+        "unsupported-flag"
+      ])
+    ).toThrow(
+      "--candidate-review-flag must be broad-safety-query or low-title-query-overlap."
+    );
+    expect(() =>
       parseSourceCandidateJobCommandArgs([
         "--candidate-review-flags",
         "--candidate-decision",
@@ -2059,8 +2077,8 @@ describe("runSourceCandidateJobCommand", () => {
         '- status="Extraction pending" publicSourcePacketReady=false: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status extraction-pending"',
         '- status="Public source packet ready" publicSourcePacketReady=true: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status ready"',
         "Source-candidate review flag focus: totalGroups=3 candidateCount=15 flaggedTopGroups=2",
-        `- flag="broad-safety-query" topGroups=1 pendingInTopGroups=10 topGroup="vitamin-d-deficiency vitamin-d ClinicalTrials.gov AU" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" overview="--candidate-review-overview --candidate-review-overview-limit 10"`,
-        `- flag="low-title-query-overlap" topGroups=1 pendingInTopGroups=1 topGroup="creatine-lifespan creatine ClinicalTrials.gov AU" list="--candidates --candidate-claim-id creatine-lifespan --candidate-intervention-id creatine --candidate-region AU --candidate-source clinical-trials --candidates-limit 1" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" overview="--candidate-review-overview --candidate-review-overview-limit 10"`,
+        `- flag="broad-safety-query" topGroups=1 pendingInTopGroups=10 topGroup="vitamin-d-deficiency vitamin-d ClinicalTrials.gov AU" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" flags="--candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10" overview="--candidate-review-overview --candidate-review-overview-limit 10"`,
+        `- flag="low-title-query-overlap" topGroups=1 pendingInTopGroups=1 topGroup="creatine-lifespan creatine ClinicalTrials.gov AU" list="--candidates --candidate-claim-id creatine-lifespan --candidate-intervention-id creatine --candidate-region AU --candidate-source clinical-trials --candidates-limit 1" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" flags="--candidate-review-flags --candidate-review-flag low-title-query-overlap --candidate-review-flags-limit 10" overview="--candidate-review-overview --candidate-review-overview-limit 10"`,
         "Source-candidate read-only next commands",
         'reviewOverview="--candidate-review-overview --candidate-review-overview-limit 10"',
         'duplicates="--candidates --candidate-duplicates"',
@@ -4143,10 +4161,12 @@ describe("runSourceCandidateJobCommand", () => {
     const stdout = vi.fn();
     const flaggedKey =
       "clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency";
+    const lowOverlapKey =
+      "clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan";
     const unflaggedKey = "pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events";
     const listReviewOverview = vi.fn().mockResolvedValue({
-      candidateCount: 11,
-      totalGroups: 3,
+      candidateCount: 12,
+      totalGroups: 4,
       groups: [
         {
           claimId: "vitamin-d-deficiency",
@@ -4166,6 +4186,25 @@ describe("runSourceCandidateJobCommand", () => {
           }),
           topIdentityCandidateCount: 2,
           topTriageScore: 100
+        },
+        {
+          claimId: "creatine-lifespan",
+          count: 1,
+          interventionId: "creatine",
+          region: "AU",
+          source: "ClinicalTrials.gov",
+          topCandidate: sourceCandidate({
+            dedupeKey: lowOverlapKey,
+            source: "ClinicalTrials.gov",
+            externalId: "NCT07451496",
+            query: "creatine monohydrate longevity mortality lifespan",
+            title: "Healthy ageing lifestyle supplement program",
+            triageScore: 80,
+            interventionId: "creatine",
+            claimId: "creatine-lifespan"
+          }),
+          topIdentityCandidateCount: 1,
+          topTriageScore: 80
         },
         {
           claimId: "omega-3-cv-events",
@@ -4192,8 +4231,10 @@ describe("runSourceCandidateJobCommand", () => {
       runSourceCandidateJobCommand(
         [
           "--candidate-review-flags",
+          "--candidate-review-flag",
+          "broad-safety-query",
           "--candidate-review-flags-limit",
-          "2",
+          "3",
           "--candidate-claim-id",
           "vitamin-d-deficiency",
           "--candidate-region",
@@ -4208,14 +4249,14 @@ describe("runSourceCandidateJobCommand", () => {
       claimId: "vitamin-d-deficiency",
       ingestionJobId: undefined,
       interventionId: undefined,
-      limit: 2,
+      limit: 3,
       region: "AU",
       source: undefined
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
-        "Source-candidate review flags: totalGroups=3 candidateCount=11 shown=2 flaggedTopGroups=1",
+        'Source-candidate review flags: totalGroups=4 candidateCount=12 shown=3 flag="broad-safety-query" flaggedTopGroups=1',
         `- flags="broad-safety-query" claim=vitamin-d-deficiency intervention=vitamin-d ClinicalTrials.gov AU pending=10 topTriage=100/100 topKey=${safeCandidateKey(flaggedKey)} topExternalId="NCT00715676" topIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source clinical-trials --candidate-external-id NCT00715676 --candidates-limit 2" topTitle="Vitamin D safety monitoring trial" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" packet="--candidate-review-packet ${safeCandidateKey(flaggedKey)}"`
       ].join("\n")
     );
