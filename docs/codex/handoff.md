@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding curation hints to review packets. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding curation hints to reference-match headings. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -24,7 +24,7 @@ Refreshed on 2026-06-04 after adding curation hints to review packets. Verify lo
 - Generic and filtered review-flag command hints share one formatter; exact output is unchanged.
 - Candidate detail output is read-only and prints packet, reference-match, sibling, group-list, curation-status, curation-draft hints, compact `reviewFlags` plus `flags="..."` drill-ins, and explanatory `reviewCautions` for flagged claim-scoped candidates.
 - Candidate list rows are read-only and print `packet="..."` hints plus query, ingestion-job trace fields, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
-- Reference-match headings print read-only `packet="..."`, `groupList="..."`, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable; reference drafts remain draft-only.
+- Reference-match headings print read-only `packet="..."`, `groupList="..."`, curation-status/draft hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable; reference drafts remain draft-only.
 - Review packets print safe read-only follow-up commands, curation-status/draft hints, duplicate hints when the identity repeats, review-flag hints when the candidate is flagged, and explicit human-reviewed accept/reject templates.
 - Sibling rows print read-only `packet="..."` hints plus compact `targetReviewFlags`/`reviewFlags` and `flags="..."` drill-ins when applicable.
 - Duplicate identity output prints read-only `identityList="..."`, per-candidate `packet="..."` hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
@@ -61,7 +61,7 @@ Last CLI snapshot after local ingestion:
 - Read-only candidate list smoke for the top `vitamin-d-deficiency` ClinicalTrials.gov rows showed compact `reviewFlags="broad-safety-query"` plus `flags="..."` drill-ins and no writes.
 - Read-only `NCT00715676` sibling smoke showed `targetReviewFlags` plus `flags="..."` on the heading and row-level `reviewFlags` plus `flags="..."`, including low-title-query-overlap prompts for disconnected sibling titles.
 - Exact output tests cover `reviewFlags` plus `flags="..."` drill-ins on sibling headings/rows, duplicate identity rows, accepted-reference match headings, curation status, curation draft, and non-empty curation handoff rows; helper consolidation preserved the same output, and no live duplicate write smoke was needed.
-- Read-only `NCT00715676` reference-match, curation-status, and curation-draft smokes showed compact `reviewFlags="broad-safety-query"` plus a `flags="..."` drill-in without writes.
+- Read-only `NCT00715676` reference-match smoke showed curation-status/draft hints, compact `reviewFlags="broad-safety-query"` plus a `flags="..."` drill-in without writes; paired curation-status/draft smokes remained read-only.
 - Read-only curation handoff smoke still returned `total=0`; non-empty flagged handoff drill-ins are covered by exact output tests.
 - Read-only summary smoke showed `flag="broad-safety-query"` with 2 top groups / 20 pending in top groups and `flag="low-title-query-overlap"` with 1 top group / 1 pending in top groups; each flag row included `list`, `packet`, and `overview` drill-ins.
 - Read-only review flags smoke showed 3 flagged top groups: vitamin-d-deficiency ClinicalTrials.gov and PubMed broad-safety-query groups plus the creatine-lifespan ClinicalTrials.gov low-title-query-overlap group.

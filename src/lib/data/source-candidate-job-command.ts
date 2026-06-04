@@ -3072,6 +3072,8 @@ function formatSourceCandidateReferenceMatchHeading(
     `url=${candidate.url}`,
     `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`,
     `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
+    `curationStatus=${quote(`--candidate-curation-status ${safeCandidateKey(candidate.dedupeKey)}`)}`,
+    `curationDraft=${quote(`--candidate-curation-draft ${safeCandidateKey(candidate.dedupeKey)}`)}`,
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
