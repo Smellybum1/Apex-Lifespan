@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding read-only duplicate identity caution text to source-candidate review surfaces. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after closeout archiving of completed source-candidate plan files. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -24,6 +24,7 @@ Refreshed on 2026-06-04 after adding read-only duplicate identity caution text t
 - Duplicate identity review surfaces include `duplicateCaution` prompts plus exact read-only duplicate/list hints and explicit `intervention`/`claim` values, including `none`, so repeated PMID/NCT identities can be reviewed in scoped or unscoped context before any decision.
 - Flagged summary, overview, and candidate-level rows include caution text plus context-scoped read-only `flagFocus="..."` hints while preserving broader `flags="..."` drill-ins; filtered review-flag rows focus the selected flag.
 - Claim-scoped source queries append compact claim-text anchors after outcome terms before queueing.
+- Completed 2026-06-04 source-candidate plan files have been moved out of top-level `docs/codex/plans/` into `docs/codex/plans/archive/2026-06-04/`; keep the top-level plans folder for active plans only.
 - Local Docker/PostgreSQL setup was verified earlier; migrations and seed were applied locally.
 
 ## Current Source-Candidate State
@@ -38,6 +39,11 @@ Refreshed on 2026-06-04 after adding read-only duplicate identity caution text t
 - Notable current groups: `creatine-lifespan` has one ClinicalTrials.gov lead (`NCT07451496`); `omega-3-triglycerides` has ClinicalTrials.gov leads; `omega-3-cv-events` has PubMed and ClinicalTrials.gov leads. Regenerate exact packet keys from the overview or candidate lists.
 
 ## Latest Local Validation
+
+Current closeout validation:
+- `npm run ingest:sources -- --summary` (read-only state check)
+- `git diff --check`
+- Startup/workflow docs and tracked workflow config reviewed; no code changed in closeout.
 
 Current code validation for source-candidate duplicate identity cautions:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
