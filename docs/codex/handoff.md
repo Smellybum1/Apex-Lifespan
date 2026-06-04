@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding review-flag drill-ins to sibling context. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding review-flag drill-ins to candidate detail. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -21,7 +21,7 @@ Refreshed on 2026-06-04 after adding review-flag drill-ins to sibling context. V
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; exact output tests cover these write-result surfaces without live write smokes.
 - Review overview is read-only and prints region-qualified `list="..."` filtered queue hints, `packet="..."` top-candidate hints, duplicate hints when the top identity repeats, and compact `topReviewFlags` plus `flags="..."` drill-ins when applicable.
 - Review flags view is read-only (`--candidate-review-flags`) and filters the bounded review overview to flagged top candidates only; it can narrow by `--candidate-review-flag broad-safety-query` or `--candidate-review-flag low-title-query-overlap`, with compact `flags`, duplicate hints, `list="..."`, and `packet="..."`.
-- Candidate detail output is read-only and prints packet, reference-match, sibling, group-list, curation-status, curation-draft hints, and explanatory `reviewCautions` for flagged claim-scoped candidates.
+- Candidate detail output is read-only and prints packet, reference-match, sibling, group-list, curation-status, curation-draft hints, compact `reviewFlags` plus `flags="..."` drill-ins, and explanatory `reviewCautions` for flagged claim-scoped candidates.
 - Candidate list rows are read-only and print `packet="..."` hints plus query, ingestion-job trace fields, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Reference-match headings print read-only `packet="..."`, `groupList="..."`, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable; reference drafts remain draft-only.
 - Review packets print safe read-only follow-up commands, duplicate hints when the identity repeats, and explicit human-reviewed accept/reject templates.
@@ -55,7 +55,7 @@ Last CLI snapshot after local ingestion:
 - Read-only curation handoff smoke returned `total=0`; non-empty handoff row hints are covered by exact output tests.
 - Read-only review overview smoke returned 9 pending groups across 50 candidates; the `creatine-strength` PubMed top identity showed `topIdentityCandidates=2` and a duplicate-list hint for PMID `42141930`.
 - Read-only review overview smoke showed `topReviewFlags="broad-safety-query"` plus `flags="..."` drill-ins on broad `vitamin-d-deficiency` ClinicalTrials.gov and PubMed groups; omega-3 triglycerides did not carry a low-overlap flag after token-root overlap handling.
-- Read-only review packet smoke for `NCT00715676` showed detail `reviewCautions` with `broad-safety-query` and no writes.
+- Read-only `NCT00715676` detail smoke showed compact `reviewFlags="broad-safety-query"` plus `flags="..."` and explanatory `reviewCautions` with no writes.
 - Read-only candidate list smoke for the top `vitamin-d-deficiency` ClinicalTrials.gov rows showed compact `reviewFlags="broad-safety-query"` plus `flags="..."` drill-ins and no writes.
 - Read-only `NCT00715676` sibling smoke showed `targetReviewFlags` plus `flags="..."` on the heading and row-level `reviewFlags` plus `flags="..."`, including low-title-query-overlap prompts for disconnected sibling titles.
 - Exact output tests cover `reviewFlags` plus `flags="..."` drill-ins on sibling headings/rows, duplicate identity rows, accepted-reference match headings, curation status, curation draft, and non-empty curation handoff rows; no live duplicate write smoke was needed.
@@ -79,6 +79,7 @@ Last CLI snapshot after local ingestion:
 
 Latest local validation:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --candidate-detail b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
 - `npm run ingest:sources -- --candidate-reference-matches b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
 - `npm run ingest:sources -- --candidate-curation-status b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
 - `npm run ingest:sources -- --candidate-curation-draft b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`

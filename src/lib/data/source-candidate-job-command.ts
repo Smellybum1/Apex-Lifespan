@@ -2663,6 +2663,10 @@ function formatSourceCandidateDetail(
   lines.push(formatStringList("triageReasons", candidate.triageReasons));
 
   if (reviewFlags.length > 0) {
+    lines.push(`reviewFlags=${quote(reviewFlags.map((flag) => flag.code).join(", "))}`);
+    lines.push(
+      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+    );
     lines.push(
       formatStringList(
         "reviewCautions",

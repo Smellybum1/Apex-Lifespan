@@ -2288,6 +2288,8 @@ describe("runSourceCandidateJobCommand", () => {
         "claim=vitamin-d-deficiency",
         "triageReasons:",
         '  - "Matches query context"',
+        'reviewFlags="broad-safety-query, low-title-query-overlap"',
+        'flags="--candidate-review-flags --candidate-review-flags-limit 10"',
         "reviewCautions:",
         '  - "broad-safety-query: Broad safety/adverse query; verify title, population, outcomes, and source identity against the candidate claim."',
         '  - "low-title-query-overlap: Low title/query overlap; inspect the packet and siblings for off-claim or off-intervention matches."'
