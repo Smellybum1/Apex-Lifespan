@@ -80,6 +80,7 @@ export interface SourceCandidateReviewOverviewGroup {
   source: SourceCandidateSource;
   topCandidate: SourceCandidate;
   topIdentityCandidateCount: number;
+  topIdentityMixedDecision: boolean;
   topTriageScore: number;
 }
 
@@ -386,7 +387,7 @@ export async function listSourceCandidateReviewOverview(
       take: MAX_REVIEW_OVERVIEW_SCAN_CANDIDATES
     })
   ).map(mapDbSourceCandidate);
-  const identityCandidateCounts = await sourceCandidateIdentityCountsAcrossDecisions(
+  const identityInfoByKey = await sourceCandidateIdentityInfoAcrossDecisions(
     candidates
   );
   const groupsByContext = new Map<string, SourceCandidateReviewOverviewGroup>();
@@ -409,7 +410,11 @@ export async function listSourceCandidateReviewOverview(
         source: candidate.source,
         topCandidate: candidate,
         topIdentityCandidateCount:
-          identityCandidateCounts.get(sourceCandidateIdentityKey(candidate)) ?? 1,
+          identityInfoByKey.get(sourceCandidateIdentityKey(candidate))?.candidateCount ??
+          1,
+        topIdentityMixedDecision:
+          identityInfoByKey.get(sourceCandidateIdentityKey(candidate))?.mixedDecision ??
+          false,
         topTriageScore: candidate.triageScore
       });
       continue;
@@ -421,12 +426,16 @@ export async function listSourceCandidateReviewOverview(
       compareSourceCandidateReviewOverviewTop(
         candidate,
         currentGroup.topCandidate,
-        identityCandidateCounts
+        identityInfoByKey
       ) < 0
     ) {
       currentGroup.topCandidate = candidate;
       currentGroup.topIdentityCandidateCount =
-        identityCandidateCounts.get(sourceCandidateIdentityKey(candidate)) ?? 1;
+        identityInfoByKey.get(sourceCandidateIdentityKey(candidate))?.candidateCount ??
+        1;
+      currentGroup.topIdentityMixedDecision =
+        identityInfoByKey.get(sourceCandidateIdentityKey(candidate))?.mixedDecision ??
+        false;
       currentGroup.topTriageScore = candidate.triageScore;
     }
   }
@@ -468,22 +477,47 @@ export async function listSourceCandidateIdentityGroups(
     .slice(0, normaliseIdentityGroupLimit(options.limit));
 }
 
-function sourceCandidateIdentityCounts(candidates: SourceCandidate[]) {
-  const counts = new Map<string, number>();
+interface SourceCandidateIdentityInfo {
+  candidateCount: number;
+  mixedDecision: boolean;
+}
+
+function sourceCandidateIdentityInfo(candidates: SourceCandidate[]) {
+  const info = new Map<
+    string,
+    SourceCandidateIdentityInfo & { decisions: Set<SourceCandidate["decision"]> }
+  >();
 
   for (const candidate of candidates) {
     const key = sourceCandidateIdentityKey(candidate);
-    counts.set(key, (counts.get(key) ?? 0) + 1);
+    const current = info.get(key) ?? {
+      candidateCount: 0,
+      decisions: new Set<SourceCandidate["decision"]>(),
+      mixedDecision: false
+    };
+
+    current.candidateCount += 1;
+    current.decisions.add(candidate.decision);
+    current.mixedDecision = current.decisions.size > 1;
+    info.set(key, current);
   }
 
-  return counts;
+  return new Map(
+    Array.from(info.entries()).map(([key, value]) => [
+      key,
+      {
+        candidateCount: value.candidateCount,
+        mixedDecision: value.mixedDecision
+      }
+    ])
+  );
 }
 
-async function sourceCandidateIdentityCountsAcrossDecisions(
+async function sourceCandidateIdentityInfoAcrossDecisions(
   candidates: SourceCandidate[]
 ) {
   if (candidates.length === 0) {
-    return sourceCandidateIdentityCounts(candidates);
+    return sourceCandidateIdentityInfo(candidates);
   }
 
   const identities = Array.from(
@@ -505,7 +539,7 @@ async function sourceCandidateIdentityCountsAcrossDecisions(
     })
   ).map(mapDbSourceCandidate);
 
-  return sourceCandidateIdentityCounts(identityCandidates);
+  return sourceCandidateIdentityInfo(identityCandidates);
 }
 
 function sourceCandidateIdentityKey(candidate: SourceCandidate) {
@@ -1339,7 +1373,7 @@ function compareSourceCandidateReviewOverviewGroups(
 function compareSourceCandidateReviewOverviewTop(
   left: SourceCandidate,
   right: SourceCandidate,
-  identityCandidateCounts: Map<string, number>
+  identityInfoByKey: Map<string, SourceCandidateIdentityInfo>
 ) {
   const triageDelta = right.triageScore - left.triageScore;
 
@@ -1348,8 +1382,8 @@ function compareSourceCandidateReviewOverviewTop(
   }
 
   const identityCountDelta =
-    (identityCandidateCounts.get(sourceCandidateIdentityKey(right)) ?? 1) -
-    (identityCandidateCounts.get(sourceCandidateIdentityKey(left)) ?? 1);
+    (identityInfoByKey.get(sourceCandidateIdentityKey(right))?.candidateCount ?? 1) -
+    (identityInfoByKey.get(sourceCandidateIdentityKey(left))?.candidateCount ?? 1);
 
   if (identityCountDelta !== 0) {
     return identityCountDelta;

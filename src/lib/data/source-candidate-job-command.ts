@@ -4247,6 +4247,15 @@ function formatSourceCandidateReviewFlagGroup(
       `duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(group))}`,
       `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
     );
+
+    if (group.topIdentityMixedDecision) {
+      parts.push(
+        "duplicateIdentityMixedDecision=true",
+        `duplicateIdentityNextAction=${quote(
+          SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+        )}`
+      );
+    }
   }
 
   parts.push(
@@ -4284,6 +4293,15 @@ function formatSourceCandidateReviewOverviewGroup(
       `duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(group))}`,
       `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
     );
+
+    if (group.topIdentityMixedDecision) {
+      parts.push(
+        "duplicateIdentityMixedDecision=true",
+        `duplicateIdentityNextAction=${quote(
+          SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+        )}`
+      );
+    }
   }
 
   if (reviewFlagCodes.length > 0) {
@@ -4856,7 +4874,15 @@ function formatSourceCandidateReviewFlagSummaryGroup(
     ? [
         ` topIdentityCandidates=${exampleGroup.topIdentityCandidateCount}`,
         ` duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(exampleGroup))}`,
-        ` duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
+        ` duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`,
+        ...(exampleGroup.topIdentityMixedDecision
+          ? [
+              " duplicateIdentityMixedDecision=true",
+              ` duplicateIdentityNextAction=${quote(
+                SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+              )}`
+            ]
+          : [])
       ].join("")
     : "";
 

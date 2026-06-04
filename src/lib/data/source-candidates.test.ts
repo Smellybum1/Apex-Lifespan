@@ -340,6 +340,7 @@ describe("listSourceCandidateReviewOverview", () => {
             triageScore: 100
           }),
           topIdentityCandidateCount: 1,
+          topIdentityMixedDecision: false,
           topTriageScore: 100
         },
         {
@@ -354,6 +355,7 @@ describe("listSourceCandidateReviewOverview", () => {
             triageScore: 95
           }),
           topIdentityCandidateCount: 1,
+          topIdentityMixedDecision: false,
           topTriageScore: 95
         }
       ]
@@ -409,14 +411,16 @@ describe("listSourceCandidateReviewOverview", () => {
           topCandidate: expect.objectContaining({
             dedupeKey: "pubmed|au|creatine-strength|42141930|creatine|creatine-strength"
           }),
-          topIdentityCandidateCount: 2
+          topIdentityCandidateCount: 2,
+          topIdentityMixedDecision: false
         }),
         expect.objectContaining({
           claimId: undefined,
           topCandidate: expect.objectContaining({
             dedupeKey: "pubmed|au|creatine-meta|42141930||"
           }),
-          topIdentityCandidateCount: 2
+          topIdentityCandidateCount: 2,
+          topIdentityMixedDecision: false
         })
       ]
     });
@@ -483,6 +487,7 @@ describe("listSourceCandidateReviewOverview", () => {
             dedupeKey: "pubmed|au|creatine-meta|42141930||"
           }),
           topIdentityCandidateCount: 2,
+          topIdentityMixedDecision: true,
           topTriageScore: 80
         })
       ]
