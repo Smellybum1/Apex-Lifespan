@@ -62,6 +62,8 @@ const SOURCE_CANDIDATE_REVIEW_FLAG_CODES = [
   "broad-safety-query",
   "low-title-query-overlap"
 ] as const;
+const SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION =
+  "Same source/external id appears in multiple candidate contexts; compare duplicate identity rows before accepting or rejecting any candidate.";
 
 type SourceCandidateReviewFlagCode =
   (typeof SOURCE_CANDIDATE_REVIEW_FLAG_CODES)[number];
@@ -2895,13 +2897,15 @@ function formatSourceCandidateReviewPacketCommandHints(
 
   if (duplicateIdentityCount > 1) {
     lines.push(
+      `duplicateIdentityCandidates=${duplicateIdentityCount}`,
       `duplicates=${quote(
         formatSourceCandidateDuplicateIdentityListCommand({
           externalId: candidate.externalId,
           limit: duplicateIdentityCount,
           source: candidate.source
         })
-      )}`
+      )}`,
+      `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
     );
   }
 
@@ -3493,6 +3497,7 @@ function formatSourceCandidateIdentityGroup(group: SourceCandidateIdentityGroup)
     `accepted=${counts.accepted}`,
     `rejected=${counts.rejected}`,
     `identityList=${quote(formatSourceCandidateIdentityGroupListCommand(group))}`,
+    `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`,
     `title=${quote(title)}`
   ];
 
@@ -3649,7 +3654,8 @@ function formatSourceCandidateReviewFlagGroup(
   if (group.topIdentityCandidateCount > 1) {
     parts.push(
       `topIdentityCandidates=${group.topIdentityCandidateCount}`,
-      `duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(group))}`
+      `duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(group))}`,
+      `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
     );
   }
 
@@ -3685,7 +3691,8 @@ function formatSourceCandidateReviewOverviewGroup(
   if (group.topIdentityCandidateCount > 1) {
     parts.push(
       `topIdentityCandidates=${group.topIdentityCandidateCount}`,
-      `duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(group))}`
+      `duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(group))}`,
+      `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
     );
   }
 
