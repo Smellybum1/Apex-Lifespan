@@ -1863,7 +1863,12 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate curation handoff: total=3",
         '- status="Claim link missing" publicSourcePacketReady=false: 1',
         '- status="Extraction pending" publicSourcePacketReady=false: 1',
-        '- status="Public source packet ready" publicSourcePacketReady=true: 1'
+        '- status="Public source packet ready" publicSourcePacketReady=true: 1',
+        "Source-candidate read-only next commands",
+        'reviewOverview="--candidate-review-overview --candidate-review-overview-limit 10"',
+        'duplicates="--candidates --candidate-duplicates"',
+        'queuedJobs="--jobs --jobs-status queued"',
+        'curationHandoff="--candidate-curation-handoff"'
       ].join("\n")
     );
   });
@@ -3879,7 +3884,12 @@ describe("runSourceCandidateJobCommand", () => {
       [
         "Source-candidate ingestion jobs: total=0",
         "Source-candidate backlog: total=0",
-        "Source-candidate curation handoff: total=0"
+        "Source-candidate curation handoff: total=0",
+        "Source-candidate read-only next commands",
+        'reviewOverview="--candidate-review-overview --candidate-review-overview-limit 10"',
+        'duplicates="--candidates --candidate-duplicates"',
+        'queuedJobs="--jobs --jobs-status queued"',
+        'curationHandoff="--candidate-curation-handoff"'
       ].join("\n")
     );
   });

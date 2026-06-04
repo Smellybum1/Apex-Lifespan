@@ -2219,7 +2219,7 @@ export function commandUsage() {
     "  --claim-id <id>                   Claim metadata for queued jobs.",
     "  --pubmed-retmax <count>           PubMed result limit passed to NCBI (max 20).",
     "  --clinical-trial-page-size <count> ClinicalTrials.gov page size (max 20).",
-    "  --summary                         Print read-only source-candidate workflow and curation handoff counts.",
+    "  --summary                         Print read-only workflow counts and next-command hints.",
     "  --help                            Show this help."
   ].join("\n");
 }
@@ -3239,7 +3239,18 @@ function formatSourceCandidateWorkflowSummary(
   return [
     formatSourceCandidateIngestionJobSummary(jobSummary),
     formatSourceCandidateBacklogSummary(backlogSummary),
-    formatSourceCandidateCurationHandoffSummary(curationHandoffSummary)
+    formatSourceCandidateCurationHandoffSummary(curationHandoffSummary),
+    formatSourceCandidateWorkflowSummaryCommandHints()
+  ].join("\n");
+}
+
+function formatSourceCandidateWorkflowSummaryCommandHints() {
+  return [
+    "Source-candidate read-only next commands",
+    `reviewOverview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`,
+    `duplicates=${quote("--candidates --candidate-duplicates")}`,
+    `queuedJobs=${quote("--jobs --jobs-status queued")}`,
+    `curationHandoff=${quote("--candidate-curation-handoff")}`
   ].join("\n");
 }
 
