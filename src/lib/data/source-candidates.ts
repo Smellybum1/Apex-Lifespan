@@ -257,13 +257,22 @@ export type ReviewedSourceCandidateDecision = Exclude<
   "Pending review"
 >;
 
-export interface RecordSourceCandidateDecisionInput {
+interface RecordSourceCandidateDecisionInputBase {
   dedupeKey: string;
-  decision: ReviewedSourceCandidateDecision;
-  acceptedReferenceId?: string;
-  reviewNote?: string;
   reviewedAt?: Date;
 }
+
+export type RecordSourceCandidateDecisionInput =
+  | (RecordSourceCandidateDecisionInputBase & {
+      acceptedReferenceId: string;
+      decision: "Accepted";
+      reviewNote: string;
+    })
+  | (RecordSourceCandidateDecisionInputBase & {
+      acceptedReferenceId?: never;
+      decision: "Rejected";
+      reviewNote: string;
+    });
 
 const DEFAULT_REVIEW_QUEUE_LIMIT = 25;
 const MAX_REVIEW_QUEUE_LIMIT = 100;

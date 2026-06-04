@@ -65,6 +65,7 @@ import {
   summarizeSourceCandidateBacklog,
   upsertSourceCandidateDrafts
 } from "@/lib/data/source-candidates";
+import type { RecordSourceCandidateDecisionInput } from "@/lib/data/source-candidates";
 import type { SourceCandidate } from "@/lib/types";
 
 beforeEach(() => {
@@ -2537,7 +2538,7 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Rejected"
-      })
+      } as RecordSourceCandidateDecisionInput)
     ).rejects.toThrow("Rejected source candidates require a reviewNote.");
 
     await expect(
@@ -2558,7 +2559,7 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: "ref-creatine-position-stand"
-      })
+      } as RecordSourceCandidateDecisionInput)
     ).rejects.toThrow("Accepted source candidates require a reviewNote.");
 
     await expect(
@@ -2579,7 +2580,8 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
-        acceptedReferenceId: " "
+        acceptedReferenceId: " ",
+        reviewNote: "Full-text reviewed."
       })
     ).rejects.toThrow("Accepted source candidates require an acceptedReferenceId.");
 

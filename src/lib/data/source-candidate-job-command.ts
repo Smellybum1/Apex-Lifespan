@@ -476,12 +476,20 @@ export async function runSourceCandidateJobCommand(
     }
 
     if (options.reviewDecision && options.reviewCandidateDedupeKey) {
-      const candidate = await recordDecision({
-        dedupeKey: options.reviewCandidateDedupeKey,
-        decision: options.reviewDecision,
-        acceptedReferenceId: options.acceptedReferenceId,
-        reviewNote: options.reviewNote
-      });
+      const candidate = await recordDecision(
+        options.reviewDecision === "Accepted"
+          ? {
+              acceptedReferenceId: options.acceptedReferenceId!,
+              dedupeKey: options.reviewCandidateDedupeKey,
+              decision: "Accepted",
+              reviewNote: options.reviewNote!
+            }
+          : {
+              dedupeKey: options.reviewCandidateDedupeKey,
+              decision: "Rejected",
+              reviewNote: options.reviewNote!
+            }
+      );
 
       stdout(formatReviewedSourceCandidate(candidate));
       return 0;
