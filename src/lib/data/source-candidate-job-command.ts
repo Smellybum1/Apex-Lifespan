@@ -2720,19 +2720,21 @@ function formatReviewedSourceCandidate(candidate: SourceCandidate) {
 }
 
 function formatLinkedSourceCandidateClaim(result: LinkedSourceCandidateClaim) {
+  const key = safeCandidateKey(result.candidate.dedupeKey);
   const parts = [
     "[CLAIM_LINKED] source-candidate",
     result.candidate.source,
     result.candidate.region,
     `dedupe=${quote(result.candidate.dedupeKey)}`,
-    `key=${safeCandidateKey(result.candidate.dedupeKey)}`,
+    `key=${key}`,
     `reference=${result.acceptedReference.id}`,
     `claim=${result.claimLink.claimId}`,
     `created=${result.created}`,
     `relevance=${result.claimLink.relevance}`,
     `status=${quote(result.status.status)}`,
     `publicSourcePacketReady=${result.status.publicSourcePacketReady}`,
-    `nextAction=${quote(result.status.nextAction)}`
+    `nextAction=${quote(result.status.nextAction)}`,
+    ...formatSourceCandidateCurationWriteFields(result.status, key)
   ];
 
   if (result.claimLink.note) {
@@ -2743,18 +2745,20 @@ function formatLinkedSourceCandidateClaim(result: LinkedSourceCandidateClaim) {
 }
 
 function formatExtractedSourceCandidateStudy(result: ExtractedSourceCandidateStudy) {
+  const key = safeCandidateKey(result.candidate.dedupeKey);
   const parts = [
     "[STUDY_EXTRACTED] source-candidate",
     result.candidate.source,
     result.candidate.region,
     `dedupe=${quote(result.candidate.dedupeKey)}`,
-    `key=${safeCandidateKey(result.candidate.dedupeKey)}`,
+    `key=${key}`,
     `reference=${result.acceptedReference.id}`,
     `study=${result.study.id}`,
     `created=${result.created}`,
     `status=${quote(result.status.status)}`,
     `publicSourcePacketReady=${result.status.publicSourcePacketReady}`,
     `nextAction=${quote(result.status.nextAction)}`,
+    ...formatSourceCandidateCurationWriteFields(result.status, key),
     `title=${quote(result.study.title)}`
   ];
 

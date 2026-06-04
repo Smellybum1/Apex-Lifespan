@@ -4042,7 +4042,7 @@ describe("runSourceCandidateJobCommand", () => {
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
-      `[CLAIM_LINKED] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} reference=ref-creatine-position-stand claim=creatine-strength created=true relevance=4 status="Extraction pending" publicSourcePacketReady=false nextAction="Add structured study extraction for the accepted reference." note="Primary source for this claim."`
+      `[CLAIM_LINKED] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} reference=ref-creatine-position-stand claim=creatine-strength created=true relevance=4 status="Extraction pending" publicSourcePacketReady=false nextAction="Add structured study extraction for the accepted reference." nextWrite="studyExtraction" writeReady=true writeReview="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}" note="Primary source for this claim."`
     );
   });
 
@@ -4154,7 +4154,7 @@ describe("runSourceCandidateJobCommand", () => {
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
-      `[STUDY_EXTRACTED] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} reference=ref-creatine-position-stand study=study-creatine-issn created=true status="Public source packet ready" publicSourcePacketReady=true nextAction="Review for public source packet inclusion." title="Creatine position stand extraction" candidateClaim=creatine-strength year=2017`
+      `[STUDY_EXTRACTED] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} reference=ref-creatine-position-stand study=study-creatine-issn created=true status="Public source packet ready" publicSourcePacketReady=true nextAction="Review for public source packet inclusion." nextWrite="none" writeReady=false title="Creatine position stand extraction" candidateClaim=creatine-strength year=2017`
     );
   });
 

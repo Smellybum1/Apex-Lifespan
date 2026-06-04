@@ -54,6 +54,7 @@ Read-only output rules:
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
 - `--candidate-curation-handoff` rows include read-only `nextWrite`/`writeReady` fields and a `writeReview` draft drill-in when a guarded curation write is the next local operator step.
 - `--candidate-curation-status` rows include read-only `nextWrite`/`writeReady` fields and a draft review drill-in when a guarded curation write is the next local operator step.
+- `--link-candidate-claim` and `--extract-candidate-study` result rows echo `nextWrite`/`writeReady` plus `writeReview` when a follow-on guarded curation write is available; the fields are informational and do not promote candidates.
 - When a row or group emits both `flags="..."` and `flagFocus="..."`, `flags` stays broad and `flagFocus` adds the selected review flag, or the first listed flag when no flag filter is active, plus the row context filters for claim, intervention, region, and source for an exact read-only focus view.
 - `--candidate-detail` prints one record plus read-only packet/reference/sibling/group/curation hints, duplicate hints plus `duplicateCaution` when the PMID/NCT identity repeats, compact `reviewFlags` plus `flags="..."` and `flagFocus="..."` drill-ins, and explanatory `reviewCautions` when a claim-scoped candidate needs extra broad-query/off-claim scrutiny.
 - `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."`, `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft hints, top-identity duplicate hints, and `topReviewFlags` plus `flags="..."` and first-flag `flagFocus="..."` drill-ins when applicable. Unscoped groups include `--candidate-claim-missing` and/or `--candidate-intervention-missing` in generated list hints, and repeated PMID/NCT identities are preferred for top-candidate tie-breaks when triage scores match.
@@ -86,6 +87,7 @@ Write boundaries:
 - `--extract-candidate-study` writes only a `Study` row after acceptance, matching-reference, claim-context, and claim-link gates pass. The operator must supply manual extraction fields.
 - None of these commands create references, source documents, public evidence promotions, or automatic medical claims.
 - `--candidate-curation-draft` can print guarded `commandTemplate` values for these writes plus `writeReady`/`blockedUntil` fields, but the operator must still run the write command explicitly and replace study-extraction placeholders with human-reviewed fields.
+- Write result rows can show the next curation write readiness, but they never run the next write automatically.
 
 ## Run Controls
 
