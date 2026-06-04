@@ -33,7 +33,10 @@ describe("commandUsage", () => {
       "--candidate-siblings <dedupe-key> Print source-candidate siblings with match reasons and packet hints."
     );
     expect(commandUsage()).toContain(
-      "--candidate-curation-draft <dedupe-key> Print read-only claim-link and study-extraction draft fields."
+      "--candidate-curation-draft <dedupe-key> Print read-only claim-link/study draft fields with command hints."
+    );
+    expect(commandUsage()).toContain(
+      "--candidate-curation-status <dedupe-key> Print curation handoff status, next action, and command hints."
     );
     expect(commandUsage()).toContain(
       "--candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
@@ -2221,6 +2224,10 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate curation status",
         'dedupe="pubmed|au|creatine|28615996"',
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
+        `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        'groupList="--candidates --candidate-claim-id creatine-strength --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Accepted"',
         'reviewStatus="Human reviewed"',
         'status="Public source packet ready"',
@@ -2280,6 +2287,10 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate curation status",
         'dedupe="pubmed|au|creatine|28615996"',
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
+        `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        'groupList="--candidates --candidate-claim-id creatine-strength --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Accepted"',
         'reviewStatus="Human reviewed"',
         'status="Accepted reference mismatch"',
@@ -2321,6 +2332,10 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate curation status",
         'dedupe="pubmed|au|creatine|28615996"',
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
+        `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        'groupList="--candidates --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Pending review"',
         'reviewStatus="Unreviewed AI draft"',
         'status="Not accepted"',
@@ -2436,6 +2451,10 @@ describe("runSourceCandidateJobCommand", () => {
         "readOnly=true",
         'dedupe="pubmed|au|creatine|28615996"',
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
+        `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        'groupList="--candidates --candidate-claim-id creatine-strength --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        `curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Accepted"',
         'reviewStatus="Human reviewed"',
         'status="Claim link missing"',
@@ -2498,6 +2517,10 @@ describe("runSourceCandidateJobCommand", () => {
         "readOnly=true",
         'dedupe="pubmed|au|creatine|28615996"',
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
+        `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        'groupList="--candidates --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        `curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Pending review"',
         'reviewStatus="Unreviewed AI draft"',
         'status="Not accepted"',

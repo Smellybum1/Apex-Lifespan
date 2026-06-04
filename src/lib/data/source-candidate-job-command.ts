@@ -2160,8 +2160,8 @@ export function commandUsage() {
     "  --job-id <id>                     Run one specific ingestion job.",
     "  --limit <count>                   Run up to count queued jobs (default 1, max 25).",
     "  --candidate-detail <dedupe-key>   Print one source-candidate detail record.",
-    "  --candidate-curation-draft <dedupe-key> Print read-only claim-link and study-extraction draft fields.",
-    "  --candidate-curation-status <dedupe-key> Print accepted candidate curation handoff status and next action.",
+    "  --candidate-curation-draft <dedupe-key> Print read-only claim-link/study draft fields with command hints.",
+    "  --candidate-curation-status <dedupe-key> Print curation handoff status, next action, and command hints.",
     "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows and next actions.",
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
     "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
@@ -2504,6 +2504,7 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
     "readOnly=true",
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    ...formatSourceCandidateCurationCommandHints(candidate, "draft"),
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`,
     `status=${quote(status.status)}`,
@@ -2594,6 +2595,7 @@ function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStat
     "Source-candidate curation status",
     `dedupe=${quote(status.candidate.dedupeKey)}`,
     `key=${safeCandidateKey(status.candidate.dedupeKey)}`,
+    ...formatSourceCandidateCurationCommandHints(status.candidate, "status"),
     `decision=${quote(status.candidate.decision)}`,
     `reviewStatus=${quote(status.candidate.reviewStatus)}`,
     `status=${quote(status.status)}`,
@@ -2634,6 +2636,25 @@ function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStat
   }
 
   return lines.join("\n");
+}
+
+function formatSourceCandidateCurationCommandHints(
+  candidate: SourceCandidate,
+  surface: "draft" | "status"
+) {
+  const key = safeCandidateKey(candidate.dedupeKey);
+  const pairedCurationCommand = surface === "draft"
+    ? `--candidate-curation-status ${key}`
+    : `--candidate-curation-draft ${key}`;
+
+  return [
+    `packet=${quote(`--candidate-review-packet ${key}`)}`,
+    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
+    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
+    `curation${surface === "draft" ? "Status" : "Draft"}=${quote(
+      pairedCurationCommand
+    )}`
+  ];
 }
 
 function formatSourceCandidateCurationHandoff(

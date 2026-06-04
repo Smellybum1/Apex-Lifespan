@@ -42,6 +42,7 @@ Reference-match headings print `packet="..."` and `groupList="..."`; draft refer
 Review packets print read-only follow-up commands, conditional duplicate hints, and accept/reject templates; write templates still require explicit human review.
 Sibling rows print `packet="..."` for read-only packet review of related candidates.
 Duplicate identity rows print `identityList="..."` for the filtered duplicate group and `packet="..."` for each candidate row.
+Curation status and draft rows print read-only packet, reference-match, group-list, and paired curation-view hints.
 
 ## Curation Readiness
 
