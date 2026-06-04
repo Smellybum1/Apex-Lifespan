@@ -342,7 +342,17 @@ export async function runSourceCandidateJobCommand(
         limit: options.candidateCurationHandoffLimit
       });
 
-      stdout(formatSourceCandidateCurationHandoff(statuses));
+      const duplicateIdentityCandidateCounts =
+        await sourceCandidateDuplicateIdentityCandidateCountMap(
+          statuses.map((status) => status.candidate),
+          listSiblings
+        );
+
+      stdout(
+        formatSourceCandidateCurationHandoff(statuses, {
+          duplicateIdentityCandidateCounts
+        })
+      );
       return 0;
     }
 
@@ -356,7 +366,15 @@ export async function runSourceCandidateJobCommand(
         return 1;
       }
 
-      stdout(formatSourceCandidateCurationDraft(draft));
+      stdout(
+        formatSourceCandidateCurationDraft(draft, {
+          duplicateIdentityCandidateCount:
+            await sourceCandidateDuplicateIdentityCandidateCountForDedupeKey(
+              draft.status.candidate.dedupeKey,
+              listSiblings
+            )
+        })
+      );
       return 0;
     }
 
@@ -372,7 +390,15 @@ export async function runSourceCandidateJobCommand(
         return 1;
       }
 
-      stdout(formatSourceCandidateCurationStatus(status));
+      stdout(
+        formatSourceCandidateCurationStatus(status, {
+          duplicateIdentityCandidateCount:
+            await sourceCandidateDuplicateIdentityCandidateCountForDedupeKey(
+              status.candidate.dedupeKey,
+              listSiblings
+            )
+        })
+      );
       return 0;
     }
 
@@ -2968,7 +2994,57 @@ function sourceCandidateSiblingDuplicateIdentityCount(
   ).length;
 }
 
-function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft) {
+async function sourceCandidateDuplicateIdentityCandidateCountForDedupeKey(
+  dedupeKey: string,
+  listSiblings: NonNullable<SourceCandidateJobCommandRunners["listSiblings"]>
+) {
+  const siblings = await listSiblings(dedupeKey, {});
+
+  return siblings ? sourceCandidateSiblingDuplicateIdentityCount(siblings) : 1;
+}
+
+async function sourceCandidateDuplicateIdentityCandidateCountMap(
+  candidates: SourceCandidate[],
+  listSiblings: NonNullable<SourceCandidateJobCommandRunners["listSiblings"]>
+) {
+  const counts = await Promise.all(
+    candidates.map(async (candidate) => [
+      candidate.dedupeKey,
+      await sourceCandidateDuplicateIdentityCandidateCountForDedupeKey(
+        candidate.dedupeKey,
+        listSiblings
+      )
+    ] as const)
+  );
+
+  return new Map(counts);
+}
+
+function formatSourceCandidateDuplicateIdentityFields(
+  candidate: SourceCandidate,
+  duplicateIdentityCandidateCount: number
+) {
+  if (duplicateIdentityCandidateCount <= 1) {
+    return [];
+  }
+
+  return [
+    `duplicateIdentityCandidates=${duplicateIdentityCandidateCount}`,
+    `duplicates=${quote(
+      formatSourceCandidateDuplicateIdentityListCommand({
+        externalId: candidate.externalId,
+        limit: duplicateIdentityCandidateCount,
+        source: candidate.source
+      })
+    )}`,
+    `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
+  ];
+}
+
+function formatSourceCandidateCurationDraft(
+  draft: SourceCandidateCurationDraft,
+  options: { duplicateIdentityCandidateCount?: number } = {}
+) {
   const status = draft.status;
   const candidate = status.candidate;
   const reviewFlagFields = sourceCandidateReviewFlagFields("reviewFlags", candidate);
@@ -2999,6 +3075,13 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
   if (candidate.reviewNote) {
     lines.push(`note=${quote(candidate.reviewNote)}`);
   }
+
+  lines.push(
+    ...formatSourceCandidateDuplicateIdentityFields(
+      candidate,
+      options.duplicateIdentityCandidateCount ?? 1
+    )
+  );
 
   if (reviewFlagFields.length > 0) {
     lines.push(...reviewFlagFields);
@@ -3082,7 +3165,10 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
   return lines.join("\n");
 }
 
-function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStatus) {
+function formatSourceCandidateCurationStatus(
+  status: SourceCandidateCurationStatus,
+  options: { duplicateIdentityCandidateCount?: number } = {}
+) {
   const reviewFlagFields = sourceCandidateReviewFlagFields(
     "reviewFlags",
     status.candidate
@@ -3113,6 +3199,13 @@ function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStat
   if (status.candidate.reviewNote) {
     lines.push(`note=${quote(status.candidate.reviewNote)}`);
   }
+
+  lines.push(
+    ...formatSourceCandidateDuplicateIdentityFields(
+      status.candidate,
+      options.duplicateIdentityCandidateCount ?? 1
+    )
+  );
 
   if (reviewFlagFields.length > 0) {
     lines.push(...reviewFlagFields);
@@ -3176,7 +3269,8 @@ function formatSourceCandidateCurationCommandHints(
 }
 
 function formatSourceCandidateCurationHandoff(
-  statuses: SourceCandidateCurationStatus[]
+  statuses: SourceCandidateCurationStatus[],
+  options: { duplicateIdentityCandidateCounts?: Map<string, number> } = {}
 ) {
   if (statuses.length === 0) {
     return "Source-candidate curation handoff: total=0";
@@ -3184,12 +3278,18 @@ function formatSourceCandidateCurationHandoff(
 
   return [
     `Source-candidate curation handoff: total=${statuses.length}`,
-    ...statuses.map(formatSourceCandidateCurationHandoffItem)
+    ...statuses.map((status) =>
+      formatSourceCandidateCurationHandoffItem(status, {
+        duplicateIdentityCandidateCount:
+          options.duplicateIdentityCandidateCounts?.get(status.candidate.dedupeKey)
+      })
+    )
   ].join("\n");
 }
 
 function formatSourceCandidateCurationHandoffItem(
-  status: SourceCandidateCurationStatus
+  status: SourceCandidateCurationStatus,
+  options: { duplicateIdentityCandidateCount?: number } = {}
 ) {
   const candidate = status.candidate;
   const reviewFlagFields = sourceCandidateReviewFlagFields("reviewFlags", candidate);
@@ -3208,6 +3308,13 @@ function formatSourceCandidateCurationHandoffItem(
   if (reviewFlagFields.length > 0) {
     parts.push(...reviewFlagFields);
   }
+
+  parts.push(
+    ...formatSourceCandidateDuplicateIdentityFields(
+      candidate,
+      options.duplicateIdentityCandidateCount ?? 1
+    )
+  );
 
   if (status.acceptedReferenceId) {
     parts.push(`acceptedReference=${status.acceptedReferenceId}`);
@@ -3316,19 +3423,12 @@ function formatSourceCandidateReferenceMatchHeading(
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
 
-  if (duplicateIdentityCandidateCount > 1) {
-    parts.push(
-      `duplicateIdentityCandidates=${duplicateIdentityCandidateCount}`,
-      `duplicates=${quote(
-        formatSourceCandidateDuplicateIdentityListCommand({
-          externalId: candidate.externalId,
-          limit: duplicateIdentityCandidateCount,
-          source: candidate.source
-        })
-      )}`,
-      `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
-    );
-  }
+  parts.push(
+    ...formatSourceCandidateDuplicateIdentityFields(
+      candidate,
+      duplicateIdentityCandidateCount
+    )
+  );
 
   if (reviewFlagFields.length > 0) {
     parts.push(...reviewFlagFields);

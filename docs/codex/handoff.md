@@ -21,7 +21,7 @@ Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candid
 - Source-candidate CLI output now provides copyable read-only review/curation drill-ins and Not-accepted accept-gate hints across summary, jobs, queues, detail, packets, reference matches, siblings, duplicates, and curation views; curation status/draft/handoff rows include accepted-reference/review-note fields for reviewed rows; see `docs/codex/source-candidate-workflow.md` for the compact catalog.
 - Packet command hints include accepted-reference match counts and explicit accept-gate booleans; packet/reference/sibling/curation drill-ins share one local formatter helper in `src/lib/data/source-candidate-job-command.ts`, and exact CLI output is covered by source-candidate command tests.
 - Candidate filters support read-only `--candidate-claim-missing` and `--candidate-intervention-missing`; generated list hints use them when a group or candidate lacks claim/intervention context.
-- Duplicate identity review surfaces include `duplicateCaution` prompts plus exact read-only duplicate/list hints in overview, flags, packets, reference matches, and duplicate rows; accepted-reference/review-note fields for reviewed rows; and explicit `intervention`/`claim` values, including `none`, so repeated PMID/NCT identities can be reviewed in scoped or unscoped context before any decision.
+- Duplicate identity review surfaces include `duplicateCaution` prompts plus exact read-only duplicate/list hints in overview, flags, packets, reference matches, curation views, and duplicate rows; accepted-reference/review-note fields for reviewed rows; and explicit `intervention`/`claim` values, including `none`, so repeated PMID/NCT identities can be reviewed in scoped or unscoped context before any decision.
 - Duplicate identity scans now surface mixed-decision identities by default, while explicit `--candidate-decision` filters still narrow the scan.
 - Review overview top-candidate selection now prefers repeated PMID/NCT identities when triage scores tie, so mixed accepted/pending duplicates are more visible from the overview.
 - Flagged summary, overview, and candidate-level rows include caution text plus context-scoped read-only `flagFocus="..."` hints while preserving broader `flags="..."` drill-ins; filtered review-flag rows focus the selected flag.
@@ -34,7 +34,7 @@ Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candid
 - Last local snapshot: 15 ingestion jobs total, 0 queued jobs, 49 pending candidates, 1 accepted candidate, and curation handoff `total=1`.
 - Pending backlog split: PubMed AU 19 and ClinicalTrials.gov AU 30.
 - Accepted candidate: scoped PubMed AU `PMID 42141930` for `claim=creatine-strength` / `intervention=creatine`, accepted with `ref-pubmed-42141930` and human review note: "Human reviewed PMID 42141930; relevant to creatine and lean mass/strength outcomes, but needs curated reference before promotion."
-- Current curation handoff status for accepted `PMID 42141930`: `Claim link missing`, `publicSourcePacketReady=false`; curation status/draft/handoff show the stored `reviewed` timestamp and human review note, but do not link or extract without explicit human-owned curation.
+- Current curation handoff status for accepted `PMID 42141930`: `Claim link missing`, `publicSourcePacketReady=false`; curation status/draft/handoff show the stored `reviewed` timestamp, human review note, and duplicate identity caution, but do not link or extract without explicit human-owned curation.
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 - Review overview currently has 9 pending groups. Useful entry point: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
 - Review flags currently show 3 flagged top groups: two broad `vitamin-d-deficiency` safety-query groups and one `creatine-lifespan` low-title-overlap group. Useful focus command: `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`.
@@ -48,6 +48,17 @@ Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candid
 Current code validation for reference-match duplicate cautions:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
 - `npm run ingest:sources -- --candidate-reference-matches <pending unscoped PMID 42141930 key>` (read-only smoke)
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `git diff --check` (only LF-to-CRLF warnings for modified files)
+
+Current code validation for curation duplicate cautions:
+- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --candidate-curation-status <accepted PMID 42141930 key>` (read-only smoke)
+- `npm run ingest:sources -- --candidate-curation-draft <accepted PMID 42141930 key>` (read-only smoke)
+- `npm run ingest:sources -- --candidate-curation-handoff` (read-only smoke)
 - `npm run test`
 - `npm run lint`
 - `npm run dev:stop`

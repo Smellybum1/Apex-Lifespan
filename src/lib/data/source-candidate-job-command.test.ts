@@ -2708,17 +2708,37 @@ describe("runSourceCandidateJobCommand", () => {
         }
       ]
     });
+    const listSiblings = vi.fn().mockResolvedValue(
+      sourceCandidateSiblings({
+        target: sourceCandidate({
+          dedupeKey: "pubmed|au|creatine|28615996",
+          source: "PubMed",
+          externalId: "28615996"
+        }),
+        siblings: [
+          {
+            candidate: sourceCandidate({
+              dedupeKey: "pubmed|au|creatine-aging|28615996",
+              source: "PubMed",
+              externalId: "28615996"
+            }),
+            matchReasons: ["Same source/external id"]
+          }
+        ]
+      })
+    );
     const runNextJob = vi.fn();
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-status", "pubmed|au|creatine|28615996"],
         { stdout },
-        { getCurationStatus, runNextJob }
+        { getCurationStatus, listSiblings, runNextJob }
       )
     ).resolves.toBe(0);
 
     expect(getCurationStatus).toHaveBeenCalledWith("pubmed|au|creatine|28615996");
+    expect(listSiblings).toHaveBeenCalledWith("pubmed|au|creatine|28615996", {});
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
@@ -2737,6 +2757,9 @@ describe("runSourceCandidateJobCommand", () => {
         "publicSourcePacketReady=true",
         "reviewed=2026-06-02T03:00:00.000Z",
         'note="Matched PMID and claim context."',
+        "duplicateIdentityCandidates=2",
+        'duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2"',
+        `duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}"`,
         "acceptedReference=ref-creatine-position-stand",
         'acceptedReferenceTitle="Creatine position stand"',
         "acceptedReferenceUrl=https://pubmed.ncbi.nlm.nih.gov/28615996/",
@@ -2777,12 +2800,13 @@ describe("runSourceCandidateJobCommand", () => {
       status: "Accepted reference mismatch",
       studies: []
     });
+    const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-status", "pubmed|au|creatine|28615996"],
         { stdout },
-        { getCurationStatus }
+        { getCurationStatus, listSiblings }
       )
     ).resolves.toBe(0);
 
@@ -2836,12 +2860,13 @@ describe("runSourceCandidateJobCommand", () => {
       status: "Accepted reference missing",
       studies: []
     });
+    const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-status", candidateKey],
         { stdout },
-        { getCurationStatus }
+        { getCurationStatus, listSiblings }
       )
     ).resolves.toBe(0);
 
@@ -2882,13 +2907,14 @@ describe("runSourceCandidateJobCommand", () => {
       status: "Not accepted",
       studies: []
     });
+    const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
     const runNextJob = vi.fn();
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-status", "pubmed|au|creatine|28615996"],
         { stdout },
-        { getCurationStatus, runNextJob }
+        { getCurationStatus, listSiblings, runNextJob }
       )
     ).resolves.toBe(0);
 
@@ -3004,17 +3030,37 @@ describe("runSourceCandidateJobCommand", () => {
         year: 2017
       }
     });
+    const listSiblings = vi.fn().mockResolvedValue(
+      sourceCandidateSiblings({
+        target: sourceCandidate({
+          dedupeKey: "pubmed|au|creatine|28615996",
+          source: "PubMed",
+          externalId: "28615996"
+        }),
+        siblings: [
+          {
+            candidate: sourceCandidate({
+              dedupeKey: "pubmed|au|creatine-aging|28615996",
+              source: "PubMed",
+              externalId: "28615996"
+            }),
+            matchReasons: ["Same source/external id"]
+          }
+        ]
+      })
+    );
     const runNextJob = vi.fn();
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-draft", "pubmed|au|creatine|28615996"],
         { stdout },
-        { getCurationDraft, runNextJob }
+        { getCurationDraft, listSiblings, runNextJob }
       )
     ).resolves.toBe(0);
 
     expect(getCurationDraft).toHaveBeenCalledWith("pubmed|au|creatine|28615996");
+    expect(listSiblings).toHaveBeenCalledWith("pubmed|au|creatine|28615996", {});
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
@@ -3034,6 +3080,9 @@ describe("runSourceCandidateJobCommand", () => {
         "publicSourcePacketReady=false",
         "reviewed=2026-06-02T03:00:00.000Z",
         'note="Matched PMID and claim context."',
+        "duplicateIdentityCandidates=2",
+        'duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2"',
+        `duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}"`,
         "acceptedReference=ref-creatine-position-stand",
         'acceptedReferenceTitle="Creatine position stand"',
         "acceptedReferenceUrl=https://pubmed.ncbi.nlm.nih.gov/28615996/",
@@ -3076,12 +3125,13 @@ describe("runSourceCandidateJobCommand", () => {
         studies: []
       }
     });
+    const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-draft", "pubmed|au|creatine|28615996"],
         { stdout },
-        { getCurationDraft }
+        { getCurationDraft, listSiblings }
       )
     ).resolves.toBe(0);
 
@@ -3137,12 +3187,13 @@ describe("runSourceCandidateJobCommand", () => {
         studies: []
       }
     });
+    const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-draft", candidateKey],
         { stdout },
-        { getCurationDraft }
+        { getCurationDraft, listSiblings }
       )
     ).resolves.toBe(0);
 
@@ -3249,6 +3300,37 @@ describe("runSourceCandidateJobCommand", () => {
         ]
       }
     ]);
+    const listSiblings = vi
+      .fn()
+      .mockResolvedValueOnce(
+        sourceCandidateSiblings({
+          target: sourceCandidate({
+            dedupeKey: "pubmed|au|creatine|28615996",
+            source: "PubMed",
+            externalId: "28615996"
+          }),
+          siblings: [
+            {
+              candidate: sourceCandidate({
+                dedupeKey: "pubmed|au|creatine-aging|28615996",
+                source: "PubMed",
+                externalId: "28615996"
+              }),
+              matchReasons: ["Same source/external id"]
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(
+        sourceCandidateSiblings({
+          target: sourceCandidate({
+            dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+            source: "ClinicalTrials.gov",
+            externalId: "NCT123"
+          }),
+          siblings: []
+        })
+      );
     const runNextJob = vi.fn();
 
     await expect(
@@ -3269,7 +3351,7 @@ describe("runSourceCandidateJobCommand", () => {
           "extraction-pending"
         ],
         { stdout },
-        { listCurationHandoff, runNextJob }
+        { listCurationHandoff, listSiblings, runNextJob }
       )
     ).resolves.toBe(0);
 
@@ -3283,13 +3365,18 @@ describe("runSourceCandidateJobCommand", () => {
       status: "Extraction pending"
     });
     expect(runNextJob).not.toHaveBeenCalled();
+    expect(listSiblings).toHaveBeenCalledWith("pubmed|au|creatine|28615996", {});
+    expect(listSiblings).toHaveBeenCalledWith(
+      "clinicaltrials.gov|au|creatine|nct123",
+      {}
+    );
     const creatineKey = safeCandidateKey("pubmed|au|creatine|28615996");
     const agingKey = safeCandidateKey("clinicaltrials.gov|au|creatine|nct123");
 
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate curation handoff: total=2",
-        `- status="Extraction pending" nextAction="Add structured study extraction for the accepted reference." publicSourcePacketReady=false PubMed AU dedupe="pubmed|au|creatine|28615996" key=${creatineKey} packet="--candidate-review-packet ${creatineKey}" referenceMatches="--candidate-reference-matches ${creatineKey}" siblings="--candidate-siblings ${creatineKey}" curationStatus="--candidate-curation-status ${creatineKey}" curationDraft="--candidate-curation-draft ${creatineKey}" title="Creatine position stand" acceptedReference=ref-creatine-position-stand reviewed=2026-06-02T03:00:00.000Z note="Matched PMID and claim context." candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0`,
+        `- status="Extraction pending" nextAction="Add structured study extraction for the accepted reference." publicSourcePacketReady=false PubMed AU dedupe="pubmed|au|creatine|28615996" key=${creatineKey} packet="--candidate-review-packet ${creatineKey}" referenceMatches="--candidate-reference-matches ${creatineKey}" siblings="--candidate-siblings ${creatineKey}" curationStatus="--candidate-curation-status ${creatineKey}" curationDraft="--candidate-curation-draft ${creatineKey}" title="Creatine position stand" duplicateIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2" duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}" acceptedReference=ref-creatine-position-stand reviewed=2026-06-02T03:00:00.000Z note="Matched PMID and claim context." candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0`,
         `- status="Claim link missing" nextAction="Link the accepted reference to the candidate claim before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${agingKey} packet="--candidate-review-packet ${agingKey}" referenceMatches="--candidate-reference-matches ${agingKey}" siblings="--candidate-siblings ${agingKey}" curationStatus="--candidate-curation-status ${agingKey}" curationDraft="--candidate-curation-draft ${agingKey}" title="Creatine and aging" acceptedReference=trial-nct123 reviewed=2026-06-02T04:00:00.000Z note="Needs claim link before promotion." candidateClaim=creatine-aging candidateClaimLinked=false claimLinks=0 studies=1`
       ].join("\n")
     );
@@ -3349,12 +3436,13 @@ describe("runSourceCandidateJobCommand", () => {
         studies: []
       }
     ]);
+    const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-handoff"],
         { stdout },
-        { listCurationHandoff }
+        { listCurationHandoff, listSiblings }
       )
     ).resolves.toBe(0);
 
@@ -5265,6 +5353,14 @@ function sourceCandidate(overrides: Record<string, unknown> = {}) {
     decision: "Pending review",
     reviewStatus: "Unreviewed AI draft",
     metadata: {},
+    ...overrides
+  };
+}
+
+function sourceCandidateSiblings(overrides: Record<string, unknown> = {}) {
+  return {
+    target: sourceCandidate(),
+    siblings: [],
     ...overrides
   };
 }
