@@ -30,7 +30,7 @@ describe("commandUsage", () => {
       "--candidates                      Print source-candidate review rows with packet hints."
     );
     expect(commandUsage()).toContain(
-      "--candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons."
+      "--candidate-siblings <dedupe-key> Print source-candidate siblings with match reasons and packet hints."
     );
     expect(commandUsage()).toContain(
       "--candidate-curation-draft <dedupe-key> Print read-only claim-link and study-extraction draft fields."
@@ -2109,7 +2109,7 @@ describe("runSourceCandidateJobCommand", () => {
         ].join("\n"),
         [
           'Source-candidate siblings: total=1 target="pubmed|au|creatine|28615996" targetKey=b64:cHVibWVkfGF1fGNyZWF0aW5lfDI4NjE1OTk2 candidate="Creatine position stand" source="PubMed" externalId="28615996" query="creatine strength" region="AU" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-strength',
-          `- match="Same source/external id, Same intervention context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine-aging|28615996" key=${safeCandidateKey("pubmed|au|creatine-aging|28615996")} externalId="28615996" query="creatine aging" title="Creatine duplicate" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-aging`
+          `- match="Same source/external id, Same intervention context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine-aging|28615996" key=${safeCandidateKey("pubmed|au|creatine-aging|28615996")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-aging|28615996")}" externalId="28615996" query="creatine aging" title="Creatine duplicate" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-aging`
         ].join("\n")
       ].join("\n\n")
     );
@@ -2812,8 +2812,8 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         `Source-candidate siblings: total=2 target="pubmed|au|creatine|28615996|creatine|creatine-strength" targetKey=${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")} candidate="Creatine position stand" source="PubMed" externalId="28615996" query="creatine strength" region="AU" decision="Accepted" reviewStatus="Human reviewed" intervention=creatine claim=creatine-strength acceptedReference=ref-creatine-position-stand`,
-        `- match="Same source/external id, Same intervention context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine-aging|28615996|creatine|aging" key=${safeCandidateKey("pubmed|au|creatine-aging|28615996|creatine|aging")} externalId="28615996" query="creatine aging" title="Creatine position stand duplicate" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-aging`,
-        `- match="Same query/region, Same intervention context, Same claim context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine|999999|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|999999|creatine|creatine-strength")} externalId="999999" query="creatine strength" title="Creatine strength companion" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Rejected" reviewStatus="Human reviewed" reviewed=2026-06-02T04:00:00.000Z note="Wrong population." intervention=creatine claim=creatine-strength`
+        `- match="Same source/external id, Same intervention context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine-aging|28615996|creatine|aging" key=${safeCandidateKey("pubmed|au|creatine-aging|28615996|creatine|aging")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-aging|28615996|creatine|aging")}" externalId="28615996" query="creatine aging" title="Creatine position stand duplicate" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-aging`,
+        `- match="Same query/region, Same intervention context, Same claim context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine|999999|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|999999|creatine|creatine-strength")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|999999|creatine|creatine-strength")}" externalId="999999" query="creatine strength" title="Creatine strength companion" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Rejected" reviewStatus="Human reviewed" reviewed=2026-06-02T04:00:00.000Z note="Wrong population." intervention=creatine claim=creatine-strength`
       ].join("\n")
     );
   });
