@@ -345,15 +345,15 @@ export async function runSourceCandidateJobCommand(
         limit: options.candidateCurationHandoffLimit
       });
 
-      const duplicateIdentityCandidateCounts =
-        await sourceCandidateDuplicateIdentityCandidateCountMap(
+      const duplicateIdentityInfoByDedupeKey =
+        await sourceCandidateDuplicateIdentityInfoMap(
           statuses.map((status) => status.candidate),
           listSiblings
         );
 
       stdout(
         formatSourceCandidateCurationHandoff(statuses, {
-          duplicateIdentityCandidateCounts
+          duplicateIdentityInfoByDedupeKey
         })
       );
       return 0;
@@ -371,11 +371,10 @@ export async function runSourceCandidateJobCommand(
 
       stdout(
         formatSourceCandidateCurationDraft(draft, {
-          duplicateIdentityCandidateCount:
-            await sourceCandidateDuplicateIdentityCandidateCountForDedupeKey(
-              draft.status.candidate.dedupeKey,
-              listSiblings
-            )
+          duplicateIdentityInfo: await sourceCandidateDuplicateIdentityInfoForDedupeKey(
+            draft.status.candidate.dedupeKey,
+            listSiblings
+          )
         })
       );
       return 0;
@@ -395,11 +394,10 @@ export async function runSourceCandidateJobCommand(
 
       stdout(
         formatSourceCandidateCurationStatus(status, {
-          duplicateIdentityCandidateCount:
-            await sourceCandidateDuplicateIdentityCandidateCountForDedupeKey(
-              status.candidate.dedupeKey,
-              listSiblings
-            )
+          duplicateIdentityInfo: await sourceCandidateDuplicateIdentityInfoForDedupeKey(
+            status.candidate.dedupeKey,
+            listSiblings
+          )
         })
       );
       return 0;
@@ -3066,35 +3064,23 @@ function sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(
   );
 }
 
-async function sourceCandidateDuplicateIdentityCandidateCountForDedupeKey(
-  dedupeKey: string,
-  listSiblings: NonNullable<SourceCandidateJobCommandRunners["listSiblings"]>
-) {
-  const siblings = await listSiblings(dedupeKey, {});
-
-  return siblings ? sourceCandidateSiblingDuplicateIdentityCount(siblings) : 1;
-}
-
-async function sourceCandidateDuplicateIdentityCandidateCountMap(
-  candidates: SourceCandidate[],
-  listSiblings: NonNullable<SourceCandidateJobCommandRunners["listSiblings"]>
-) {
-  const counts = await Promise.all(
-    candidates.map(async (candidate) => [
-      candidate.dedupeKey,
-      await sourceCandidateDuplicateIdentityCandidateCountForDedupeKey(
-        candidate.dedupeKey,
-        listSiblings
-      )
-    ] as const)
-  );
-
-  return new Map(counts);
-}
-
 interface SourceCandidateDuplicateIdentityInfo {
   candidateCount: number;
   mixedDecision: boolean;
+}
+
+async function sourceCandidateDuplicateIdentityInfoForDedupeKey(
+  dedupeKey: string,
+  listSiblings: NonNullable<SourceCandidateJobCommandRunners["listSiblings"]>
+): Promise<SourceCandidateDuplicateIdentityInfo> {
+  const siblings = await listSiblings(dedupeKey, {});
+
+  return {
+    candidateCount: siblings ? sourceCandidateSiblingDuplicateIdentityCount(siblings) : 1,
+    mixedDecision: siblings
+      ? sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(siblings)
+      : false
+  };
 }
 
 async function sourceCandidateDuplicateIdentityInfoMap(
@@ -3102,21 +3088,13 @@ async function sourceCandidateDuplicateIdentityInfoMap(
   listSiblings: NonNullable<SourceCandidateJobCommandRunners["listSiblings"]>
 ) {
   const info = await Promise.all(
-    candidates.map(async (candidate) => {
-      const siblings = await listSiblings(candidate.dedupeKey, {});
-
-      return [
+    candidates.map(async (candidate) => [
+      candidate.dedupeKey,
+      await sourceCandidateDuplicateIdentityInfoForDedupeKey(
         candidate.dedupeKey,
-        {
-          candidateCount: siblings
-            ? sourceCandidateSiblingDuplicateIdentityCount(siblings)
-            : 1,
-          mixedDecision: siblings
-            ? sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(siblings)
-            : false
-        }
-      ] as const;
-    })
+        listSiblings
+      )
+    ] as const)
   );
 
   return new Map(info);
@@ -3157,7 +3135,7 @@ function formatSourceCandidateDuplicateIdentityFields(
 
 function formatSourceCandidateCurationDraft(
   draft: SourceCandidateCurationDraft,
-  options: { duplicateIdentityCandidateCount?: number } = {}
+  options: { duplicateIdentityInfo?: SourceCandidateDuplicateIdentityInfo } = {}
 ) {
   const status = draft.status;
   const candidate = status.candidate;
@@ -3193,7 +3171,10 @@ function formatSourceCandidateCurationDraft(
   lines.push(
     ...formatSourceCandidateDuplicateIdentityFields(
       candidate,
-      options.duplicateIdentityCandidateCount ?? 1
+      options.duplicateIdentityInfo?.candidateCount ?? 1,
+      {
+        duplicateIdentityMixedDecision: options.duplicateIdentityInfo?.mixedDecision
+      }
     )
   );
 
@@ -3403,7 +3384,7 @@ function commandTextArgument(value: string) {
 
 function formatSourceCandidateCurationStatus(
   status: SourceCandidateCurationStatus,
-  options: { duplicateIdentityCandidateCount?: number } = {}
+  options: { duplicateIdentityInfo?: SourceCandidateDuplicateIdentityInfo } = {}
 ) {
   const key = safeCandidateKey(status.candidate.dedupeKey);
   const reviewFlagFields = sourceCandidateReviewFlagFields(
@@ -3441,7 +3422,10 @@ function formatSourceCandidateCurationStatus(
   lines.push(
     ...formatSourceCandidateDuplicateIdentityFields(
       status.candidate,
-      options.duplicateIdentityCandidateCount ?? 1
+      options.duplicateIdentityInfo?.candidateCount ?? 1,
+      {
+        duplicateIdentityMixedDecision: options.duplicateIdentityInfo?.mixedDecision
+      }
     )
   );
 
@@ -3507,7 +3491,12 @@ function formatSourceCandidateCurationCommandHints(
 
 function formatSourceCandidateCurationHandoff(
   statuses: SourceCandidateCurationStatus[],
-  options: { duplicateIdentityCandidateCounts?: Map<string, number> } = {}
+  options: {
+    duplicateIdentityInfoByDedupeKey?: Map<
+      string,
+      SourceCandidateDuplicateIdentityInfo
+    >;
+  } = {}
 ) {
   if (statuses.length === 0) {
     return "Source-candidate curation handoff: total=0";
@@ -3517,8 +3506,9 @@ function formatSourceCandidateCurationHandoff(
     `Source-candidate curation handoff: total=${statuses.length}`,
     ...statuses.map((status) =>
       formatSourceCandidateCurationHandoffItem(status, {
-        duplicateIdentityCandidateCount:
-          options.duplicateIdentityCandidateCounts?.get(status.candidate.dedupeKey)
+        duplicateIdentityInfo: options.duplicateIdentityInfoByDedupeKey?.get(
+          status.candidate.dedupeKey
+        )
       })
     )
   ].join("\n");
@@ -3526,7 +3516,7 @@ function formatSourceCandidateCurationHandoff(
 
 function formatSourceCandidateCurationHandoffItem(
   status: SourceCandidateCurationStatus,
-  options: { duplicateIdentityCandidateCount?: number } = {}
+  options: { duplicateIdentityInfo?: SourceCandidateDuplicateIdentityInfo } = {}
 ) {
   const candidate = status.candidate;
   const key = safeCandidateKey(candidate.dedupeKey);
@@ -3551,7 +3541,10 @@ function formatSourceCandidateCurationHandoffItem(
   parts.push(
     ...formatSourceCandidateDuplicateIdentityFields(
       candidate,
-      options.duplicateIdentityCandidateCount ?? 1
+      options.duplicateIdentityInfo?.candidateCount ?? 1,
+      {
+        duplicateIdentityMixedDecision: options.duplicateIdentityInfo?.mixedDecision
+      }
     )
   );
 

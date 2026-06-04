@@ -2747,6 +2747,7 @@ describe("runSourceCandidateJobCommand", () => {
       sourceCandidateSiblings({
         target: sourceCandidate({
           dedupeKey: "pubmed|au|creatine|28615996",
+          decision: "Accepted",
           source: "PubMed",
           externalId: "28615996"
         }),
@@ -2797,6 +2798,8 @@ describe("runSourceCandidateJobCommand", () => {
         "duplicateIdentityCandidates=2",
         'duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2"',
         `duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}"`,
+        "duplicateIdentityMixedDecision=true",
+        'duplicateIdentityNextAction="Review duplicate identity rows together before changing any candidate decision."',
         "acceptedReference=ref-creatine-position-stand",
         'acceptedReferenceTitle="Creatine position stand"',
         'acceptedReferenceSource="PubMed"',
@@ -3090,6 +3093,7 @@ describe("runSourceCandidateJobCommand", () => {
       sourceCandidateSiblings({
         target: sourceCandidate({
           dedupeKey: "pubmed|au|creatine|28615996",
+          decision: "Accepted",
           source: "PubMed",
           externalId: "28615996"
         }),
@@ -3139,6 +3143,8 @@ describe("runSourceCandidateJobCommand", () => {
         "duplicateIdentityCandidates=2",
         'duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2"',
         `duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}"`,
+        "duplicateIdentityMixedDecision=true",
+        'duplicateIdentityNextAction="Review duplicate identity rows together before changing any candidate decision."',
         "acceptedReference=ref-creatine-position-stand",
         'acceptedReferenceTitle="Creatine position stand"',
         'acceptedReferenceSource="PubMed"',
@@ -3401,6 +3407,7 @@ describe("runSourceCandidateJobCommand", () => {
         sourceCandidateSiblings({
           target: sourceCandidate({
             dedupeKey: "pubmed|au|creatine|28615996",
+            decision: "Accepted",
             source: "PubMed",
             externalId: "28615996"
           }),
@@ -3471,7 +3478,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate curation handoff: total=2",
-        `- status="Extraction pending" nextAction="Add structured study extraction for the accepted reference." publicSourcePacketReady=false nextWrite="studyExtraction" writeReady=true writeReview="--candidate-curation-draft ${creatineKey}" PubMed AU dedupe="pubmed|au|creatine|28615996" key=${creatineKey} packet="--candidate-review-packet ${creatineKey}" referenceMatches="--candidate-reference-matches ${creatineKey}" siblings="--candidate-siblings ${creatineKey}" curationStatus="--candidate-curation-status ${creatineKey}" curationDraft="--candidate-curation-draft ${creatineKey}" title="Creatine position stand" duplicateIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2" duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}" acceptedReference=ref-creatine-position-stand acceptedReferenceTitle="Creatine position stand" acceptedReferenceSource="PubMed" acceptedReferenceIdentifier="PMID: 28615996" acceptedReferenceYear=2017 acceptedReferenceUrl=https://pubmed.ncbi.nlm.nih.gov/28615996/ reviewed=2026-06-02T03:00:00.000Z note="Matched PMID and claim context." candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0`,
+        `- status="Extraction pending" nextAction="Add structured study extraction for the accepted reference." publicSourcePacketReady=false nextWrite="studyExtraction" writeReady=true writeReview="--candidate-curation-draft ${creatineKey}" PubMed AU dedupe="pubmed|au|creatine|28615996" key=${creatineKey} packet="--candidate-review-packet ${creatineKey}" referenceMatches="--candidate-reference-matches ${creatineKey}" siblings="--candidate-siblings ${creatineKey}" curationStatus="--candidate-curation-status ${creatineKey}" curationDraft="--candidate-curation-draft ${creatineKey}" title="Creatine position stand" duplicateIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2" duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}" duplicateIdentityMixedDecision=true duplicateIdentityNextAction="Review duplicate identity rows together before changing any candidate decision." acceptedReference=ref-creatine-position-stand acceptedReferenceTitle="Creatine position stand" acceptedReferenceSource="PubMed" acceptedReferenceIdentifier="PMID: 28615996" acceptedReferenceYear=2017 acceptedReferenceUrl=https://pubmed.ncbi.nlm.nih.gov/28615996/ reviewed=2026-06-02T03:00:00.000Z note="Matched PMID and claim context." candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0`,
         `- status="Claim link missing" nextAction="Link the accepted reference to the candidate claim before public packet review." publicSourcePacketReady=false nextWrite="claimLink" writeReady=true writeReview="--candidate-curation-draft ${agingKey}" ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${agingKey} packet="--candidate-review-packet ${agingKey}" referenceMatches="--candidate-reference-matches ${agingKey}" siblings="--candidate-siblings ${agingKey}" curationStatus="--candidate-curation-status ${agingKey}" curationDraft="--candidate-curation-draft ${agingKey}" title="Creatine and aging" acceptedReference=trial-nct123 acceptedReferenceTitle="Creatine and aging" acceptedReferenceSource="ClinicalTrials.gov" acceptedReferenceIdentifier="NCT123" acceptedReferenceYear=2026 acceptedReferenceUrl=https://clinicaltrials.gov/study/NCT123 reviewed=2026-06-02T04:00:00.000Z note="Needs claim link before promotion." candidateClaim=creatine-aging candidateClaimLinked=false claimLinks=0 studies=1`
       ].join("\n")
     );
