@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after aligning source-candidate help text with review/curation hints. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after consolidating source-candidate drill-in command hint formatting. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -17,6 +17,7 @@ Refreshed on 2026-06-04 after aligning source-candidate help text with review/cu
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
 - Source-candidate help text describes read-only review/curation drill-ins for candidate, overview, flag, sibling, duplicate, packet, and reference-match views.
+- Source-candidate packet/reference/sibling/curation drill-in hints now share one local formatter helper across detail, packet, curation, reference-match, sibling row, duplicate, overview, flag, queue, and summary outputs; exact CLI output remains preserved.
 - Summary output is read-only and prints next-command hints for overview, review flags, duplicate scan, queued jobs, and curation handoff; non-empty curation status bucket rows include filtered handoff hints, and the bounded review flag focus block counts flagged top review groups with list/packet/reference-match/sibling/curation/flags/overview drill-ins.
 - Job rows are read-only and print candidate-list, context-jobs, and status-jobs hints.
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; exact output tests cover these write-result surfaces without live write smokes.
@@ -82,6 +83,13 @@ Last CLI snapshot after local ingestion:
 
 Latest local validation:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 3`
+- `npm run ingest:sources -- --candidates --candidate-job-id cmpyzoc7500039jwcbu1ii4o7 --candidates-limit 3`
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `git diff --check` (only LF-to-CRLF warning for `src/lib/data/source-candidate-job-command.ts`)
 - `npm run ingest:sources -- --candidate-review-packet b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
 - `npm run ingest:sources -- --candidate-detail b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
 - `npm run ingest:sources -- --candidate-reference-matches b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`

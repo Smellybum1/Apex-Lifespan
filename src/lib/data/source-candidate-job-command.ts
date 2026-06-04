@@ -2685,19 +2685,71 @@ function formatSourceCandidateDetail(
   return lines.join("\n");
 }
 
+type SourceCandidateDrillInHint =
+  | "packet"
+  | "referenceMatches"
+  | "siblings"
+  | "groupList"
+  | "curationStatus"
+  | "curationDraft";
+
 function formatSourceCandidateDetailCommandHints(candidate: SourceCandidate) {
   const key = safeCandidateKey(candidate.dedupeKey);
 
   return [
     "Source-candidate detail command hints",
     "safeReadOnly=true",
-    `packet=${quote(`--candidate-review-packet ${key}`)}`,
-    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
-    `siblings=${quote(`--candidate-siblings ${key}`)}`,
-    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
-    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
-    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`
+    ...formatSourceCandidateDrillInHints(candidate, key, [
+      "packet",
+      "referenceMatches",
+      "siblings",
+      "groupList",
+      "curationStatus",
+      "curationDraft"
+    ])
   ];
+}
+
+function formatSourceCandidateReviewDrillInHints(
+  candidate: SourceCandidate,
+  key: string
+) {
+  return formatSourceCandidateDrillInHints(candidate, key, [
+    "packet",
+    "referenceMatches",
+    "siblings",
+    "curationStatus",
+    "curationDraft"
+  ]);
+}
+
+function formatSourceCandidateDrillInHints(
+  candidate: SourceCandidate,
+  key: string,
+  hints: readonly SourceCandidateDrillInHint[]
+) {
+  return hints.map((hint) => formatSourceCandidateDrillInHint(candidate, key, hint));
+}
+
+function formatSourceCandidateDrillInHint(
+  candidate: SourceCandidate,
+  key: string,
+  hint: SourceCandidateDrillInHint
+) {
+  switch (hint) {
+    case "packet":
+      return `packet=${quote(`--candidate-review-packet ${key}`)}`;
+    case "referenceMatches":
+      return `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`;
+    case "siblings":
+      return `siblings=${quote(`--candidate-siblings ${key}`)}`;
+    case "groupList":
+      return `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`;
+    case "curationStatus":
+      return `curationStatus=${quote(`--candidate-curation-status ${key}`)}`;
+    case "curationDraft":
+      return `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`;
+  }
 }
 
 function formatSourceCandidateReviewPacket(packet: SourceCandidateReviewPacket) {
@@ -2721,11 +2773,13 @@ function formatSourceCandidateReviewPacketCommandHints(
     "Source-candidate review command hints",
     "safeReadOnly=true",
     `detail=${quote(`--candidate-detail ${key}`)}`,
-    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
-    `siblings=${quote(`--candidate-siblings ${key}`)}`,
-    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
-    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
-    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`
+    ...formatSourceCandidateDrillInHints(candidate, key, [
+      "referenceMatches",
+      "siblings",
+      "groupList",
+      "curationStatus",
+      "curationDraft"
+    ])
   ];
 
   if (duplicateIdentityCount > 1) {
@@ -2936,10 +2990,12 @@ function formatSourceCandidateCurationCommandHints(
     : `--candidate-curation-draft ${key}`;
 
   return [
-    `packet=${quote(`--candidate-review-packet ${key}`)}`,
-    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
-    `siblings=${quote(`--candidate-siblings ${key}`)}`,
-    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
+    ...formatSourceCandidateDrillInHints(candidate, key, [
+      "packet",
+      "referenceMatches",
+      "siblings",
+      "groupList"
+    ]),
     `curation${surface === "draft" ? "Status" : "Draft"}=${quote(
       pairedCurationCommand
     )}`
@@ -3006,13 +3062,7 @@ function formatSourceCandidateCurationHandoffCommandHints(
 ) {
   const key = safeCandidateKey(candidate.dedupeKey);
 
-  return [
-    `packet=${quote(`--candidate-review-packet ${key}`)}`,
-    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
-    `siblings=${quote(`--candidate-siblings ${key}`)}`,
-    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
-    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`
-  ];
+  return formatSourceCandidateReviewDrillInHints(candidate, key);
 }
 
 function formatCurationClaimLink(
@@ -3063,20 +3113,23 @@ function formatSourceCandidateReferenceMatchHeading(
   matches: SourceCandidateAcceptedReferenceMatches
 ) {
   const candidate = matches.candidate;
+  const key = safeCandidateKey(candidate.dedupeKey);
   const reviewFlagField = sourceCandidateReviewFlagField("reviewFlags", candidate);
   const parts = [
     `Source-candidate accepted-reference matches: total=${matches.references.length}`,
     `dedupe=${quote(candidate.dedupeKey)}`,
-    `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    `key=${key}`,
     `candidate=${quote(candidate.title)}`,
     `source=${quote(candidate.source)}`,
     `externalId=${quote(candidate.externalId)}`,
     `url=${candidate.url}`,
-    `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`,
-    `siblings=${quote(`--candidate-siblings ${safeCandidateKey(candidate.dedupeKey)}`)}`,
-    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
-    `curationStatus=${quote(`--candidate-curation-status ${safeCandidateKey(candidate.dedupeKey)}`)}`,
-    `curationDraft=${quote(`--candidate-curation-draft ${safeCandidateKey(candidate.dedupeKey)}`)}`,
+    ...formatSourceCandidateDrillInHints(candidate, key, [
+      "packet",
+      "siblings",
+      "groupList",
+      "curationStatus",
+      "curationDraft"
+    ]),
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
@@ -3210,17 +3263,20 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
 function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings"][number]) {
   const candidate = sibling.candidate;
   const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+  const key = safeCandidateKey(candidate.dedupeKey);
   const parts = [
     `- match=${quote(sibling.matchReasons.join(", "))}`,
     `triage=${candidate.triageScore}/100`,
     candidate.source,
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
-    `key=${safeCandidateKey(candidate.dedupeKey)}`,
-    `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`,
-    `referenceMatches=${quote(`--candidate-reference-matches ${safeCandidateKey(candidate.dedupeKey)}`)}`,
-    `curationStatus=${quote(`--candidate-curation-status ${safeCandidateKey(candidate.dedupeKey)}`)}`,
-    `curationDraft=${quote(`--candidate-curation-draft ${safeCandidateKey(candidate.dedupeKey)}`)}`,
+    `key=${key}`,
+    ...formatSourceCandidateDrillInHints(candidate, key, [
+      "packet",
+      "referenceMatches",
+      "curationStatus",
+      "curationDraft"
+    ]),
     `externalId=${quote(candidate.externalId)}`,
     `query=${quote(candidate.query)}`,
     `title=${quote(candidate.title)}`,
@@ -3323,11 +3379,7 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
     `triage=${candidate.triageScore}/100`,
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${key}`,
-    `packet=${quote(`--candidate-review-packet ${key}`)}`,
-    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
-    `siblings=${quote(`--candidate-siblings ${key}`)}`,
-    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
-    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`,
+    ...formatSourceCandidateReviewDrillInHints(candidate, key),
     `query=${quote(candidate.query)}`,
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
@@ -3459,11 +3511,7 @@ function formatSourceCandidateReviewFlagGroup(
   parts.push(
     `topTitle=${quote(candidate.title)}`,
     `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
-    `packet=${quote(`--candidate-review-packet ${key}`)}`,
-    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
-    `siblings=${quote(`--candidate-siblings ${key}`)}`,
-    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
-    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`,
+    ...formatSourceCandidateReviewDrillInHints(candidate, key),
     `overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
   );
 
@@ -3505,11 +3553,7 @@ function formatSourceCandidateReviewOverviewGroup(
   parts.push(
     `topTitle=${quote(candidate.title)}`,
     `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
-    `packet=${quote(`--candidate-review-packet ${key}`)}`,
-    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
-    `siblings=${quote(`--candidate-siblings ${key}`)}`,
-    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
-    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`
+    ...formatSourceCandidateReviewDrillInHints(candidate, key)
   );
 
   return parts.join(" ");
@@ -3616,11 +3660,7 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${key}`,
-    `packet=${quote(`--candidate-review-packet ${key}`)}`,
-    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
-    `siblings=${quote(`--candidate-siblings ${key}`)}`,
-    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
-    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`,
+    ...formatSourceCandidateReviewDrillInHints(candidate, key),
     `externalId=${quote(candidate.externalId)}`,
     `query=${quote(candidate.query)}`,
     `title=${quote(candidate.title)}`,
@@ -3937,17 +3977,16 @@ function formatSourceCandidateReviewFlagSummaryGroup(
   const exampleGroup = group.exampleGroup;
   const candidate = exampleGroup.topCandidate;
   const key = safeCandidateKey(candidate.dedupeKey);
+  const drillInHints = formatSourceCandidateReviewDrillInHints(candidate, key)
+    .map((hint) => ` ${hint}`)
+    .join("");
 
   return (
     `- flag=${quote(group.flag)} topGroups=${group.topGroups}` +
     ` pendingInTopGroups=${group.pendingInTopGroups}` +
     ` topGroup=${quote(formatSourceCandidateReviewFlagSummaryGroupLabel(exampleGroup))}` +
     ` list=${quote(formatSourceCandidateReviewOverviewListCommand(exampleGroup))}` +
-    ` packet=${quote(`--candidate-review-packet ${key}`)}` +
-    ` referenceMatches=${quote(`--candidate-reference-matches ${key}`)}` +
-    ` siblings=${quote(`--candidate-siblings ${key}`)}` +
-    ` curationStatus=${quote(`--candidate-curation-status ${key}`)}` +
-    ` curationDraft=${quote(`--candidate-curation-draft ${key}`)}` +
+    drillInHints +
     ` flags=${quote(formatSourceCandidateReviewFlagsCommand(group.flag))}` +
     ` overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
   );
