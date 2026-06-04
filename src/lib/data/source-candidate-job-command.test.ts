@@ -3120,6 +3120,7 @@ describe("runSourceCandidateJobCommand", () => {
         "  claim=creatine-strength",
         "  relevance=5",
         "  alreadyLinked=false",
+        "  writeReady=true",
         '  note="Accepted PubMed candidate 28615996: Creatine position stand"',
         `  commandTemplate=${JSON.stringify(
           `--link-candidate-claim ${safeKey} --claim-link-relevance 5 --claim-link-note "Human-reviewed claim-link rationale."`
@@ -3130,6 +3131,9 @@ describe("runSourceCandidateJobCommand", () => {
         '  source="PubMed"',
         '  sourceTypeSuggestion="SYSTEMATIC_REVIEW"',
         "  alreadyExtracted=false",
+        "  claimLinkRequired=true",
+        "  writeReady=false",
+        '  blockedUntil="Claim link required before study extraction."',
         "  url=https://pubmed.ncbi.nlm.nih.gov/28615996/",
         "  year=2017",
         "  pmid=28615996",

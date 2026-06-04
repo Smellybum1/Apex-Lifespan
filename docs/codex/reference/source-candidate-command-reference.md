@@ -83,7 +83,7 @@ Write boundaries:
 - `--link-candidate-claim` writes only a `ClaimReference` row after accepted candidate, claim context, and matching-reference gates pass.
 - `--extract-candidate-study` writes only a `Study` row after acceptance, matching-reference, claim-context, and claim-link gates pass. The operator must supply manual extraction fields.
 - None of these commands create references, source documents, public evidence promotions, or automatic medical claims.
-- `--candidate-curation-draft` can print guarded `commandTemplate` values for these writes, but the operator must still run the write command explicitly and replace study-extraction placeholders with human-reviewed fields.
+- `--candidate-curation-draft` can print guarded `commandTemplate` values for these writes plus `writeReady`/`blockedUntil` fields, but the operator must still run the write command explicitly and replace study-extraction placeholders with human-reviewed fields.
 
 ## Run Controls
 

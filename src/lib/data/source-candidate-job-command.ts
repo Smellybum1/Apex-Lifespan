@@ -3130,11 +3130,19 @@ function formatSourceCandidateCurationDraft(
   }
 
   if (draft.claimLinkDraft) {
+    const claimLinkWriteReady = !draft.claimLinkDraft.alreadyLinked;
+
     lines.push("claimLinkDraft:");
     lines.push(`  reference=${draft.claimLinkDraft.referenceId}`);
     lines.push(`  claim=${draft.claimLinkDraft.claimId}`);
     lines.push(`  relevance=${draft.claimLinkDraft.relevance}`);
     lines.push(`  alreadyLinked=${draft.claimLinkDraft.alreadyLinked}`);
+    lines.push(`  writeReady=${claimLinkWriteReady}`);
+
+    if (!claimLinkWriteReady) {
+      lines.push("  alreadySatisfied=true");
+    }
+
     lines.push(`  note=${quote(draft.claimLinkDraft.note)}`);
     lines.push(
       `  commandTemplate=${quote(
@@ -3149,6 +3157,10 @@ function formatSourceCandidateCurationDraft(
   }
 
   if (draft.studyExtractionDraft) {
+    const studyWriteReadiness = sourceCandidateStudyExtractionWriteReadiness(
+      status
+    );
+
     lines.push("studyExtractionDraft:");
     lines.push(`  reference=${draft.studyExtractionDraft.referenceId}`);
     lines.push(`  title=${quote(draft.studyExtractionDraft.title)}`);
@@ -3157,6 +3169,13 @@ function formatSourceCandidateCurationDraft(
       `  sourceTypeSuggestion=${quote(draft.studyExtractionDraft.sourceTypeSuggestion)}`
     );
     lines.push(`  alreadyExtracted=${draft.studyExtractionDraft.alreadyExtracted}`);
+    lines.push("  claimLinkRequired=true");
+    lines.push(`  writeReady=${studyWriteReadiness.ready}`);
+
+    if (studyWriteReadiness.blockedUntil) {
+      lines.push(`  blockedUntil=${quote(studyWriteReadiness.blockedUntil)}`);
+    }
+
     lines.push(`  url=${draft.studyExtractionDraft.url}`);
 
     if (draft.studyExtractionDraft.year !== undefined) {
@@ -3204,6 +3223,26 @@ function formatSourceCandidateCurationDraft(
   }
 
   return lines.join("\n");
+}
+
+function sourceCandidateStudyExtractionWriteReadiness(
+  status: SourceCandidateCurationStatus
+) {
+  if (!status.candidate.claimId) {
+    return {
+      blockedUntil: "Accepted candidate claim id required before study extraction.",
+      ready: false
+    };
+  }
+
+  if (status.candidateClaimLinked !== true) {
+    return {
+      blockedUntil: "Claim link required before study extraction.",
+      ready: false
+    };
+  }
+
+  return { ready: true };
 }
 
 function formatSourceCandidateClaimLinkCommandTemplate(
