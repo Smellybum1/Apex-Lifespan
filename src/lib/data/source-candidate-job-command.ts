@@ -2837,6 +2837,7 @@ function formatSourceCandidateReviewPacketCommandHints(
   const candidate = packet.candidate;
   const key = safeCandidateKey(candidate.dedupeKey);
   const duplicateIdentityCount = sourceCandidateReviewPacketDuplicateIdentityCount(packet);
+  const acceptedReferenceMatches = packet.referenceMatches.references.length;
   const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
   const lines = [
     "Source-candidate review command hints",
@@ -2878,6 +2879,8 @@ function formatSourceCandidateReviewPacketCommandHints(
   lines.push(
     "humanReviewedWritesRequireOperator=true",
     "acceptRequiresMatchingCuratedReference=true",
+    `acceptedReferenceMatches=${acceptedReferenceMatches}`,
+    `acceptReferenceReady=${acceptedReferenceMatches > 0}`,
     "reviewDecisionRequiresHumanNote=true",
     `acceptTemplate=${quote(
       `--accept-candidate ${key} --accepted-reference-id <reference-id> --review-note "Human-reviewed rationale."`
