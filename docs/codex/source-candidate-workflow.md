@@ -48,6 +48,8 @@ npm run ingest:sources -- --jobs --jobs-status queued --jobs-claim-id <claim-id>
 npm run ingest:sources -- --jobs --jobs-source pubmed --jobs-region AU
 npm run ingest:sources -- --candidates
 npm run ingest:sources -- --candidates --candidate-source pubmed --candidates-limit 10
+npm run ingest:sources -- --candidates --candidate-duplicates
+npm run ingest:sources -- --candidates --candidate-duplicates --candidate-source pubmed
 npm run ingest:sources -- --candidates --candidate-job-id <ingestion-job-id>
 npm run ingest:sources -- --candidates --candidate-external-id <pmid-or-nct-id>
 npm run ingest:sources -- --candidates --candidate-intervention-id <intervention-id>
@@ -102,6 +104,7 @@ npm run ingest:sources -- --clinical-trial-page-size 10
 - `--queue-claim-sources` prints the generated PubMed and ClinicalTrials.gov query text plus queued or existing job ids.
 - `--summary` includes ingestion job counts by source, region, and status before candidate backlog and curation handoff counts.
 - `--candidates` defaults to pending rows and can filter by source, external id, job, intervention, claim, or decision.
+- `--candidates --candidate-duplicates` prints duplicate source/external-id groups before review decisions; combine it with candidate filters to narrow the scan.
 - Candidate-oriented outputs include `key=b64:...` next to raw dedupe keys so pipe-heavy keys can be reused safely from Windows shells.
 - Candidate review queue rows include `externalId=...` so the same PMID or NCT record can be spotted across query and claim scopes.
 - `--candidate-detail` prints one candidate with triage reasons, review fields, and compact metadata.

@@ -27,6 +27,9 @@ describe("commandUsage", () => {
       "--candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
     );
     expect(commandUsage()).toContain(
+      "--candidate-duplicates            With --candidates, print duplicate source/external-id groups."
+    );
+    expect(commandUsage()).toContain(
       "--candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id."
     );
     expect(commandUsage()).toContain(
@@ -444,6 +447,7 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "clinical-trials",
         "--candidate-decision",
         "accepted",
+        "--candidate-duplicates",
         "--candidate-external-id",
         "NCT123",
         "--candidate-job-id",
@@ -457,6 +461,7 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       candidates: true,
       candidateClaimId: "creatine-strength",
       candidateDecision: "Accepted",
+      candidateDuplicates: true,
       candidateExternalId: "NCT123",
       candidateInterventionId: "creatine",
       candidateJobId: "job-pubmed",
@@ -1422,6 +1427,9 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidate-decision", "accepted"])
     ).toThrow("Candidate-list filters require --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-duplicates"])
+    ).toThrow("--candidate-duplicates requires --candidates.");
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidate-external-id", "28615996"])
     ).toThrow("Candidate-list filters require --candidates.");
@@ -2870,6 +2878,76 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate review queue: total=2",
         `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")} externalId="28615996" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ intervention=creatine claim=creatine-strength`,
         `- triage=70/100 ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} externalId="NCT123" title="Creatine and aging" url=https://clinicaltrials.gov/study/NCT123`
+      ].join("\n")
+    );
+  });
+
+  it("prints duplicate source-candidate identity groups without running jobs", async () => {
+    const stdout = vi.fn();
+    const listCandidates = vi.fn();
+    const listIdentityGroups = vi.fn().mockResolvedValue([
+      {
+        source: "PubMed",
+        externalId: "42141930",
+        candidates: [
+          sourceCandidate({
+            dedupeKey: "pubmed|au|creatine-meta|42141930||",
+            externalId: "42141930",
+            query: "creatine meta",
+            title: "Creatine meta-analysis",
+            ingestionJobId: "job-unscoped",
+            interventionId: undefined,
+            claimId: undefined
+          }),
+          sourceCandidate({
+            dedupeKey:
+              "pubmed|au|creatine-strength|42141930|creatine|creatine-strength",
+            externalId: "42141930",
+            query: "creatine strength",
+            title: "Creatine meta-analysis",
+            ingestionJobId: "job-claim",
+            interventionId: "creatine",
+            claimId: "creatine-strength"
+          })
+        ]
+      }
+    ]);
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--candidates",
+          "--candidate-duplicates",
+          "--candidate-source",
+          "pubmed",
+          "--candidate-external-id",
+          "42141930",
+          "--candidates-limit",
+          "3"
+        ],
+        { stdout },
+        { listCandidates, listIdentityGroups, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(listIdentityGroups).toHaveBeenCalledWith({
+      claimId: undefined,
+      decision: undefined,
+      externalId: "42141930",
+      ingestionJobId: undefined,
+      interventionId: undefined,
+      limit: 3,
+      source: "PubMed"
+    });
+    expect(listCandidates).not.toHaveBeenCalled();
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate duplicate identities: total=1",
+        '- PubMed externalId="42141930" candidates=2 pending=2 accepted=0 rejected=0 title="Creatine meta-analysis"',
+        `  - triage=80/100 dedupe="pubmed|au|creatine-meta|42141930||" key=${safeCandidateKey("pubmed|au|creatine-meta|42141930||")} query="creatine meta" decision="Pending review" reviewStatus="Unreviewed AI draft" ingestionJob=job-unscoped`,
+        `  - triage=80/100 dedupe="pubmed|au|creatine-strength|42141930|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")} query="creatine strength" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-strength ingestionJob=job-claim`
       ].join("\n")
     );
   });

@@ -25,6 +25,7 @@ import {
   linkAcceptedSourceCandidateClaim,
   listSourceCandidateAcceptedReferenceMatches,
   listSourceCandidateCurationHandoff,
+  listSourceCandidateIdentityGroups,
   listSourceCandidateReviewQueue,
   listSourceCandidateSiblings,
   recordSourceCandidateDecision,
@@ -43,6 +44,7 @@ import {
   type SourceCandidateCurationHandoffSummary,
   type SourceCandidateCurationStatus,
   type SourceCandidateCurationStatusKind,
+  type SourceCandidateIdentityGroup,
   type SourceCandidateStudyExtractionSourceType,
   type SourceCandidateSiblingOptions,
   type SourceCandidateSiblings
@@ -64,6 +66,7 @@ export interface SourceCandidateJobCommandOptions
   candidateCurationStatusDedupeKey?: string;
   candidateDetailDedupeKey?: string;
   candidateDecision?: SourceCandidateDecision;
+  candidateDuplicates?: boolean;
   candidateClaimId?: string;
   candidateExternalId?: string;
   candidateInterventionId?: string;
@@ -133,6 +136,15 @@ export interface SourceCandidateJobCommandRunners {
   listCurationHandoff?: (
     options: SourceCandidateCurationHandoffOptions
   ) => Promise<SourceCandidateCurationStatus[]>;
+  listIdentityGroups?: (options: {
+    claimId?: string;
+    decision?: SourceCandidateDecision;
+    externalId?: string;
+    ingestionJobId?: string;
+    interventionId?: string;
+    limit?: number;
+    source?: SourceCandidateSource;
+  }) => Promise<SourceCandidateIdentityGroup[]>;
   listCandidates?: (options: {
     claimId?: string;
     decision?: SourceCandidateDecision;
@@ -220,6 +232,8 @@ export async function runSourceCandidateJobCommand(
   const getCandidate = runners.getCandidate ?? getSourceCandidateByDedupeKey;
   const listCurationHandoff =
     runners.listCurationHandoff ?? listSourceCandidateCurationHandoff;
+  const listIdentityGroups =
+    runners.listIdentityGroups ?? listSourceCandidateIdentityGroups;
   const listCandidates = runners.listCandidates ?? listSourceCandidateReviewQueue;
   const listJobs = runners.listJobs ?? listSourceCandidateIngestionJobs;
   const listReferenceMatches =
@@ -394,7 +408,7 @@ export async function runSourceCandidateJobCommand(
     }
 
     if (options.candidates) {
-      const candidates = await listCandidates({
+      const candidateListOptions = {
         decision: options.candidateDecision,
         claimId: options.candidateClaimId,
         externalId: options.candidateExternalId,
@@ -402,7 +416,16 @@ export async function runSourceCandidateJobCommand(
         interventionId: options.candidateInterventionId,
         limit: options.candidatesLimit,
         source: options.candidateSource
-      });
+      };
+
+      if (options.candidateDuplicates) {
+        const groups = await listIdentityGroups(candidateListOptions);
+
+        stdout(formatSourceCandidateIdentityGroups(groups, options.candidateDecision));
+        return 0;
+      }
+
+      const candidates = await listCandidates(candidateListOptions);
 
       stdout(formatSourceCandidateReviewQueue(candidates, options.candidateDecision));
       return 0;
@@ -798,6 +821,11 @@ export function parseSourceCandidateJobCommandArgs(
       );
       candidateDecisionProvided = true;
       index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-duplicates") {
+      options.candidateDuplicates = true;
       continue;
     }
 
@@ -1696,6 +1724,10 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (options.candidateDuplicates && !options.candidates) {
+    throw new Error("--candidate-duplicates requires --candidates.");
+  }
+
   if (options.candidates && options.summary) {
     throw new Error("--candidates cannot be combined with --summary.");
   }
@@ -1813,6 +1845,7 @@ export function commandUsage() {
     "  <dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse.",
     "  --candidate-source <source>       Filter candidates or handoff by source: pubmed or clinical-trials.",
     "  --candidate-decision <decision>   Candidate decision: pending, accepted, or rejected.",
+    "  --candidate-duplicates            With --candidates, print duplicate source/external-id groups.",
     "  --candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id.",
     "  --candidate-job-id <id>           Filter --candidates or handoff by ingestion job id.",
     "  --candidate-intervention-id <id>  Filter --candidates or handoff by intervention id.",
@@ -2415,6 +2448,90 @@ function formatSourceCandidateReviewQueue(
     `${heading}: total=${candidates.length}`,
     ...candidates.map(formatSourceCandidateReviewQueueItem)
   ].join("\n");
+}
+
+function formatSourceCandidateIdentityGroups(
+  groups: SourceCandidateIdentityGroup[],
+  decision?: SourceCandidateDecision
+) {
+  const heading = decision && decision !== "Pending review"
+    ? `Source-candidate duplicate identities: decision=${quote(decision)}`
+    : "Source-candidate duplicate identities";
+
+  if (groups.length === 0) {
+    return `${heading}: total=0`;
+  }
+
+  return [
+    `${heading}: total=${groups.length}`,
+    ...groups.flatMap(formatSourceCandidateIdentityGroup)
+  ].join("\n");
+}
+
+function formatSourceCandidateIdentityGroup(group: SourceCandidateIdentityGroup) {
+  const counts = sourceCandidateIdentityDecisionCounts(group.candidates);
+  const title = group.candidates[0]?.title ?? "";
+  const parts = [
+    `- ${group.source}`,
+    `externalId=${quote(group.externalId)}`,
+    `candidates=${group.candidates.length}`,
+    `pending=${counts.pending}`,
+    `accepted=${counts.accepted}`,
+    `rejected=${counts.rejected}`,
+    `title=${quote(title)}`
+  ];
+
+  return [
+    parts.join(" "),
+    ...group.candidates.map(formatSourceCandidateIdentityGroupCandidate)
+  ];
+}
+
+function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate) {
+  const parts = [
+    "  -",
+    `triage=${candidate.triageScore}/100`,
+    `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    `query=${quote(candidate.query)}`,
+    `decision=${quote(candidate.decision)}`,
+    `reviewStatus=${quote(candidate.reviewStatus)}`
+  ];
+
+  if (candidate.interventionId) {
+    parts.push(`intervention=${candidate.interventionId}`);
+  }
+
+  if (candidate.claimId) {
+    parts.push(`claim=${candidate.claimId}`);
+  }
+
+  if (candidate.ingestionJobId) {
+    parts.push(`ingestionJob=${candidate.ingestionJobId}`);
+  }
+
+  return parts.join(" ");
+}
+
+function sourceCandidateIdentityDecisionCounts(candidates: SourceCandidate[]) {
+  return candidates.reduce(
+    (counts, candidate) => {
+      if (candidate.decision === "Accepted") {
+        counts.accepted += 1;
+      } else if (candidate.decision === "Rejected") {
+        counts.rejected += 1;
+      } else {
+        counts.pending += 1;
+      }
+
+      return counts;
+    },
+    {
+      accepted: 0,
+      pending: 0,
+      rejected: 0
+    }
+  );
 }
 
 function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {

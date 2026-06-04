@@ -58,6 +58,12 @@ export interface SourceCandidateReviewQueueOptions {
   source?: SourceCandidateSource;
 }
 
+export interface SourceCandidateIdentityGroup {
+  candidates: SourceCandidate[];
+  externalId: string;
+  source: SourceCandidateSource;
+}
+
 export interface SourceCandidateAcceptedReferenceMatches {
   candidate: SourceCandidate;
   references: Reference[];
@@ -227,6 +233,9 @@ export interface RecordSourceCandidateDecisionInput {
 
 const DEFAULT_REVIEW_QUEUE_LIMIT = 25;
 const MAX_REVIEW_QUEUE_LIMIT = 100;
+const DEFAULT_IDENTITY_GROUP_LIMIT = 25;
+const MAX_IDENTITY_GROUP_LIMIT = 50;
+const MAX_IDENTITY_SCAN_CANDIDATES = 500;
 const DEFAULT_CURATION_HANDOFF_LIMIT = 25;
 const MAX_CURATION_HANDOFF_LIMIT = 50;
 const DEFAULT_SIBLING_LIMIT = 25;
@@ -304,37 +313,39 @@ export async function upsertSourceCandidateDrafts(
 export async function listSourceCandidateReviewQueue(
   options: SourceCandidateReviewQueueOptions = {}
 ): Promise<SourceCandidate[]> {
-  const where: Prisma.SourceCandidateWhereInput = {
-    decision: decisionMap[options.decision ?? "Pending review"]
-  };
-
-  if (options.source) {
-    where.source = sourceMap[options.source];
-  }
-
-  if (options.ingestionJobId) {
-    where.ingestionJobId = options.ingestionJobId;
-  }
-
-  if (options.externalId) {
-    where.externalId = options.externalId;
-  }
-
-  if (options.interventionId) {
-    where.interventionId = options.interventionId;
-  }
-
-  if (options.claimId) {
-    where.claimId = options.claimId;
-  }
-
   const candidates = await prisma.sourceCandidate.findMany({
-    where,
+    where: sourceCandidateReviewQueueWhere(options),
     orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
     take: normaliseReviewQueueLimit(options.limit)
   });
 
   return candidates.map(mapDbSourceCandidate);
+}
+
+export async function listSourceCandidateIdentityGroups(
+  options: SourceCandidateReviewQueueOptions = {}
+): Promise<SourceCandidateIdentityGroup[]> {
+  const candidates = await prisma.sourceCandidate.findMany({
+    where: sourceCandidateReviewQueueWhere(options),
+    orderBy: [{ source: "asc" }, { externalId: "asc" }, { triageScore: "desc" }],
+    take: MAX_IDENTITY_SCAN_CANDIDATES
+  });
+  const groupsByIdentity = new Map<string, SourceCandidate[]>();
+
+  for (const candidate of candidates.map(mapDbSourceCandidate)) {
+    const key = `${candidate.source}\u0000${candidate.externalId}`;
+    groupsByIdentity.set(key, [...(groupsByIdentity.get(key) ?? []), candidate]);
+  }
+
+  return Array.from(groupsByIdentity.values())
+    .filter((group) => group.length > 1)
+    .map((candidatesInGroup) => ({
+      candidates: candidatesInGroup,
+      externalId: candidatesInGroup[0]?.externalId ?? "",
+      source: candidatesInGroup[0]?.source ?? "PubMed"
+    }))
+    .sort(sourceCandidateIdentityGroupSort)
+    .slice(0, normaliseIdentityGroupLimit(options.limit));
 }
 
 export async function getSourceCandidateByDedupeKey(
@@ -1025,12 +1036,75 @@ function sourceCandidateRediscoveryScalars(candidate: SourceCandidate) {
   };
 }
 
+function sourceCandidateReviewQueueWhere(
+  options: SourceCandidateReviewQueueOptions
+): Prisma.SourceCandidateWhereInput {
+  const where: Prisma.SourceCandidateWhereInput = {
+    decision: decisionMap[options.decision ?? "Pending review"]
+  };
+
+  if (options.source) {
+    where.source = sourceMap[options.source];
+  }
+
+  if (options.ingestionJobId) {
+    where.ingestionJobId = options.ingestionJobId;
+  }
+
+  if (options.externalId) {
+    where.externalId = options.externalId;
+  }
+
+  if (options.interventionId) {
+    where.interventionId = options.interventionId;
+  }
+
+  if (options.claimId) {
+    where.claimId = options.claimId;
+  }
+
+  return where;
+}
+
+function sourceCandidateIdentityGroupSort(
+  left: SourceCandidateIdentityGroup,
+  right: SourceCandidateIdentityGroup
+) {
+  const countDelta = right.candidates.length - left.candidates.length;
+
+  if (countDelta !== 0) {
+    return countDelta;
+  }
+
+  const leftTriage = Math.max(...left.candidates.map((candidate) => candidate.triageScore));
+  const rightTriage = Math.max(
+    ...right.candidates.map((candidate) => candidate.triageScore)
+  );
+  const triageDelta = rightTriage - leftTriage;
+
+  if (triageDelta !== 0) {
+    return triageDelta;
+  }
+
+  return `${left.source}:${left.externalId}`.localeCompare(
+    `${right.source}:${right.externalId}`
+  );
+}
+
 function normaliseReviewQueueLimit(limit: number | undefined) {
   if (limit === undefined || !Number.isFinite(limit)) {
     return DEFAULT_REVIEW_QUEUE_LIMIT;
   }
 
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_REVIEW_QUEUE_LIMIT);
+}
+
+function normaliseIdentityGroupLimit(limit: number | undefined) {
+  if (limit === undefined || !Number.isFinite(limit)) {
+    return DEFAULT_IDENTITY_GROUP_LIMIT;
+  }
+
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_IDENTITY_GROUP_LIMIT);
 }
 
 function normaliseCurationHandoffLimit(limit: number | undefined) {
