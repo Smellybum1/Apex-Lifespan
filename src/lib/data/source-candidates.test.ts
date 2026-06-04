@@ -220,6 +220,7 @@ describe("listSourceCandidateReviewQueue", () => {
     await listSourceCandidateReviewQueue({
       claimId: "creatine-strength",
       decision: "Rejected",
+      externalId: "NCT123",
       ingestionJobId: "job-pubmed",
       interventionId: "creatine",
       limit: 250,
@@ -230,6 +231,7 @@ describe("listSourceCandidateReviewQueue", () => {
       where: {
         claimId: "creatine-strength",
         decision: "REJECTED",
+        externalId: "NCT123",
         ingestionJobId: "job-pubmed",
         interventionId: "creatine",
         source: "CLINICALTRIALS_GOV"

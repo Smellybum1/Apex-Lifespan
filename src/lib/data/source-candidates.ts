@@ -51,6 +51,7 @@ export interface SourceCandidateCurationHandoffSummary {
 export interface SourceCandidateReviewQueueOptions {
   claimId?: string;
   decision?: SourceCandidateDecision;
+  externalId?: string;
   ingestionJobId?: string;
   interventionId?: string;
   limit?: number;
@@ -313,6 +314,10 @@ export async function listSourceCandidateReviewQueue(
 
   if (options.ingestionJobId) {
     where.ingestionJobId = options.ingestionJobId;
+  }
+
+  if (options.externalId) {
+    where.externalId = options.externalId;
   }
 
   if (options.interventionId) {

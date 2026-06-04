@@ -65,6 +65,7 @@ export interface SourceCandidateJobCommandOptions
   candidateDetailDedupeKey?: string;
   candidateDecision?: SourceCandidateDecision;
   candidateClaimId?: string;
+  candidateExternalId?: string;
   candidateInterventionId?: string;
   candidateJobId?: string;
   candidateReferenceMatchesDedupeKey?: string;
@@ -135,6 +136,7 @@ export interface SourceCandidateJobCommandRunners {
   listCandidates?: (options: {
     claimId?: string;
     decision?: SourceCandidateDecision;
+    externalId?: string;
     ingestionJobId?: string;
     interventionId?: string;
     limit?: number;
@@ -395,6 +397,7 @@ export async function runSourceCandidateJobCommand(
       const candidates = await listCandidates({
         decision: options.candidateDecision,
         claimId: options.candidateClaimId,
+        externalId: options.candidateExternalId,
         ingestionJobId: options.candidateJobId,
         interventionId: options.candidateInterventionId,
         limit: options.candidatesLimit,
@@ -508,6 +511,7 @@ export function parseSourceCandidateJobCommandArgs(
   let candidatesLimitProvided = false;
   let candidateDecisionProvided = false;
   let candidateClaimIdProvided = false;
+  let candidateExternalIdProvided = false;
   let candidateInterventionIdProvided = false;
   let candidateJobIdProvided = false;
   let candidateCurationHandoffLimitProvided = false;
@@ -804,6 +808,13 @@ export function parseSourceCandidateJobCommandArgs(
       continue;
     }
 
+    if (arg === "--candidate-external-id") {
+      options.candidateExternalId = readRequiredValue(args, index, arg);
+      candidateExternalIdProvided = true;
+      index += 1;
+      continue;
+    }
+
     if (arg === "--candidate-intervention-id") {
       options.candidateInterventionId = readRequiredValue(args, index, arg);
       candidateInterventionIdProvided = true;
@@ -1041,6 +1052,12 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (options.candidateCurationHandoff && candidateExternalIdProvided) {
+    throw new Error(
+      "--candidate-external-id cannot be combined with --candidate-curation-handoff."
+    );
+  }
+
   if (options.candidateCurationHandoff && options.reviewDecision) {
     throw new Error(
       "--candidate-curation-handoff cannot be combined with review options."
@@ -1114,6 +1131,7 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
@@ -1193,6 +1211,7 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
@@ -1276,6 +1295,7 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
@@ -1335,6 +1355,7 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
@@ -1409,6 +1430,7 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
@@ -1475,6 +1497,7 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
@@ -1521,6 +1544,7 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
@@ -1610,6 +1634,7 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
@@ -1657,6 +1682,7 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
@@ -1787,6 +1813,7 @@ export function commandUsage() {
     "  <dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse.",
     "  --candidate-source <source>       Filter candidates or handoff by source: pubmed or clinical-trials.",
     "  --candidate-decision <decision>   Candidate decision: pending, accepted, or rejected.",
+    "  --candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id.",
     "  --candidate-job-id <id>           Filter --candidates or handoff by ingestion job id.",
     "  --candidate-intervention-id <id>  Filter --candidates or handoff by intervention id.",
     "  --candidate-claim-id <id>         Filter --candidates or handoff by claim id.",
@@ -1894,6 +1921,7 @@ function formatReviewedSourceCandidate(candidate: SourceCandidate) {
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    `externalId=${quote(candidate.externalId)}`,
     `title=${quote(candidate.title)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
@@ -2396,6 +2424,7 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    `externalId=${quote(candidate.externalId)}`,
     `title=${quote(candidate.title)}`,
     `url=${candidate.url}`
   ];
@@ -2838,6 +2867,7 @@ function readStudySourceType(value: string): SourceCandidateStudyExtractionSourc
 function hasCandidateListFilter({
   candidatesLimitProvided,
   candidateDecisionProvided,
+  candidateExternalIdProvided,
   candidateJobIdProvided,
   candidateInterventionIdProvided,
   candidateClaimIdProvided,
@@ -2845,6 +2875,7 @@ function hasCandidateListFilter({
 }: {
   candidatesLimitProvided: boolean;
   candidateDecisionProvided: boolean;
+  candidateExternalIdProvided: boolean;
   candidateJobIdProvided: boolean;
   candidateInterventionIdProvided: boolean;
   candidateClaimIdProvided: boolean;
@@ -2854,6 +2885,7 @@ function hasCandidateListFilter({
     candidatesLimitProvided ||
       candidateSource ||
       candidateDecisionProvided ||
+      candidateExternalIdProvided ||
       candidateJobIdProvided ||
       candidateInterventionIdProvided ||
       candidateClaimIdProvided
