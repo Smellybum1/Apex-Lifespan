@@ -2604,7 +2604,7 @@ describe("runSourceCandidateJobCommand", () => {
           '  - "Title matches query"'
         ].join("\n"),
         [
-          `Source-candidate accepted-reference matches: total=1 dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}" groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-id creatine --candidate-region AU --candidate-source pubmed --candidates-limit 10" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}" decision="Pending review" reviewStatus="Unreviewed AI draft"`,
+          `Source-candidate accepted-reference matches: total=1 dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}" groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-id creatine --candidate-region AU --candidate-source pubmed --candidates-limit 10" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}" decision="Pending review" reviewStatus="Unreviewed AI draft" duplicateIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2" duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}" duplicateIdentityMixedDecision=true duplicateIdentityNextAction="Review duplicate identity rows together before changing any candidate decision."`,
           '- reference="ref-creatine-position-stand" source="PubMed" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ identifier="PMID: 28615996" year=2017'
         ].join("\n"),
         [
@@ -3577,7 +3577,9 @@ describe("runSourceCandidateJobCommand", () => {
       target: sourceCandidate({
         dedupeKey: "pubmed|au|creatine|28615996",
         source: "PubMed",
-        externalId: "28615996"
+        externalId: "28615996",
+        decision: "Accepted",
+        reviewStatus: "Human reviewed"
       }),
       siblings: [
         {
@@ -3607,7 +3609,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
-        `Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}" groupList="--candidates --candidate-claim-missing --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}" decision="Accepted" reviewStatus="Human reviewed" duplicateIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2" duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}" acceptedReference=ref-existing`,
+        `Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}" groupList="--candidates --candidate-claim-missing --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}" decision="Accepted" reviewStatus="Human reviewed" duplicateIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2" duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}" duplicateIdentityMixedDecision=true duplicateIdentityNextAction="Review duplicate identity rows together before changing any candidate decision." acceptedReference=ref-existing`,
         '- reference="ref-creatine-position-stand" source="PubMed" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ identifier="PMID: 28615996" year=2017',
         '- reference="ref-creatine-publisher" source="PubMed" title="Creatine\\npublisher record" url=https://publisher.example/creatine-position-stand'
       ].join("\n")

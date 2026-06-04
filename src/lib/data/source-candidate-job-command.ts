@@ -463,7 +463,9 @@ export async function runSourceCandidateJobCommand(
       stdout(
         formatSourceCandidateReferenceMatches(matches, {
           duplicateIdentityCandidateCount:
-            sourceCandidateSiblingDuplicateIdentityCount(siblings)
+            sourceCandidateSiblingDuplicateIdentityCount(siblings),
+          duplicateIdentityMixedDecision:
+            sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(siblings)
         })
       );
       return 0;
@@ -2942,7 +2944,12 @@ function formatSourceCandidateReviewPacket(packet: SourceCandidateReviewPacket) 
     "Source-candidate review packet",
     formatSourceCandidateReviewPacketCommandHints(packet),
     formatSourceCandidateDetail(packet.candidate, { commandHints: false }),
-    formatSourceCandidateReferenceMatches(packet.referenceMatches),
+    formatSourceCandidateReferenceMatches(packet.referenceMatches, {
+      duplicateIdentityCandidateCount:
+        sourceCandidateReviewPacketDuplicateIdentityCount(packet),
+      duplicateIdentityMixedDecision:
+        sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(packet.siblings)
+    }),
     formatSourceCandidateSiblings(packet.siblings)
   ].join("\n\n");
 }
@@ -3678,7 +3685,10 @@ function formatCurationStudy(status: SourceCandidateCurationStatus["studies"][nu
 
 function formatSourceCandidateReferenceMatches(
   matches: SourceCandidateAcceptedReferenceMatches,
-  options: { duplicateIdentityCandidateCount?: number } = {}
+  options: {
+    duplicateIdentityCandidateCount?: number;
+    duplicateIdentityMixedDecision?: boolean;
+  } = {}
 ) {
   const heading = formatSourceCandidateReferenceMatchHeading(matches, options);
 
@@ -3697,7 +3707,10 @@ function formatSourceCandidateReferenceMatches(
 
 function formatSourceCandidateReferenceMatchHeading(
   matches: SourceCandidateAcceptedReferenceMatches,
-  options: { duplicateIdentityCandidateCount?: number } = {}
+  options: {
+    duplicateIdentityCandidateCount?: number;
+    duplicateIdentityMixedDecision?: boolean;
+  } = {}
 ) {
   const candidate = matches.candidate;
   const key = safeCandidateKey(candidate.dedupeKey);
@@ -3729,6 +3742,18 @@ function formatSourceCandidateReferenceMatchHeading(
       duplicateIdentityCandidateCount
     )
   );
+
+  if (
+    duplicateIdentityCandidateCount > 1 &&
+    options.duplicateIdentityMixedDecision
+  ) {
+    parts.push(
+      "duplicateIdentityMixedDecision=true",
+      `duplicateIdentityNextAction=${quote(
+        SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+      )}`
+    );
+  }
 
   if (reviewFlagFields.length > 0) {
     parts.push(...reviewFlagFields);
