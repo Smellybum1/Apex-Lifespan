@@ -3553,6 +3553,7 @@ function formatSourceCandidateReviewFlagGroup(
   const parts = [
     "-",
     `flags=${quote(reviewFlagCodes.join(", "))}`,
+    `flagFocus=${quote(formatSourceCandidateReviewFlagsCommand(reviewFlagCodes[0]))}`,
     `claim=${group.claimId ?? "none"}`,
     `intervention=${group.interventionId ?? "none"}`,
     group.source,
@@ -3608,7 +3609,8 @@ function formatSourceCandidateReviewOverviewGroup(
   if (reviewFlagCodes.length > 0) {
     parts.push(
       `topReviewFlags=${quote(reviewFlagCodes.join(", "))}`,
-      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
+      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
+      `flagFocus=${quote(formatSourceCandidateReviewFlagsCommand(reviewFlagCodes[0]))}`
     );
   }
 
