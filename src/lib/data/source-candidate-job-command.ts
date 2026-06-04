@@ -2773,6 +2773,9 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
 
   if (reviewFlagField) {
     lines.push(reviewFlagField);
+    lines.push(
+      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+    );
   }
 
   if (status.acceptedReferenceId) {
@@ -2872,6 +2875,9 @@ function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStat
 
   if (reviewFlagField) {
     lines.push(reviewFlagField);
+    lines.push(
+      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+    );
   }
 
   if (status.acceptedReferenceId) {
@@ -2960,6 +2966,9 @@ function formatSourceCandidateCurationHandoffItem(
 
   if (reviewFlagField) {
     parts.push(reviewFlagField);
+    parts.push(
+      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+    );
   }
 
   if (status.acceptedReferenceId) {

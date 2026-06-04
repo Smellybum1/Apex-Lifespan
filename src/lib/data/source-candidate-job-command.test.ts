@@ -2648,6 +2648,7 @@ describe("runSourceCandidateJobCommand", () => {
         'nextAction="Attach or restore the matching curated reference before public packet review."',
         "publicSourcePacketReady=false",
         'reviewFlags="broad-safety-query, low-title-query-overlap"',
+        'flags="--candidate-review-flags --candidate-review-flags-limit 10"',
         "acceptedReference=trial-nct00715676",
         "candidateClaim=vitamin-d-deficiency",
         "claimLinks=0",
@@ -2935,6 +2936,7 @@ describe("runSourceCandidateJobCommand", () => {
         'nextAction="Attach or restore the matching curated reference before public packet review."',
         "publicSourcePacketReady=false",
         'reviewFlags="broad-safety-query, low-title-query-overlap"',
+        'flags="--candidate-review-flags --candidate-review-flags-limit 10"',
         "acceptedReference=trial-nct00715676",
         "candidateClaim=vitamin-d-deficiency",
         "claimLinkDraft: unavailable",
@@ -3126,7 +3128,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate curation handoff: total=1",
-        `- status="Accepted reference missing" nextAction="Attach or restore the matching curated reference before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="${candidateKey}" key=${safeCandidateKey(candidateKey)} packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}" curationStatus="--candidate-curation-status ${safeCandidateKey(candidateKey)}" curationDraft="--candidate-curation-draft ${safeCandidateKey(candidateKey)}" title="Calcium fracture prevention trial" reviewFlags="broad-safety-query, low-title-query-overlap" acceptedReference=trial-nct00715676 candidateClaim=vitamin-d-deficiency claimLinks=0 studies=0`
+        `- status="Accepted reference missing" nextAction="Attach or restore the matching curated reference before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="${candidateKey}" key=${safeCandidateKey(candidateKey)} packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}" curationStatus="--candidate-curation-status ${safeCandidateKey(candidateKey)}" curationDraft="--candidate-curation-draft ${safeCandidateKey(candidateKey)}" title="Calcium fracture prevention trial" reviewFlags="broad-safety-query, low-title-query-overlap" flags="--candidate-review-flags --candidate-review-flags-limit 10" acceptedReference=trial-nct00715676 candidateClaim=vitamin-d-deficiency claimLinks=0 studies=0`
       ].join("\n")
     );
   });
