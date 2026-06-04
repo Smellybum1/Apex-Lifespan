@@ -32,6 +32,7 @@ import {
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
   summarizeSourceCandidateCurationHandoff,
+  curationNextAction,
   type ExtractAcceptedSourceCandidateStudyInput,
   type ExtractedSourceCandidateStudy,
   type LinkAcceptedSourceCandidateClaimInput,
@@ -4639,6 +4640,7 @@ function formatSourceCandidateCurationHandoffSummaryGroup(
     `- status=${quote(group.status)}`,
     `publicSourcePacketReady=${group.publicSourcePacketReady}:`,
     String(group.count),
+    `nextAction=${quote(curationNextAction(group.status))}`,
     `handoff=${quote(formatSourceCandidateCurationHandoffStatusCommand(group.status))}`
   ].join(" ");
 }

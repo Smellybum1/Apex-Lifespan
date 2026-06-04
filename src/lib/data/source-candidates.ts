@@ -1826,7 +1826,7 @@ function metadataStringArray(metadata: Record<string, unknown>, key: string) {
   );
 }
 
-function curationNextAction(status: SourceCandidateCurationStatusKind) {
+export function curationNextAction(status: SourceCandidateCurationStatusKind) {
   switch (status) {
     case "Not accepted":
       return "Accept with a matching curated reference before curation handoff.";
