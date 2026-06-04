@@ -3532,6 +3532,18 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
     );
   }
 
+  if (candidate.acceptedReferenceId) {
+    parts.push(`acceptedReference=${candidate.acceptedReferenceId}`);
+  }
+
+  if (candidate.reviewedAt) {
+    parts.push(`reviewed=${candidate.reviewedAt}`);
+  }
+
+  if (candidate.reviewNote) {
+    parts.push(`note=${quote(candidate.reviewNote)}`);
+  }
+
   parts.push(
     `intervention=${candidate.interventionId ?? "none"}`,
     `claim=${candidate.claimId ?? "none"}`
