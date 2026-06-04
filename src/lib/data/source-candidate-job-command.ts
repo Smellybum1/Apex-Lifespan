@@ -3462,6 +3462,8 @@ function formatSourceCandidateReviewFlagGroup(
     `packet=${quote(`--candidate-review-packet ${key}`)}`,
     `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
     `siblings=${quote(`--candidate-siblings ${key}`)}`,
+    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
+    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`,
     `overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
   );
 
@@ -3505,7 +3507,9 @@ function formatSourceCandidateReviewOverviewGroup(
     `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
     `packet=${quote(`--candidate-review-packet ${key}`)}`,
     `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
-    `siblings=${quote(`--candidate-siblings ${key}`)}`
+    `siblings=${quote(`--candidate-siblings ${key}`)}`,
+    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
+    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`
   );
 
   return parts.join(" ");
@@ -3942,6 +3946,8 @@ function formatSourceCandidateReviewFlagSummaryGroup(
     ` packet=${quote(`--candidate-review-packet ${key}`)}` +
     ` referenceMatches=${quote(`--candidate-reference-matches ${key}`)}` +
     ` siblings=${quote(`--candidate-siblings ${key}`)}` +
+    ` curationStatus=${quote(`--candidate-curation-status ${key}`)}` +
+    ` curationDraft=${quote(`--candidate-curation-draft ${key}`)}` +
     ` flags=${quote(formatSourceCandidateReviewFlagsCommand(group.flag))}` +
     ` overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
   );
