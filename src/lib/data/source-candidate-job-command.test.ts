@@ -4301,7 +4301,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         'Source-candidate review flags: totalGroups=4 candidateCount=12 shown=3 flag="broad-safety-query" flaggedTopGroups=1',
-        `- flags="broad-safety-query" claim=vitamin-d-deficiency intervention=vitamin-d ClinicalTrials.gov AU pending=10 topTriage=100/100 topKey=${safeCandidateKey(flaggedKey)} topExternalId="NCT00715676" topIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source clinical-trials --candidate-external-id NCT00715676 --candidates-limit 2" topTitle="Vitamin D safety monitoring trial" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" packet="--candidate-review-packet ${safeCandidateKey(flaggedKey)}"`
+        `- flags="broad-safety-query" claim=vitamin-d-deficiency intervention=vitamin-d ClinicalTrials.gov AU pending=10 topTriage=100/100 topKey=${safeCandidateKey(flaggedKey)} topExternalId="NCT00715676" topIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source clinical-trials --candidate-external-id NCT00715676 --candidates-limit 2" topTitle="Vitamin D safety monitoring trial" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" packet="--candidate-review-packet ${safeCandidateKey(flaggedKey)}" overview="--candidate-review-overview --candidate-review-overview-limit 10"`
       ].join("\n")
     );
   });

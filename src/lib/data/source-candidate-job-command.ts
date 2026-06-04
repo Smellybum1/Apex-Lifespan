@@ -3438,7 +3438,8 @@ function formatSourceCandidateReviewFlagGroup(
   parts.push(
     `topTitle=${quote(candidate.title)}`,
     `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
-    `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`
+    `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`,
+    `overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
   );
 
   return parts.join(" ");

@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding review-flag command hints to review packets. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding overview drill-ins to review-flag rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -20,7 +20,7 @@ Refreshed on 2026-06-04 after adding review-flag command hints to review packets
 - Job rows are read-only and print candidate-list, context-jobs, and status-jobs hints.
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; exact output tests cover these write-result surfaces without live write smokes.
 - Review overview is read-only and prints region-qualified `list="..."` filtered queue hints, `packet="..."` top-candidate hints, duplicate hints when the top identity repeats, and compact `topReviewFlags` plus `flags="..."` drill-ins when applicable.
-- Review flags view is read-only (`--candidate-review-flags`) and filters the bounded review overview to flagged top candidates only; it can narrow by `--candidate-review-flag broad-safety-query` or `--candidate-review-flag low-title-query-overlap`, with compact `flags`, duplicate hints, `list="..."`, and `packet="..."`.
+- Review flags view is read-only (`--candidate-review-flags`) and filters the bounded review overview to flagged top candidates only; it can narrow by `--candidate-review-flag broad-safety-query` or `--candidate-review-flag low-title-query-overlap`, with compact `flags`, duplicate hints, `list="..."`, `packet="..."`, and `overview="..."`.
 - Generic and filtered review-flag command hints share one formatter; exact output is unchanged.
 - Candidate detail output is read-only and prints packet, reference-match, sibling, group-list, curation-status, curation-draft hints, compact `reviewFlags` plus `flags="..."` drill-ins, and explanatory `reviewCautions` for flagged claim-scoped candidates.
 - Candidate list rows are read-only and print `packet="..."` hints plus query, ingestion-job trace fields, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
@@ -65,7 +65,7 @@ Last CLI snapshot after local ingestion:
 - Read-only curation handoff smoke still returned `total=0`; non-empty flagged handoff drill-ins are covered by exact output tests.
 - Read-only summary smoke showed `flag="broad-safety-query"` with 2 top groups / 20 pending in top groups and `flag="low-title-query-overlap"` with 1 top group / 1 pending in top groups; each flag row included `list`, `packet`, and `overview` drill-ins.
 - Read-only review flags smoke showed 3 flagged top groups: vitamin-d-deficiency ClinicalTrials.gov and PubMed broad-safety-query groups plus the creatine-lifespan ClinicalTrials.gov low-title-query-overlap group.
-- Read-only filtered review flags smoke for `broad-safety-query` showed only the two vitamin-d-deficiency broad-query top groups; summary rows now include filtered `flags="..."` drill-ins, and the summary footer includes the generic `reviewFlags="--candidate-review-flags --candidate-review-flags-limit 10"` hint.
+- Read-only filtered review flags smoke for `broad-safety-query` showed only the two vitamin-d-deficiency broad-query top groups; each row now includes `overview="..."`, summary rows include filtered `flags="..."` drill-ins, and the summary footer includes the generic `reviewFlags="--candidate-review-flags --candidate-review-flags-limit 10"` hint.
 - Read-only sibling smoke for repeated PMID `42141930` showed packet hints on each sibling row without writes.
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 - New `creatine-lifespan` candidate: `NCT07451496`, triage 80/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBsb25nZXZpdHklMjBtb3J0YWxpdHklMjBsaWZlc3BhbnxuY3QwNzQ1MTQ5NnxjcmVhdGluZXxjcmVhdGluZS1saWZlc3Bhbg`; review packet showed no accepted-reference match and no siblings.
