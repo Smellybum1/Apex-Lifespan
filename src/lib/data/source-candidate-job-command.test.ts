@@ -15,31 +15,31 @@ function safeCandidateKey(dedupeKey: string) {
 describe("commandUsage", () => {
   it("describes source-candidate review guardrails", () => {
     expect(commandUsage()).toContain(
-      "--candidate-detail <dedupe-key>   Print one source-candidate detail record with command hints."
+      "--candidate-detail <dedupe-key>   Print one source-candidate detail record with review/curation hints."
     );
     expect(commandUsage()).toContain(
-      "--candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance."
+      "--candidate-reference-matches <dedupe-key> Print accepted-reference matches and review/curation hints."
     );
     expect(commandUsage()).toContain(
-      "--candidate-review-flags        Print read-only pending review groups whose top candidate has reviewer flags."
+      "--candidate-review-flags        Print read-only flagged pending review groups with review/curation hints."
     );
     expect(commandUsage()).toContain(
       "--candidate-review-flag <flag>  With --candidate-review-flags, filter by broad-safety-query or low-title-query-overlap."
     );
     expect(commandUsage()).toContain(
-      "--candidate-review-overview     Print read-only pending review groups with list, packet, and duplicate hints."
+      "--candidate-review-overview     Print read-only pending review groups with review/curation hints."
     );
     expect(commandUsage()).toContain(
       "--candidate-region <region>       Filter candidates, overview, flags, or handoff by region."
     );
     expect(commandUsage()).toContain(
-      "--candidate-review-packet <dedupe-key> Print command hints, detail, accepted-reference matches, and sibling/duplicate context."
+      "--candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, sibling/duplicate context, and curation hints."
     );
     expect(commandUsage()).toContain(
-      "--candidates                      Print source-candidate review rows with packet hints."
+      "--candidates                      Print read-only source-candidate review rows with review/curation hints."
     );
     expect(commandUsage()).toContain(
-      "--candidate-siblings <dedupe-key> Print source-candidate siblings with match reasons and review hints."
+      "--candidate-siblings <dedupe-key> Print source-candidate siblings with match reasons and review/curation hints."
     );
     expect(commandUsage()).toContain(
       "--candidate-curation-draft <dedupe-key> Print read-only claim-link/study draft fields with command hints."
@@ -54,7 +54,7 @@ describe("commandUsage", () => {
       "--candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
     );
     expect(commandUsage()).toContain(
-      "--candidate-duplicates            With --candidates, print duplicate source/external-id groups with review hints."
+      "--candidate-duplicates            With --candidates, print read-only duplicate source/external-id groups with review/curation hints."
     );
     expect(commandUsage()).toContain(
       "--candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id."

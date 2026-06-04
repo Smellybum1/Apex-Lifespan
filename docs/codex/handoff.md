@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding curation hints to overview and review-flag rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after aligning source-candidate help text with review/curation hints. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -16,6 +16,7 @@ Refreshed on 2026-06-04 after adding curation hints to overview and review-flag 
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
+- Source-candidate help text describes read-only review/curation drill-ins for candidate, overview, flag, sibling, duplicate, packet, and reference-match views.
 - Summary output is read-only and prints next-command hints for overview, review flags, duplicate scan, queued jobs, and curation handoff; non-empty curation status bucket rows include filtered handoff hints, and the bounded review flag focus block counts flagged top review groups with list/packet/reference-match/sibling/curation/flags/overview drill-ins.
 - Job rows are read-only and print candidate-list, context-jobs, and status-jobs hints.
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; exact output tests cover these write-result surfaces without live write smokes.
@@ -74,7 +75,7 @@ Last CLI snapshot after local ingestion:
 - Top `omega-3-triglycerides` candidate: `NCT00435045`, triage 100/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fG9tZWdhLTMlMjBlcGElMkZkaGElMjBsaXBpZHMlMjB0cmlnbHljZXJpZGVzJTIwYXBvYiUyMHRyaWdseWNlcmlkZSUyMGxvd2VyaW5nfG5jdDAwNDM1MDQ1fG9tZWdhLTN8b21lZ2EtMy10cmlnbHljZXJpZGVz`; review packet showed no accepted-reference match and 4 same-query siblings.
 - Top `omega-3-cv-events` ClinicalTrials.gov candidate: `NCT01492361`, triage 100/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fG9tZWdhLTMlMjBlcGElMkZkaGElMjBjYXJkaW92YXNjdWxhciUyMGV2ZW50cyUyMHByZXZlbnRpb258bmN0MDE0OTIzNjF8b21lZ2EtM3xvbWVnYS0zLWN2LWV2ZW50cw`; review packet showed no accepted-reference match and 8 same-query siblings.
 - Top `omega-3-cv-events` PubMed candidate: PMID `32634581`, triage 80/100, key `b64:cHVibWVkfGF1fG9tZWdhLTMlMjBlcGElMkZkaGElMjBjYXJkaW92YXNjdWxhciUyMGV2ZW50cyUyMHByZXZlbnRpb24lMjByYW5kb21pemVkJTIwdHJpYWwlMjBzeXN0ZW1hdGljJTIwcmV2aWV3fDMyNjM0NTgxfG9tZWdhLTN8b21lZ2EtMy1jdi1ldmVudHM`; review packet showed no accepted-reference match and 4 same-query siblings.
-- Read-only `omega-3-cv-events` PubMed list smoke showed packet hints on each candidate row.
+- Read-only `omega-3-cv-events` PubMed list smoke showed packet/reference/sibling and curation-status/draft hints on each candidate row.
 - Duplicate scan currently shows one pending PubMed identity group for PMID `42141930`; output includes copyable duplicate-list, packet, reference-match, sibling, and curation-status/draft hints.
 - Curation handoff: 0 accepted candidates ready for next curation status buckets.
 - Useful current views: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`, `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`, and `npm run ingest:sources -- --candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10`.
