@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding source-candidate overview duplicate hints. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding source-candidate packet duplicate hints. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -18,7 +18,7 @@ Refreshed on 2026-06-04 after adding source-candidate overview duplicate hints. 
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
 - Review overview is read-only and prints region-qualified `list="..."` filtered queue hints, `packet="..."` top-candidate hints, and duplicate hints when the top identity repeats.
 - Candidate list rows are read-only and print `packet="..."` hints for direct packet review.
-- Review packets print safe read-only follow-up commands and explicit human-reviewed accept/reject templates.
+- Review packets print safe read-only follow-up commands, duplicate hints when the identity repeats, and explicit human-reviewed accept/reject templates.
 - Duplicate identity output prints read-only `identityList="..."` and per-candidate `packet="..."` hints.
 - Claim-scoped source queries now append compact claim-text anchors after outcome terms before queueing.
 - Local Docker/PostgreSQL setup was verified earlier; migrations and seed were applied locally.
@@ -36,7 +36,7 @@ Last CLI snapshot after local ingestion:
 - `bpc-157-injury-healing` run results: PubMed job `cmpyzsq7p00019jfsudpodgx6` found 0/changed 0; ClinicalTrials.gov job `cmpyzsq7t00039jfs9pvuqz6p` found 0/changed 0.
 - Pending backlog: 50 candidates; PubMed AU 20 and ClinicalTrials.gov AU 30.
 - Read-only review overview smoke returned 9 pending groups across 50 candidates; the `creatine-strength` PubMed top identity showed `topIdentityCandidates=2` and a duplicate-list hint for PMID `42141930`.
-- Read-only review packet smoke for top `omega-3-cv-events` ClinicalTrials.gov candidate showed command hints, reference draft context, and sibling context without writes.
+- Read-only review packet smoke for repeated PMID `42141930` showed command hints, a duplicate-list hint, reference draft context, and sibling context without writes.
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 - New `creatine-lifespan` candidate: `NCT07451496`, triage 80/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBsb25nZXZpdHklMjBtb3J0YWxpdHklMjBsaWZlc3BhbnxuY3QwNzQ1MTQ5NnxjcmVhdGluZXxjcmVhdGluZS1saWZlc3Bhbg`; review packet showed no accepted-reference match and no siblings.
 - Top `vitamin-d-deficiency` candidate: `NCT00715676`, triage 100/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`; review packet showed no accepted-reference match and 9 same-query siblings.
@@ -50,8 +50,9 @@ Last CLI snapshot after local ingestion:
 - Useful current view: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
 
 Latest local validation:
-- `npm run test -- src/lib/data/source-candidates.test.ts`
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --candidate-review-packet b64:cHVibWVkfGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBzdHJlbmd0aCUyMHJlc2lzdGFuY2UlMjB0cmFpbmluZyUyMGxlYW4lMjBtYXNzJTIwcmFuZG9taXplZCUyMHRyaWFsJTIwc3lzdGVtYXRpYyUyMHJldmlld3w0MjE0MTkzMHxjcmVhdGluZXxjcmVhdGluZS1zdHJlbmd0aA`
+- `npm run test -- src/lib/data/source-candidates.test.ts`
 - `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`
 - `npm run ingest:sources -- --candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source pubmed --candidates-limit 3`
 - `npm run test -- src/lib/data/source-candidates.test.ts src/lib/data/source-candidate-job-command.test.ts`

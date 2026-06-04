@@ -50,7 +50,7 @@ Read-only output rules:
 - `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."`, `packet="..."`, and top-identity duplicate hints.
 - `--candidates` defaults to pending rows, prints `packet="..."` hints, and can filter by source, region, external id, job, intervention, claim, or decision.
 - `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."` and `packet="..."` hints.
-- `--candidate-review-packet` prints command hints, detail, accepted-reference matches, and sibling context together.
+- `--candidate-review-packet` prints command hints, detail, accepted-reference matches, sibling context, and duplicate hints when the identity repeats.
 - Packet accept/reject templates are copied commands only; they still require explicit human review and do not create references or public evidence.
 - Empty `--candidate-reference-matches` output includes a draft-only `referenceDraft=...` line for manual verification; it does not create a reference or mark the candidate accepted.
 - `--candidate-curation-status` and `--candidate-curation-handoff` report readiness for public source packets, not evidence quality.

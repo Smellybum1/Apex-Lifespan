@@ -24,7 +24,7 @@ describe("commandUsage", () => {
       "--candidate-region <region>       Filter candidates, overview, or handoff by region."
     );
     expect(commandUsage()).toContain(
-      "--candidate-review-packet <dedupe-key> Print command hints, detail, accepted-reference matches, and sibling context."
+      "--candidate-review-packet <dedupe-key> Print command hints, detail, accepted-reference matches, and sibling/duplicate context."
     );
     expect(commandUsage()).toContain(
       "--candidates                      Print source-candidate review rows with packet hints."
@@ -2076,6 +2076,7 @@ describe("runSourceCandidateJobCommand", () => {
           `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
           `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
           'groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-id creatine --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+          'duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2"',
           "humanReviewedWritesRequireOperator=true",
           `acceptTemplate="--accept-candidate ${safeCandidateKey("pubmed|au|creatine|28615996")} --accepted-reference-id <reference-id> --review-note \\"Human-reviewed rationale.\\""`,
           `rejectTemplate="--reject-candidate ${safeCandidateKey("pubmed|au|creatine|28615996")} --review-note \\"Human-reviewed rationale.\\""`
@@ -2112,6 +2113,52 @@ describe("runSourceCandidateJobCommand", () => {
         ].join("\n")
       ].join("\n\n")
     );
+  });
+
+  it("omits duplicate command hints when review packet siblings do not share identity", async () => {
+    const stdout = vi.fn();
+    const candidate = sourceCandidate({
+      dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+      interventionId: "creatine",
+      claimId: "creatine-strength"
+    });
+    const getCandidate = vi.fn().mockResolvedValue(candidate);
+    const listReferenceMatches = vi.fn().mockResolvedValue({
+      candidate,
+      references: []
+    });
+    const listSiblings = vi.fn().mockResolvedValue({
+      target: candidate,
+      siblings: [
+        {
+          candidate: sourceCandidate({
+            dedupeKey: "pubmed|au|creatine|30762623|creatine|creatine-strength",
+            externalId: "30762623",
+            interventionId: "creatine",
+            claimId: "creatine-strength"
+          }),
+          matchReasons: ["Same query/region", "Same intervention context"]
+        }
+      ]
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--candidate-review-packet",
+          safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")
+        ],
+        { stdout },
+        { getCandidate, listReferenceMatches, listSiblings }
+      )
+    ).resolves.toBe(0);
+
+    const output = stdout.mock.calls[0]?.[0] ?? "";
+    expect(output).toContain("Source-candidate review command hints");
+    expect(output).toContain(
+      `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}"`
+    );
+    expect(output).not.toContain("duplicates=");
   });
 
   it("prints read-only source-candidate curation status for public-ready accepted candidates", async () => {

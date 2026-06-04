@@ -37,7 +37,7 @@ npm run ingest:sources -- --candidate-curation-handoff
 Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on Windows anywhere `<dedupe-key>` is accepted.
 Candidate list rows print `packet="..."` for read-only packet review.
 Review overview rows print `list="..."` for the filtered pending group, including region, `packet="..."` for the top candidate drill-in, and duplicate hints when the top PMID/NCT identity repeats.
-Review packets print read-only follow-up commands and accept/reject templates; write templates still require explicit human review.
+Review packets print read-only follow-up commands, conditional duplicate hints, and accept/reject templates; write templates still require explicit human review.
 Duplicate identity rows print `identityList="..."` for the filtered duplicate group and `packet="..."` for each candidate row.
 
 ## Curation Readiness

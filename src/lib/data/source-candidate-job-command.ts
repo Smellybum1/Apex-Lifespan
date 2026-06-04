@@ -2168,7 +2168,7 @@ export function commandUsage() {
     "  --candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance.",
     "  --candidate-review-overview     Print read-only pending review groups with list, packet, and duplicate hints.",
     "  --candidate-review-overview-limit <count> Review overview group count (default 25, max 50).",
-    "  --candidate-review-packet <dedupe-key> Print command hints, detail, accepted-reference matches, and sibling context.",
+    "  --candidate-review-packet <dedupe-key> Print command hints, detail, accepted-reference matches, and sibling/duplicate context.",
     "  --candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons.",
     "  --candidate-siblings-limit <count> Sibling row count (default 25, max 50).",
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
@@ -2441,22 +2441,41 @@ function formatSourceCandidateDetail(candidate: SourceCandidate) {
 function formatSourceCandidateReviewPacket(packet: SourceCandidateReviewPacket) {
   return [
     "Source-candidate review packet",
-    formatSourceCandidateReviewPacketCommandHints(packet.candidate),
+    formatSourceCandidateReviewPacketCommandHints(packet),
     formatSourceCandidateDetail(packet.candidate),
     formatSourceCandidateReferenceMatches(packet.referenceMatches),
     formatSourceCandidateSiblings(packet.siblings)
   ].join("\n\n");
 }
 
-function formatSourceCandidateReviewPacketCommandHints(candidate: SourceCandidate) {
+function formatSourceCandidateReviewPacketCommandHints(
+  packet: SourceCandidateReviewPacket
+) {
+  const candidate = packet.candidate;
   const key = safeCandidateKey(candidate.dedupeKey);
-  return [
+  const duplicateIdentityCount = sourceCandidateReviewPacketDuplicateIdentityCount(packet);
+  const lines = [
     "Source-candidate review command hints",
     "safeReadOnly=true",
     `detail=${quote(`--candidate-detail ${key}`)}`,
     `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
     `siblings=${quote(`--candidate-siblings ${key}`)}`,
-    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
+    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`
+  ];
+
+  if (duplicateIdentityCount > 1) {
+    lines.push(
+      `duplicates=${quote(
+        formatSourceCandidateDuplicateIdentityListCommand({
+          externalId: candidate.externalId,
+          limit: duplicateIdentityCount,
+          source: candidate.source
+        })
+      )}`
+    );
+  }
+
+  lines.push(
     "humanReviewedWritesRequireOperator=true",
     `acceptTemplate=${quote(
       `--accept-candidate ${key} --accepted-reference-id <reference-id> --review-note "Human-reviewed rationale."`
@@ -2464,7 +2483,17 @@ function formatSourceCandidateReviewPacketCommandHints(candidate: SourceCandidat
     `rejectTemplate=${quote(
       `--reject-candidate ${key} --review-note "Human-reviewed rationale."`
     )}`
-  ].join("\n");
+  );
+
+  return lines.join("\n");
+}
+
+function sourceCandidateReviewPacketDuplicateIdentityCount(
+  packet: SourceCandidateReviewPacket
+) {
+  return 1 + packet.siblings.siblings.filter((sibling) =>
+    sibling.matchReasons.includes("Same source/external id")
+  ).length;
 }
 
 function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft) {
@@ -2945,16 +2974,11 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
 function formatSourceCandidateIdentityGroupListCommand(
   group: SourceCandidateIdentityGroup
 ) {
-  return [
-    "--candidates",
-    "--candidate-duplicates",
-    "--candidate-source",
-    sourceCandidateSourceCliValue(group.source),
-    "--candidate-external-id",
-    group.externalId,
-    "--candidates-limit",
-    String(Math.min(group.candidates.length, DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT))
-  ].join(" ");
+  return formatSourceCandidateDuplicateIdentityListCommand({
+    externalId: group.externalId,
+    limit: group.candidates.length,
+    source: group.source
+  });
 }
 
 function sourceCandidateIdentityDecisionCounts(candidates: SourceCandidate[]) {
@@ -3040,17 +3064,31 @@ function formatSourceCandidateReviewOverviewListCommand(
 function formatSourceCandidateReviewOverviewDuplicateListCommand(
   group: SourceCandidateReviewOverview["groups"][number]
 ) {
+  return formatSourceCandidateDuplicateIdentityListCommand({
+    externalId: group.topCandidate.externalId,
+    limit: group.topIdentityCandidateCount,
+    source: group.source
+  });
+}
+
+function formatSourceCandidateDuplicateIdentityListCommand({
+  externalId,
+  limit,
+  source
+}: {
+  externalId: string;
+  limit: number;
+  source: SourceCandidateSource;
+}) {
   return [
     "--candidates",
     "--candidate-duplicates",
     "--candidate-source",
-    sourceCandidateSourceCliValue(group.source),
+    sourceCandidateSourceCliValue(source),
     "--candidate-external-id",
-    group.topCandidate.externalId,
+    externalId,
     "--candidates-limit",
-    String(
-      Math.min(group.topIdentityCandidateCount, DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT)
-    )
+    String(Math.min(limit, DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT))
   ].join(" ");
 }
 
