@@ -3121,8 +3121,7 @@ function formatSourceCandidateCurationDraft(
   }
 
   if (status.acceptedReference) {
-    lines.push(`acceptedReferenceTitle=${quote(status.acceptedReference.title)}`);
-    lines.push(`acceptedReferenceUrl=${status.acceptedReference.url}`);
+    lines.push(...formatAcceptedReferenceAuditFields(status.acceptedReference));
   }
 
   if (candidate.claimId) {
@@ -3370,8 +3369,7 @@ function formatSourceCandidateCurationStatus(
   }
 
   if (status.acceptedReference) {
-    lines.push(`acceptedReferenceTitle=${quote(status.acceptedReference.title)}`);
-    lines.push(`acceptedReferenceUrl=${status.acceptedReference.url}`);
+    lines.push(...formatAcceptedReferenceAuditFields(status.acceptedReference));
   }
 
   if (status.candidate.claimId) {
@@ -3476,6 +3474,10 @@ function formatSourceCandidateCurationHandoffItem(
     parts.push(`acceptedReference=${status.acceptedReferenceId}`);
   }
 
+  if (status.acceptedReference) {
+    parts.push(...formatAcceptedReferenceAuditFields(status.acceptedReference));
+  }
+
   if (candidate.reviewedAt) {
     parts.push(`reviewed=${candidate.reviewedAt}`);
   }
@@ -3496,6 +3498,25 @@ function formatSourceCandidateCurationHandoffItem(
   parts.push(`studies=${status.studies.length}`);
 
   return parts.join(" ");
+}
+
+function formatAcceptedReferenceAuditFields(reference: Reference) {
+  const fields = [
+    `acceptedReferenceTitle=${quote(reference.title)}`,
+    `acceptedReferenceSource=${quote(reference.source)}`
+  ];
+
+  if (reference.identifier) {
+    fields.push(`acceptedReferenceIdentifier=${quote(reference.identifier)}`);
+  }
+
+  if (reference.year !== undefined) {
+    fields.push(`acceptedReferenceYear=${reference.year}`);
+  }
+
+  fields.push(`acceptedReferenceUrl=${reference.url}`);
+
+  return fields;
 }
 
 function formatSourceCandidateCurationWriteFields(
