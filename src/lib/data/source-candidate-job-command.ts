@@ -4466,12 +4466,20 @@ function formatSourceCandidateReviewFlagSummaryGroup(
   const drillInHints = formatSourceCandidateReviewDrillInHints(candidate, key)
     .map((hint) => ` ${hint}`)
     .join("");
+  const duplicateIdentityHints = exampleGroup.topIdentityCandidateCount > 1
+    ? [
+        ` topIdentityCandidates=${exampleGroup.topIdentityCandidateCount}`,
+        ` duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(exampleGroup))}`,
+        ` duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
+      ].join("")
+    : "";
 
   return (
     `- flag=${quote(group.flag)} topGroups=${group.topGroups}` +
     ` pendingInTopGroups=${group.pendingInTopGroups}` +
     ` topGroup=${quote(formatSourceCandidateReviewFlagSummaryGroupLabel(exampleGroup))}` +
     `${caution ? ` caution=${quote(caution)}` : ""}` +
+    duplicateIdentityHints +
     ` list=${quote(formatSourceCandidateReviewOverviewListCommand(exampleGroup))}` +
     drillInHints +
     ` flags=${quote(formatSourceCandidateReviewFlagsCommand(group.flag))}` +
