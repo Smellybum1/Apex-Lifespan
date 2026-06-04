@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after rejecting non-terminal source-candidate review decisions at persistence. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after compacting validation history. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -38,36 +38,13 @@ Refreshed on 2026-06-04 after rejecting non-terminal source-candidate review dec
 
 ## Latest Local Validation
 
-Current code validation for source-candidate review-decision runtime guardrail:
-- `npm run test -- src/lib/data/source-candidates.test.ts`
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
+Current docs validation for handoff compaction:
+- `(Get-Content docs/codex/handoff.md).Count` returned 56.
+- Guardrail `rg` search for local-only review, public read-only, human-reviewed writes, accepted/rejected review decisions, peptide guardrails, workflow doc pointer, and archive pointer.
 - `git diff --check` (only LF-to-CRLF warnings for modified files)
 
-Previous code validation for public API source-candidate boundary coverage:
-- `npm run test -- src/app/api/live-source-readonly-boundary.test.ts`
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Previous docs compaction check:
-- `(Get-Content docs/codex/handoff.md).Count` returned 60.
-- Guardrail search confirmed local-only review, public read-only, human-reviewed writes, no accept/reject without review, peptide guardrails, workflow doc pointer, and historical archive pointer remain present.
-- `git diff --check` (only LF-to-CRLF warning for `docs/codex/handoff.md`).
-
-Previous code validation for source-candidate drill-in formatter consolidation:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 3`
-- `npm run ingest:sources -- --candidates --candidate-job-id cmpyzoc7500039jwcbu1ii4o7 --candidates-limit 3`
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warning for `src/lib/data/source-candidate-job-command.ts`)
+Recent code validation for source-candidate CLI/type/persistence guardrails:
+- Focused source-candidate command/persistence tests plus `npm run test`, `npm run lint`, `npm run dev:stop`, and `npm run typecheck`.
 
 ## Next Useful Tasks
 
