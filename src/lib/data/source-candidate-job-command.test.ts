@@ -18,6 +18,9 @@ describe("commandUsage", () => {
       "--candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance."
     );
     expect(commandUsage()).toContain(
+      "--candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, and sibling context."
+    );
+    expect(commandUsage()).toContain(
       "--candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons."
     );
     expect(commandUsage()).toContain(
@@ -137,6 +140,26 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       limit: 1,
       summary: false
     });
+  });
+
+  it("parses read-only source-candidate review packet mode", () => {
+    const encodedKey = safeCandidateKey("pubmed|au|creatine|28615996");
+
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-packet",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toEqual({
+      candidateReviewPacketDedupeKey: "pubmed|au|creatine|28615996",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+    expect(
+      parseSourceCandidateJobCommandArgs(["--candidate-review-packet", encodedKey])
+        .candidateReviewPacketDedupeKey
+    ).toBe("pubmed|au|creatine|28615996");
   });
 
   it("parses read-only source-candidate sibling mode", () => {
@@ -1125,6 +1148,93 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     ).toThrow("--candidate-reference-matches cannot be combined with run options.");
   });
 
+  it("does not combine source-candidate review packet mode with other command modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-packet",
+        "pubmed|au|creatine|28615996",
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow("--candidate-detail cannot be combined with --candidate-review-packet.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-packet",
+        "pubmed|au|creatine|28615996",
+        "--candidate-reference-matches",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow(
+      "--candidate-reference-matches cannot be combined with --candidate-review-packet."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-packet",
+        "pubmed|au|creatine|28615996",
+        "--candidate-siblings",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow("--candidate-siblings cannot be combined with --candidate-review-packet.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-packet",
+        "pubmed|au|creatine|28615996",
+        "--candidates"
+      ])
+    ).toThrow("--candidate-review-packet cannot be combined with --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-packet",
+        "pubmed|au|creatine|28615996",
+        "--candidate-source",
+        "pubmed"
+      ])
+    ).toThrow(
+      "Candidate-list filters cannot be combined with --candidate-review-packet."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-packet",
+        "pubmed|au|creatine|28615996",
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ])
+    ).toThrow("--candidate-review-packet cannot be combined with review options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(studyCommandArgs([
+        "--candidate-review-packet",
+        "pubmed|au|creatine|28615996"
+      ]))
+    ).toThrow(
+      "--candidate-review-packet cannot be combined with --extract-candidate-study."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-packet",
+        "pubmed|au|creatine|28615996",
+        "--jobs"
+      ])
+    ).toThrow("--candidate-review-packet cannot be combined with --jobs.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-packet",
+        "pubmed|au|creatine|28615996",
+        "--queue-pubmed",
+        "creatine"
+      ])
+    ).toThrow("--candidate-review-packet cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-packet",
+        "pubmed|au|creatine|28615996",
+        "--limit",
+        "2"
+      ])
+    ).toThrow("--candidate-review-packet cannot be combined with run options.");
+  });
+
   it("does not combine source-candidate sibling mode with other command modes", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs([
@@ -1797,6 +1907,95 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stderr).toHaveBeenCalledWith(
       'Source candidate not found: "missing-candidate"'
+    );
+  });
+
+  it("prints a read-only source-candidate review packet", async () => {
+    const stdout = vi.fn();
+    const candidate = sourceCandidate({
+      interventionId: "creatine",
+      claimId: "creatine-strength",
+      ingestionJobId: "job-pubmed"
+    });
+    const getCandidate = vi.fn().mockResolvedValue(candidate);
+    const listReferenceMatches = vi.fn().mockResolvedValue({
+      candidate,
+      references: [
+        {
+          id: "ref-creatine-position-stand",
+          title: "Creatine position stand",
+          source: "PubMed",
+          identifier: "PMID: 28615996",
+          year: 2017,
+          url: "https://pubmed.ncbi.nlm.nih.gov/28615996/"
+        }
+      ]
+    });
+    const listSiblings = vi.fn().mockResolvedValue({
+      target: candidate,
+      siblings: [
+        {
+          candidate: sourceCandidate({
+            dedupeKey: "pubmed|au|creatine-aging|28615996",
+            query: "creatine aging",
+            title: "Creatine duplicate",
+            interventionId: "creatine",
+            claimId: "creatine-aging"
+          }),
+          matchReasons: ["Same source/external id", "Same intervention context"]
+        }
+      ]
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-review-packet", safeCandidateKey("pubmed|au|creatine|28615996")],
+        { stdout },
+        { getCandidate, listReferenceMatches, listSiblings, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(getCandidate).toHaveBeenCalledWith("pubmed|au|creatine|28615996");
+    expect(listReferenceMatches).toHaveBeenCalledWith(
+      "pubmed|au|creatine|28615996"
+    );
+    expect(listSiblings).toHaveBeenCalledWith("pubmed|au|creatine|28615996", {});
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate review packet",
+        [
+          "Source-candidate detail",
+          'dedupe="pubmed|au|creatine|28615996"',
+          `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
+          'source="PubMed"',
+          'externalId="28615996"',
+          'region="AU"',
+          'query="creatine strength"',
+          'title="Creatine position stand"',
+          "url=https://pubmed.ncbi.nlm.nih.gov/28615996/",
+          "triage=80/100",
+          'decision="Pending review"',
+          'reviewStatus="Unreviewed AI draft"',
+          "publishedYear=2017",
+          'sourceType="Review"',
+          "abstractAvailable=true",
+          "intervention=creatine",
+          "claim=creatine-strength",
+          "ingestionJob=job-pubmed",
+          "triageReasons:",
+          '  - "Title matches query"'
+        ].join("\n"),
+        [
+          'Source-candidate accepted-reference matches: total=1 dedupe="pubmed|au|creatine|28615996" key=b64:cHVibWVkfGF1fGNyZWF0aW5lfDI4NjE1OTk2 candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Pending review" reviewStatus="Unreviewed AI draft"',
+          '- reference="ref-creatine-position-stand" source="PubMed" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ identifier="PMID: 28615996" year=2017'
+        ].join("\n"),
+        [
+          'Source-candidate siblings: total=1 target="pubmed|au|creatine|28615996" targetKey=b64:cHVibWVkfGF1fGNyZWF0aW5lfDI4NjE1OTk2 candidate="Creatine position stand" source="PubMed" externalId="28615996" query="creatine strength" region="AU" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-strength',
+          `- match="Same source/external id, Same intervention context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine-aging|28615996" key=${safeCandidateKey("pubmed|au|creatine-aging|28615996")} externalId="28615996" query="creatine aging" title="Creatine duplicate" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-aging`
+        ].join("\n")
+      ].join("\n\n")
     );
   });
 

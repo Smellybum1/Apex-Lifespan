@@ -36,6 +36,7 @@ Refreshed on 2026-06-04. Treat the worktree as authoritative: run `git status -s
 - Candidate-oriented output includes `key=b64:...`; use that shell-safe value on Windows anywhere a source-candidate `<dedupe-key>` is accepted.
 - `--candidates --candidate-external-id <id>` narrows the read-only review queue by PMID/NCT id and list rows show `externalId=...` for duplicate source-identity scans.
 - `--candidates --candidate-duplicates` surfaces duplicate PMID/NCT identity groups across query and claim scopes without changing review state.
+- `--candidate-review-packet <dedupe-key>` prints detail, accepted-reference matches, and same-identity siblings for one candidate without changing review state.
 - Ingestion job identity is source/query/region plus optional intervention and claim context; PostgreSQL partial unique indexes separate unscoped, intervention, claim, and intervention+claim queue buckets.
 - Queueing validates requested intervention/claim context before job creation.
 

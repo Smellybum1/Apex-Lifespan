@@ -72,6 +72,7 @@ export interface SourceCandidateJobCommandOptions
   candidateInterventionId?: string;
   candidateJobId?: string;
   candidateReferenceMatchesDedupeKey?: string;
+  candidateReviewPacketDedupeKey?: string;
   candidateSiblingsDedupeKey?: string;
   candidateSiblingsLimit?: number;
   candidateSource?: SourceCandidateSource;
@@ -186,6 +187,12 @@ export interface SourceCandidateJobCommandRunners {
   summarizeBacklog?: () => Promise<SourceCandidateBacklogSummary>;
   summarizeCurationHandoff?: () => Promise<SourceCandidateCurationHandoffSummary>;
   summarizeJobs?: () => Promise<SourceCandidateIngestionJobSummary>;
+}
+
+interface SourceCandidateReviewPacket {
+  candidate: SourceCandidate;
+  referenceMatches: SourceCandidateAcceptedReferenceMatches;
+  siblings: SourceCandidateSiblings;
 }
 
 const DEFAULT_JOB_LIMIT = 1;
@@ -328,6 +335,30 @@ export async function runSourceCandidateJobCommand(
       }
 
       stdout(formatSourceCandidateReferenceMatches(matches));
+      return 0;
+    }
+
+    if (options.candidateReviewPacketDedupeKey) {
+      const [candidate, referenceMatches, siblings] = await Promise.all([
+        getCandidate(options.candidateReviewPacketDedupeKey),
+        listReferenceMatches(options.candidateReviewPacketDedupeKey),
+        listSiblings(options.candidateReviewPacketDedupeKey, {})
+      ]);
+
+      if (!candidate || !referenceMatches || !siblings) {
+        stderr(
+          `Source candidate not found: ${quote(options.candidateReviewPacketDedupeKey)}`
+        );
+        return 1;
+      }
+
+      stdout(
+        formatSourceCandidateReviewPacket({
+          candidate,
+          referenceMatches,
+          siblings
+        })
+      );
       return 0;
     }
 
@@ -626,6 +657,16 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--candidate-reference-matches") {
       options.candidateReferenceMatchesDedupeKey = readCandidateKeyValue(
+        args,
+        index,
+        arg
+      );
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-review-packet") {
+      options.candidateReviewPacketDedupeKey = readCandidateKeyValue(
         args,
         index,
         arg
@@ -1054,6 +1095,12 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (options.candidateCurationHandoff && options.candidateReviewPacketDedupeKey) {
+    throw new Error(
+      "--candidate-curation-handoff cannot be combined with --candidate-review-packet."
+    );
+  }
+
   if (options.candidateCurationHandoff && options.candidateSiblingsDedupeKey) {
     throw new Error(
       "--candidate-curation-handoff cannot be combined with --candidate-siblings."
@@ -1445,6 +1492,111 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (options.candidateReviewPacketDedupeKey && options.candidateDetailDedupeKey) {
+    throw new Error(
+      "--candidate-detail cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    options.candidateCurationStatusDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-curation-status cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    options.candidateCurationDraftDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-curation-draft cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    options.candidateReferenceMatchesDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-reference-matches cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.candidateSiblingsDedupeKey) {
+    throw new Error(
+      "--candidate-siblings cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.summary) {
+    throw new Error("--candidate-review-packet cannot be combined with --summary.");
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.candidates) {
+    throw new Error("--candidate-review-packet cannot be combined with --candidates.");
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    hasCandidateListFilter({
+      candidatesLimitProvided,
+      candidateDecisionProvided,
+      candidateExternalIdProvided,
+      candidateJobIdProvided,
+      candidateInterventionIdProvided,
+      candidateClaimIdProvided,
+      candidateSource: options.candidateSource
+    })
+  ) {
+    throw new Error(
+      "Candidate-list filters cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.reviewDecision) {
+    throw new Error("--candidate-review-packet cannot be combined with review options.");
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    options.linkCandidateClaimDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-review-packet cannot be combined with --link-candidate-claim."
+    );
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.extractCandidateStudyDedupeKey) {
+    throw new Error(
+      "--candidate-review-packet cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.jobs) {
+    throw new Error("--candidate-review-packet cannot be combined with --jobs.");
+  }
+
+  if (options.candidateReviewPacketDedupeKey && hasQueueOption(options)) {
+    throw new Error("--candidate-review-packet cannot be combined with queue options.");
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    (options.region || options.interventionId || options.claimId)
+  ) {
+    throw new Error("--candidate-review-packet cannot be combined with queue metadata.");
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    (options.jobId || limitProvided || sourceLimitProvided)
+  ) {
+    throw new Error("--candidate-review-packet cannot be combined with run options.");
+  }
+
   if (options.candidateSiblingsDedupeKey && options.summary) {
     throw new Error("--candidate-siblings cannot be combined with --summary.");
   }
@@ -1816,6 +1968,7 @@ export function commandUsage() {
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
     "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
     "  --candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance.",
+    "  --candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, and sibling context.",
     "  --candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons.",
     "  --candidate-siblings-limit <count> Sibling row count (default 25, max 50).",
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
@@ -2082,6 +2235,15 @@ function formatSourceCandidateDetail(candidate: SourceCandidate) {
   }
 
   return lines.join("\n");
+}
+
+function formatSourceCandidateReviewPacket(packet: SourceCandidateReviewPacket) {
+  return [
+    "Source-candidate review packet",
+    formatSourceCandidateDetail(packet.candidate),
+    formatSourceCandidateReferenceMatches(packet.referenceMatches),
+    formatSourceCandidateSiblings(packet.siblings)
+  ].join("\n\n");
 }
 
 function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft) {
