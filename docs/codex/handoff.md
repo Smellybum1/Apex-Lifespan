@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding source-candidate queue/run result hints. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding source-candidate row trace fields. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -21,7 +21,7 @@ Refreshed on 2026-06-04 after adding source-candidate queue/run result hints. Ve
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; exact output tests cover these write-result surfaces without live write smokes.
 - Review overview is read-only and prints region-qualified `list="..."` filtered queue hints, `packet="..."` top-candidate hints, and duplicate hints when the top identity repeats.
 - Candidate detail output is read-only and prints packet, reference-match, sibling, group-list, curation-status, and curation-draft hints.
-- Candidate list rows are read-only and print `packet="..."` hints for direct packet review.
+- Candidate list rows are read-only and print `packet="..."` hints plus query and ingestion-job trace fields.
 - Reference-match headings print read-only `packet="..."` and `groupList="..."` hints; reference drafts remain draft-only.
 - Review packets print safe read-only follow-up commands, duplicate hints when the identity repeats, and explicit human-reviewed accept/reject templates.
 - Sibling rows print read-only `packet="..."` hints for related candidate packet review.
@@ -45,6 +45,7 @@ Last CLI snapshot after local ingestion:
 - Pending backlog: 50 candidates; PubMed AU 20 and ClinicalTrials.gov AU 30.
 - Read-only jobs smoke showed recent job rows with candidates/context-jobs/status-jobs hints without writes.
 - Queue/run result hints are covered by exact output tests; live validation used read-only jobs/help only.
+- Read-only candidate list smoke for job `cmpyzoc7500039jwcbu1ii4o7` showed query and ingestion-job trace fields without writes.
 - Read-only summary smoke showed next-command hints after counts without writes.
 - Read-only summary smoke still returned curation handoff `total=0`; non-empty curation bucket filter hints are covered by exact output tests.
 - Read-only detail smoke for repeated PMID `42141930` showed packet/reference/sibling/group/curation hints without writes.
@@ -67,6 +68,7 @@ Last CLI snapshot after local ingestion:
 
 Latest local validation:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --candidates --candidate-job-id cmpyzoc7500039jwcbu1ii4o7 --candidates-limit 3`
 - `npm run ingest:sources -- --jobs --jobs-limit 2`
 - `npm run ingest:sources -- --candidate-detail b64:cHVibWVkfGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBzdHJlbmd0aCUyMHJlc2lzdGFuY2UlMjB0cmFpbmluZyUyMGxlYW4lMjBtYXNzJTIwcmFuZG9taXplZCUyMHRyaWFsJTIwc3lzdGVtYXRpYyUyMHJldmlld3w0MjE0MTkzMHxjcmVhdGluZXxjcmVhdGluZS1zdHJlbmd0aA`
 - `npm run ingest:sources -- --summary`

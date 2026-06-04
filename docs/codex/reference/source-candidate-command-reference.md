@@ -51,7 +51,7 @@ Read-only output rules:
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
 - `--candidate-detail` prints one record plus read-only packet/reference/sibling/group/curation hints.
 - `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."`, `packet="..."`, and top-identity duplicate hints.
-- `--candidates` defaults to pending rows, prints `packet="..."` hints, and can filter by source, region, external id, job, intervention, claim, or decision.
+- `--candidates` defaults to pending rows, prints `packet="..."` hints plus query/job trace fields, and can filter by source, region, external id, job, intervention, claim, or decision.
 - `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."` and `packet="..."` hints.
 - `--candidate-reference-matches` prints candidate identity plus `packet="..."` and `groupList="..."` hints before eligible curated references or draft-only reference context.
 - `--candidate-review-packet` prints command hints, detail, accepted-reference matches, sibling context, and duplicate hints when the identity repeats.

@@ -3211,6 +3211,7 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
     `key=${safeCandidateKey(candidate.dedupeKey)}`,
     `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`,
     `externalId=${quote(candidate.externalId)}`,
+    `query=${quote(candidate.query)}`,
     `title=${quote(candidate.title)}`,
     `url=${candidate.url}`
   ];
@@ -3233,6 +3234,10 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
 
   if (candidate.reviewNote) {
     parts.push(`note=${quote(candidate.reviewNote)}`);
+  }
+
+  if (candidate.ingestionJobId) {
+    parts.push(`ingestionJob=${candidate.ingestionJobId}`);
   }
 
   if (candidate.interventionId) {
