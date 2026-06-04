@@ -3073,6 +3073,7 @@ function formatSourceCandidateReferenceMatchHeading(
     `externalId=${quote(candidate.externalId)}`,
     `url=${candidate.url}`,
     `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`,
+    `siblings=${quote(`--candidate-siblings ${safeCandidateKey(candidate.dedupeKey)}`)}`,
     `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
     `curationStatus=${quote(`--candidate-curation-status ${safeCandidateKey(candidate.dedupeKey)}`)}`,
     `curationDraft=${quote(`--candidate-curation-draft ${safeCandidateKey(candidate.dedupeKey)}`)}`,
