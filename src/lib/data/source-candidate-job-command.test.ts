@@ -2872,6 +2872,8 @@ describe("runSourceCandidateJobCommand", () => {
         'status="Not accepted"',
         'nextAction="Accept with a matching curated reference before curation handoff."',
         "publicSourcePacketReady=false",
+        "acceptRequiresMatchingCuratedReference=true",
+        "reviewDecisionRequiresHumanNote=true",
         "claimLinks=0",
         "studies=0"
       ].join("\n")
@@ -3059,6 +3061,8 @@ describe("runSourceCandidateJobCommand", () => {
         'status="Not accepted"',
         'nextAction="Accept with a matching curated reference before curation handoff."',
         "publicSourcePacketReady=false",
+        "acceptRequiresMatchingCuratedReference=true",
+        "reviewDecisionRequiresHumanNote=true",
         "claimLinkDraft: unavailable",
         "studyExtractionDraft: unavailable"
       ].join("\n")

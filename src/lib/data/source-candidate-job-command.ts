@@ -2918,6 +2918,13 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
     `publicSourcePacketReady=${status.publicSourcePacketReady}`
   ];
 
+  if (status.status === "Not accepted") {
+    lines.push(
+      "acceptRequiresMatchingCuratedReference=true",
+      "reviewDecisionRequiresHumanNote=true"
+    );
+  }
+
   if (reviewFlagFields.length > 0) {
     lines.push(...reviewFlagFields);
   }
@@ -3016,6 +3023,13 @@ function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStat
     `nextAction=${quote(status.nextAction)}`,
     `publicSourcePacketReady=${status.publicSourcePacketReady}`
   ];
+
+  if (status.status === "Not accepted") {
+    lines.push(
+      "acceptRequiresMatchingCuratedReference=true",
+      "reviewDecisionRequiresHumanNote=true"
+    );
+  }
 
   if (reviewFlagFields.length > 0) {
     lines.push(...reviewFlagFields);

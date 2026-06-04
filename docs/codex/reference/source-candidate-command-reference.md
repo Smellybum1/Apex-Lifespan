@@ -64,7 +64,7 @@ Read-only output rules:
 - Packet accept/reject templates are copied commands only; they still require explicit human review notes and do not create references or public evidence.
 - `reviewFlags`/`reviewCautions` are local reviewer prompts, not rejection reasons or evidence-quality scores.
 - Empty `--candidate-reference-matches` output includes a draft-only `referenceDraft=...` line for manual verification; it does not create a reference or mark the candidate accepted.
-- `--candidate-curation-status` and `--candidate-curation-draft` report readiness for public source packets, not evidence quality, and print read-only packet/reference/sibling/group/paired-curation hints plus compact `reviewFlags`, `flags="..."`, and `flagFocus="..."` drill-ins when applicable.
+- `--candidate-curation-status` and `--candidate-curation-draft` report readiness for public source packets, not evidence quality, and print read-only packet/reference/sibling/group/paired-curation hints, Not-accepted accept-gate booleans, and compact `reviewFlags`, `flags="..."`, and `flagFocus="..."` drill-ins when applicable.
 - `--candidate-curation-handoff` reports accepted-candidate readiness for public source packets, not evidence quality, and non-empty rows print read-only packet/reference/sibling/status/draft hints plus compact `reviewFlags`, `flags="..."`, and `flagFocus="..."` drill-ins when applicable.
 
 ## Review And Curation Writes

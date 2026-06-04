@@ -54,7 +54,7 @@ Review packets print read-only follow-up commands, curation-status/draft hints, 
 Sibling headings print `targetPacket="..."`, `targetReferenceMatches="..."`, and target curation-status/draft hints for the target candidate, and rows print `packet="..."`, `referenceMatches="..."`, and curation-status/draft hints for read-only review of related candidates plus `targetReviewFlags`/`reviewFlags`, `flags="..."`, and `flagFocus="..."` drill-ins when applicable.
 Duplicate identity rows print `identityList="..."` for the filtered duplicate group and `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft, exact `groupList="..."` hints, and explicit `intervention`/`claim` context including `none`, plus `reviewFlags`, `flags="..."`, and `flagFocus="..."` for each candidate row when applicable.
 Curation handoff rows print read-only packet, reference-match, sibling, curation-status, curation-draft hints, and compact `reviewFlags` plus `flags="..."` and `flagFocus="..."` drill-ins when applicable.
-Curation status and draft rows print read-only packet, reference-match, sibling, group-list, paired curation-view hints, and compact `reviewFlags` plus `flags="..."` and `flagFocus="..."` drill-ins when applicable.
+Curation status and draft rows print read-only packet, reference-match, sibling, group-list, paired curation-view hints, Not-accepted accept-gate booleans, and compact `reviewFlags` plus `flags="..."` and `flagFocus="..."` drill-ins when applicable.
 
 ## Curation Readiness
 
