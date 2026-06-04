@@ -58,7 +58,7 @@ Read-only output rules:
 - `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."`, `packet="..."`, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable.
 - `--candidate-reference-matches` prints candidate identity plus `packet="..."`, `groupList="..."`, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable before eligible curated references or draft-only reference context.
 - `--candidate-review-packet` prints command hints, detail, accepted-reference matches, sibling context, and duplicate hints when the identity repeats.
-- `--candidate-siblings` prints match reasons, `packet="..."` hints, and compact `targetReviewFlags`/`reviewFlags` when applicable.
+- `--candidate-siblings` prints match reasons, `packet="..."` hints, and compact `targetReviewFlags`/`reviewFlags` plus a `flags="..."` drill-in when applicable.
 - Packet accept/reject templates are copied commands only; they still require explicit human review and do not create references or public evidence.
 - `reviewFlags`/`reviewCautions` are local reviewer prompts, not rejection reasons or evidence-quality scores.
 - Empty `--candidate-reference-matches` output includes a draft-only `referenceDraft=...` line for manual verification; it does not create a reference or mark the candidate accepted.

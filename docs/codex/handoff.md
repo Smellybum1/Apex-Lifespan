@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding review-flag drill-ins to curation readouts. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding review-flag drill-ins to sibling context. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -25,7 +25,7 @@ Refreshed on 2026-06-04 after adding review-flag drill-ins to curation readouts.
 - Candidate list rows are read-only and print `packet="..."` hints plus query, ingestion-job trace fields, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Reference-match headings print read-only `packet="..."`, `groupList="..."`, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable; reference drafts remain draft-only.
 - Review packets print safe read-only follow-up commands, duplicate hints when the identity repeats, and explicit human-reviewed accept/reject templates.
-- Sibling rows print read-only `packet="..."` hints plus compact `targetReviewFlags`/`reviewFlags` when applicable.
+- Sibling rows print read-only `packet="..."` hints plus compact `targetReviewFlags`/`reviewFlags` and `flags="..."` drill-ins when applicable.
 - Duplicate identity output prints read-only `identityList="..."`, per-candidate `packet="..."` hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Curation handoff rows print read-only packet, reference-match, curation-status, curation-draft hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Curation status and draft output print read-only packet, reference-match, group-list, paired curation-view hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
@@ -57,8 +57,8 @@ Last CLI snapshot after local ingestion:
 - Read-only review overview smoke showed `topReviewFlags="broad-safety-query"` plus `flags="..."` drill-ins on broad `vitamin-d-deficiency` ClinicalTrials.gov and PubMed groups; omega-3 triglycerides did not carry a low-overlap flag after token-root overlap handling.
 - Read-only review packet smoke for `NCT00715676` showed detail `reviewCautions` with `broad-safety-query` and no writes.
 - Read-only candidate list smoke for the top `vitamin-d-deficiency` ClinicalTrials.gov rows showed compact `reviewFlags="broad-safety-query"` plus `flags="..."` drill-ins and no writes.
-- Read-only `NCT00715676` review packet smoke showed `targetReviewFlags` on the sibling heading and row-level sibling `reviewFlags`, including low-title-query-overlap prompts for disconnected sibling titles.
-- Exact output tests cover `reviewFlags` plus `flags="..."` drill-ins on duplicate identity rows, accepted-reference match headings, curation status, curation draft, and non-empty curation handoff rows; no live duplicate write smoke was needed.
+- Read-only `NCT00715676` sibling smoke showed `targetReviewFlags` plus `flags="..."` on the heading and row-level `reviewFlags` plus `flags="..."`, including low-title-query-overlap prompts for disconnected sibling titles.
+- Exact output tests cover `reviewFlags` plus `flags="..."` drill-ins on sibling headings/rows, duplicate identity rows, accepted-reference match headings, curation status, curation draft, and non-empty curation handoff rows; no live duplicate write smoke was needed.
 - Read-only `NCT00715676` reference-match, curation-status, and curation-draft smokes showed compact `reviewFlags="broad-safety-query"` plus a `flags="..."` drill-in without writes.
 - Read-only curation handoff smoke still returned `total=0`; non-empty flagged handoff drill-ins are covered by exact output tests.
 - Read-only summary smoke showed `flag="broad-safety-query"` with 2 top groups / 20 pending in top groups and `flag="low-title-query-overlap"` with 1 top group / 1 pending in top groups; each flag row included `list`, `packet`, and `overview` drill-ins.
@@ -83,6 +83,7 @@ Latest local validation:
 - `npm run ingest:sources -- --candidate-curation-status b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
 - `npm run ingest:sources -- --candidate-curation-draft b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
 - `npm run ingest:sources -- --candidate-curation-handoff`
+- `npm run ingest:sources -- --candidate-siblings b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5 --candidate-siblings-limit 5`
 - `npm run ingest:sources -- --candidates --candidate-duplicates`
 - `npm run test`
 - `npm run lint`

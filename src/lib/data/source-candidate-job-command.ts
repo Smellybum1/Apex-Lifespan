@@ -3169,6 +3169,9 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
 
   if (targetReviewFlagCodes.length > 0) {
     headingParts.push(`targetReviewFlags=${quote(targetReviewFlagCodes.join(", "))}`);
+    headingParts.push(
+      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+    );
   }
 
   const heading = headingParts.join(" ");
@@ -3204,6 +3207,9 @@ function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings
 
   if (reviewFlagCodes.length > 0) {
     parts.push(`reviewFlags=${quote(reviewFlagCodes.join(", "))}`);
+    parts.push(
+      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+    );
   }
 
   if (candidate.acceptedReferenceId) {
