@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after rejecting accepted-reference ids on rejected source-candidate decisions. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after rejecting non-terminal source-candidate review decisions at persistence. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -16,7 +16,7 @@ Refreshed on 2026-06-04 after rejecting accepted-reference ids on rejected sourc
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
 - Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover static, dynamic, and CommonJS `source-candidate*` route imports.
-- Source-candidate acceptance/rejection, claim linking, and study extraction stay explicit human-reviewed local writes; accept/reject decisions require human review notes at CLI, type, and persistence layers, rejected decisions cannot carry accepted-reference ids, and accepted candidates still need curated references, claim links, and structured study extraction before public use.
+- Source-candidate acceptance/rejection, claim linking, and study extraction stay explicit human-reviewed local writes; persistence accepts only accepted/rejected review decisions, accept/reject decisions require human review notes at CLI, type, and persistence layers, rejected decisions cannot carry accepted-reference ids, and accepted candidates still need curated references, claim links, and structured study extraction before public use.
 - Source-candidate CLI output now provides copyable read-only review/curation drill-ins and Not-accepted accept-gate hints across summary, jobs, queues, detail, packets, reference matches, siblings, duplicates, and curation views; see `docs/codex/source-candidate-workflow.md` for the compact catalog.
 - Packet command hints include accepted-reference match counts and explicit accept-gate booleans; packet/reference/sibling/curation drill-ins share one local formatter helper in `src/lib/data/source-candidate-job-command.ts`, and exact CLI output is covered by source-candidate command tests.
 - Candidate filters support read-only `--candidate-claim-missing` and `--candidate-intervention-missing`; generated list hints use them when a group or candidate lacks claim/intervention context.
@@ -38,7 +38,7 @@ Refreshed on 2026-06-04 after rejecting accepted-reference ids on rejected sourc
 
 ## Latest Local Validation
 
-Current code validation for source-candidate rejected-decision reference guardrail:
+Current code validation for source-candidate review-decision runtime guardrail:
 - `npm run test -- src/lib/data/source-candidates.test.ts`
 - `npm run test`
 - `npm run lint`

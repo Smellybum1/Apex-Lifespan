@@ -1072,6 +1072,10 @@ export async function recordSourceCandidateDecision({
   const acceptedReferenceIdOrUndefined = acceptedReferenceId?.trim();
   const reviewNoteOrUndefined = reviewNote?.trim();
 
+  if (decision !== "Accepted" && decision !== "Rejected") {
+    throw new Error("Source candidate review decision must be Accepted or Rejected.");
+  }
+
   if (decision === "Accepted" && !acceptedReferenceIdOrUndefined) {
     throw new Error("Accepted source candidates require an acceptedReferenceId.");
   }

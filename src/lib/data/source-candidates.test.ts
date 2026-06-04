@@ -2553,6 +2553,21 @@ describe("recordSourceCandidateDecision", () => {
     expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
   });
 
+  it("rejects non-review decisions before database lookup", async () => {
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Pending review",
+        reviewNote: "Not a terminal review decision."
+      } as unknown as RecordSourceCandidateDecisionInput)
+    ).rejects.toThrow(
+      "Source candidate review decision must be Accepted or Rejected."
+    );
+
+    expect(prismaMocks.sourceCandidateFindUnique).not.toHaveBeenCalled();
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
   it("rejects curated reference links on rejected decisions", async () => {
     await expect(
       recordSourceCandidateDecision({
