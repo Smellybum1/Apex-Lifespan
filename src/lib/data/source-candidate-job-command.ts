@@ -420,7 +420,23 @@ export async function runSourceCandidateJobCommand(
         return 1;
       }
 
-      stdout(formatSourceCandidateReferenceMatches(matches));
+      const siblings = await listSiblings(options.candidateReferenceMatchesDedupeKey, {});
+
+      if (!siblings) {
+        stderr(
+          `Source candidate not found: ${quote(
+            options.candidateReferenceMatchesDedupeKey
+          )}`
+        );
+        return 1;
+      }
+
+      stdout(
+        formatSourceCandidateReferenceMatches(matches, {
+          duplicateIdentityCandidateCount:
+            sourceCandidateSiblingDuplicateIdentityCount(siblings)
+        })
+      );
       return 0;
     }
 
@@ -2941,7 +2957,13 @@ function formatSourceCandidateReviewPacketCommandHints(
 function sourceCandidateReviewPacketDuplicateIdentityCount(
   packet: SourceCandidateReviewPacket
 ) {
-  return 1 + packet.siblings.siblings.filter((sibling) =>
+  return sourceCandidateSiblingDuplicateIdentityCount(packet.siblings);
+}
+
+function sourceCandidateSiblingDuplicateIdentityCount(
+  siblings: SourceCandidateSiblings
+) {
+  return 1 + siblings.siblings.filter((sibling) =>
     sibling.matchReasons.includes("Same source/external id")
   ).length;
 }
@@ -3248,9 +3270,10 @@ function formatCurationStudy(status: SourceCandidateCurationStatus["studies"][nu
 }
 
 function formatSourceCandidateReferenceMatches(
-  matches: SourceCandidateAcceptedReferenceMatches
+  matches: SourceCandidateAcceptedReferenceMatches,
+  options: { duplicateIdentityCandidateCount?: number } = {}
 ) {
-  const heading = formatSourceCandidateReferenceMatchHeading(matches);
+  const heading = formatSourceCandidateReferenceMatchHeading(matches, options);
 
   if (matches.references.length === 0) {
     return [
@@ -3266,11 +3289,14 @@ function formatSourceCandidateReferenceMatches(
 }
 
 function formatSourceCandidateReferenceMatchHeading(
-  matches: SourceCandidateAcceptedReferenceMatches
+  matches: SourceCandidateAcceptedReferenceMatches,
+  options: { duplicateIdentityCandidateCount?: number } = {}
 ) {
   const candidate = matches.candidate;
   const key = safeCandidateKey(candidate.dedupeKey);
   const reviewFlagFields = sourceCandidateReviewFlagFields("reviewFlags", candidate);
+  const duplicateIdentityCandidateCount =
+    options.duplicateIdentityCandidateCount ?? 1;
   const parts = [
     `Source-candidate accepted-reference matches: total=${matches.references.length}`,
     `dedupe=${quote(candidate.dedupeKey)}`,
@@ -3289,6 +3315,20 @@ function formatSourceCandidateReferenceMatchHeading(
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
+
+  if (duplicateIdentityCandidateCount > 1) {
+    parts.push(
+      `duplicateIdentityCandidates=${duplicateIdentityCandidateCount}`,
+      `duplicates=${quote(
+        formatSourceCandidateDuplicateIdentityListCommand({
+          externalId: candidate.externalId,
+          limit: duplicateIdentityCandidateCount,
+          source: candidate.source
+        })
+      )}`,
+      `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
+    );
+  }
 
   if (reviewFlagFields.length > 0) {
     parts.push(...reviewFlagFields);

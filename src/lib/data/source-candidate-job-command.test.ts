@@ -3393,23 +3393,41 @@ describe("runSourceCandidateJobCommand", () => {
         }
       ]
     });
+    const listSiblings = vi.fn().mockResolvedValue({
+      target: sourceCandidate({
+        dedupeKey: "pubmed|au|creatine|28615996",
+        source: "PubMed",
+        externalId: "28615996"
+      }),
+      siblings: [
+        {
+          candidate: sourceCandidate({
+            dedupeKey: "pubmed|au|creatine-aging|28615996",
+            source: "PubMed",
+            externalId: "28615996"
+          }),
+          matchReasons: ["Same source/external id"]
+        }
+      ]
+    });
     const runNextJob = vi.fn();
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-reference-matches", "pubmed|au|creatine|28615996"],
         { stdout },
-        { listReferenceMatches, runNextJob }
+        { listReferenceMatches, listSiblings, runNextJob }
       )
     ).resolves.toBe(0);
 
     expect(listReferenceMatches).toHaveBeenCalledWith(
       "pubmed|au|creatine|28615996"
     );
+    expect(listSiblings).toHaveBeenCalledWith("pubmed|au|creatine|28615996", {});
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
-        `Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}" groupList="--candidates --candidate-claim-missing --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}" decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-existing`,
+        `Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}" groupList="--candidates --candidate-claim-missing --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}" decision="Accepted" reviewStatus="Human reviewed" duplicateIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2" duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}" acceptedReference=ref-existing`,
         '- reference="ref-creatine-position-stand" source="PubMed" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ identifier="PMID: 28615996" year=2017',
         '- reference="ref-creatine-publisher" source="PubMed" title="Creatine\\npublisher record" url=https://publisher.example/creatine-position-stand'
       ].join("\n")
@@ -3430,12 +3448,20 @@ describe("runSourceCandidateJobCommand", () => {
       }),
       references: []
     });
+    const listSiblings = vi.fn().mockResolvedValue({
+      target: sourceCandidate({
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+        source: "ClinicalTrials.gov",
+        externalId: "NCT123"
+      }),
+      siblings: []
+    });
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-reference-matches", "clinicaltrials.gov|au|creatine|nct123"],
         { stdout },
-        { listReferenceMatches }
+        { listReferenceMatches, listSiblings }
       )
     ).resolves.toBe(0);
 
@@ -3464,12 +3490,20 @@ describe("runSourceCandidateJobCommand", () => {
       }),
       references: []
     });
+    const listSiblings = vi.fn().mockResolvedValue({
+      target: sourceCandidate({
+        dedupeKey: candidateKey,
+        source: "ClinicalTrials.gov",
+        externalId: "NCT00715676"
+      }),
+      siblings: []
+    });
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-reference-matches", candidateKey],
         { stdout },
-        { listReferenceMatches }
+        { listReferenceMatches, listSiblings }
       )
     ).resolves.toBe(0);
 
@@ -3484,17 +3518,19 @@ describe("runSourceCandidateJobCommand", () => {
   it("returns a failing exit code when reference matches target a missing candidate", async () => {
     const stderr = vi.fn();
     const listReferenceMatches = vi.fn().mockResolvedValue(null);
+    const listSiblings = vi.fn();
     const runNextJob = vi.fn();
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-reference-matches", "missing-candidate"],
         { stderr },
-        { listReferenceMatches, runNextJob }
+        { listReferenceMatches, listSiblings, runNextJob }
       )
     ).resolves.toBe(1);
 
     expect(listReferenceMatches).toHaveBeenCalledWith("missing-candidate");
+    expect(listSiblings).not.toHaveBeenCalled();
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stderr).toHaveBeenCalledWith(
       'Source candidate not found: "missing-candidate"'
