@@ -2198,7 +2198,7 @@ export function commandUsage() {
     "  <dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse.",
     "  --candidate-source <source>       Filter candidates, overview, or handoff by source: pubmed or clinical-trials.",
     "  --candidate-decision <decision>   Candidate decision: pending, accepted, or rejected.",
-    "  --candidate-duplicates            With --candidates, print duplicate source/external-id groups.",
+    "  --candidate-duplicates            With --candidates, print duplicate source/external-id groups with packet hints.",
     "  --candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id.",
     "  --candidate-job-id <id>           Filter candidates, overview, or handoff by ingestion job id.",
     "  --candidate-intervention-id <id>  Filter candidates, overview, or handoff by intervention id.",
@@ -2905,6 +2905,7 @@ function formatSourceCandidateIdentityGroup(group: SourceCandidateIdentityGroup)
     `pending=${counts.pending}`,
     `accepted=${counts.accepted}`,
     `rejected=${counts.rejected}`,
+    `identityList=${quote(formatSourceCandidateIdentityGroupListCommand(group))}`,
     `title=${quote(title)}`
   ];
 
@@ -2920,6 +2921,7 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
     `triage=${candidate.triageScore}/100`,
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`,
     `query=${quote(candidate.query)}`,
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
@@ -2938,6 +2940,21 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
   }
 
   return parts.join(" ");
+}
+
+function formatSourceCandidateIdentityGroupListCommand(
+  group: SourceCandidateIdentityGroup
+) {
+  return [
+    "--candidates",
+    "--candidate-duplicates",
+    "--candidate-source",
+    sourceCandidateSourceCliValue(group.source),
+    "--candidate-external-id",
+    group.externalId,
+    "--candidates-limit",
+    String(Math.min(group.candidates.length, DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT))
+  ].join(" ");
 }
 
 function sourceCandidateIdentityDecisionCounts(candidates: SourceCandidate[]) {

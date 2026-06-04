@@ -36,7 +36,7 @@ describe("commandUsage", () => {
       "--candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
     );
     expect(commandUsage()).toContain(
-      "--candidate-duplicates            With --candidates, print duplicate source/external-id groups."
+      "--candidate-duplicates            With --candidates, print duplicate source/external-id groups with packet hints."
     );
     expect(commandUsage()).toContain(
       "--candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id."
@@ -3263,9 +3263,9 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate duplicate identities: total=1",
-        '- PubMed externalId="42141930" candidates=2 pending=2 accepted=0 rejected=0 title="Creatine meta-analysis"',
-        `  - triage=80/100 dedupe="pubmed|au|creatine-meta|42141930||" key=${safeCandidateKey("pubmed|au|creatine-meta|42141930||")} query="creatine meta" decision="Pending review" reviewStatus="Unreviewed AI draft" ingestionJob=job-unscoped`,
-        `  - triage=80/100 dedupe="pubmed|au|creatine-strength|42141930|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")} query="creatine strength" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-strength ingestionJob=job-claim`
+        '- PubMed externalId="42141930" candidates=2 pending=2 accepted=0 rejected=0 identityList="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 42141930 --candidates-limit 2" title="Creatine meta-analysis"',
+        `  - triage=80/100 dedupe="pubmed|au|creatine-meta|42141930||" key=${safeCandidateKey("pubmed|au|creatine-meta|42141930||")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-meta|42141930||")}" query="creatine meta" decision="Pending review" reviewStatus="Unreviewed AI draft" ingestionJob=job-unscoped`,
+        `  - triage=80/100 dedupe="pubmed|au|creatine-strength|42141930|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" query="creatine strength" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-strength ingestionJob=job-claim`
       ].join("\n")
     );
   });
