@@ -3587,13 +3587,15 @@ function sourceCandidateSourceCliValue(source: SourceCandidateSource) {
 
 function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
   const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+  const key = safeCandidateKey(candidate.dedupeKey);
   const parts = [
     `- triage=${candidate.triageScore}/100`,
     candidate.source,
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
-    `key=${safeCandidateKey(candidate.dedupeKey)}`,
-    `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`,
+    `key=${key}`,
+    `packet=${quote(`--candidate-review-packet ${key}`)}`,
+    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
     `externalId=${quote(candidate.externalId)}`,
     `query=${quote(candidate.query)}`,
     `title=${quote(candidate.title)}`,
