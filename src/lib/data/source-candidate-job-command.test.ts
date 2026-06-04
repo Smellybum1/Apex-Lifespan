@@ -2269,17 +2269,37 @@ describe("runSourceCandidateJobCommand", () => {
         }
       })
     );
+    const listSiblings = vi.fn().mockResolvedValue(
+      sourceCandidateSiblings({
+        target: sourceCandidate({
+          dedupeKey: "pubmed|au|creatine|28615996",
+          source: "PubMed",
+          externalId: "28615996"
+        }),
+        siblings: [
+          {
+            candidate: sourceCandidate({
+              dedupeKey: "pubmed|au|creatine-aging|28615996",
+              source: "PubMed",
+              externalId: "28615996"
+            }),
+            matchReasons: ["Same source/external id"]
+          }
+        ]
+      })
+    );
     const runNextJob = vi.fn();
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-detail", "pubmed|au|creatine|28615996"],
         { stdout },
-        { getCandidate, runNextJob }
+        { getCandidate, listSiblings, runNextJob }
       )
     ).resolves.toBe(0);
 
     expect(getCandidate).toHaveBeenCalledWith("pubmed|au|creatine|28615996");
+    expect(listSiblings).toHaveBeenCalledWith("pubmed|au|creatine|28615996", {});
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
@@ -2294,6 +2314,9 @@ describe("runSourceCandidateJobCommand", () => {
         'groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-id creatine --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
         `curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        "duplicateIdentityCandidates=2",
+        'duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2"',
+        `duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}"`,
         'source="PubMed"',
         'externalId="28615996"',
         'region="AU"',
@@ -2341,12 +2364,13 @@ describe("runSourceCandidateJobCommand", () => {
         }
       })
     );
+    const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-detail", "pubmed|au|creatine|28615996"],
         { stdout },
-        { getCandidate }
+        { getCandidate, listSiblings }
       )
     ).resolves.toBe(0);
 
@@ -2408,12 +2432,13 @@ describe("runSourceCandidateJobCommand", () => {
         claimId: "vitamin-d-deficiency"
       })
     );
+    const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-detail", candidateKey],
         { stdout },
-        { getCandidate }
+        { getCandidate, listSiblings }
       )
     ).resolves.toBe(0);
 

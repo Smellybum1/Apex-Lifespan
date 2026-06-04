@@ -516,7 +516,15 @@ export async function runSourceCandidateJobCommand(
         return 1;
       }
 
-      stdout(formatSourceCandidateDetail(candidate));
+      stdout(
+        formatSourceCandidateDetail(candidate, {
+          duplicateIdentityCandidateCount:
+            await sourceCandidateDuplicateIdentityCandidateCountForDedupeKey(
+              candidate.dedupeKey,
+              listSiblings
+            )
+        })
+      );
       return 0;
     }
 
@@ -2753,7 +2761,10 @@ function formatExtractedSourceCandidateStudy(result: ExtractedSourceCandidateStu
 
 function formatSourceCandidateDetail(
   candidate: SourceCandidate,
-  options: { commandHints?: boolean } = {}
+  options: {
+    commandHints?: boolean;
+    duplicateIdentityCandidateCount?: number;
+  } = {}
 ) {
   const reviewFlags = sourceCandidateReviewFlags(candidate);
   const lines = [
@@ -2763,6 +2774,10 @@ function formatSourceCandidateDetail(
     ...(options.commandHints === false
       ? []
       : formatSourceCandidateDetailCommandHints(candidate)),
+    ...formatSourceCandidateDuplicateIdentityFields(
+      candidate,
+      options.duplicateIdentityCandidateCount ?? 1
+    ),
     `source=${quote(candidate.source)}`,
     `externalId=${quote(candidate.externalId)}`,
     `region=${quote(candidate.region)}`,
