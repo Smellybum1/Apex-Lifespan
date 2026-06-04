@@ -75,6 +75,7 @@ export interface SourceCandidateReviewOverviewGroup {
   region: string;
   source: SourceCandidateSource;
   topCandidate: SourceCandidate;
+  topIdentityCandidateCount: number;
   topTriageScore: number;
 }
 
@@ -368,6 +369,7 @@ export async function listSourceCandidateReviewOverview(
       take: MAX_REVIEW_OVERVIEW_SCAN_CANDIDATES
     })
   ).map(mapDbSourceCandidate);
+  const identityCandidateCounts = sourceCandidateIdentityCounts(candidates);
   const groupsByContext = new Map<string, SourceCandidateReviewOverviewGroup>();
 
   for (const candidate of candidates) {
@@ -387,6 +389,8 @@ export async function listSourceCandidateReviewOverview(
         region: candidate.region,
         source: candidate.source,
         topCandidate: candidate,
+        topIdentityCandidateCount:
+          identityCandidateCounts.get(sourceCandidateIdentityKey(candidate)) ?? 1,
         topTriageScore: candidate.triageScore
       });
       continue;
@@ -396,6 +400,8 @@ export async function listSourceCandidateReviewOverview(
 
     if (compareSourceCandidateReviewOverviewTop(candidate, currentGroup.topCandidate) < 0) {
       currentGroup.topCandidate = candidate;
+      currentGroup.topIdentityCandidateCount =
+        identityCandidateCounts.get(sourceCandidateIdentityKey(candidate)) ?? 1;
       currentGroup.topTriageScore = candidate.triageScore;
     }
   }
@@ -422,7 +428,7 @@ export async function listSourceCandidateIdentityGroups(
   const groupsByIdentity = new Map<string, SourceCandidate[]>();
 
   for (const candidate of candidates.map(mapDbSourceCandidate)) {
-    const key = `${candidate.source}\u0000${candidate.externalId}`;
+    const key = sourceCandidateIdentityKey(candidate);
     groupsByIdentity.set(key, [...(groupsByIdentity.get(key) ?? []), candidate]);
   }
 
@@ -435,6 +441,21 @@ export async function listSourceCandidateIdentityGroups(
     }))
     .sort(sourceCandidateIdentityGroupSort)
     .slice(0, normaliseIdentityGroupLimit(options.limit));
+}
+
+function sourceCandidateIdentityCounts(candidates: SourceCandidate[]) {
+  const counts = new Map<string, number>();
+
+  for (const candidate of candidates) {
+    const key = sourceCandidateIdentityKey(candidate);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  return counts;
+}
+
+function sourceCandidateIdentityKey(candidate: SourceCandidate) {
+  return `${candidate.source}\u0000${candidate.externalId}`;
 }
 
 export async function getSourceCandidateByDedupeKey(

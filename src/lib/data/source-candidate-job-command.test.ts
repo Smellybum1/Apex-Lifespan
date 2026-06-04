@@ -18,7 +18,7 @@ describe("commandUsage", () => {
       "--candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance."
     );
     expect(commandUsage()).toContain(
-      "--candidate-review-overview     Print read-only pending review groups with list and packet hints."
+      "--candidate-review-overview     Print read-only pending review groups with list, packet, and duplicate hints."
     );
     expect(commandUsage()).toContain(
       "--candidate-region <region>       Filter candidates, overview, or handoff by region."
@@ -3387,6 +3387,7 @@ describe("runSourceCandidateJobCommand", () => {
             title: "A Study of AMR101 to Evaluate Its Ability to Reduce Cardiovascular Events",
             triageScore: 100
           }),
+          topIdentityCandidateCount: 2,
           topTriageScore: 100
         },
         {
@@ -3400,6 +3401,7 @@ describe("runSourceCandidateJobCommand", () => {
             externalId: "32634581",
             title: "Omega-3 cardiovascular outcomes meta-analysis"
           }),
+          topIdentityCandidateCount: 1,
           topTriageScore: 80
         }
       ]
@@ -3434,7 +3436,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate review overview: totalGroups=2 candidateCount=14",
-        `- claim=omega-3-cv-events intervention=omega-3 ClinicalTrials.gov AU pending=9 topTriage=100/100 topKey=${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")} topExternalId="NCT01492361" topTitle="A Study of AMR101 to Evaluate Its Ability to Reduce Cardiovascular Events" list="--candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source clinical-trials --candidates-limit 9" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")}"`,
+        `- claim=omega-3-cv-events intervention=omega-3 ClinicalTrials.gov AU pending=9 topTriage=100/100 topKey=${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")} topExternalId="NCT01492361" topIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source clinical-trials --candidate-external-id NCT01492361 --candidates-limit 2" topTitle="A Study of AMR101 to Evaluate Its Ability to Reduce Cardiovascular Events" list="--candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source clinical-trials --candidates-limit 9" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")}"`,
         `- claim=omega-3-cv-events intervention=omega-3 PubMed AU pending=5 topTriage=80/100 topKey=${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")} topExternalId="32634581" topTitle="Omega-3 cardiovascular outcomes meta-analysis" list="--candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source pubmed --candidates-limit 5" packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}"`
       ].join("\n")
     );

@@ -2166,7 +2166,7 @@ export function commandUsage() {
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
     "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
     "  --candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance.",
-    "  --candidate-review-overview     Print read-only pending review groups with list and packet hints.",
+    "  --candidate-review-overview     Print read-only pending review groups with list, packet, and duplicate hints.",
     "  --candidate-review-overview-limit <count> Review overview group count (default 25, max 50).",
     "  --candidate-review-packet <dedupe-key> Print command hints, detail, accepted-reference matches, and sibling context.",
     "  --candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons.",
@@ -3006,11 +3006,21 @@ function formatSourceCandidateReviewOverviewGroup(
     `pending=${group.count}`,
     `topTriage=${group.topTriageScore}/100`,
     `topKey=${safeCandidateKey(candidate.dedupeKey)}`,
-    `topExternalId=${quote(candidate.externalId)}`,
+    `topExternalId=${quote(candidate.externalId)}`
+  ];
+
+  if (group.topIdentityCandidateCount > 1) {
+    parts.push(
+      `topIdentityCandidates=${group.topIdentityCandidateCount}`,
+      `duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(group))}`
+    );
+  }
+
+  parts.push(
     `topTitle=${quote(candidate.title)}`,
     `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
     `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`
-  ];
+  );
 
   return parts.join(" ");
 }
@@ -3025,6 +3035,23 @@ function formatSourceCandidateReviewOverviewListCommand(
     region: group.region,
     source: group.source
   });
+}
+
+function formatSourceCandidateReviewOverviewDuplicateListCommand(
+  group: SourceCandidateReviewOverview["groups"][number]
+) {
+  return [
+    "--candidates",
+    "--candidate-duplicates",
+    "--candidate-source",
+    sourceCandidateSourceCliValue(group.source),
+    "--candidate-external-id",
+    group.topCandidate.externalId,
+    "--candidates-limit",
+    String(
+      Math.min(group.topIdentityCandidateCount, DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT)
+    )
+  ].join(" ");
 }
 
 function formatSourceCandidateGroupListCommand(candidate: SourceCandidate) {

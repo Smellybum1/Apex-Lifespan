@@ -47,7 +47,7 @@ npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-hand
 
 Read-only output rules:
 - `--summary` groups ingestion job status counts, backlog counts, and accepted-candidate curation handoff counts.
-- `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."` and `packet="..."` hints.
+- `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."`, `packet="..."`, and top-identity duplicate hints.
 - `--candidates` defaults to pending rows, prints `packet="..."` hints, and can filter by source, region, external id, job, intervention, claim, or decision.
 - `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."` and `packet="..."` hints.
 - `--candidate-review-packet` prints command hints, detail, accepted-reference matches, and sibling context together.

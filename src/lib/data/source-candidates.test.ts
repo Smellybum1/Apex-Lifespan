@@ -315,6 +315,7 @@ describe("listSourceCandidateReviewOverview", () => {
             externalId: "NCT01492361",
             triageScore: 100
           }),
+          topIdentityCandidateCount: 1,
           topTriageScore: 100
         },
         {
@@ -328,6 +329,7 @@ describe("listSourceCandidateReviewOverview", () => {
             externalId: "32634581",
             triageScore: 95
           }),
+          topIdentityCandidateCount: 1,
           topTriageScore: 95
         }
       ]
@@ -342,6 +344,57 @@ describe("listSourceCandidateReviewOverview", () => {
       },
       orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
       take: 1000
+    });
+  });
+
+  it("counts duplicate identities for each overview top candidate", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine-meta|42141930||",
+        externalId: "42141930",
+        query: "creatine meta",
+        claimId: null,
+        interventionId: null,
+        ingestionJobId: "job-unscoped",
+        triageScore: 80
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine-strength|42141930|creatine|creatine-strength",
+        externalId: "42141930",
+        query: "creatine strength",
+        claimId: "creatine-strength",
+        interventionId: "creatine",
+        ingestionJobId: "job-claim",
+        triageScore: 80
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|30762623|creatine|creatine-strength",
+        externalId: "30762623",
+        query: "creatine strength",
+        claimId: "creatine-strength",
+        interventionId: "creatine",
+        ingestionJobId: "job-claim",
+        triageScore: 70
+      })
+    ]);
+
+    await expect(listSourceCandidateReviewOverview()).resolves.toMatchObject({
+      groups: [
+        expect.objectContaining({
+          claimId: "creatine-strength",
+          topCandidate: expect.objectContaining({
+            dedupeKey: "pubmed|au|creatine-strength|42141930|creatine|creatine-strength"
+          }),
+          topIdentityCandidateCount: 2
+        }),
+        expect.objectContaining({
+          claimId: undefined,
+          topCandidate: expect.objectContaining({
+            dedupeKey: "pubmed|au|creatine-meta|42141930||"
+          }),
+          topIdentityCandidateCount: 2
+        })
+      ]
     });
   });
 
