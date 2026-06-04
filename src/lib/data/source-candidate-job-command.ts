@@ -3615,6 +3615,8 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
     `packet=${quote(`--candidate-review-packet ${key}`)}`,
     `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
     `siblings=${quote(`--candidate-siblings ${key}`)}`,
+    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
+    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`,
     `externalId=${quote(candidate.externalId)}`,
     `query=${quote(candidate.query)}`,
     `title=${quote(candidate.title)}`,
