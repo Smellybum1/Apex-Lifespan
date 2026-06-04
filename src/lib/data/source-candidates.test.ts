@@ -57,6 +57,7 @@ import {
   listSourceCandidateAcceptedReferenceMatches,
   listSourceCandidateCurationHandoff,
   listSourceCandidateIdentityGroups,
+  listSourceCandidateReviewOverview,
   listSourceCandidateReviewQueue,
   listSourceCandidateSiblings,
   summarizeSourceCandidateCurationHandoff,
@@ -251,6 +252,152 @@ describe("listSourceCandidateReviewQueue", () => {
       },
       orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
       take: 1
+    });
+  });
+});
+
+describe("listSourceCandidateReviewOverview", () => {
+  it("groups pending candidates by claim, intervention, source, and region", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events",
+        externalId: "32634581",
+        source: "PUBMED",
+        title: "Omega-3 cardiovascular meta-analysis",
+        triageScore: 95,
+        interventionId: "omega-3",
+        claimId: "omega-3-cv-events"
+      }),
+      dbSourceCandidate({
+        dedupeKey:
+          "clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events",
+        externalId: "NCT01492361",
+        source: "CLINICALTRIALS_GOV",
+        title: "REDUCE-IT",
+        triageScore: 100,
+        interventionId: "omega-3",
+        claimId: "omega-3-cv-events"
+      }),
+      dbSourceCandidate({
+        dedupeKey:
+          "clinicaltrials.gov|au|omega-cv|nct01169259|omega-3|omega-3-cv-events",
+        externalId: "NCT01169259",
+        source: "CLINICALTRIALS_GOV",
+        title: "VITAL",
+        triageScore: 85,
+        interventionId: "omega-3",
+        claimId: "omega-3-cv-events"
+      })
+    ]);
+
+    await expect(
+      listSourceCandidateReviewOverview({
+        claimId: "omega-3-cv-events",
+        interventionId: "omega-3",
+        limit: 10
+      })
+    ).resolves.toEqual({
+      candidateCount: 3,
+      totalGroups: 2,
+      groups: [
+        {
+          claimId: "omega-3-cv-events",
+          count: 2,
+          interventionId: "omega-3",
+          region: "AU",
+          source: "ClinicalTrials.gov",
+          topCandidate: expect.objectContaining({
+            dedupeKey:
+              "clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events",
+            externalId: "NCT01492361",
+            triageScore: 100
+          }),
+          topTriageScore: 100
+        },
+        {
+          claimId: "omega-3-cv-events",
+          count: 1,
+          interventionId: "omega-3",
+          region: "AU",
+          source: "PubMed",
+          topCandidate: expect.objectContaining({
+            dedupeKey: "pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events",
+            externalId: "32634581",
+            triageScore: 95
+          }),
+          topTriageScore: 95
+        }
+      ]
+    });
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        claimId: "omega-3-cv-events",
+        decision: "PENDING_REVIEW",
+        interventionId: "omega-3"
+      },
+      orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
+      take: 1000
+    });
+  });
+
+  it("bounds overview group limits", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|claim-a|1|a|claim-a",
+        claimId: "claim-a",
+        interventionId: "a"
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|claim-b|2|b|claim-b",
+        claimId: "claim-b",
+        interventionId: "b"
+      })
+    ]);
+
+    await expect(listSourceCandidateReviewOverview({ limit: 1 })).resolves.toMatchObject({
+      groups: [expect.objectContaining({ claimId: "claim-a" })],
+      totalGroups: 2
+    });
+    await expect(listSourceCandidateReviewOverview({ limit: 200 })).resolves.toMatchObject({
+      groups: [
+        expect.objectContaining({ claimId: "claim-a" }),
+        expect.objectContaining({ claimId: "claim-b" })
+      ],
+      totalGroups: 2
+    });
+  });
+
+  it("keeps database queue ordering for tied top triage scores", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|omega-cv|z-newer|omega-3|omega-3-cv-events",
+        externalId: "z-newer",
+        triageScore: 100,
+        interventionId: "omega-3",
+        claimId: "omega-3-cv-events",
+        updatedAt: new Date("2026-06-03T00:00:00.000Z")
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|omega-cv|a-older|omega-3|omega-3-cv-events",
+        externalId: "a-older",
+        triageScore: 100,
+        interventionId: "omega-3",
+        claimId: "omega-3-cv-events",
+        updatedAt: new Date("2026-06-02T00:00:00.000Z")
+      })
+    ]);
+
+    await expect(listSourceCandidateReviewOverview()).resolves.toMatchObject({
+      groups: [
+        {
+          count: 2,
+          topCandidate: expect.objectContaining({
+            dedupeKey: "pubmed|au|omega-cv|z-newer|omega-3|omega-3-cv-events"
+          }),
+          topTriageScore: 100
+        }
+      ]
     });
   });
 });

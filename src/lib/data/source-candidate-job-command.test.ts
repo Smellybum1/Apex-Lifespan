@@ -18,6 +18,9 @@ describe("commandUsage", () => {
       "--candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance."
     );
     expect(commandUsage()).toContain(
+      "--candidate-review-overview     Print read-only pending review groups by claim/source with top candidate keys."
+    );
+    expect(commandUsage()).toContain(
       "--candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, and sibling context."
     );
     expect(commandUsage()).toContain(
@@ -503,6 +506,40 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     ).toEqual({
       candidates: true,
       candidateDecision: "Pending review",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+  });
+
+  it("parses read-only candidate review overview mode", () => {
+    expect(parseSourceCandidateJobCommandArgs(["--candidate-review-overview"])).toEqual({
+      candidateReviewOverview: true,
+      help: false,
+      limit: 1,
+      summary: false
+    });
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-overview",
+        "--candidate-review-overview-limit",
+        "200",
+        "--candidate-source",
+        "pubmed",
+        "--candidate-job-id",
+        "job-pubmed",
+        "--candidate-intervention-id",
+        "omega-3",
+        "--candidate-claim-id",
+        "omega-3-cv-events"
+      ])
+    ).toEqual({
+      candidateClaimId: "omega-3-cv-events",
+      candidateInterventionId: "omega-3",
+      candidateJobId: "job-pubmed",
+      candidateReviewOverview: true,
+      candidateReviewOverviewLimit: 50,
+      candidateSource: "PubMed",
       help: false,
       limit: 1,
       summary: false
@@ -1577,6 +1614,55 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "other"
       ])
     ).toThrow("--candidate-decision must be pending, accepted, or rejected.");
+  });
+
+  it("does not combine candidate review overview mode with write or run modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-review-overview-limit", "2"])
+    ).toThrow("--candidate-review-overview-limit requires --candidate-review-overview.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-overview",
+        "--candidate-decision",
+        "accepted"
+      ])
+    ).toThrow("--candidate-decision cannot be combined with --candidate-review-overview.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-overview",
+        "--candidate-external-id",
+        "32634581"
+      ])
+    ).toThrow("--candidate-external-id cannot be combined with --candidate-review-overview.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-overview",
+        "--candidate-duplicates"
+      ])
+    ).toThrow("--candidate-duplicates cannot be combined with --candidate-review-overview.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-review-overview", "--summary"])
+    ).toThrow("--candidate-review-overview cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-review-overview", "--candidates"])
+    ).toThrow("--candidate-review-overview cannot be combined with --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-overview",
+        "--queue-pubmed",
+        "omega-3"
+      ])
+    ).toThrow("--candidate-review-overview cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-review-overview", "--limit", "2"])
+    ).toThrow("--candidate-review-overview cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-overview",
+        "--accept-candidate",
+        "pubmed|au|omega|32634581"
+      ])
+    ).toThrow("--candidate-review-overview cannot be combined with review options.");
   });
 
   it("does not combine queue mode with other command modes", () => {
@@ -3243,6 +3329,97 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate review queue: total=1",
         `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|28615996|creatine-strength")} externalId="28615996" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/`
       ].join("\n")
+    );
+  });
+
+  it("prints a read-only source-candidate review overview", async () => {
+    const stdout = vi.fn();
+    const listReviewOverview = vi.fn().mockResolvedValue({
+      candidateCount: 14,
+      totalGroups: 2,
+      groups: [
+        {
+          claimId: "omega-3-cv-events",
+          count: 9,
+          interventionId: "omega-3",
+          region: "AU",
+          source: "ClinicalTrials.gov",
+          topCandidate: sourceCandidate({
+            dedupeKey:
+              "clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events",
+            externalId: "NCT01492361",
+            source: "ClinicalTrials.gov",
+            title: "A Study of AMR101 to Evaluate Its Ability to Reduce Cardiovascular Events",
+            triageScore: 100
+          }),
+          topTriageScore: 100
+        },
+        {
+          claimId: "omega-3-cv-events",
+          count: 5,
+          interventionId: "omega-3",
+          region: "AU",
+          source: "PubMed",
+          topCandidate: sourceCandidate({
+            dedupeKey: "pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events",
+            externalId: "32634581",
+            title: "Omega-3 cardiovascular outcomes meta-analysis"
+          }),
+          topTriageScore: 80
+        }
+      ]
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--candidate-review-overview",
+          "--candidate-review-overview-limit",
+          "5",
+          "--candidate-claim-id",
+          "omega-3-cv-events"
+        ],
+        { stdout },
+        { listReviewOverview, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(listReviewOverview).toHaveBeenCalledWith({
+      claimId: "omega-3-cv-events",
+      ingestionJobId: undefined,
+      interventionId: undefined,
+      limit: 5,
+      source: undefined
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate review overview: totalGroups=2 candidateCount=14",
+        `- claim=omega-3-cv-events intervention=omega-3 ClinicalTrials.gov AU pending=9 topTriage=100/100 topKey=${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")} topExternalId="NCT01492361" topTitle="A Study of AMR101 to Evaluate Its Ability to Reduce Cardiovascular Events" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")}"`,
+        `- claim=omega-3-cv-events intervention=omega-3 PubMed AU pending=5 topTriage=80/100 topKey=${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")} topExternalId="32634581" topTitle="Omega-3 cardiovascular outcomes meta-analysis" packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}"`
+      ].join("\n")
+    );
+  });
+
+  it("prints an empty source-candidate review overview", async () => {
+    const stdout = vi.fn();
+    const listReviewOverview = vi.fn().mockResolvedValue({
+      candidateCount: 0,
+      groups: [],
+      totalGroups: 0
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-review-overview"],
+        { stdout },
+        { listReviewOverview }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      "Source-candidate review overview: totalGroups=0 candidateCount=0"
     );
   });
 

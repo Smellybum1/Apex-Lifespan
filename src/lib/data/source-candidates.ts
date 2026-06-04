@@ -58,6 +58,30 @@ export interface SourceCandidateReviewQueueOptions {
   source?: SourceCandidateSource;
 }
 
+export interface SourceCandidateReviewOverviewOptions {
+  claimId?: string;
+  ingestionJobId?: string;
+  interventionId?: string;
+  limit?: number;
+  source?: SourceCandidateSource;
+}
+
+export interface SourceCandidateReviewOverviewGroup {
+  claimId?: string;
+  count: number;
+  interventionId?: string;
+  region: string;
+  source: SourceCandidateSource;
+  topCandidate: SourceCandidate;
+  topTriageScore: number;
+}
+
+export interface SourceCandidateReviewOverview {
+  candidateCount: number;
+  groups: SourceCandidateReviewOverviewGroup[];
+  totalGroups: number;
+}
+
 export interface SourceCandidateIdentityGroup {
   candidates: SourceCandidate[];
   externalId: string;
@@ -233,6 +257,9 @@ export interface RecordSourceCandidateDecisionInput {
 
 const DEFAULT_REVIEW_QUEUE_LIMIT = 25;
 const MAX_REVIEW_QUEUE_LIMIT = 100;
+const DEFAULT_REVIEW_OVERVIEW_LIMIT = 25;
+const MAX_REVIEW_OVERVIEW_LIMIT = 50;
+const MAX_REVIEW_OVERVIEW_SCAN_CANDIDATES = 1000;
 const DEFAULT_IDENTITY_GROUP_LIMIT = 25;
 const MAX_IDENTITY_GROUP_LIMIT = 50;
 const MAX_IDENTITY_SCAN_CANDIDATES = 500;
@@ -320,6 +347,64 @@ export async function listSourceCandidateReviewQueue(
   });
 
   return candidates.map(mapDbSourceCandidate);
+}
+
+export async function listSourceCandidateReviewOverview(
+  options: SourceCandidateReviewOverviewOptions = {}
+): Promise<SourceCandidateReviewOverview> {
+  const candidates = (
+    await prisma.sourceCandidate.findMany({
+      where: sourceCandidateReviewQueueWhere({
+        claimId: options.claimId,
+        ingestionJobId: options.ingestionJobId,
+        interventionId: options.interventionId,
+        source: options.source
+      }),
+      orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
+      take: MAX_REVIEW_OVERVIEW_SCAN_CANDIDATES
+    })
+  ).map(mapDbSourceCandidate);
+  const groupsByContext = new Map<string, SourceCandidateReviewOverviewGroup>();
+
+  for (const candidate of candidates) {
+    const key = [
+      candidate.claimId ?? "",
+      candidate.interventionId ?? "",
+      candidate.source,
+      candidate.region
+    ].join("\u0000");
+    const currentGroup = groupsByContext.get(key);
+
+    if (!currentGroup) {
+      groupsByContext.set(key, {
+        claimId: candidate.claimId,
+        count: 1,
+        interventionId: candidate.interventionId,
+        region: candidate.region,
+        source: candidate.source,
+        topCandidate: candidate,
+        topTriageScore: candidate.triageScore
+      });
+      continue;
+    }
+
+    currentGroup.count += 1;
+
+    if (compareSourceCandidateReviewOverviewTop(candidate, currentGroup.topCandidate) < 0) {
+      currentGroup.topCandidate = candidate;
+      currentGroup.topTriageScore = candidate.triageScore;
+    }
+  }
+
+  const groups = Array.from(groupsByContext.values()).sort(
+    compareSourceCandidateReviewOverviewGroups
+  );
+
+  return {
+    candidateCount: candidates.length,
+    groups: groups.slice(0, normaliseReviewOverviewLimit(options.limit)),
+    totalGroups: groups.length
+  };
 }
 
 export async function listSourceCandidateIdentityGroups(
@@ -1097,6 +1182,56 @@ function normaliseReviewQueueLimit(limit: number | undefined) {
   }
 
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_REVIEW_QUEUE_LIMIT);
+}
+
+function normaliseReviewOverviewLimit(limit: number | undefined) {
+  if (limit === undefined || !Number.isFinite(limit)) {
+    return DEFAULT_REVIEW_OVERVIEW_LIMIT;
+  }
+
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_REVIEW_OVERVIEW_LIMIT);
+}
+
+function compareSourceCandidateReviewOverviewGroups(
+  left: SourceCandidateReviewOverviewGroup,
+  right: SourceCandidateReviewOverviewGroup
+) {
+  const topTriageDelta = right.topTriageScore - left.topTriageScore;
+
+  if (topTriageDelta !== 0) {
+    return topTriageDelta;
+  }
+
+  const countDelta = right.count - left.count;
+
+  if (countDelta !== 0) {
+    return countDelta;
+  }
+
+  return [
+    left.claimId ?? "",
+    left.interventionId ?? "",
+    left.source,
+    left.region
+  ].join(":").localeCompare([
+    right.claimId ?? "",
+    right.interventionId ?? "",
+    right.source,
+    right.region
+  ].join(":"));
+}
+
+function compareSourceCandidateReviewOverviewTop(
+  left: SourceCandidate,
+  right: SourceCandidate
+) {
+  const triageDelta = right.triageScore - left.triageScore;
+
+  if (triageDelta !== 0) {
+    return triageDelta;
+  }
+
+  return 0;
 }
 
 function normaliseIdentityGroupLimit(limit: number | undefined) {

@@ -14,10 +14,11 @@ Open this only for source-candidate ingestion, review, or curation work. Use `np
 ## Quick Flow
 
 1. Inspect state: `npm run ingest:sources -- --summary`.
-2. List pending candidates: `npm run ingest:sources -- --candidates --candidates-limit 10`.
-3. Inspect one candidate: `npm run ingest:sources -- --candidate-review-packet <dedupe-key>`.
-4. Human review only after checking candidate, siblings, and reference matches.
-5. Post-acceptance curation stays explicit: claim link first, then structured study extraction.
+2. Choose a review group: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
+3. List pending candidates: `npm run ingest:sources -- --candidates --candidates-limit 10`.
+4. Inspect one candidate: `npm run ingest:sources -- --candidate-review-packet <dedupe-key>`.
+5. Human review only after checking candidate, siblings, and reference matches.
+6. Post-acceptance curation stays explicit: claim link first, then structured study extraction.
 
 ## Common Commands
 
@@ -25,6 +26,7 @@ Open this only for source-candidate ingestion, review, or curation work. Use `np
 npm run ingest:sources -- --summary
 npm run ingest:sources -- --jobs --jobs-status queued
 npm run ingest:sources -- --queue-claim-sources <claim-id>
+npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10
 npm run ingest:sources -- --candidates --candidate-duplicates
 npm run ingest:sources -- --candidate-review-packet <dedupe-key>
 npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id>
