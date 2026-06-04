@@ -10,7 +10,7 @@ Open this only for source-candidate ingestion, review, or curation work. Use `np
 - `reviewFlags`/`reviewCautions` are local reviewer prompts, not rejection reasons or evidence-quality scores.
 - Accepted candidates do not auto-promote into public evidence cards.
 - Accepting requires an existing curated reference matching candidate source and external id plus a nonblank human review note.
-- Rejections require a nonblank human review note.
+- Rejections require a nonblank human review note and no accepted reference id.
 
 ## Quick Flow
 

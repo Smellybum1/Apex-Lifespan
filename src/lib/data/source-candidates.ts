@@ -1076,6 +1076,10 @@ export async function recordSourceCandidateDecision({
     throw new Error("Accepted source candidates require an acceptedReferenceId.");
   }
 
+  if (decision === "Rejected" && acceptedReferenceIdOrUndefined) {
+    throw new Error("Rejected source candidates cannot include an acceptedReferenceId.");
+  }
+
   if (decision === "Accepted" && !reviewNoteOrUndefined) {
     throw new Error("Accepted source candidates require a reviewNote.");
   }

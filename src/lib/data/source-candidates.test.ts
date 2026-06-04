@@ -2553,6 +2553,22 @@ describe("recordSourceCandidateDecision", () => {
     expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
   });
 
+  it("rejects curated reference links on rejected decisions", async () => {
+    await expect(
+      recordSourceCandidateDecision({
+        acceptedReferenceId: "ref-creatine-position-stand",
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Rejected",
+        reviewNote: "Not relevant to the AU consumer claim."
+      } as unknown as RecordSourceCandidateDecisionInput)
+    ).rejects.toThrow(
+      "Rejected source candidates cannot include an acceptedReferenceId."
+    );
+
+    expect(prismaMocks.sourceCandidateFindUnique).not.toHaveBeenCalled();
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
   it("requires a nonblank review note when accepting candidates", async () => {
     await expect(
       recordSourceCandidateDecision({

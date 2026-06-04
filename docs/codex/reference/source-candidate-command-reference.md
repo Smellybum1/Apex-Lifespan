@@ -79,7 +79,7 @@ npm run ingest:sources -- --extract-candidate-study <dedupe-key> --study-sample-
 
 Write boundaries:
 - `--accept-candidate` records human review only after a matching curated reference exists and the operator supplies a nonblank human note.
-- `--reject-candidate` requires a nonblank human note.
+- `--reject-candidate` requires a nonblank human note and no accepted reference id.
 - `--link-candidate-claim` writes only a `ClaimReference` row after accepted candidate, claim context, and matching-reference gates pass.
 - `--extract-candidate-study` writes only a `Study` row after acceptance, matching-reference, claim-context, and claim-link gates pass. The operator must supply manual extraction fields.
 - None of these commands create references, source documents, public evidence promotions, or automatic medical claims.
