@@ -1826,8 +1826,23 @@ describe("runSourceCandidateJobCommand", () => {
       ]
     });
     const summarizeCurationHandoff = vi.fn().mockResolvedValue({
-      total: 3,
+      total: 6,
       groups: [
+        {
+          status: "Accepted reference missing",
+          publicSourcePacketReady: false,
+          count: 1
+        },
+        {
+          status: "Accepted reference mismatch",
+          publicSourcePacketReady: false,
+          count: 1
+        },
+        {
+          status: "Candidate claim missing",
+          publicSourcePacketReady: false,
+          count: 1
+        },
         {
           status: "Claim link missing",
           publicSourcePacketReady: false,
@@ -1866,10 +1881,13 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate backlog: total=4",
         "- PubMed AU Pending review / Unreviewed AI draft: 3",
         "- ClinicalTrials.gov AU Accepted / Human reviewed: 1",
-        "Source-candidate curation handoff: total=3",
-        '- status="Claim link missing" publicSourcePacketReady=false: 1',
-        '- status="Extraction pending" publicSourcePacketReady=false: 1',
-        '- status="Public source packet ready" publicSourcePacketReady=true: 1',
+        "Source-candidate curation handoff: total=6",
+        '- status="Accepted reference missing" publicSourcePacketReady=false: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status missing-reference"',
+        '- status="Accepted reference mismatch" publicSourcePacketReady=false: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status reference-mismatch"',
+        '- status="Candidate claim missing" publicSourcePacketReady=false: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status candidate-claim-missing"',
+        '- status="Claim link missing" publicSourcePacketReady=false: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status claim-link-missing"',
+        '- status="Extraction pending" publicSourcePacketReady=false: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status extraction-pending"',
+        '- status="Public source packet ready" publicSourcePacketReady=true: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status ready"',
         "Source-candidate read-only next commands",
         'reviewOverview="--candidate-review-overview --candidate-review-overview-limit 10"',
         'duplicates="--candidates --candidate-duplicates"',

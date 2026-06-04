@@ -3329,11 +3329,46 @@ function formatSourceCandidateCurationHandoffSummary(
 
   return [
     `Source-candidate curation handoff: total=${summary.total}`,
-    ...summary.groups.map(
-      (group) =>
-        `- status=${quote(group.status)} publicSourcePacketReady=${group.publicSourcePacketReady}: ${group.count}`
-    )
+    ...summary.groups.map(formatSourceCandidateCurationHandoffSummaryGroup)
   ].join("\n");
+}
+
+function formatSourceCandidateCurationHandoffSummaryGroup(
+  group: SourceCandidateCurationHandoffSummary["groups"][number]
+) {
+  return [
+    `- status=${quote(group.status)}`,
+    `publicSourcePacketReady=${group.publicSourcePacketReady}:`,
+    String(group.count),
+    `handoff=${quote(formatSourceCandidateCurationHandoffStatusCommand(group.status))}`
+  ].join(" ");
+}
+
+function formatSourceCandidateCurationHandoffStatusCommand(
+  status: SourceCandidateCurationStatusKind
+) {
+  return `--candidate-curation-handoff --candidate-curation-handoff-status ${formatSourceCandidateCurationHandoffStatusValue(
+    status
+  )}`;
+}
+
+function formatSourceCandidateCurationHandoffStatusValue(
+  status: SourceCandidateCurationStatusKind
+) {
+  switch (status) {
+    case "Accepted reference missing":
+      return "missing-reference";
+    case "Accepted reference mismatch":
+      return "reference-mismatch";
+    case "Candidate claim missing":
+      return "candidate-claim-missing";
+    case "Claim link missing":
+      return "claim-link-missing";
+    case "Extraction pending":
+      return "extraction-pending";
+    case "Public source packet ready":
+      return "ready";
+  }
 }
 
 function formatStringList(label: string, values: string[]) {

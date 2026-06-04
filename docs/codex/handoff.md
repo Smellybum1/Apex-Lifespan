@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding source-candidate curation handoff row hints. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding source-candidate summary curation filter hints. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -16,7 +16,7 @@ Refreshed on 2026-06-04 after adding source-candidate curation handoff row hints
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
-- Summary output is read-only and prints next-command hints for overview, duplicate scan, queued jobs, and curation handoff.
+- Summary output is read-only and prints next-command hints for overview, duplicate scan, queued jobs, and curation handoff; non-empty curation status bucket rows include filtered handoff hints.
 - Review overview is read-only and prints region-qualified `list="..."` filtered queue hints, `packet="..."` top-candidate hints, and duplicate hints when the top identity repeats.
 - Candidate list rows are read-only and print `packet="..."` hints for direct packet review.
 - Reference-match headings print read-only `packet="..."` and `groupList="..."` hints; reference drafts remain draft-only.
@@ -41,6 +41,7 @@ Last CLI snapshot after local ingestion:
 - `bpc-157-injury-healing` run results: PubMed job `cmpyzsq7p00019jfsudpodgx6` found 0/changed 0; ClinicalTrials.gov job `cmpyzsq7t00039jfs9pvuqz6p` found 0/changed 0.
 - Pending backlog: 50 candidates; PubMed AU 20 and ClinicalTrials.gov AU 30.
 - Read-only summary smoke showed next-command hints after counts without writes.
+- Read-only summary smoke still returned curation handoff `total=0`; non-empty curation bucket filter hints are covered by exact output tests.
 - Read-only reference-match smoke for repeated PMID `42141930` showed packet/group-list hints and draft-only reference context without writes.
 - Read-only curation status/draft smoke for repeated PMID `42141930` showed packet/reference/group/paired-curation hints without writes.
 - Read-only curation handoff smoke returned `total=0`; non-empty handoff row hints are covered by exact output tests.
@@ -60,11 +61,11 @@ Last CLI snapshot after local ingestion:
 
 Latest local validation:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --summary`
 - `npm run ingest:sources -- --candidate-curation-handoff`
 - `npm run ingest:sources -- --candidate-curation-status b64:cHVibWVkfGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBzdHJlbmd0aCUyMHJlc2lzdGFuY2UlMjB0cmFpbmluZyUyMGxlYW4lMjBtYXNzJTIwcmFuZG9taXplZCUyMHRyaWFsJTIwc3lzdGVtYXRpYyUyMHJldmlld3w0MjE0MTkzMHxjcmVhdGluZXxjcmVhdGluZS1zdHJlbmd0aA`
 - `npm run ingest:sources -- --candidate-curation-draft b64:cHVibWVkfGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBzdHJlbmd0aCUyMHJlc2lzdGFuY2UlMjB0cmFpbmluZyUyMGxlYW4lMjBtYXNzJTIwcmFuZG9taXplZCUyMHRyaWFsJTIwc3lzdGVtYXRpYyUyMHJldmlld3w0MjE0MTkzMHxjcmVhdGluZXxjcmVhdGluZS1zdHJlbmd0aA`
 - `npm run ingest:sources -- --candidate-reference-matches b64:cHVibWVkfGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBzdHJlbmd0aCUyMHJlc2lzdGFuY2UlMjB0cmFpbmluZyUyMGxlYW4lMjBtYXNzJTIwcmFuZG9taXplZCUyMHRyaWFsJTIwc3lzdGVtYXRpYyUyMHJldmlld3w0MjE0MTkzMHxjcmVhdGluZXxjcmVhdGluZS1zdHJlbmd0aA`
-- `npm run ingest:sources -- --summary`
 - `npm run ingest:sources -- --candidate-siblings b64:cHVibWVkfGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBzdHJlbmd0aCUyMHJlc2lzdGFuY2UlMjB0cmFpbmluZyUyMGxlYW4lMjBtYXNzJTIwcmFuZG9taXplZCUyMHRyaWFsJTIwc3lzdGVtYXRpYyUyMHJldmlld3w0MjE0MTkzMHxjcmVhdGluZXxjcmVhdGluZS1zdHJlbmd0aA`
 - `npm run ingest:sources -- --candidate-review-packet b64:cHVibWVkfGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBzdHJlbmd0aCUyMHJlc2lzdGFuY2UlMjB0cmFpbmluZyUyMGxlYW4lMjBtYXNzJTIwcmFuZG9taXplZCUyMHRyaWFsJTIwc3lzdGVtYXRpYyUyMHJldmlld3w0MjE0MTkzMHxjcmVhdGluZXxjcmVhdGluZS1zdHJlbmd0aA`
 - `npm run test -- src/lib/data/source-candidates.test.ts`

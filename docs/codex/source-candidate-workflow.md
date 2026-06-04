@@ -34,7 +34,7 @@ npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Reason.
 npm run ingest:sources -- --candidate-curation-handoff
 ```
 
-Summary output prints read-only next-command hints for overview, duplicate scan, queued jobs, and curation handoff.
+Summary output prints read-only next-command hints for overview, duplicate scan, queued jobs, and curation handoff; non-empty curation bucket rows include status-filtered handoff hints.
 Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on Windows anywhere `<dedupe-key>` is accepted.
 Candidate list rows print `packet="..."` for read-only packet review.
 Review overview rows print `list="..."` for the filtered pending group, including region, `packet="..."` for the top candidate drill-in, and duplicate hints when the top PMID/NCT identity repeats.
