@@ -3539,6 +3539,27 @@ function sourceCandidateCurationWriteAssessment(
         nextWrite: "claimLink",
         ready: false
       };
+    default:
+      return sourceCandidateCurationStatusKindWriteAssessment(status.status);
+  }
+}
+
+function sourceCandidateCurationStatusKindWriteAssessment(
+  status: SourceCandidateCurationStatusKind
+) {
+  switch (status) {
+    case "Claim link missing":
+      return { nextWrite: "claimLink", ready: true };
+    case "Extraction pending":
+      return { nextWrite: "studyExtraction", ready: true };
+    case "Public source packet ready":
+      return { nextWrite: "none", ready: false };
+    case "Candidate claim missing":
+      return {
+        blockedUntil: "Accepted candidate claim id required before claim linking.",
+        nextWrite: "claimLink",
+        ready: false
+      };
     case "Accepted reference missing":
       return {
         blockedUntil: "Accepted candidate reference required before claim linking.",
@@ -4830,11 +4851,22 @@ function formatSourceCandidateCurationHandoffSummary(
 function formatSourceCandidateCurationHandoffSummaryGroup(
   group: SourceCandidateCurationHandoffSummary["groups"][number]
 ) {
+  const assessment = sourceCandidateCurationStatusKindWriteAssessment(group.status);
+  const writeFields = [
+    `nextWrite=${quote(assessment.nextWrite)}`,
+    `writeReady=${assessment.ready}`
+  ];
+
+  if (assessment.blockedUntil) {
+    writeFields.push(`blockedUntil=${quote(assessment.blockedUntil)}`);
+  }
+
   return [
     `- status=${quote(group.status)}`,
     `publicSourcePacketReady=${group.publicSourcePacketReady}:`,
     String(group.count),
     `nextAction=${quote(curationNextAction(group.status))}`,
+    ...writeFields,
     `handoff=${quote(formatSourceCandidateCurationHandoffStatusCommand(group.status))}`
   ].join(" ");
 }
