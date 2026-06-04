@@ -18,7 +18,10 @@ describe("commandUsage", () => {
       "--candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance."
     );
     expect(commandUsage()).toContain(
-      "--candidate-review-overview     Print read-only pending review groups by claim/source with top candidate keys."
+      "--candidate-review-overview     Print read-only pending review groups with list and packet hints."
+    );
+    expect(commandUsage()).toContain(
+      "--candidate-region <region>       Filter candidates, overview, or handoff by region."
     );
     expect(commandUsage()).toContain(
       "--candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, and sibling context."
@@ -224,6 +227,8 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "200",
         "--candidate-source",
         "pubmed",
+        "--candidate-region",
+        "AU",
         "--candidate-job-id",
         "job-pubmed",
         "--candidate-intervention-id",
@@ -240,6 +245,7 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       candidateCurationHandoffStatus: "Public source packet ready",
       candidateInterventionId: "creatine",
       candidateJobId: "job-pubmed",
+      candidateRegion: "AU",
       candidateSource: "PubMed",
       help: false,
       limit: 1,
@@ -481,7 +487,9 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "--candidate-intervention-id",
         "creatine",
         "--candidate-claim-id",
-        "creatine-strength"
+        "creatine-strength",
+        "--candidate-region",
+        "au"
       ])
     ).toEqual({
       candidates: true,
@@ -491,6 +499,7 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       candidateExternalId: "NCT123",
       candidateInterventionId: "creatine",
       candidateJobId: "job-pubmed",
+      candidateRegion: "AU",
       candidatesLimit: 50,
       candidateSource: "ClinicalTrials.gov",
       help: false,
@@ -531,12 +540,15 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "--candidate-intervention-id",
         "omega-3",
         "--candidate-claim-id",
-        "omega-3-cv-events"
+        "omega-3-cv-events",
+        "--candidate-region",
+        "AU"
       ])
     ).toEqual({
       candidateClaimId: "omega-3-cv-events",
       candidateInterventionId: "omega-3",
       candidateJobId: "job-pubmed",
+      candidateRegion: "AU",
       candidateReviewOverview: true,
       candidateReviewOverviewLimit: 50,
       candidateSource: "PubMed",
@@ -1590,6 +1602,9 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       parseSourceCandidateJobCommandArgs(["--candidate-claim-id", "creatine-strength"])
     ).toThrow("Candidate-list filters require --candidates.");
     expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-region", "AU"])
+    ).toThrow("Candidate-list filters require --candidates.");
+    expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidates", "--summary"])
     ).toThrow("--candidates cannot be combined with --summary.");
     expect(() =>
@@ -2528,6 +2543,7 @@ describe("runSourceCandidateJobCommand", () => {
       ingestionJobId: "job-pubmed",
       interventionId: "creatine",
       limit: 2,
+      region: undefined,
       source: "PubMed",
       status: "Extraction pending"
     });
@@ -2557,6 +2573,7 @@ describe("runSourceCandidateJobCommand", () => {
       claimId: undefined,
       ingestionJobId: undefined,
       interventionId: undefined,
+      region: undefined,
       source: undefined,
       status: undefined,
       limit: undefined
@@ -3158,6 +3175,7 @@ describe("runSourceCandidateJobCommand", () => {
       ingestionJobId: "job-pubmed",
       interventionId: "creatine",
       limit: 2,
+      region: undefined,
       source: "PubMed"
     });
     expect(runNextJob).not.toHaveBeenCalled();
@@ -3226,6 +3244,7 @@ describe("runSourceCandidateJobCommand", () => {
       ingestionJobId: undefined,
       interventionId: undefined,
       limit: 3,
+      region: undefined,
       source: "PubMed"
     });
     expect(listCandidates).not.toHaveBeenCalled();
@@ -3276,6 +3295,7 @@ describe("runSourceCandidateJobCommand", () => {
       ingestionJobId: undefined,
       interventionId: undefined,
       limit: 1,
+      region: undefined,
       source: undefined
     });
     expect(runNextJob).not.toHaveBeenCalled();
@@ -3322,6 +3342,7 @@ describe("runSourceCandidateJobCommand", () => {
       ingestionJobId: undefined,
       interventionId: undefined,
       limit: undefined,
+      region: undefined,
       source: undefined
     });
     expect(stdout).toHaveBeenCalledWith(
@@ -3378,7 +3399,9 @@ describe("runSourceCandidateJobCommand", () => {
           "--candidate-review-overview-limit",
           "5",
           "--candidate-claim-id",
-          "omega-3-cv-events"
+          "omega-3-cv-events",
+          "--candidate-region",
+          "AU"
         ],
         { stdout },
         { listReviewOverview, runNextJob }
@@ -3390,14 +3413,15 @@ describe("runSourceCandidateJobCommand", () => {
       ingestionJobId: undefined,
       interventionId: undefined,
       limit: 5,
+      region: "AU",
       source: undefined
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate review overview: totalGroups=2 candidateCount=14",
-        `- claim=omega-3-cv-events intervention=omega-3 ClinicalTrials.gov AU pending=9 topTriage=100/100 topKey=${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")} topExternalId="NCT01492361" topTitle="A Study of AMR101 to Evaluate Its Ability to Reduce Cardiovascular Events" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")}"`,
-        `- claim=omega-3-cv-events intervention=omega-3 PubMed AU pending=5 topTriage=80/100 topKey=${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")} topExternalId="32634581" topTitle="Omega-3 cardiovascular outcomes meta-analysis" packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}"`
+        `- claim=omega-3-cv-events intervention=omega-3 ClinicalTrials.gov AU pending=9 topTriage=100/100 topKey=${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")} topExternalId="NCT01492361" topTitle="A Study of AMR101 to Evaluate Its Ability to Reduce Cardiovascular Events" list="--candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source clinical-trials --candidates-limit 9" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")}"`,
+        `- claim=omega-3-cv-events intervention=omega-3 PubMed AU pending=5 topTriage=80/100 topKey=${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")} topExternalId="32634581" topTitle="Omega-3 cardiovascular outcomes meta-analysis" list="--candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source pubmed --candidates-limit 5" packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}"`
       ].join("\n")
     );
   });
@@ -3442,6 +3466,7 @@ describe("runSourceCandidateJobCommand", () => {
       ingestionJobId: undefined,
       interventionId: undefined,
       limit: undefined,
+      region: undefined,
       source: undefined
     });
     expect(stdout).toHaveBeenCalledWith(

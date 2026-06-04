@@ -74,6 +74,7 @@ export interface SourceCandidateJobCommandOptions
   candidateInterventionId?: string;
   candidateJobId?: string;
   candidateReferenceMatchesDedupeKey?: string;
+  candidateRegion?: string;
   candidateReviewOverview?: boolean;
   candidateReviewOverviewLimit?: number;
   candidateReviewPacketDedupeKey?: string;
@@ -155,6 +156,7 @@ export interface SourceCandidateJobCommandRunners {
     ingestionJobId?: string;
     interventionId?: string;
     limit?: number;
+    region?: string;
     source?: SourceCandidateSource;
   }) => Promise<SourceCandidateReviewOverview>;
   listCandidates?: (options: {
@@ -210,6 +212,7 @@ const DEFAULT_JOB_LIMIT = 1;
 const MAX_JOB_LIMIT = 25;
 const MAX_METADATA_ARRAY_ITEMS = 8;
 const MAX_METADATA_VALUE_LENGTH = 240;
+const DEFAULT_REVIEW_OVERVIEW_GROUP_CANDIDATE_LIMIT = 10;
 const CANDIDATE_KEY_B64_PREFIX = "b64:";
 const PRINTABLE_METADATA_KEYS = new Set([
   "abstractAvailable",
@@ -294,6 +297,7 @@ export async function runSourceCandidateJobCommand(
         claimId: options.candidateClaimId,
         ingestionJobId: options.candidateJobId,
         interventionId: options.candidateInterventionId,
+        region: options.candidateRegion,
         source: options.candidateSource,
         status: options.candidateCurationHandoffStatus,
         limit: options.candidateCurationHandoffLimit
@@ -339,6 +343,7 @@ export async function runSourceCandidateJobCommand(
         ingestionJobId: options.candidateJobId,
         interventionId: options.candidateInterventionId,
         limit: options.candidateReviewOverviewLimit,
+        region: options.candidateRegion,
         source: options.candidateSource
       });
 
@@ -472,6 +477,7 @@ export async function runSourceCandidateJobCommand(
         ingestionJobId: options.candidateJobId,
         interventionId: options.candidateInterventionId,
         limit: options.candidatesLimit,
+        region: options.candidateRegion,
         source: options.candidateSource
       };
 
@@ -596,6 +602,7 @@ export function parseSourceCandidateJobCommandArgs(
   let candidateJobIdProvided = false;
   let candidateCurationHandoffLimitProvided = false;
   let candidateCurationHandoffStatusProvided = false;
+  let candidateRegionProvided = false;
   let candidateReviewOverviewLimitProvided = false;
   let candidateSiblingsLimitProvided = false;
   let acceptedReferenceIdProvided = false;
@@ -891,6 +898,13 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--candidate-source") {
       options.candidateSource = readCandidateSource(readRequiredValue(args, index, arg));
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-region") {
+      options.candidateRegion = readRequiredValue(args, index, arg).toUpperCase();
+      candidateRegionProvided = true;
       index += 1;
       continue;
     }
@@ -1269,6 +1283,7 @@ export function parseSourceCandidateJobCommandArgs(
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1349,6 +1364,7 @@ export function parseSourceCandidateJobCommandArgs(
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1433,6 +1449,7 @@ export function parseSourceCandidateJobCommandArgs(
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1493,6 +1510,7 @@ export function parseSourceCandidateJobCommandArgs(
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1607,6 +1625,7 @@ export function parseSourceCandidateJobCommandArgs(
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1673,6 +1692,7 @@ export function parseSourceCandidateJobCommandArgs(
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1740,6 +1760,7 @@ export function parseSourceCandidateJobCommandArgs(
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1787,6 +1808,7 @@ export function parseSourceCandidateJobCommandArgs(
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1877,6 +1899,7 @@ export function parseSourceCandidateJobCommandArgs(
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1925,6 +1948,7 @@ export function parseSourceCandidateJobCommandArgs(
       candidateJobIdProvided,
       candidateInterventionIdProvided,
       candidateClaimIdProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     }) &&
     !options.candidates &&
@@ -2142,7 +2166,7 @@ export function commandUsage() {
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
     "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
     "  --candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance.",
-    "  --candidate-review-overview     Print read-only pending review groups by claim/source with top candidate keys.",
+    "  --candidate-review-overview     Print read-only pending review groups with list and packet hints.",
     "  --candidate-review-overview-limit <count> Review overview group count (default 25, max 50).",
     "  --candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, and sibling context.",
     "  --candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons.",
@@ -2172,13 +2196,14 @@ export function commandUsage() {
     "  --candidates                      Print pending source-candidate review queue rows.",
     "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
     "  <dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse.",
-    "  --candidate-source <source>       Filter candidates or handoff by source: pubmed or clinical-trials.",
+    "  --candidate-source <source>       Filter candidates, overview, or handoff by source: pubmed or clinical-trials.",
     "  --candidate-decision <decision>   Candidate decision: pending, accepted, or rejected.",
     "  --candidate-duplicates            With --candidates, print duplicate source/external-id groups.",
     "  --candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id.",
-    "  --candidate-job-id <id>           Filter --candidates or handoff by ingestion job id.",
-    "  --candidate-intervention-id <id>  Filter --candidates or handoff by intervention id.",
-    "  --candidate-claim-id <id>         Filter --candidates or handoff by claim id.",
+    "  --candidate-job-id <id>           Filter candidates, overview, or handoff by ingestion job id.",
+    "  --candidate-intervention-id <id>  Filter candidates, overview, or handoff by intervention id.",
+    "  --candidate-claim-id <id>         Filter candidates, overview, or handoff by claim id.",
+    "  --candidate-region <region>       Filter candidates, overview, or handoff by region.",
     "  --jobs                            Print recent source-candidate ingestion jobs.",
     "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
     "  --jobs-source <source>            Filter --jobs by source: pubmed or clinical-trials.",
@@ -2946,10 +2971,40 @@ function formatSourceCandidateReviewOverviewGroup(
     `topKey=${safeCandidateKey(candidate.dedupeKey)}`,
     `topExternalId=${quote(candidate.externalId)}`,
     `topTitle=${quote(candidate.title)}`,
+    `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
     `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`
   ];
 
   return parts.join(" ");
+}
+
+function formatSourceCandidateReviewOverviewListCommand(
+  group: SourceCandidateReviewOverview["groups"][number]
+) {
+  const args = ["--candidates"];
+
+  if (group.claimId) {
+    args.push("--candidate-claim-id", group.claimId);
+  }
+
+  if (group.interventionId) {
+    args.push("--candidate-intervention-id", group.interventionId);
+  }
+
+  args.push(
+    "--candidate-region",
+    group.region,
+    "--candidate-source",
+    sourceCandidateSourceCliValue(group.source),
+    "--candidates-limit",
+    String(Math.min(group.count, DEFAULT_REVIEW_OVERVIEW_GROUP_CANDIDATE_LIMIT))
+  );
+
+  return args.join(" ");
+}
+
+function sourceCandidateSourceCliValue(source: SourceCandidateSource) {
+  return source === "ClinicalTrials.gov" ? "clinical-trials" : "pubmed";
 }
 
 function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
@@ -3406,6 +3461,7 @@ function hasCandidateListFilter({
   candidateJobIdProvided,
   candidateInterventionIdProvided,
   candidateClaimIdProvided,
+  candidateRegionProvided,
   candidateSource
 }: {
   candidatesLimitProvided: boolean;
@@ -3414,6 +3470,7 @@ function hasCandidateListFilter({
   candidateJobIdProvided: boolean;
   candidateInterventionIdProvided: boolean;
   candidateClaimIdProvided: boolean;
+  candidateRegionProvided: boolean;
   candidateSource?: SourceCandidateSource;
 }) {
   return Boolean(
@@ -3423,7 +3480,8 @@ function hasCandidateListFilter({
       candidateExternalIdProvided ||
       candidateJobIdProvided ||
       candidateInterventionIdProvided ||
-      candidateClaimIdProvided
+      candidateClaimIdProvided ||
+      candidateRegionProvided
   );
 }
 

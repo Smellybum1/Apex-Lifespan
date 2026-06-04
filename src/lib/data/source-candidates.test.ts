@@ -226,6 +226,7 @@ describe("listSourceCandidateReviewQueue", () => {
       ingestionJobId: "job-pubmed",
       interventionId: "creatine",
       limit: 250,
+      region: "NZ",
       source: "ClinicalTrials.gov"
     });
 
@@ -236,6 +237,7 @@ describe("listSourceCandidateReviewQueue", () => {
         externalId: "NCT123",
         ingestionJobId: "job-pubmed",
         interventionId: "creatine",
+        region: "NZ",
         source: "CLINICALTRIALS_GOV"
       },
       orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
@@ -294,7 +296,8 @@ describe("listSourceCandidateReviewOverview", () => {
       listSourceCandidateReviewOverview({
         claimId: "omega-3-cv-events",
         interventionId: "omega-3",
-        limit: 10
+        limit: 10,
+        region: "AU"
       })
     ).resolves.toEqual({
       candidateCount: 3,
@@ -334,7 +337,8 @@ describe("listSourceCandidateReviewOverview", () => {
       where: {
         claimId: "omega-3-cv-events",
         decision: "PENDING_REVIEW",
-        interventionId: "omega-3"
+        interventionId: "omega-3",
+        region: "AU"
       },
       orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
       take: 1000
@@ -1814,6 +1818,7 @@ describe("listSourceCandidateCurationHandoff", () => {
         ingestionJobId: "job-pubmed",
         interventionId: "creatine",
         limit: 100,
+        region: "AU",
         source: "PubMed"
       })
     ).resolves.toEqual([
@@ -1929,6 +1934,7 @@ describe("listSourceCandidateCurationHandoff", () => {
         decision: "ACCEPTED",
         ingestionJobId: "job-pubmed",
         interventionId: "creatine",
+        region: "AU",
         source: "PUBMED"
       },
       orderBy: [{ reviewedAt: "asc" }, { updatedAt: "desc" }],

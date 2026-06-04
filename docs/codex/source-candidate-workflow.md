@@ -35,6 +35,7 @@ npm run ingest:sources -- --candidate-curation-handoff
 ```
 
 Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on Windows anywhere `<dedupe-key>` is accepted.
+Review overview rows print `list="..."` for the filtered pending group, including region, and `packet="..."` for the top candidate drill-in.
 
 ## Curation Readiness
 

@@ -28,7 +28,9 @@ npm run ingest:sources -- --jobs --jobs-status failed
 npm run ingest:sources -- --jobs --jobs-status queued --jobs-claim-id <claim-id>
 npm run ingest:sources -- --jobs --jobs-source pubmed --jobs-region AU
 npm run ingest:sources -- --candidates
+npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10
 npm run ingest:sources -- --candidates --candidate-source pubmed --candidates-limit 10
+npm run ingest:sources -- --candidates --candidate-region AU --candidate-source pubmed --candidates-limit 10
 npm run ingest:sources -- --candidates --candidate-duplicates
 npm run ingest:sources -- --candidates --candidate-external-id <pmid-or-nct-id>
 npm run ingest:sources -- --candidates --candidate-intervention-id <intervention-id>
@@ -45,7 +47,8 @@ npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-hand
 
 Read-only output rules:
 - `--summary` groups ingestion job status counts, backlog counts, and accepted-candidate curation handoff counts.
-- `--candidates` defaults to pending rows and can filter by source, external id, job, intervention, claim, or decision.
+- `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."` and `packet="..."` hints.
+- `--candidates` defaults to pending rows and can filter by source, region, external id, job, intervention, claim, or decision.
 - `--candidate-review-packet` prints detail, accepted-reference matches, and sibling context together.
 - Empty `--candidate-reference-matches` output includes a draft-only `referenceDraft=...` line for manual verification; it does not create a reference or mark the candidate accepted.
 - `--candidate-curation-status` and `--candidate-curation-handoff` report readiness for public source packets, not evidence quality.

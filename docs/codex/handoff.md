@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding the read-only source-candidate review overview. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding read-only source-candidate overview list hints. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -16,7 +16,7 @@ Refreshed on 2026-06-04 after adding the read-only source-candidate review overv
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
-- Review overview is read-only: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
+- Review overview is read-only and prints region-qualified `list="..."` filtered queue hints plus `packet="..."` top-candidate hints.
 - Claim-scoped source queries now append compact claim-text anchors after outcome terms before queueing.
 - Local Docker/PostgreSQL setup was verified earlier; migrations and seed were applied locally.
 
@@ -32,7 +32,7 @@ Last CLI snapshot after local ingestion:
 - `omega-3-cv-events` run results: PubMed job `cmpyzoc7000019jwckirn1fo0` found 5/changed 5; ClinicalTrials.gov job `cmpyzoc7500039jwcbu1ii4o7` found 9/changed 9.
 - `bpc-157-injury-healing` run results: PubMed job `cmpyzsq7p00019jfsudpodgx6` found 0/changed 0; ClinicalTrials.gov job `cmpyzsq7t00039jfs9pvuqz6p` found 0/changed 0.
 - Pending backlog: 50 candidates; PubMed AU 20 and ClinicalTrials.gov AU 30.
-- Read-only review overview smoke returned 9 pending groups across 50 candidates.
+- Read-only review overview smoke returned 9 pending groups across 50 candidates; `--candidate-review-overview-limit 3` showed bounded `list="..."` hints.
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 - New `creatine-lifespan` candidate: `NCT07451496`, triage 80/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBsb25nZXZpdHklMjBtb3J0YWxpdHklMjBsaWZlc3BhbnxuY3QwNzQ1MTQ5NnxjcmVhdGluZXxjcmVhdGluZS1saWZlc3Bhbg`; review packet showed no accepted-reference match and no siblings.
 - Top `vitamin-d-deficiency` candidate: `NCT00715676`, triage 100/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`; review packet showed no accepted-reference match and 9 same-query siblings.
@@ -47,6 +47,9 @@ Last CLI snapshot after local ingestion:
 Latest local validation:
 - `npm run test -- src/lib/data/source-candidates.test.ts src/lib/data/source-candidate-job-command.test.ts`
 - `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`
+- `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 3`
+- `npm run ingest:sources -- --candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source clinical-trials --candidates-limit 2`
+- `npm run ingest:sources -- --help`
 - `npm run test`
 - `npm run lint`
 - `npm run dev:stop`

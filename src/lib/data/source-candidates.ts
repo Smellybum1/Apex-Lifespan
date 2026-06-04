@@ -55,6 +55,7 @@ export interface SourceCandidateReviewQueueOptions {
   ingestionJobId?: string;
   interventionId?: string;
   limit?: number;
+  region?: string;
   source?: SourceCandidateSource;
 }
 
@@ -63,6 +64,7 @@ export interface SourceCandidateReviewOverviewOptions {
   ingestionJobId?: string;
   interventionId?: string;
   limit?: number;
+  region?: string;
   source?: SourceCandidateSource;
 }
 
@@ -238,6 +240,7 @@ export interface SourceCandidateCurationHandoffOptions {
   ingestionJobId?: string;
   interventionId?: string;
   limit?: number;
+  region?: string;
   source?: SourceCandidateSource;
   status?: SourceCandidateCurationStatusKind;
 }
@@ -358,6 +361,7 @@ export async function listSourceCandidateReviewOverview(
         claimId: options.claimId,
         ingestionJobId: options.ingestionJobId,
         interventionId: options.interventionId,
+        region: options.region,
         source: options.source
       }),
       orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
@@ -854,6 +858,10 @@ export async function listSourceCandidateCurationHandoff(
     where.claimId = options.claimId;
   }
 
+  if (options.region) {
+    where.region = options.region;
+  }
+
   const limit = normaliseCurationHandoffLimit(options.limit);
   const candidates = await prisma.sourceCandidate.findMany({
     where,
@@ -1146,6 +1154,10 @@ function sourceCandidateReviewQueueWhere(
 
   if (options.claimId) {
     where.claimId = options.claimId;
+  }
+
+  if (options.region) {
+    where.region = options.region;
   }
 
   return where;
