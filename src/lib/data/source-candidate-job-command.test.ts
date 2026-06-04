@@ -3240,7 +3240,7 @@ describe("runSourceCandidateJobCommand", () => {
 
     expect(stdout).toHaveBeenCalledWith(
       [
-        `Source-candidate accepted-reference matches: total=0 dedupe="${candidateKey}" key=${safeCandidateKey(candidateKey)} candidate="Calcium fracture prevention trial" source="ClinicalTrials.gov" externalId="NCT00715676" url=https://clinicaltrials.gov/study/NCT00715676 packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" groupList="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" decision="Pending review" reviewStatus="Unreviewed AI draft" reviewFlags="broad-safety-query, low-title-query-overlap"`,
+        `Source-candidate accepted-reference matches: total=0 dedupe="${candidateKey}" key=${safeCandidateKey(candidateKey)} candidate="Calcium fracture prevention trial" source="ClinicalTrials.gov" externalId="NCT00715676" url=https://clinicaltrials.gov/study/NCT00715676 packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" groupList="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" decision="Pending review" reviewStatus="Unreviewed AI draft" reviewFlags="broad-safety-query, low-title-query-overlap" flags="--candidate-review-flags --candidate-review-flags-limit 10"`,
         '- referenceDraft="ref-clinicaltrials-gov-nct00715676" source="ClinicalTrials.gov" identifier="NCT00715676" title="Calcium fracture prevention trial" url=https://clinicaltrials.gov/study/NCT00715676 note="Draft only; verify before adding a curated reference." year=2017'
       ].join("\n")
     );

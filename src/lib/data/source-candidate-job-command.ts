@@ -3058,6 +3058,9 @@ function formatSourceCandidateReferenceMatchHeading(
 
   if (reviewFlagField) {
     parts.push(reviewFlagField);
+    parts.push(
+      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+    );
   }
 
   if (candidate.acceptedReferenceId) {
