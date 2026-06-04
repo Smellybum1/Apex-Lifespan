@@ -7,6 +7,7 @@ Open this only for source-candidate ingestion, review, or curation work. Use `np
 - Private local operator workflow; writes go only to configured PostgreSQL.
 - Public PubMed and ClinicalTrials.gov previews stay read-only leads.
 - Candidate `/100` values are triage scores, not evidence quality.
+- `reviewFlags`/`reviewCautions` are local reviewer prompts, not rejection reasons or evidence-quality scores.
 - Accepted candidates do not auto-promote into public evidence cards.
 - Accepting requires an existing curated reference matching candidate source and external id.
 - Rejections require a nonblank human review note.
@@ -38,9 +39,9 @@ Summary output prints read-only next-command hints for overview, duplicate scan,
 Job rows print read-only candidate-list, context-jobs, and status-jobs hints.
 Queue and run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
 Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on Windows anywhere `<dedupe-key>` is accepted.
-Candidate detail output prints read-only packet, reference-match, sibling, group-list, curation-status, and curation-draft hints.
-Candidate list rows print `packet="..."` for read-only packet review plus source-query and ingestion-job trace fields.
-Review overview rows print `list="..."` for the filtered pending group, including region, `packet="..."` for the top candidate drill-in, and duplicate hints when the top PMID/NCT identity repeats.
+Candidate detail output prints read-only packet, reference-match, sibling, group-list, curation-status, curation-draft hints, and explanatory `reviewCautions` when a claim-scoped candidate needs extra broad-query/off-claim scrutiny.
+Candidate list rows print `packet="..."` for read-only packet review plus source-query, ingestion-job trace fields, and compact `reviewFlags` when applicable.
+Review overview rows print `list="..."` for the filtered pending group, including region, `packet="..."` for the top candidate drill-in, duplicate hints when the top PMID/NCT identity repeats, and `topReviewFlags` when applicable.
 Reference-match headings print `packet="..."` and `groupList="..."`; draft references remain draft-only and require manual verification.
 Review packets print read-only follow-up commands, conditional duplicate hints, and accept/reject templates; write templates still require explicit human review.
 Sibling rows print `packet="..."` for read-only packet review of related candidates.

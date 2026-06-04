@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding source-candidate row trace fields. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding source-candidate review flags. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -19,9 +19,9 @@ Refreshed on 2026-06-04 after adding source-candidate row trace fields. Verify l
 - Summary output is read-only and prints next-command hints for overview, duplicate scan, queued jobs, and curation handoff; non-empty curation status bucket rows include filtered handoff hints.
 - Job rows are read-only and print candidate-list, context-jobs, and status-jobs hints.
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; exact output tests cover these write-result surfaces without live write smokes.
-- Review overview is read-only and prints region-qualified `list="..."` filtered queue hints, `packet="..."` top-candidate hints, and duplicate hints when the top identity repeats.
-- Candidate detail output is read-only and prints packet, reference-match, sibling, group-list, curation-status, and curation-draft hints.
-- Candidate list rows are read-only and print `packet="..."` hints plus query and ingestion-job trace fields.
+- Review overview is read-only and prints region-qualified `list="..."` filtered queue hints, `packet="..."` top-candidate hints, duplicate hints when the top identity repeats, and compact `topReviewFlags` when applicable.
+- Candidate detail output is read-only and prints packet, reference-match, sibling, group-list, curation-status, curation-draft hints, and explanatory `reviewCautions` for flagged claim-scoped candidates.
+- Candidate list rows are read-only and print `packet="..."` hints plus query, ingestion-job trace fields, and compact `reviewFlags` when applicable.
 - Reference-match headings print read-only `packet="..."` and `groupList="..."` hints; reference drafts remain draft-only.
 - Review packets print safe read-only follow-up commands, duplicate hints when the identity repeats, and explicit human-reviewed accept/reject templates.
 - Sibling rows print read-only `packet="..."` hints for related candidate packet review.
@@ -53,6 +53,9 @@ Last CLI snapshot after local ingestion:
 - Read-only curation status/draft smoke for repeated PMID `42141930` showed packet/reference/group/paired-curation hints without writes.
 - Read-only curation handoff smoke returned `total=0`; non-empty handoff row hints are covered by exact output tests.
 - Read-only review overview smoke returned 9 pending groups across 50 candidates; the `creatine-strength` PubMed top identity showed `topIdentityCandidates=2` and a duplicate-list hint for PMID `42141930`.
+- Read-only review overview smoke showed `topReviewFlags="broad-safety-query"` on broad `vitamin-d-deficiency` ClinicalTrials.gov and PubMed groups; omega-3 triglycerides did not carry a low-overlap flag after token-root overlap handling.
+- Read-only review packet smoke for `NCT00715676` showed detail `reviewCautions` with `broad-safety-query` and no writes.
+- Read-only candidate list smoke for the top `vitamin-d-deficiency` ClinicalTrials.gov rows showed compact `reviewFlags="broad-safety-query"` and no writes.
 - Read-only sibling smoke for repeated PMID `42141930` showed packet hints on each sibling row without writes.
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 - New `creatine-lifespan` candidate: `NCT07451496`, triage 80/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBsb25nZXZpdHklMjBtb3J0YWxpdHklMjBsaWZlc3BhbnxuY3QwNzQ1MTQ5NnxjcmVhdGluZXxjcmVhdGluZS1saWZlc3Bhbg`; review packet showed no accepted-reference match and no siblings.
@@ -80,6 +83,8 @@ Latest local validation:
 - `npm run ingest:sources -- --candidate-review-packet b64:cHVibWVkfGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBzdHJlbmd0aCUyMHJlc2lzdGFuY2UlMjB0cmFpbmluZyUyMGxlYW4lMjBtYXNzJTIwcmFuZG9taXplZCUyMHRyaWFsJTIwc3lzdGVtYXRpYyUyMHJldmlld3w0MjE0MTkzMHxjcmVhdGluZXxjcmVhdGluZS1zdHJlbmd0aA`
 - `npm run test -- src/lib/data/source-candidates.test.ts`
 - `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`
+- `npm run ingest:sources -- --candidate-review-packet b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
+- `npm run ingest:sources -- --candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 3`
 - `npm run ingest:sources -- --candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source pubmed --candidates-limit 3`
 - `npm run test -- src/lib/data/source-candidates.test.ts src/lib/data/source-candidate-job-command.test.ts`
 - `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 3`

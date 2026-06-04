@@ -212,7 +212,28 @@ const DEFAULT_JOB_LIMIT = 1;
 const MAX_JOB_LIMIT = 25;
 const MAX_METADATA_ARRAY_ITEMS = 8;
 const MAX_METADATA_VALUE_LENGTH = 240;
+const MIN_REVIEW_QUERY_TOKENS_FOR_OVERLAP_FLAG = 3;
 const DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT = 10;
+const reviewQueryTokenStopwords = new Set([
+  "and",
+  "clinical",
+  "effects",
+  "evidence",
+  "for",
+  "human",
+  "humans",
+  "of",
+  "prevention",
+  "randomised",
+  "randomized",
+  "review",
+  "study",
+  "systematic",
+  "the",
+  "trial",
+  "trials",
+  "with"
+]);
 const CANDIDATE_KEY_B64_PREFIX = "b64:";
 const PRINTABLE_METADATA_KEYS = new Set([
   "abstractAvailable",
@@ -2380,6 +2401,7 @@ function formatSourceCandidateDetail(
   candidate: SourceCandidate,
   options: { commandHints?: boolean } = {}
 ) {
+  const reviewFlags = sourceCandidateReviewFlags(candidate);
   const lines = [
     "Source-candidate detail",
     `dedupe=${quote(candidate.dedupeKey)}`,
@@ -2435,6 +2457,15 @@ function formatSourceCandidateDetail(
   }
 
   lines.push(formatStringList("triageReasons", candidate.triageReasons));
+
+  if (reviewFlags.length > 0) {
+    lines.push(
+      formatStringList(
+        "reviewCautions",
+        reviewFlags.map((flag) => `${flag.code}: ${flag.message}`)
+      )
+    );
+  }
 
   const metadataLines = formatMetadata(candidate.metadata);
 
@@ -3082,6 +3113,7 @@ function formatSourceCandidateReviewOverviewGroup(
   group: SourceCandidateReviewOverview["groups"][number]
 ) {
   const candidate = group.topCandidate;
+  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
   const parts = [
     "-",
     `claim=${group.claimId ?? "none"}`,
@@ -3099,6 +3131,10 @@ function formatSourceCandidateReviewOverviewGroup(
       `topIdentityCandidates=${group.topIdentityCandidateCount}`,
       `duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(group))}`
     );
+  }
+
+  if (reviewFlagCodes.length > 0) {
+    parts.push(`topReviewFlags=${quote(reviewFlagCodes.join(", "))}`);
   }
 
   parts.push(
@@ -3203,6 +3239,7 @@ function sourceCandidateSourceCliValue(source: SourceCandidateSource) {
 }
 
 function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
+  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
   const parts = [
     `- triage=${candidate.triageScore}/100`,
     candidate.source,
@@ -3215,6 +3252,10 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
     `title=${quote(candidate.title)}`,
     `url=${candidate.url}`
   ];
+
+  if (reviewFlagCodes.length > 0) {
+    parts.push(`reviewFlags=${quote(reviewFlagCodes.join(", "))}`);
+  }
 
   if (candidate.decision !== "Pending review") {
     parts.push(`decision=${quote(candidate.decision)}`);
@@ -3249,6 +3290,98 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
   }
 
   return parts.join(" ");
+}
+
+function sourceCandidateReviewFlagCodes(candidate: SourceCandidate) {
+  return sourceCandidateReviewFlags(candidate).map((flag) => flag.code);
+}
+
+function sourceCandidateReviewFlags(candidate: SourceCandidate) {
+  if (!candidate.claimId) {
+    return [];
+  }
+
+  const flags: { code: string; message: string }[] = [];
+  const queryTokens = sourceCandidateReviewTokens(candidate.query);
+  const titleTokens = sourceCandidateReviewTokens(candidate.title);
+
+  if (sourceCandidateBroadSafetyQueryTokens(queryTokens)) {
+    flags.push({
+      code: "broad-safety-query",
+      message:
+        "Broad safety/adverse query; verify title, population, outcomes, and source identity against the candidate claim."
+    });
+  }
+
+  if (
+    queryTokens.length >= MIN_REVIEW_QUERY_TOKENS_FOR_OVERLAP_FLAG &&
+    !sourceCandidateReviewTokensOverlap(queryTokens, titleTokens)
+  ) {
+    flags.push({
+      code: "low-title-query-overlap",
+      message:
+        "Low title/query overlap; inspect the packet and siblings for off-claim or off-intervention matches."
+    });
+  }
+
+  return flags;
+}
+
+function sourceCandidateBroadSafetyQueryTokens(tokens: string[]) {
+  return tokens.includes("safety") && tokens.includes("adverse");
+}
+
+function sourceCandidateReviewTokens(value: string) {
+  const seen = new Set<string>();
+
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9+-]+/g, " ")
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => {
+      if (token.length < 3 || reviewQueryTokenStopwords.has(token) || seen.has(token)) {
+        return false;
+      }
+
+      seen.add(token);
+      return true;
+    })
+    .map(sourceCandidateReviewTokenRoot);
+}
+
+function sourceCandidateReviewTokensOverlap(
+  queryTokens: string[],
+  titleTokens: string[]
+) {
+  return queryTokens.some((queryToken) =>
+    titleTokens.some((titleToken) =>
+      queryToken === titleToken ||
+      (queryToken.length >= 5 &&
+        titleToken.length >= 5 &&
+        (titleToken.includes(queryToken) || queryToken.includes(titleToken)))
+    )
+  );
+}
+
+function sourceCandidateReviewTokenRoot(token: string) {
+  if (token.length > 8 && token.endsWith("emia")) {
+    return token.slice(0, -4);
+  }
+
+  if (token.length > 5 && token.endsWith("ies")) {
+    return `${token.slice(0, -3)}y`;
+  }
+
+  if (token.length > 5 && token.endsWith("es")) {
+    return token.slice(0, -2);
+  }
+
+  if (token.length > 4 && token.endsWith("s")) {
+    return token.slice(0, -1);
+  }
+
+  return token;
 }
 
 function formatSourceCandidateIngestionJobs(jobs: SourceCandidateIngestionJobListItem[]) {

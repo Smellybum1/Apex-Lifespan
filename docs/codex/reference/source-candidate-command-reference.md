@@ -49,14 +49,15 @@ Read-only output rules:
 - `--summary` groups ingestion job status counts, backlog counts, accepted-candidate curation handoff counts, status-filtered handoff hints, and read-only next-command hints.
 - `--jobs` prints recent ingestion jobs plus read-only candidate-list, context-jobs, and status-jobs hints.
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
-- `--candidate-detail` prints one record plus read-only packet/reference/sibling/group/curation hints.
-- `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."`, `packet="..."`, and top-identity duplicate hints.
-- `--candidates` defaults to pending rows, prints `packet="..."` hints plus query/job trace fields, and can filter by source, region, external id, job, intervention, claim, or decision.
+- `--candidate-detail` prints one record plus read-only packet/reference/sibling/group/curation hints and explanatory `reviewCautions` when a claim-scoped candidate needs extra broad-query/off-claim scrutiny.
+- `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."`, `packet="..."`, top-identity duplicate hints, and `topReviewFlags` when applicable.
+- `--candidates` defaults to pending rows, prints `packet="..."` hints plus query/job trace fields and compact `reviewFlags` when applicable, and can filter by source, region, external id, job, intervention, claim, or decision.
 - `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."` and `packet="..."` hints.
 - `--candidate-reference-matches` prints candidate identity plus `packet="..."` and `groupList="..."` hints before eligible curated references or draft-only reference context.
 - `--candidate-review-packet` prints command hints, detail, accepted-reference matches, sibling context, and duplicate hints when the identity repeats.
 - `--candidate-siblings` prints match reasons and `packet="..."` hints for related candidate review.
 - Packet accept/reject templates are copied commands only; they still require explicit human review and do not create references or public evidence.
+- `reviewFlags`/`reviewCautions` are local reviewer prompts, not rejection reasons or evidence-quality scores.
 - Empty `--candidate-reference-matches` output includes a draft-only `referenceDraft=...` line for manual verification; it does not create a reference or mark the candidate accepted.
 - `--candidate-curation-status` and `--candidate-curation-draft` report readiness for public source packets, not evidence quality, and print read-only packet/reference/group/paired-curation hints.
 - `--candidate-curation-handoff` reports accepted-candidate readiness for public source packets, not evidence quality, and non-empty rows print read-only packet/reference/status/draft hints.
