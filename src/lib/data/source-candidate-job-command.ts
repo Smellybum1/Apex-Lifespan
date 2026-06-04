@@ -2877,6 +2877,8 @@ function formatSourceCandidateReviewPacketCommandHints(
 
   lines.push(
     "humanReviewedWritesRequireOperator=true",
+    "acceptRequiresMatchingCuratedReference=true",
+    "reviewDecisionRequiresHumanNote=true",
     `acceptTemplate=${quote(
       `--accept-candidate ${key} --accepted-reference-id <reference-id> --review-note "Human-reviewed rationale."`
     )}`,

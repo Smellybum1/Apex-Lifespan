@@ -2511,6 +2511,8 @@ describe("runSourceCandidateJobCommand", () => {
           `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
           'duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2"',
           "humanReviewedWritesRequireOperator=true",
+          "acceptRequiresMatchingCuratedReference=true",
+          "reviewDecisionRequiresHumanNote=true",
           `acceptTemplate="--accept-candidate ${safeCandidateKey("pubmed|au|creatine|28615996")} --accepted-reference-id <reference-id> --review-note \\"Human-reviewed rationale.\\""`,
           `rejectTemplate="--reject-candidate ${safeCandidateKey("pubmed|au|creatine|28615996")} --review-note \\"Human-reviewed rationale.\\""`
         ].join("\n"),

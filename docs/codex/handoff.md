@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after requiring human review notes for accepted source candidates. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding explicit accept-gate hints to source-candidate review packets. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -18,7 +18,7 @@ Refreshed on 2026-06-04 after requiring human review notes for accepted source c
 - Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover static, dynamic, and CommonJS `source-candidate*` route imports.
 - Source-candidate acceptance/rejection, claim linking, and study extraction stay explicit human-reviewed local writes; accept/reject decisions require human review notes, and accepted candidates still need curated references, claim links, and structured study extraction before public use.
 - Source-candidate CLI output now provides copyable read-only review/curation drill-ins across summary, jobs, queues, detail, packets, reference matches, siblings, duplicates, and curation views; see `docs/codex/source-candidate-workflow.md` for the compact catalog.
-- Packet/reference/sibling/curation drill-in hints share one local formatter helper in `src/lib/data/source-candidate-job-command.ts`; exact CLI output is covered by source-candidate command tests.
+- Packet command hints include explicit accept-gate booleans; packet/reference/sibling/curation drill-ins share one local formatter helper in `src/lib/data/source-candidate-job-command.ts`, and exact CLI output is covered by source-candidate command tests.
 - Candidate filters support read-only `--candidate-claim-missing` and `--candidate-intervention-missing`; generated list hints use them when a group or candidate lacks claim/intervention context.
 - Duplicate identity candidate rows include exact read-only `groupList="..."` hints and explicit `intervention`/`claim` values, including `none`, so repeated PMID/NCT identities can be reviewed in scoped or unscoped context.
 - Flagged summary, overview, and candidate-level rows include context-scoped read-only `flagFocus="..."` hints while preserving broader `flags="..."` drill-ins; filtered review-flag rows focus the selected flag.
@@ -38,7 +38,7 @@ Refreshed on 2026-06-04 after requiring human review notes for accepted source c
 
 ## Latest Local Validation
 
-Current code validation for accepted-candidate review-note guardrail:
+Current code validation for review-packet accept-gate hints:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
 - `npm run test`
 - `npm run lint`
