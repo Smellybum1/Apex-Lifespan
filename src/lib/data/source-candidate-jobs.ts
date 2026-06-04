@@ -1,5 +1,6 @@
 import {
   IngestionStatus as DbIngestionStatus,
+  OutcomeArea as DbOutcomeArea,
   SourceKind as DbSourceKind,
   type IngestionJob as DbIngestionJob,
   type Prisma
@@ -12,7 +13,8 @@ import {
 } from "@/lib/data/source-candidate-ingestion";
 import { prisma } from "@/lib/db/prisma";
 import { MAX_LIVE_SOURCE_TERM_LENGTH } from "@/lib/live-source-request";
-import type { SourceCandidateSource } from "@/lib/types";
+import { buildSourceSearchQueries } from "@/lib/source-queries";
+import type { OutcomeArea, SourceCandidateSource } from "@/lib/types";
 
 type SupportedSourceCandidateJobSource =
   | typeof DbSourceKind.PUBMED
@@ -69,6 +71,11 @@ export interface QueueSourceCandidateIngestionJobInput {
   source: SourceCandidateSource;
 }
 
+export interface QueueClaimSourceCandidateIngestionJobsInput {
+  claimId: string;
+  region?: string;
+}
+
 export interface QueuedSourceCandidateIngestionJob {
   claimId?: string;
   contextMismatchFields: SourceCandidateJobContextField[];
@@ -79,6 +86,16 @@ export interface QueuedSourceCandidateIngestionJob {
   region: string;
   source: DbSourceKind;
   status: DbIngestionStatus;
+}
+
+export interface QueuedClaimSourceCandidateIngestionJobs {
+  claimId: string;
+  interventionId: string;
+  jobs: QueuedSourceCandidateIngestionJob[];
+  label: string;
+  pubMedTerm: string;
+  region: string;
+  trialTerm: string;
 }
 
 export type SourceCandidateJobContextField = "interventionId" | "claimId";
@@ -97,6 +114,26 @@ const DEFAULT_JOB_LIST_LIMIT = 10;
 const MAX_JOB_LIST_LIMIT = 50;
 const DEFAULT_REGION = "AU";
 
+const outcomeMap: Record<DbOutcomeArea, OutcomeArea> = {
+  MORTALITY_LIFESPAN: "Mortality/lifespan",
+  CARDIOVASCULAR_EVENTS: "Cardiovascular events",
+  LDL_APOB_LIPIDS: "LDL/ApoB/lipids",
+  BLOOD_PRESSURE: "Blood pressure",
+  GLUCOSE_INSULIN_HBA1C: "Glucose/insulin/HbA1c",
+  INFLAMMATION: "Inflammation",
+  COGNITION: "Cognition",
+  SLEEP: "Sleep",
+  MOOD_STRESS: "Mood/stress",
+  MUSCLE_STRENGTH: "Muscle/strength",
+  VO2_MAX_ENDURANCE: "VO2 max/endurance",
+  JOINT_TENDON_SKIN: "Joint/tendon/skin",
+  EYE_HEALTH: "Eye health",
+  IMMUNE_RESPIRATORY: "Immune/respiratory",
+  FERTILITY_HORMONES: "Fertility/hormones",
+  BIOLOGICAL_AGING_CLOCKS: "Biological aging clocks",
+  SAFETY_ADVERSE_EFFECTS: "Safety/adverse effects"
+};
+
 export async function listSourceCandidateIngestionJobs(
   options: SourceCandidateIngestionJobListOptions = {}
 ): Promise<SourceCandidateIngestionJobListItem[]> {
@@ -111,6 +148,78 @@ export async function listSourceCandidateIngestionJobs(
   });
 
   return jobs.map(mapJobListItem);
+}
+
+export async function queueClaimSourceCandidateIngestionJobs(
+  input: QueueClaimSourceCandidateIngestionJobsInput
+): Promise<QueuedClaimSourceCandidateIngestionJobs> {
+  const claimId = optionalTrimmedString(input.claimId);
+
+  if (!claimId) {
+    throw new Error("Claim id is required to queue claim source-candidate jobs.");
+  }
+
+  const claim = await prisma.claim.findUnique({
+    where: {
+      id: claimId
+    },
+    select: {
+      claimText: true,
+      id: true,
+      outcome: true,
+      intervention: {
+        select: {
+          id: true,
+          name: true,
+          synonyms: true
+        }
+      }
+    }
+  });
+
+  if (!claim) {
+    throw new Error(`Source-candidate ingestion job claim not found: ${claimId}.`);
+  }
+
+  const queries = buildSourceSearchQueries({
+    claim: {
+      claimText: claim.claimText,
+      outcome: outcomeMap[claim.outcome]
+    },
+    intervention: {
+      name: claim.intervention.name,
+      synonyms: claim.intervention.synonyms
+    }
+  });
+  const region = normaliseRegion(input.region);
+  const queueContext = {
+    claimId: claim.id,
+    interventionId: claim.intervention.id,
+    region
+  };
+
+  const jobs = [
+    await queueSourceCandidateIngestionJob({
+      ...queueContext,
+      source: "PubMed",
+      query: queries.pubMedTerm
+    }),
+    await queueSourceCandidateIngestionJob({
+      ...queueContext,
+      source: "ClinicalTrials.gov",
+      query: queries.trialTerm
+    })
+  ];
+
+  return {
+    claimId: claim.id,
+    interventionId: claim.intervention.id,
+    jobs,
+    label: queries.label,
+    pubMedTerm: queries.pubMedTerm,
+    region,
+    trialTerm: queries.trialTerm
+  };
 }
 
 export async function queueSourceCandidateIngestionJob(

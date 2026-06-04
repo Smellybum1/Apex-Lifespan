@@ -39,6 +39,7 @@ vi.mock("@/lib/data/source-candidate-ingestion", () => ({
 
 import {
   listSourceCandidateIngestionJobs,
+  queueClaimSourceCandidateIngestionJobs,
   queueSourceCandidateIngestionJob,
   runNextSourceCandidateIngestionJob,
   runSourceCandidateIngestionJob
@@ -713,6 +714,156 @@ describe("queueSourceCandidateIngestionJob", () => {
     );
 
     expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.findFirst).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("queueClaimSourceCandidateIngestionJobs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("queues PubMed and ClinicalTrials.gov jobs from claim context", async () => {
+    mocks.claimFindUnique
+      .mockResolvedValueOnce({
+        id: "creatine-strength",
+        claimText: "Supports strength gains with resistance training.",
+        outcome: "MUSCLE_STRENGTH",
+        intervention: {
+          id: "creatine",
+          name: "Creatine monohydrate",
+          synonyms: ["creatine"]
+        }
+      })
+      .mockResolvedValue({
+        interventionId: "creatine"
+      });
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.create
+      .mockResolvedValueOnce(
+        dbIngestionJob({
+          id: "job-pubmed-creatine-strength",
+          query:
+            "Creatine monohydrate strength resistance training lean mass randomized trial systematic review"
+        })
+      )
+      .mockResolvedValueOnce(
+        dbIngestionJob({
+          id: "job-trials-creatine-strength",
+          source: "CLINICALTRIALS_GOV",
+          query: "Creatine monohydrate strength resistance training lean mass"
+        })
+      );
+
+    await expect(
+      queueClaimSourceCandidateIngestionJobs({
+        claimId: " creatine-strength ",
+        region: "au"
+      })
+    ).resolves.toEqual({
+      claimId: "creatine-strength",
+      interventionId: "creatine",
+      label: "Creatine monohydrate - Muscle/strength",
+      pubMedTerm:
+        "Creatine monohydrate strength resistance training lean mass randomized trial systematic review",
+      region: "AU",
+      trialTerm: "Creatine monohydrate strength resistance training lean mass",
+      jobs: [
+        {
+          claimId: "creatine-strength",
+          contextMismatchFields: [],
+          created: true,
+          interventionId: "creatine",
+          jobId: "job-pubmed-creatine-strength",
+          source: "PUBMED",
+          query:
+            "Creatine monohydrate strength resistance training lean mass randomized trial systematic review",
+          region: "AU",
+          status: "QUEUED"
+        },
+        {
+          claimId: "creatine-strength",
+          contextMismatchFields: [],
+          created: true,
+          interventionId: "creatine",
+          jobId: "job-trials-creatine-strength",
+          source: "CLINICALTRIALS_GOV",
+          query: "Creatine monohydrate strength resistance training lean mass",
+          region: "AU",
+          status: "QUEUED"
+        }
+      ]
+    });
+
+    expect(mocks.claimFindUnique).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: "creatine-strength"
+      },
+      select: {
+        claimText: true,
+        id: true,
+        outcome: true,
+        intervention: {
+          select: {
+            id: true,
+            name: true,
+            synonyms: true
+          }
+        }
+      }
+    });
+    expect(mocks.create).toHaveBeenNthCalledWith(1, {
+      data: {
+        source: "PUBMED",
+        status: "QUEUED",
+        query:
+          "Creatine monohydrate strength resistance training lean mass randomized trial systematic review",
+        region: "AU",
+        interventionId: "creatine",
+        claimId: "creatine-strength",
+        metadata: {
+          interventionId: "creatine",
+          claimId: "creatine-strength"
+        }
+      }
+    });
+    expect(mocks.create).toHaveBeenNthCalledWith(2, {
+      data: {
+        source: "CLINICALTRIALS_GOV",
+        status: "QUEUED",
+        query: "Creatine monohydrate strength resistance training lean mass",
+        region: "AU",
+        interventionId: "creatine",
+        claimId: "creatine-strength",
+        metadata: {
+          interventionId: "creatine",
+          claimId: "creatine-strength"
+        }
+      }
+    });
+  });
+
+  it("rejects missing claim ids before queueing", async () => {
+    await expect(
+      queueClaimSourceCandidateIngestionJobs({
+        claimId: " "
+      })
+    ).rejects.toThrow("Claim id is required to queue claim source-candidate jobs.");
+
+    expect(mocks.claimFindUnique).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing claims before queueing", async () => {
+    mocks.claimFindUnique.mockResolvedValue(null);
+
+    await expect(
+      queueClaimSourceCandidateIngestionJobs({
+        claimId: "missing-claim"
+      })
+    ).rejects.toThrow("Source-candidate ingestion job claim not found: missing-claim.");
+
     expect(mocks.findFirst).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
   });

@@ -1,9 +1,12 @@
 import {
   listSourceCandidateIngestionJobs,
+  queueClaimSourceCandidateIngestionJobs,
   queueSourceCandidateIngestionJob,
   runNextSourceCandidateIngestionJob,
   runSourceCandidateIngestionJob,
+  type QueueClaimSourceCandidateIngestionJobsInput,
   type QueueSourceCandidateIngestionJobInput,
+  type QueuedClaimSourceCandidateIngestionJobs,
   type QueuedSourceCandidateIngestionJob,
   type SourceCandidateIngestionJobListItem,
   type SourceCandidateIngestionJobListOptions,
@@ -77,6 +80,7 @@ export interface SourceCandidateJobCommandOptions
   jobsLimit?: number;
   linkCandidateClaimDedupeKey?: string;
   limit: number;
+  queueClaimSourcesClaimId?: string;
   queueQuery?: string;
   queueSource?: SourceCandidateSource;
   region?: string;
@@ -143,6 +147,9 @@ export interface SourceCandidateJobCommandRunners {
   queueJob?: (
     input: QueueSourceCandidateIngestionJobInput
   ) => Promise<QueuedSourceCandidateIngestionJob>;
+  queueClaimSources?: (
+    input: QueueClaimSourceCandidateIngestionJobsInput
+  ) => Promise<QueuedClaimSourceCandidateIngestionJobs>;
   runJobById?: (
     jobId: string,
     options: SourceCandidateIngestionJobOptions
@@ -208,6 +215,8 @@ export async function runSourceCandidateJobCommand(
   const linkCandidateClaim =
     runners.linkCandidateClaim ?? linkAcceptedSourceCandidateClaim;
   const queueJob = runners.queueJob ?? queueSourceCandidateIngestionJob;
+  const queueClaimSources =
+    runners.queueClaimSources ?? queueClaimSourceCandidateIngestionJobs;
   const recordDecision = runners.recordDecision ?? recordSourceCandidateDecision;
   const runJobById = runners.runJobById ?? runSourceCandidateIngestionJob;
   const runNextJob = runners.runNextJob ?? runNextSourceCandidateIngestionJob;
@@ -402,6 +411,16 @@ export async function runSourceCandidateJobCommand(
       });
 
       stdout(formatQueuedSourceCandidateJob(result));
+      return 0;
+    }
+
+    if (options.queueClaimSourcesClaimId) {
+      const result = await queueClaimSources({
+        claimId: options.queueClaimSourcesClaimId,
+        region: options.region
+      });
+
+      stdout(formatQueuedClaimSourceCandidateJobs(result));
       return 0;
     }
 
@@ -769,6 +788,12 @@ export function parseSourceCandidateJobCommandArgs(
       continue;
     }
 
+    if (arg === "--queue-claim-sources") {
+      setQueueClaimSourcesOption(options, readRequiredValue(args, index, arg));
+      index += 1;
+      continue;
+    }
+
     if (arg === "--region") {
       options.region = readRequiredValue(args, index, arg);
       index += 1;
@@ -939,7 +964,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-curation-handoff cannot be combined with --jobs.");
   }
 
-  if (options.candidateCurationHandoff && options.queueSource) {
+  if (options.candidateCurationHandoff && hasQueueOption(options)) {
     throw new Error(
       "--candidate-curation-handoff cannot be combined with queue options."
     );
@@ -1017,7 +1042,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-detail cannot be combined with --jobs.");
   }
 
-  if (options.candidateDetailDedupeKey && options.queueSource) {
+  if (options.candidateDetailDedupeKey && hasQueueOption(options)) {
     throw new Error("--candidate-detail cannot be combined with queue options.");
   }
 
@@ -1105,7 +1130,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-curation-status cannot be combined with --jobs.");
   }
 
-  if (options.candidateCurationStatusDedupeKey && options.queueSource) {
+  if (options.candidateCurationStatusDedupeKey && hasQueueOption(options)) {
     throw new Error(
       "--candidate-curation-status cannot be combined with queue options."
     );
@@ -1186,7 +1211,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-curation-draft cannot be combined with --jobs.");
   }
 
-  if (options.candidateCurationDraftDedupeKey && options.queueSource) {
+  if (options.candidateCurationDraftDedupeKey && hasQueueOption(options)) {
     throw new Error("--candidate-curation-draft cannot be combined with queue options.");
   }
 
@@ -1247,7 +1272,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-reference-matches cannot be combined with --jobs.");
   }
 
-  if (options.candidateReferenceMatchesDedupeKey && options.queueSource) {
+  if (options.candidateReferenceMatchesDedupeKey && hasQueueOption(options)) {
     throw new Error(
       "--candidate-reference-matches cannot be combined with queue options."
     );
@@ -1314,7 +1339,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-siblings cannot be combined with --jobs.");
   }
 
-  if (options.candidateSiblingsDedupeKey && options.queueSource) {
+  if (options.candidateSiblingsDedupeKey && hasQueueOption(options)) {
     throw new Error("--candidate-siblings cannot be combined with queue options.");
   }
 
@@ -1370,7 +1395,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("Review options cannot be combined with --jobs.");
   }
 
-  if (options.reviewDecision && options.queueSource) {
+  if (options.reviewDecision && hasQueueOption(options)) {
     throw new Error("Review options cannot be combined with queue options.");
   }
 
@@ -1418,7 +1443,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--link-candidate-claim cannot be combined with --jobs.");
   }
 
-  if (options.linkCandidateClaimDedupeKey && options.queueSource) {
+  if (options.linkCandidateClaimDedupeKey && hasQueueOption(options)) {
     throw new Error("--link-candidate-claim cannot be combined with queue options.");
   }
 
@@ -1517,7 +1542,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--extract-candidate-study cannot be combined with --jobs.");
   }
 
-  if (options.extractCandidateStudyDedupeKey && options.queueSource) {
+  if (options.extractCandidateStudyDedupeKey && hasQueueOption(options)) {
     throw new Error("--extract-candidate-study cannot be combined with queue options.");
   }
 
@@ -1560,7 +1585,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidates cannot be combined with --jobs.");
   }
 
-  if (options.candidates && options.queueSource) {
+  if (options.candidates && hasQueueOption(options)) {
     throw new Error("--candidates is read-only and cannot be combined with queue options.");
   }
 
@@ -1576,7 +1601,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--jobs cannot be combined with --summary.");
   }
 
-  if (options.jobs && options.queueSource) {
+  if (options.jobs && hasQueueOption(options)) {
     throw new Error("--jobs is read-only and cannot be combined with queue options.");
   }
 
@@ -1584,15 +1609,24 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--jobs is read-only and cannot be combined with run options.");
   }
 
-  if (options.queueSource && options.summary) {
+  if (hasQueueOption(options) && options.summary) {
     throw new Error("--summary is read-only and cannot be combined with queue options.");
   }
 
-  if (options.queueSource && (options.jobId || limitProvided || sourceLimitProvided)) {
+  if (hasQueueOption(options) && (options.jobId || limitProvided || sourceLimitProvided)) {
     throw new Error("Queue options cannot be combined with run options.");
   }
 
-  if (!options.queueSource && (options.region || options.interventionId || options.claimId)) {
+  if (
+    options.queueClaimSourcesClaimId &&
+    (options.interventionId || options.claimId)
+  ) {
+    throw new Error(
+      "--intervention-id and --claim-id cannot be combined with --queue-claim-sources."
+    );
+  }
+
+  if (!hasQueueOption(options) && (options.region || options.interventionId || options.claimId)) {
     throw new Error("--region, --intervention-id, and --claim-id require a queue option.");
   }
 
@@ -1652,6 +1686,7 @@ export function commandUsage() {
     "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
     "  --queue-pubmed <term>             Queue a PubMed source-candidate job.",
     "  --queue-clinical-trials <term>    Queue a ClinicalTrials.gov source-candidate job.",
+    "  --queue-claim-sources <claim-id>  Queue PubMed and ClinicalTrials.gov jobs from claim context.",
     "  --region <region>                 Region metadata for queued jobs (default AU).",
     "  --intervention-id <id>            Intervention metadata for queued jobs.",
     "  --claim-id <id>                   Claim metadata for queued jobs.",
@@ -1728,6 +1763,15 @@ function formatQueuedSourceCandidateJob(result: QueuedSourceCandidateIngestionJo
   }
 
   return parts.join(" ");
+}
+
+function formatQueuedClaimSourceCandidateJobs(
+  result: QueuedClaimSourceCandidateIngestionJobs
+) {
+  return [
+    `Claim source-candidate jobs: ${quote(result.label)} claim=${result.claimId} intervention=${result.interventionId} region=${result.region}`,
+    ...result.jobs.map((job) => `- ${formatQueuedSourceCandidateJob(job)}`)
+  ].join("\n");
 }
 
 function formatReviewedSourceCandidate(candidate: SourceCandidate) {
@@ -2620,12 +2664,27 @@ function setQueueOption(
   source: SourceCandidateSource,
   query: string
 ) {
-  if (options.queueSource) {
+  if (hasQueueOption(options)) {
     throw new Error("Only one queue option can be used at a time.");
   }
 
   options.queueSource = source;
   options.queueQuery = query;
+}
+
+function setQueueClaimSourcesOption(
+  options: SourceCandidateJobCommandOptions,
+  claimId: string
+) {
+  if (hasQueueOption(options)) {
+    throw new Error("Only one queue option can be used at a time.");
+  }
+
+  options.queueClaimSourcesClaimId = claimId;
+}
+
+function hasQueueOption(options: SourceCandidateJobCommandOptions) {
+  return Boolean(options.queueSource || options.queueClaimSourcesClaimId);
 }
 
 function setCandidateReviewOption(

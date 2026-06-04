@@ -24,15 +24,19 @@ Queue jobs:
 ```bash
 npm run ingest:sources -- --queue-pubmed "creatine strength randomized trial systematic review"
 npm run ingest:sources -- --queue-clinical-trials "creatine aging"
+npm run ingest:sources -- --queue-claim-sources <claim-id>
 ```
 
 Queue metadata:
 
 ```bash
 npm run ingest:sources -- --queue-pubmed "creatine strength" --region AU --intervention-id <intervention-id> --claim-id <claim-id>
+npm run ingest:sources -- --queue-claim-sources <claim-id> --region AU
 ```
 
 Queue options create a missing job or report the existing job for the same source, query, region, intervention id, and claim id. They do not reset completed jobs or retarget stored intervention/claim context. When queueing with both intervention and claim context, the claim must belong to that intervention; missing claim or intervention context fails before a job is created. The migration backfills valid older metadata-backed job context into first-class columns, and new queue identity is context-aware so the same query can be queued separately for different claim-level curation work.
+
+`--queue-claim-sources <claim-id>` validates the claim and intervention through Prisma, builds the active-claim PubMed and ClinicalTrials.gov terms, and queues or reports both claim-scoped jobs. It does not run ingestion or write review, curation, claim-link, study-extraction, or public evidence rows.
 
 Read-only operator views:
 
@@ -86,6 +90,7 @@ npm run ingest:sources -- --clinical-trial-page-size 10
 
 - Job output reports ingestion-operation counts, not evidence-quality scores.
 - `--jobs` reports recent job ids, statuses, counts, stored context, and errors.
+- `--queue-claim-sources` prints the generated PubMed and ClinicalTrials.gov query text plus queued or existing job ids.
 - `--candidates` defaults to pending rows and can filter by source, job, intervention, claim, or decision.
 - `--candidate-detail` prints one candidate with triage reasons, review fields, and compact metadata.
 - `--candidate-curation-draft` prints one candidate's accepted-reference status plus read-only claim-link and study-extraction draft fields; it does not create references, claim links, studies, or decisions.

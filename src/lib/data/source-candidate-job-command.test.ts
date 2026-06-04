@@ -32,6 +32,9 @@ describe("commandUsage", () => {
     expect(commandUsage()).toContain(
       "--study-source-type <type>        Optional study type override: meta-analysis, systematic-review, randomized-controlled-trial, observational-cohort, case-report, animal-study, in-vitro-mechanistic, clinical-trial-record, or regulatory-safety-warning."
     );
+    expect(commandUsage()).toContain(
+      "--queue-claim-sources <claim-id>  Queue PubMed and ClinicalTrials.gov jobs from claim context."
+    );
   });
 });
 
@@ -491,6 +494,23 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       limit: 1,
       queueSource: "ClinicalTrials.gov",
       queueQuery: "creatine aging",
+      summary: false
+    });
+  });
+
+  it("parses claim source queue mode", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--queue-claim-sources",
+        "creatine-strength",
+        "--region",
+        "nz"
+      ])
+    ).toEqual({
+      help: false,
+      limit: 1,
+      queueClaimSourcesClaimId: "creatine-strength",
+      region: "nz",
       summary: false
     });
   });
@@ -1362,11 +1382,44 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       ])
     ).toThrow("Only one queue option can be used at a time.");
     expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--queue-claim-sources",
+        "creatine-strength",
+        "--queue-pubmed",
+        "creatine"
+      ])
+    ).toThrow("Only one queue option can be used at a time.");
+    expect(() =>
       parseSourceCandidateJobCommandArgs(["--queue-pubmed", "creatine", "--limit", "2"])
+    ).toThrow("Queue options cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--queue-claim-sources",
+        "creatine-strength",
+        "--limit",
+        "2"
+      ])
     ).toThrow("Queue options cannot be combined with run options.");
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--queue-pubmed", "creatine", "--summary"])
     ).toThrow("--summary is read-only and cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--queue-claim-sources",
+        "creatine-strength",
+        "--summary"
+      ])
+    ).toThrow("--summary is read-only and cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--queue-claim-sources",
+        "creatine-strength",
+        "--claim-id",
+        "different-claim"
+      ])
+    ).toThrow(
+      "--intervention-id and --claim-id cannot be combined with --queue-claim-sources."
+    );
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--region", "AU"])
     ).toThrow("--region, --intervention-id, and --claim-id require a queue option.");
@@ -2913,6 +2966,66 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("queues claim source-candidate jobs without running jobs", async () => {
+    const stdout = vi.fn();
+    const queueClaimSources = vi.fn().mockResolvedValue({
+      claimId: "creatine-strength",
+      interventionId: "creatine",
+      label: "Creatine monohydrate - Muscle/strength",
+      pubMedTerm:
+        "Creatine monohydrate strength resistance training lean mass randomized trial systematic review",
+      region: "AU",
+      trialTerm: "Creatine monohydrate strength resistance training lean mass",
+      jobs: [
+        {
+          claimId: "creatine-strength",
+          contextMismatchFields: [],
+          created: true,
+          interventionId: "creatine",
+          jobId: "job-pubmed-creatine-strength",
+          source: "PUBMED",
+          query:
+            "Creatine monohydrate strength resistance training lean mass randomized trial systematic review",
+          region: "AU",
+          status: "QUEUED"
+        },
+        {
+          claimId: "creatine-strength",
+          contextMismatchFields: [],
+          created: false,
+          interventionId: "creatine",
+          jobId: "job-trials-creatine-strength",
+          source: "CLINICALTRIALS_GOV",
+          query: "Creatine monohydrate strength resistance training lean mass",
+          region: "AU",
+          status: "SUCCEEDED"
+        }
+      ]
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--queue-claim-sources", "creatine-strength", "--region", "au"],
+        { stdout },
+        { queueClaimSources, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(queueClaimSources).toHaveBeenCalledWith({
+      claimId: "creatine-strength",
+      region: "au"
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        'Claim source-candidate jobs: "Creatine monohydrate - Muscle/strength" claim=creatine-strength intervention=creatine region=AU',
+        '- [QUEUED] job-pubmed-creatine-strength PUBMED AU "Creatine monohydrate strength resistance training lean mass randomized trial systematic review" created=true intervention=creatine claim=creatine-strength',
+        '- [SUCCEEDED] job-trials-creatine-strength CLINICALTRIALS_GOV AU "Creatine monohydrate strength resistance training lean mass" created=false intervention=creatine claim=creatine-strength'
+      ].join("\n")
+    );
+  });
+
   it("reports existing queued jobs without claiming them", async () => {
     const stdout = vi.fn();
     const queueJob = vi.fn().mockResolvedValue({
@@ -2962,6 +3075,25 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(1);
 
     expect(stderr).toHaveBeenCalledWith("database unavailable");
+  });
+
+  it("returns a failing exit code when claim source queueing fails", async () => {
+    const stderr = vi.fn();
+    const queueClaimSources = vi
+      .fn()
+      .mockRejectedValue(new Error("Source-candidate ingestion job claim not found: missing."));
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--queue-claim-sources", "missing"],
+        { stderr },
+        { queueClaimSources }
+      )
+    ).resolves.toBe(1);
+
+    expect(stderr).toHaveBeenCalledWith(
+      "Source-candidate ingestion job claim not found: missing."
+    );
   });
 
   it("prints an empty backlog summary", async () => {
