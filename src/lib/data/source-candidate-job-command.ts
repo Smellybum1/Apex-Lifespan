@@ -2261,7 +2261,8 @@ function formatSourceCandidateJobResult(result: SourceCandidateIngestionJobRunRe
     result.region,
     quote(result.query),
     `found=${result.recordsFound}`,
-    `changed=${result.recordsChanged}`
+    `changed=${result.recordsChanged}`,
+    ...formatSourceCandidateJobCommandHints(result)
   ];
 
   if (result.error) {
@@ -2278,7 +2279,8 @@ function formatQueuedSourceCandidateJob(result: QueuedSourceCandidateIngestionJo
     result.source,
     result.region,
     quote(result.query),
-    `created=${result.created}`
+    `created=${result.created}`,
+    ...formatSourceCandidateJobCommandHints(result)
   ];
 
   appendJobContext(parts, result);
@@ -3265,7 +3267,7 @@ function formatSourceCandidateIngestionJob(job: SourceCandidateIngestionJobListI
     `found=${job.recordsFound}`,
     `changed=${job.recordsChanged}`,
     `updated=${job.updatedAt}`,
-    ...formatSourceCandidateIngestionJobCommandHints(job)
+    ...formatSourceCandidateJobCommandHints(job)
   ];
 
   appendJobContext(parts, job);
@@ -3277,27 +3279,38 @@ function formatSourceCandidateIngestionJob(job: SourceCandidateIngestionJobListI
   return parts.join(" ");
 }
 
-function formatSourceCandidateIngestionJobCommandHints(
-  job: SourceCandidateIngestionJobListItem
+interface SourceCandidateJobCommandHintContext {
+  claimId?: string;
+  interventionId?: string;
+  jobId: string;
+  region: string;
+  source: SourceCandidateIngestionJobListItem["source"];
+  status: SourceCandidateIngestionJobListItem["status"];
+}
+
+function formatSourceCandidateJobCommandHints(
+  job: SourceCandidateJobCommandHintContext
 ) {
   return [
-    `candidates=${quote(`--candidates --candidate-job-id ${job.jobId} --candidates-limit 10`)}`,
-    `contextJobs=${quote(formatSourceCandidateIngestionJobContextCommand(job))}`,
+    `candidates=${quote(formatSourceCandidateJobCandidatesCommand(job.jobId))}`,
+    `contextJobs=${quote(formatSourceCandidateJobContextCommand(job))}`,
     `statusJobs=${quote(
-      `--jobs --jobs-status ${formatSourceCandidateIngestionJobStatusValue(
-        job.status
-      )} --jobs-limit 10`
+      `--jobs --jobs-status ${formatSourceCandidateJobStatusValue(job.status)} --jobs-limit 10`
     )}`
   ];
 }
 
-function formatSourceCandidateIngestionJobContextCommand(
-  job: SourceCandidateIngestionJobListItem
+function formatSourceCandidateJobCandidatesCommand(jobId: string) {
+  return `--candidates --candidate-job-id ${jobId} --candidates-limit 10`;
+}
+
+function formatSourceCandidateJobContextCommand(
+  job: SourceCandidateJobCommandHintContext
 ) {
   const parts = [
     "--jobs",
     "--jobs-source",
-    formatSourceCandidateIngestionJobSourceValue(job.source),
+    formatSourceCandidateJobSourceValue(job.source),
     "--jobs-region",
     job.region
   ];
@@ -3315,7 +3328,7 @@ function formatSourceCandidateIngestionJobContextCommand(
   return parts.join(" ");
 }
 
-function formatSourceCandidateIngestionJobSourceValue(
+function formatSourceCandidateJobSourceValue(
   source: SourceCandidateIngestionJobListItem["source"]
 ) {
   switch (source) {
@@ -3326,7 +3339,7 @@ function formatSourceCandidateIngestionJobSourceValue(
   }
 }
 
-function formatSourceCandidateIngestionJobStatusValue(
+function formatSourceCandidateJobStatusValue(
   status: SourceCandidateIngestionJobListItem["status"]
 ) {
   switch (status) {

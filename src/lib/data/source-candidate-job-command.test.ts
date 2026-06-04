@@ -3792,7 +3792,7 @@ describe("runSourceCandidateJobCommand", () => {
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
-      '[QUEUED] job-pubmed PUBMED AU "creatine strength" created=true intervention=creatine claim=creatine-strength'
+      '[QUEUED] job-pubmed PUBMED AU "creatine strength" created=true candidates="--candidates --candidate-job-id job-pubmed --candidates-limit 10" contextJobs="--jobs --jobs-source pubmed --jobs-region AU --jobs-intervention-id creatine --jobs-claim-id creatine-strength --jobs-limit 10" statusJobs="--jobs --jobs-status queued --jobs-limit 10" intervention=creatine claim=creatine-strength'
     );
   });
 
@@ -3850,8 +3850,8 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         'Claim source-candidate jobs: "Creatine monohydrate - Muscle/strength" claim=creatine-strength intervention=creatine region=AU',
-        '- [QUEUED] job-pubmed-creatine-strength PUBMED AU "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review" created=true intervention=creatine claim=creatine-strength',
-        '- [SUCCEEDED] job-trials-creatine-strength CLINICALTRIALS_GOV AU "Creatine monohydrate strength resistance training lean mass gains" created=false intervention=creatine claim=creatine-strength'
+        '- [QUEUED] job-pubmed-creatine-strength PUBMED AU "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review" created=true candidates="--candidates --candidate-job-id job-pubmed-creatine-strength --candidates-limit 10" contextJobs="--jobs --jobs-source pubmed --jobs-region AU --jobs-intervention-id creatine --jobs-claim-id creatine-strength --jobs-limit 10" statusJobs="--jobs --jobs-status queued --jobs-limit 10" intervention=creatine claim=creatine-strength',
+        '- [SUCCEEDED] job-trials-creatine-strength CLINICALTRIALS_GOV AU "Creatine monohydrate strength resistance training lean mass gains" created=false candidates="--candidates --candidate-job-id job-trials-creatine-strength --candidates-limit 10" contextJobs="--jobs --jobs-source clinical-trials --jobs-region AU --jobs-intervention-id creatine --jobs-claim-id creatine-strength --jobs-limit 10" statusJobs="--jobs --jobs-status succeeded --jobs-limit 10" intervention=creatine claim=creatine-strength'
       ].join("\n")
     );
   });
@@ -3888,7 +3888,7 @@ describe("runSourceCandidateJobCommand", () => {
     });
     expect(runJobById).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
-      '[SUCCEEDED] job-pubmed PUBMED AU "creatine strength" created=false intervention=creatine claim=creatine-strength requestedContextMismatch="interventionId"'
+      '[SUCCEEDED] job-pubmed PUBMED AU "creatine strength" created=false candidates="--candidates --candidate-job-id job-pubmed --candidates-limit 10" contextJobs="--jobs --jobs-source pubmed --jobs-region AU --jobs-intervention-id creatine --jobs-claim-id creatine-strength --jobs-limit 10" statusJobs="--jobs --jobs-status succeeded --jobs-limit 10" intervention=creatine claim=creatine-strength requestedContextMismatch="interventionId"'
     );
   });
 
@@ -3979,7 +3979,7 @@ describe("runSourceCandidateJobCommand", () => {
       pubMedRetmax: undefined
     });
     expect(stdout).toHaveBeenCalledWith(
-      '[SUCCEEDED] job-pubmed PUBMED AU "creatine strength" found=1 changed=1'
+      '[SUCCEEDED] job-pubmed PUBMED AU "creatine strength" found=1 changed=1 candidates="--candidates --candidate-job-id job-pubmed --candidates-limit 10" contextJobs="--jobs --jobs-source pubmed --jobs-region AU --jobs-limit 10" statusJobs="--jobs --jobs-status succeeded --jobs-limit 10"'
     );
   });
 
@@ -4026,7 +4026,7 @@ describe("runSourceCandidateJobCommand", () => {
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
-      '[SUCCEEDED] job-target PUBMED AU "creatine strength" found=1 changed=1'
+      '[SUCCEEDED] job-target PUBMED AU "creatine strength" found=1 changed=1 candidates="--candidates --candidate-job-id job-target --candidates-limit 10" contextJobs="--jobs --jobs-source pubmed --jobs-region AU --jobs-limit 10" statusJobs="--jobs --jobs-status succeeded --jobs-limit 10"'
     );
   });
 
@@ -4059,7 +4059,7 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(1);
 
     expect(stdout).toHaveBeenCalledWith(
-      '[FAILED] job-pubmed PUBMED AU "creatine strength" found=0 changed=0 error=NCBI unavailable'
+      '[FAILED] job-pubmed PUBMED AU "creatine strength" found=0 changed=0 candidates="--candidates --candidate-job-id job-pubmed --candidates-limit 10" contextJobs="--jobs --jobs-source pubmed --jobs-region AU --jobs-limit 10" statusJobs="--jobs --jobs-status failed --jobs-limit 10" error=NCBI unavailable'
     );
   });
 
