@@ -24,7 +24,7 @@ Compact, stable Codex state. Do not turn this into a command catalog or progress
 - Public live-source API routes must not import or call source-candidate persistence.
 - Live PubMed and ClinicalTrials.gov previews are unreviewed leads; `/100` values are triage scores, not evidence quality.
 - Source-candidate ingestion/review writes live only under `npm run ingest:sources`.
-- Accepted source candidates require a matching curated reference and never auto-promote into public evidence cards.
+- Accepted source candidates require a matching curated reference and human review note, and never auto-promote into public evidence cards.
 - Guarded curation writes are `--link-candidate-claim` for `ClaimReference` and `--extract-candidate-study` for `Study`; neither creates references, source documents, decisions, or public promotions.
 
 ## Product Rules

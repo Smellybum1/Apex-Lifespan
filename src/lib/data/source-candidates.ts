@@ -1067,6 +1067,10 @@ export async function recordSourceCandidateDecision({
     throw new Error("Accepted source candidates require an acceptedReferenceId.");
   }
 
+  if (decision === "Accepted" && !reviewNoteOrUndefined) {
+    throw new Error("Accepted source candidates require a reviewNote.");
+  }
+
   if (decision === "Rejected" && !reviewNoteOrUndefined) {
     throw new Error("Rejected source candidates require a reviewNote.");
   }
@@ -1109,7 +1113,7 @@ export async function recordSourceCandidateDecision({
         decision: decisionMap[decision],
         reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
         reviewedAt,
-        reviewNote: decision === "Rejected" ? reviewNoteOrUndefined : reviewNote,
+        reviewNote: reviewNoteOrUndefined,
         acceptedReferenceId:
           decision === "Accepted" ? acceptedReferenceIdOrUndefined : null
       }
