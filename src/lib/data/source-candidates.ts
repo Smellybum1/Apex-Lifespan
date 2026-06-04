@@ -5,6 +5,7 @@ import {
   SourceCandidateDecision as DbSourceCandidateDecision,
   SourceKind as DbSourceKind,
   type Study as DbStudy,
+  StudyType as DbStudyType,
   type SourceCandidate as DbSourceCandidate,
   type Prisma
 } from "@prisma/client";
@@ -164,6 +165,43 @@ export interface LinkedSourceCandidateClaim {
   status: SourceCandidateCurationStatus;
 }
 
+export type SourceCandidateStudyExtractionSourceType =
+  | "META_ANALYSIS"
+  | "SYSTEMATIC_REVIEW"
+  | "RANDOMIZED_CONTROLLED_TRIAL"
+  | "OBSERVATIONAL_COHORT"
+  | "CASE_REPORT"
+  | "ANIMAL_STUDY"
+  | "IN_VITRO_MECHANISTIC"
+  | "CLINICAL_TRIAL_RECORD"
+  | "REGULATORY_SAFETY_WARNING";
+
+export interface ExtractAcceptedSourceCandidateStudyInput {
+  abstract?: string;
+  adverseEvents: string;
+  dedupeKey: string;
+  dose?: string;
+  duration?: string;
+  fundingConflicts: string;
+  interventionName: string;
+  mainResults?: string;
+  outcomes: string[];
+  population: string;
+  relevance?: number;
+  riskOfBias: string;
+  sampleSize: string;
+  sourceType?: SourceCandidateStudyExtractionSourceType;
+  updateExisting?: boolean;
+}
+
+export interface ExtractedSourceCandidateStudy {
+  acceptedReference: Reference;
+  candidate: SourceCandidate;
+  created: boolean;
+  status: SourceCandidateCurationStatus;
+  study: SourceCandidateCurationStudy;
+}
+
 export interface SourceCandidateCurationHandoffOptions {
   claimId?: string;
   ingestionJobId?: string;
@@ -215,6 +253,18 @@ const CURATION_HANDOFF_STATUS_ORDER: SourceCandidateCurationStatusKind[] = [
 const sourceMap: Record<SourceCandidateSource, DbSourceKind> = {
   PubMed: DbSourceKind.PUBMED,
   "ClinicalTrials.gov": DbSourceKind.CLINICALTRIALS_GOV
+};
+
+const studyTypeMap: Record<SourceCandidateStudyExtractionSourceType, DbStudyType> = {
+  META_ANALYSIS: DbStudyType.META_ANALYSIS,
+  SYSTEMATIC_REVIEW: DbStudyType.SYSTEMATIC_REVIEW,
+  RANDOMIZED_CONTROLLED_TRIAL: DbStudyType.RANDOMIZED_CONTROLLED_TRIAL,
+  OBSERVATIONAL_COHORT: DbStudyType.OBSERVATIONAL_COHORT,
+  CASE_REPORT: DbStudyType.CASE_REPORT,
+  ANIMAL_STUDY: DbStudyType.ANIMAL_STUDY,
+  IN_VITRO_MECHANISTIC: DbStudyType.IN_VITRO_MECHANISTIC,
+  CLINICAL_TRIAL_RECORD: DbStudyType.CLINICAL_TRIAL_RECORD,
+  REGULATORY_SAFETY_WARNING: DbStudyType.REGULATORY_SAFETY_WARNING
 };
 
 const decisionMap: Record<SourceCandidateDecision, DbSourceCandidateDecision> = {
@@ -557,6 +607,126 @@ export async function linkAcceptedSourceCandidateClaim({
     claimLink: mappedClaimLink,
     created: !existingLink,
     status
+  };
+}
+
+export async function extractAcceptedSourceCandidateStudy({
+  dedupeKey,
+  ...input
+}: ExtractAcceptedSourceCandidateStudyInput): Promise<ExtractedSourceCandidateStudy> {
+  const candidate = await prisma.sourceCandidate.findUnique({
+    where: {
+      dedupeKey
+    }
+  });
+
+  if (!candidate || candidate.decision !== DbSourceCandidateDecision.ACCEPTED) {
+    throw new Error("Accepted source candidate not found for study extraction.");
+  }
+
+  if (!candidate.acceptedReferenceId) {
+    throw new Error("Accepted source candidate requires an acceptedReferenceId before study extraction.");
+  }
+
+  if (!candidate.claimId) {
+    throw new Error("Accepted source candidate requires a claimId before study extraction.");
+  }
+
+  const [acceptedReference, claim, claimLink, existingStudies] = await Promise.all([
+    prisma.reference.findUnique({
+      where: {
+        id: candidate.acceptedReferenceId
+      }
+    }),
+    prisma.claim.findUnique({
+      where: {
+        id: candidate.claimId
+      }
+    }),
+    prisma.claimReference.findUnique({
+      where: {
+        claimId_referenceId: {
+          claimId: candidate.claimId,
+          referenceId: candidate.acceptedReferenceId
+        }
+      }
+    }),
+    prisma.study.findMany({
+      where: {
+        referenceId: candidate.acceptedReferenceId
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }]
+    })
+  ]);
+
+  if (!acceptedReference) {
+    throw new Error("Accepted source candidate reference was not found.");
+  }
+
+  if (!referenceMatchesSourceCandidate(acceptedReference, candidate)) {
+    throw new Error(
+      "Accepted source candidate reference must match candidate source and external id."
+    );
+  }
+
+  if (!claim) {
+    throw new Error("Accepted source candidate claim was not found.");
+  }
+
+  if (candidate.interventionId && claim.interventionId !== candidate.interventionId) {
+    throw new Error("Accepted source candidate claim must belong to candidate intervention.");
+  }
+
+  if (!claimLink) {
+    throw new Error("Accepted source candidate claim link is required before study extraction.");
+  }
+
+  if (existingStudies.length > 0 && !input.updateExisting) {
+    throw new Error("Accepted source candidate reference already has study extraction.");
+  }
+
+  if (existingStudies.length > 1 && input.updateExisting) {
+    throw new Error(
+      "Accepted source candidate reference has multiple study extractions; update manually."
+    );
+  }
+
+  const studyInput = sourceCandidateStudyExtractionInput(
+    input,
+    candidate,
+    acceptedReference
+  );
+  const existingStudy = existingStudies[0];
+  const study = existingStudy
+    ? await prisma.study.update({
+        where: {
+          id: existingStudy.id
+        },
+        data: studyInput
+      })
+    : await prisma.study.create({
+        data: studyInput
+      });
+  const mappedCandidate = mapDbSourceCandidate(candidate);
+  const mappedReference = mapDbReference(acceptedReference);
+  const mappedClaimLink = mapDbClaimReference(claimLink);
+  const mappedStudy = mapDbCurationStudy(study);
+  const status = sourceCandidateCurationStatus({
+    acceptedReference: mappedReference,
+    acceptedReferenceId: candidate.acceptedReferenceId,
+    candidate: mappedCandidate,
+    candidateClaimLinked: true,
+    claimLinks: [mappedClaimLink],
+    status: curationStatusKind([mappedClaimLink], [mappedStudy], true),
+    studies: [mappedStudy]
+  });
+
+  return {
+    acceptedReference: mappedReference,
+    candidate: mappedCandidate,
+    created: !existingStudy,
+    status,
+    study: mappedStudy
   };
 }
 
@@ -1044,6 +1214,96 @@ function normaliseClaimLinkRelevance(relevance: number | undefined) {
   }
 
   return Math.min(Math.max(Math.trunc(relevance), 1), 5);
+}
+
+function sourceCandidateStudyExtractionInput(
+  input: Omit<ExtractAcceptedSourceCandidateStudyInput, "dedupeKey">,
+  candidate: DbSourceCandidate,
+  acceptedReference: DbReference
+): Prisma.StudyUncheckedCreateInput {
+  return {
+    abstract: normaliseOptionalText(input.abstract),
+    adverseEvents: requireStudyText(input.adverseEvents, "--study-adverse-events"),
+    doi: metadataString(metadataObject(candidate.metadata), "doi"),
+    dose: normaliseOptionalText(input.dose),
+    duration: normaliseOptionalText(input.duration),
+    fundingConflicts: requireStudyText(
+      input.fundingConflicts,
+      "--study-funding-conflicts"
+    ),
+    interventionName: requireStudyText(
+      input.interventionName,
+      "--study-intervention-name"
+    ),
+    mainResults: normaliseOptionalText(input.mainResults),
+    nctId:
+      candidate.source === DbSourceKind.CLINICALTRIALS_GOV
+        ? normaliseNctId(candidate.externalId)
+        : undefined,
+    outcomes: normaliseStudyOutcomes(input.outcomes),
+    pmid:
+      candidate.source === DbSourceKind.PUBMED
+        ? normalisePubMedId(candidate.externalId)
+        : undefined,
+    population: requireStudyText(input.population, "--study-population"),
+    referenceId: acceptedReference.id,
+    relevanceScore: normaliseClaimLinkRelevance(input.relevance),
+    riskOfBias: requireStudyText(input.riskOfBias, "--study-risk-of-bias"),
+    sampleSize: requireStudyText(input.sampleSize, "--study-sample-size"),
+    source: sourceFromDb(candidate.source),
+    sourceType: normaliseStudySourceType(input.sourceType, mapDbSourceCandidate(candidate)),
+    title: acceptedReference.title || candidate.title,
+    url: candidate.url,
+    year: candidate.publishedYear ?? acceptedReference.year
+  };
+}
+
+function normaliseStudySourceType(
+  sourceType: SourceCandidateStudyExtractionSourceType | undefined,
+  candidate: SourceCandidate
+) {
+  const candidateSourceType = sourceType ?? sourceCandidateStudyTypeSuggestion(candidate);
+
+  if (isStudySourceType(candidateSourceType)) {
+    return studyTypeMap[candidateSourceType];
+  }
+
+  throw new Error(
+    "Study extraction requires --study-source-type because source type cannot be inferred."
+  );
+}
+
+function isStudySourceType(
+  value: string
+): value is SourceCandidateStudyExtractionSourceType {
+  return value in studyTypeMap;
+}
+
+function normaliseStudyOutcomes(outcomes: string[]) {
+  const normalised = outcomes
+    .map((outcome) => outcome.trim())
+    .filter((outcome) => outcome.length > 0);
+
+  if (normalised.length === 0) {
+    throw new Error("Study extraction requires at least one --study-outcome.");
+  }
+
+  return normalised;
+}
+
+function requireStudyText(value: string, option: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    throw new Error(`Study extraction requires ${option}.`);
+  }
+
+  return trimmed;
+}
+
+function normaliseOptionalText(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 function sourceCandidateClaimLinkDraft(

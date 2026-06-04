@@ -28,7 +28,7 @@ Keep this file as compact, stable Codex state. Put command catalogs in dedicated
 - Live PubMed and ClinicalTrials.gov previews are unreviewed leads; `/100` values are triage scores, not evidence quality.
 - Source-candidate ingestion/review writes live under `npm run ingest:sources` only.
 - Accepted source candidates require a matching curated reference and do not auto-promote into public evidence cards.
-- `--link-candidate-claim` is the only current guarded curation write after review; it upserts `ClaimReference` only, not references, studies, or public promotions.
+- Guarded post-review curation writes are `--link-candidate-claim` for `ClaimReference` and `--extract-candidate-study` for `Study`; neither creates references, source documents, decisions, or public promotions.
 
 ## Product Rules
 

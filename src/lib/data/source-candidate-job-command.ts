@@ -11,6 +11,7 @@ import {
   type SourceCandidateIngestionJobRunResult
 } from "@/lib/data/source-candidate-jobs";
 import {
+  extractAcceptedSourceCandidateStudy,
   getSourceCandidateCurationDraft,
   getSourceCandidateCurationStatus,
   getSourceCandidateByDedupeKey,
@@ -22,6 +23,8 @@ import {
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
   summarizeSourceCandidateCurationHandoff,
+  type ExtractAcceptedSourceCandidateStudyInput,
+  type ExtractedSourceCandidateStudy,
   type LinkAcceptedSourceCandidateClaimInput,
   type LinkedSourceCandidateClaim,
   type RecordSourceCandidateDecisionInput,
@@ -33,6 +36,7 @@ import {
   type SourceCandidateCurationHandoffSummary,
   type SourceCandidateCurationStatus,
   type SourceCandidateCurationStatusKind,
+  type SourceCandidateStudyExtractionSourceType,
   type SourceCandidateSiblingOptions,
   type SourceCandidateSiblings
 } from "@/lib/data/source-candidates";
@@ -65,6 +69,7 @@ export interface SourceCandidateJobCommandOptions
   claimId?: string;
   claimLinkNote?: string;
   claimLinkRelevance?: number;
+  extractCandidateStudyDedupeKey?: string;
   help: boolean;
   interventionId?: string;
   jobId?: string;
@@ -78,6 +83,20 @@ export interface SourceCandidateJobCommandOptions
   reviewCandidateDedupeKey?: string;
   reviewDecision?: ReviewedSourceCandidateDecision;
   reviewNote?: string;
+  studyAbstract?: string;
+  studyAdverseEvents?: string;
+  studyDose?: string;
+  studyDuration?: string;
+  studyFundingConflicts?: string;
+  studyInterventionName?: string;
+  studyMainResults?: string;
+  studyOutcomes?: string[];
+  studyPopulation?: string;
+  studyRelevance?: number;
+  studyRiskOfBias?: string;
+  studySampleSize?: string;
+  studySourceType?: SourceCandidateStudyExtractionSourceType;
+  studyUpdateExisting?: boolean;
   summary: boolean;
 }
 
@@ -90,6 +109,9 @@ export interface SourceCandidateJobCommandRunners {
   getCurationDraft?: (
     dedupeKey: string
   ) => Promise<SourceCandidateCurationDraft | null>;
+  extractCandidateStudy?: (
+    input: ExtractAcceptedSourceCandidateStudyInput
+  ) => Promise<ExtractedSourceCandidateStudy>;
   getCurationStatus?: (
     dedupeKey: string
   ) => Promise<SourceCandidateCurationStatus | null>;
@@ -169,6 +191,8 @@ export async function runSourceCandidateJobCommand(
 ) {
   const stdout = io.stdout ?? console.log;
   const stderr = io.stderr ?? console.error;
+  const extractCandidateStudy =
+    runners.extractCandidateStudy ?? extractAcceptedSourceCandidateStudy;
   const getCurationDraft =
     runners.getCurationDraft ?? getSourceCandidateCurationDraft;
   const getCurationStatus =
@@ -319,6 +343,29 @@ export async function runSourceCandidateJobCommand(
       });
 
       stdout(formatLinkedSourceCandidateClaim(result));
+      return 0;
+    }
+
+    if (options.extractCandidateStudyDedupeKey) {
+      const result = await extractCandidateStudy({
+        abstract: options.studyAbstract,
+        adverseEvents: options.studyAdverseEvents ?? "",
+        dedupeKey: options.extractCandidateStudyDedupeKey,
+        dose: options.studyDose,
+        duration: options.studyDuration,
+        fundingConflicts: options.studyFundingConflicts ?? "",
+        interventionName: options.studyInterventionName ?? "",
+        mainResults: options.studyMainResults,
+        outcomes: options.studyOutcomes ?? [],
+        population: options.studyPopulation ?? "",
+        relevance: options.studyRelevance,
+        riskOfBias: options.studyRiskOfBias ?? "",
+        sampleSize: options.studySampleSize ?? "",
+        sourceType: options.studySourceType,
+        updateExisting: options.studyUpdateExisting
+      });
+
+      stdout(formatExtractedSourceCandidateStudy(result));
       return 0;
     }
 
@@ -526,6 +573,98 @@ export function parseSourceCandidateJobCommandArgs(
       continue;
     }
 
+    if (arg === "--extract-candidate-study") {
+      options.extractCandidateStudyDedupeKey = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-source-type") {
+      options.studySourceType = readStudySourceType(readRequiredValue(args, index, arg));
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-sample-size") {
+      options.studySampleSize = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-population") {
+      options.studyPopulation = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-intervention-name") {
+      options.studyInterventionName = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-outcome") {
+      options.studyOutcomes = [
+        ...(options.studyOutcomes ?? []),
+        readRequiredValue(args, index, arg)
+      ];
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-adverse-events") {
+      options.studyAdverseEvents = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-funding-conflicts") {
+      options.studyFundingConflicts = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-risk-of-bias") {
+      options.studyRiskOfBias = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-dose") {
+      options.studyDose = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-duration") {
+      options.studyDuration = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-main-results") {
+      options.studyMainResults = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-abstract") {
+      options.studyAbstract = readRequiredValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--study-relevance") {
+      options.studyRelevance = readPositiveInteger(args, index, arg, 5);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--update-existing-study") {
+      options.studyUpdateExisting = true;
+      continue;
+    }
+
     if (arg === "--claim-link-note") {
       options.claimLinkNote = readRequiredValue(args, index, arg);
       claimLinkNoteProvided = true;
@@ -698,6 +837,40 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (claimLinkRelevanceProvided && !options.linkCandidateClaimDedupeKey) {
     throw new Error("--claim-link-relevance requires --link-candidate-claim.");
+  }
+
+  if (hasStudyExtractionOptions(options) && !options.extractCandidateStudyDedupeKey) {
+    throw new Error("Study extraction options require --extract-candidate-study.");
+  }
+
+  if (options.extractCandidateStudyDedupeKey) {
+    if (!options.studySampleSize?.trim()) {
+      throw new Error("Study extraction requires --study-sample-size.");
+    }
+
+    if (!options.studyPopulation?.trim()) {
+      throw new Error("Study extraction requires --study-population.");
+    }
+
+    if (!options.studyInterventionName?.trim()) {
+      throw new Error("Study extraction requires --study-intervention-name.");
+    }
+
+    if (!options.studyOutcomes?.some((outcome) => outcome.trim())) {
+      throw new Error("Study extraction requires at least one --study-outcome.");
+    }
+
+    if (!options.studyAdverseEvents?.trim()) {
+      throw new Error("Study extraction requires --study-adverse-events.");
+    }
+
+    if (!options.studyFundingConflicts?.trim()) {
+      throw new Error("Study extraction requires --study-funding-conflicts.");
+    }
+
+    if (!options.studyRiskOfBias?.trim()) {
+      throw new Error("Study extraction requires --study-risk-of-bias.");
+    }
   }
 
   if (options.candidateCurationHandoff && options.candidateDetailDedupeKey) {
@@ -1263,6 +1436,105 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--link-candidate-claim cannot be combined with run options.");
   }
 
+  if (options.extractCandidateStudyDedupeKey && options.candidateCurationHandoff) {
+    throw new Error(
+      "--candidate-curation-handoff cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.extractCandidateStudyDedupeKey && options.candidateDetailDedupeKey) {
+    throw new Error("--candidate-detail cannot be combined with --extract-candidate-study.");
+  }
+
+  if (
+    options.extractCandidateStudyDedupeKey &&
+    options.candidateCurationStatusDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-curation-status cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (
+    options.extractCandidateStudyDedupeKey &&
+    options.candidateCurationDraftDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-curation-draft cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (
+    options.extractCandidateStudyDedupeKey &&
+    options.candidateReferenceMatchesDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-reference-matches cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.extractCandidateStudyDedupeKey && options.candidateSiblingsDedupeKey) {
+    throw new Error(
+      "--candidate-siblings cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.extractCandidateStudyDedupeKey && options.summary) {
+    throw new Error("--extract-candidate-study cannot be combined with --summary.");
+  }
+
+  if (options.extractCandidateStudyDedupeKey && options.candidates) {
+    throw new Error("--extract-candidate-study cannot be combined with --candidates.");
+  }
+
+  if (
+    options.extractCandidateStudyDedupeKey &&
+    hasCandidateListFilter({
+      candidatesLimitProvided,
+      candidateDecisionProvided,
+      candidateJobIdProvided,
+      candidateInterventionIdProvided,
+      candidateClaimIdProvided,
+      candidateSource: options.candidateSource
+    })
+  ) {
+    throw new Error(
+      "Candidate-list filters cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.extractCandidateStudyDedupeKey && options.reviewDecision) {
+    throw new Error("Review options cannot be combined with --extract-candidate-study.");
+  }
+
+  if (options.extractCandidateStudyDedupeKey && options.linkCandidateClaimDedupeKey) {
+    throw new Error(
+      "--link-candidate-claim cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.extractCandidateStudyDedupeKey && options.jobs) {
+    throw new Error("--extract-candidate-study cannot be combined with --jobs.");
+  }
+
+  if (options.extractCandidateStudyDedupeKey && options.queueSource) {
+    throw new Error("--extract-candidate-study cannot be combined with queue options.");
+  }
+
+  if (
+    options.extractCandidateStudyDedupeKey &&
+    (options.region || options.interventionId || options.claimId)
+  ) {
+    throw new Error("--extract-candidate-study cannot be combined with queue metadata.");
+  }
+
+  if (
+    options.extractCandidateStudyDedupeKey &&
+    (options.jobId || limitProvided || sourceLimitProvided)
+  ) {
+    throw new Error("--extract-candidate-study cannot be combined with run options.");
+  }
+
   if (
     hasCandidateListFilter({
       candidatesLimitProvided,
@@ -1354,6 +1626,21 @@ export function commandUsage() {
     "  --link-candidate-claim <dedupe-key> Link an accepted candidate reference to its claim.",
     "  --claim-link-note <note>          Optional note for --link-candidate-claim.",
     "  --claim-link-relevance <1-5>      Optional relevance for --link-candidate-claim.",
+    "  --extract-candidate-study <dedupe-key> Write structured Study extraction for an accepted, claim-linked candidate.",
+    "  --study-source-type <type>        Optional study type override: meta-analysis, systematic-review, randomized-controlled-trial, observational-cohort, case-report, animal-study, in-vitro-mechanistic, clinical-trial-record, or regulatory-safety-warning.",
+    "  --study-sample-size <text>        Required for --extract-candidate-study.",
+    "  --study-population <text>         Required for --extract-candidate-study.",
+    "  --study-intervention-name <text>  Required for --extract-candidate-study.",
+    "  --study-outcome <text>            Required; repeat for multiple outcomes.",
+    "  --study-adverse-events <text>     Required for --extract-candidate-study.",
+    "  --study-funding-conflicts <text>  Required for --extract-candidate-study.",
+    "  --study-risk-of-bias <text>       Required for --extract-candidate-study.",
+    "  --study-dose <text>               Optional dose field for --extract-candidate-study.",
+    "  --study-duration <text>           Optional duration field for --extract-candidate-study.",
+    "  --study-main-results <text>       Optional main results field for --extract-candidate-study.",
+    "  --study-abstract <text>           Optional abstract field for --extract-candidate-study.",
+    "  --study-relevance <1-5>           Optional relevance score for --extract-candidate-study.",
+    "  --update-existing-study           Update the one existing extraction for this accepted reference.",
     "  --candidates                      Print pending source-candidate review queue rows.",
     "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
     "  --candidate-source <source>       Filter candidates or handoff by source: pubmed or clinical-trials.",
@@ -1481,6 +1768,32 @@ function formatLinkedSourceCandidateClaim(result: LinkedSourceCandidateClaim) {
 
   if (result.claimLink.note) {
     parts.push(`note=${quote(result.claimLink.note)}`);
+  }
+
+  return parts.join(" ");
+}
+
+function formatExtractedSourceCandidateStudy(result: ExtractedSourceCandidateStudy) {
+  const parts = [
+    "[STUDY_EXTRACTED] source-candidate",
+    result.candidate.source,
+    result.candidate.region,
+    `dedupe=${quote(result.candidate.dedupeKey)}`,
+    `reference=${result.acceptedReference.id}`,
+    `study=${result.study.id}`,
+    `created=${result.created}`,
+    `status=${quote(result.status.status)}`,
+    `publicSourcePacketReady=${result.status.publicSourcePacketReady}`,
+    `nextAction=${quote(result.status.nextAction)}`,
+    `title=${quote(result.study.title)}`
+  ];
+
+  if (result.candidate.claimId) {
+    parts.push(`candidateClaim=${result.candidate.claimId}`);
+  }
+
+  if (result.study.year !== undefined) {
+    parts.push(`year=${result.study.year}`);
   }
 
   return parts.join(" ");
@@ -2202,6 +2515,62 @@ function readCurationHandoffStatus(value: string): SourceCandidateCurationStatus
   );
 }
 
+function readStudySourceType(value: string): SourceCandidateStudyExtractionSourceType {
+  const normalised = value.trim().toLowerCase().replaceAll("_", "-");
+
+  if (normalised === "meta-analysis") {
+    return "META_ANALYSIS";
+  }
+
+  if (normalised === "systematic-review") {
+    return "SYSTEMATIC_REVIEW";
+  }
+
+  if (
+    normalised === "randomized-controlled-trial" ||
+    normalised === "randomized-trial" ||
+    normalised === "clinical-trial" ||
+    normalised === "rct"
+  ) {
+    return "RANDOMIZED_CONTROLLED_TRIAL";
+  }
+
+  if (normalised === "observational-cohort" || normalised === "cohort") {
+    return "OBSERVATIONAL_COHORT";
+  }
+
+  if (normalised === "case-report") {
+    return "CASE_REPORT";
+  }
+
+  if (normalised === "animal-study") {
+    return "ANIMAL_STUDY";
+  }
+
+  if (
+    normalised === "in-vitro-mechanistic" ||
+    normalised === "in-vitro" ||
+    normalised === "mechanistic"
+  ) {
+    return "IN_VITRO_MECHANISTIC";
+  }
+
+  if (normalised === "clinical-trial-record" || normalised === "trial-record") {
+    return "CLINICAL_TRIAL_RECORD";
+  }
+
+  if (
+    normalised === "regulatory-safety-warning" ||
+    normalised === "safety-warning"
+  ) {
+    return "REGULATORY_SAFETY_WARNING";
+  }
+
+  throw new Error(
+    "--study-source-type must be meta-analysis, systematic-review, randomized-controlled-trial, observational-cohort, case-report, animal-study, in-vitro-mechanistic, clinical-trial-record, or regulatory-safety-warning."
+  );
+}
+
 function hasCandidateListFilter({
   candidatesLimitProvided,
   candidateDecisionProvided,
@@ -2224,6 +2593,25 @@ function hasCandidateListFilter({
       candidateJobIdProvided ||
       candidateInterventionIdProvided ||
       candidateClaimIdProvided
+  );
+}
+
+function hasStudyExtractionOptions(options: SourceCandidateJobCommandOptions) {
+  return Boolean(
+    options.studyAbstract !== undefined ||
+      options.studyAdverseEvents !== undefined ||
+      options.studyDose !== undefined ||
+      options.studyDuration !== undefined ||
+      options.studyFundingConflicts !== undefined ||
+      options.studyInterventionName !== undefined ||
+      options.studyMainResults !== undefined ||
+      options.studyOutcomes?.length ||
+      options.studyPopulation !== undefined ||
+      options.studyRelevance !== undefined ||
+      options.studyRiskOfBias !== undefined ||
+      options.studySampleSize !== undefined ||
+      options.studySourceType !== undefined ||
+      options.studyUpdateExisting
   );
 }
 

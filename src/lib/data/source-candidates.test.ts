@@ -7,7 +7,9 @@ const prismaMocks = vi.hoisted(() => ({
   claimReferenceUpsert: vi.fn(),
   referenceFindMany: vi.fn(),
   referenceFindUnique: vi.fn(),
+  studyCreate: vi.fn(),
   studyFindMany: vi.fn(),
+  studyUpdate: vi.fn(),
   sourceCandidateFindMany: vi.fn(),
   sourceCandidateFindUnique: vi.fn(),
   sourceCandidateGroupBy: vi.fn(),
@@ -31,7 +33,9 @@ vi.mock("@/lib/db/prisma", () => ({
       findUnique: prismaMocks.referenceFindUnique
     },
     study: {
-      findMany: prismaMocks.studyFindMany
+      create: prismaMocks.studyCreate,
+      findMany: prismaMocks.studyFindMany,
+      update: prismaMocks.studyUpdate
     },
     sourceCandidate: {
       findMany: prismaMocks.sourceCandidateFindMany,
@@ -45,6 +49,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 import {
+  extractAcceptedSourceCandidateStudy,
   getSourceCandidateCurationDraft,
   getSourceCandidateCurationStatus,
   getSourceCandidateByDedupeKey,
@@ -74,7 +79,14 @@ beforeEach(() => {
   );
   prismaMocks.referenceFindMany.mockResolvedValue([dbReference()]);
   prismaMocks.referenceFindUnique.mockResolvedValue(dbReference());
+  prismaMocks.studyCreate.mockImplementation(async (args) => dbStudy(args.data));
   prismaMocks.studyFindMany.mockResolvedValue([]);
+  prismaMocks.studyUpdate.mockImplementation(async (args) =>
+    dbStudy({
+      id: args.where.id,
+      ...args.data
+    })
+  );
   prismaMocks.transaction.mockImplementation(async (operations) => operations);
 });
 
@@ -1198,6 +1210,268 @@ describe("linkAcceptedSourceCandidateClaim", () => {
   });
 });
 
+describe("extractAcceptedSourceCandidateStudy", () => {
+  it("creates structured study extraction for accepted claim-linked candidates", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        metadata: {
+          doi: "10.1186/s12970-017-0173-z",
+          publicationTypes: ["Review"]
+        }
+      })
+    );
+    prismaMocks.claimReferenceFindUnique.mockResolvedValue(
+      dbClaimReference({
+        note: "Primary accepted candidate link."
+      })
+    );
+    prismaMocks.studyFindMany.mockResolvedValue([]);
+
+    await expect(
+      extractAcceptedSourceCandidateStudy({
+        abstract: "Position stand abstract.",
+        adverseEvents: "No consistent serious adverse events reported.",
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        dose: "3-5 g/day maintenance",
+        duration: "Varied by included study.",
+        fundingConflicts: "Society position stand; author conflicts disclosed.",
+        interventionName: "Creatine monohydrate",
+        mainResults: "Supports strength and lean-mass outcomes alongside training.",
+        outcomes: [" Strength ", "lean mass"],
+        population: "Healthy exercising adults",
+        relevance: 4,
+        riskOfBias: "Narrative synthesis; not a single randomized trial.",
+        sampleSize: "Position stand covering multiple human studies"
+      })
+    ).resolves.toEqual({
+      acceptedReference: expect.objectContaining({
+        id: "ref-creatine-position-stand",
+        source: "PubMed"
+      }),
+      candidate: expect.objectContaining({
+        acceptedReferenceId: "ref-creatine-position-stand",
+        claimId: "creatine-strength",
+        decision: "Accepted"
+      }),
+      created: true,
+      status: expect.objectContaining({
+        candidateClaimLinked: true,
+        nextAction: "Review for public source packet inclusion.",
+        publicSourcePacketReady: true,
+        status: "Public source packet ready"
+      }),
+      study: {
+        id: "study-creatine-issn",
+        referenceId: "ref-creatine-position-stand",
+        title: "Creatine position stand",
+        year: 2017
+      }
+    });
+
+    expect(prismaMocks.studyCreate).toHaveBeenCalledWith({
+      data: {
+        abstract: "Position stand abstract.",
+        adverseEvents: "No consistent serious adverse events reported.",
+        doi: "10.1186/s12970-017-0173-z",
+        dose: "3-5 g/day maintenance",
+        duration: "Varied by included study.",
+        fundingConflicts: "Society position stand; author conflicts disclosed.",
+        interventionName: "Creatine monohydrate",
+        mainResults: "Supports strength and lean-mass outcomes alongside training.",
+        nctId: undefined,
+        outcomes: ["Strength", "lean mass"],
+        pmid: "28615996",
+        population: "Healthy exercising adults",
+        referenceId: "ref-creatine-position-stand",
+        relevanceScore: 4,
+        riskOfBias: "Narrative synthesis; not a single randomized trial.",
+        sampleSize: "Position stand covering multiple human studies",
+        source: "PubMed",
+        sourceType: "SYSTEMATIC_REVIEW",
+        title: "Creatine position stand",
+        url: "https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        year: 2017
+      }
+    });
+    expect(prismaMocks.studyUpdate).not.toHaveBeenCalled();
+  });
+
+  it("updates the existing extraction only when explicitly requested", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand"
+      })
+    );
+    prismaMocks.claimReferenceFindUnique.mockResolvedValue(dbClaimReference());
+    prismaMocks.studyFindMany.mockResolvedValue([
+      dbStudy({
+        id: "study-existing"
+      })
+    ]);
+
+    await expect(
+      extractAcceptedSourceCandidateStudy({
+        adverseEvents: "No serious adverse events reported.",
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        fundingConflicts: "Not independently extracted.",
+        interventionName: "Creatine",
+        outcomes: ["Strength"],
+        population: "Healthy adults",
+        relevance: 99,
+        riskOfBias: "Review-level evidence; manual extraction needed.",
+        sampleSize: "Multiple studies",
+        updateExisting: true
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        created: false,
+        study: {
+          id: "study-existing",
+          referenceId: "ref-creatine-position-stand",
+          title: "Creatine position stand",
+          year: 2017
+        }
+      })
+    );
+
+    expect(prismaMocks.studyUpdate).toHaveBeenCalledWith({
+      where: {
+        id: "study-existing"
+      },
+      data: expect.objectContaining({
+        relevanceScore: 5,
+        sourceType: "SYSTEMATIC_REVIEW"
+      })
+    });
+    expect(prismaMocks.studyCreate).not.toHaveBeenCalled();
+  });
+
+  it("refuses extraction when the claim link is missing", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand"
+      })
+    );
+    prismaMocks.claimReferenceFindUnique.mockResolvedValue(null);
+
+    await expect(
+      extractAcceptedSourceCandidateStudy(studyExtractionInput())
+    ).rejects.toThrow(
+      "Accepted source candidate claim link is required before study extraction."
+    );
+
+    expect(prismaMocks.studyCreate).not.toHaveBeenCalled();
+    expect(prismaMocks.studyUpdate).not.toHaveBeenCalled();
+  });
+
+  it("refuses existing extraction unless updateExisting is requested", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand"
+      })
+    );
+    prismaMocks.claimReferenceFindUnique.mockResolvedValue(dbClaimReference());
+    prismaMocks.studyFindMany.mockResolvedValue([dbStudy()]);
+
+    await expect(
+      extractAcceptedSourceCandidateStudy(studyExtractionInput())
+    ).rejects.toThrow("Accepted source candidate reference already has study extraction.");
+
+    expect(prismaMocks.studyCreate).not.toHaveBeenCalled();
+    expect(prismaMocks.studyUpdate).not.toHaveBeenCalled();
+  });
+
+  it("refuses candidates before acceptance or with mismatched references", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(dbSourceCandidate());
+
+    await expect(
+      extractAcceptedSourceCandidateStudy(studyExtractionInput())
+    ).rejects.toThrow("Accepted source candidate not found for study extraction.");
+
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        acceptedReferenceId: "wrong-pubmed-reference",
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED"
+      })
+    );
+    prismaMocks.referenceFindUnique.mockResolvedValue(
+      dbReference({
+        id: "wrong-pubmed-reference",
+        identifier: "PMID: 12345678",
+        url: "https://pubmed.ncbi.nlm.nih.gov/12345678/"
+      })
+    );
+
+    await expect(
+      extractAcceptedSourceCandidateStudy(studyExtractionInput())
+    ).rejects.toThrow(
+      "Accepted source candidate reference must match candidate source and external id."
+    );
+
+    expect(prismaMocks.studyCreate).not.toHaveBeenCalled();
+    expect(prismaMocks.studyUpdate).not.toHaveBeenCalled();
+  });
+
+  it("requires operator-supplied extraction fields and source type when not inferred", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        sourceType: "Journal Article"
+      })
+    );
+    prismaMocks.claimReferenceFindUnique.mockResolvedValue(dbClaimReference());
+    prismaMocks.studyFindMany.mockResolvedValue([]);
+
+    await expect(
+      extractAcceptedSourceCandidateStudy({
+        ...studyExtractionInput(),
+        outcomes: []
+      })
+    ).rejects.toThrow("Study extraction requires at least one --study-outcome.");
+
+    await expect(
+      extractAcceptedSourceCandidateStudy({
+        ...studyExtractionInput(),
+        outcomes: ["Strength"]
+      })
+    ).rejects.toThrow(
+      "Study extraction requires --study-source-type because source type cannot be inferred."
+    );
+
+    await expect(
+      extractAcceptedSourceCandidateStudy({
+        ...studyExtractionInput(),
+        outcomes: ["Strength"],
+        sourceType: "OBSERVATIONAL_COHORT"
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        created: true
+      })
+    );
+
+    expect(prismaMocks.studyCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          sourceType: "OBSERVATIONAL_COHORT"
+        })
+      })
+    );
+  });
+});
+
 describe("listSourceCandidateCurationHandoff", () => {
   it("lists accepted candidates with public packet readiness statuses", async () => {
     prismaMocks.sourceCandidateFindMany.mockResolvedValue([
@@ -2270,6 +2544,22 @@ function dbClaim(overrides: Record<string, unknown> = {}) {
   return {
     id: "creatine-strength",
     interventionId: "creatine",
+    ...overrides
+  };
+}
+
+function studyExtractionInput(
+  overrides: Partial<Parameters<typeof extractAcceptedSourceCandidateStudy>[0]> = {}
+): Parameters<typeof extractAcceptedSourceCandidateStudy>[0] {
+  return {
+    adverseEvents: "No serious adverse events reported.",
+    dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+    fundingConflicts: "Not independently extracted.",
+    interventionName: "Creatine",
+    outcomes: ["Strength"],
+    population: "Healthy adults",
+    riskOfBias: "Review-level evidence; manual extraction needed.",
+    sampleSize: "Multiple studies",
     ...overrides
   };
 }

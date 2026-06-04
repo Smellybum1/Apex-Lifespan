@@ -26,6 +26,12 @@ describe("commandUsage", () => {
     expect(commandUsage()).toContain(
       "--link-candidate-claim <dedupe-key> Link an accepted candidate reference to its claim."
     );
+    expect(commandUsage()).toContain(
+      "--extract-candidate-study <dedupe-key> Write structured Study extraction for an accepted, claim-linked candidate."
+    );
+    expect(commandUsage()).toContain(
+      "--study-source-type <type>        Optional study type override: meta-analysis, systematic-review, randomized-controlled-trial, observational-cohort, case-report, animal-study, in-vitro-mechanistic, clinical-trial-record, or regulatory-safety-warning."
+    );
   });
 });
 
@@ -275,6 +281,113 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       linkCandidateClaimDedupeKey: "pubmed|au|creatine|28615996",
       summary: false
     });
+  });
+
+  it("parses guarded source-candidate study extraction mode", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs(
+        studyCommandArgs([
+          "--study-source-type",
+          "rct",
+          "--study-dose",
+          "3-5 g/day",
+          "--study-duration",
+          "12 weeks",
+          "--study-main-results",
+          "Strength improved.",
+          "--study-abstract",
+          "Trial abstract.",
+          "--study-relevance",
+          "9",
+          "--update-existing-study"
+        ])
+      )
+    ).toEqual({
+      extractCandidateStudyDedupeKey: "pubmed|au|creatine|28615996",
+      help: false,
+      limit: 1,
+      studyAbstract: "Trial abstract.",
+      studyAdverseEvents: "No serious adverse events reported.",
+      studyDose: "3-5 g/day",
+      studyDuration: "12 weeks",
+      studyFundingConflicts: "Funding conflicts disclosed.",
+      studyInterventionName: "Creatine monohydrate",
+      studyMainResults: "Strength improved.",
+      studyOutcomes: ["Strength", "Lean mass"],
+      studyPopulation: "Healthy adults",
+      studyRelevance: 5,
+      studyRiskOfBias: "Moderate risk of bias.",
+      studySampleSize: "n=80",
+      studySourceType: "RANDOMIZED_CONTROLLED_TRIAL",
+      studyUpdateExisting: true,
+      summary: false
+    });
+  });
+
+  it("fails closed on incomplete source-candidate study extraction options", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--study-sample-size", "n=80"])
+    ).toThrow("Study extraction options require --extract-candidate-study.");
+
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--extract-candidate-study",
+        "pubmed|au|creatine|28615996"
+      ])
+    ).toThrow("Study extraction requires --study-sample-size.");
+
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(
+        studyCommandArgs(["--study-source-type", "unknown-type"])
+      )
+    ).toThrow(
+      "--study-source-type must be meta-analysis, systematic-review, randomized-controlled-trial, observational-cohort, case-report, animal-study, in-vitro-mechanistic, clinical-trial-record, or regulatory-safety-warning."
+    );
+  });
+
+  it("does not combine source-candidate study extraction with other command modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(
+        studyCommandArgs(["--candidate-detail", "pubmed|au|creatine|28615996"])
+      )
+    ).toThrow("--candidate-detail cannot be combined with --extract-candidate-study.");
+
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(studyCommandArgs(["--summary"]))
+    ).toThrow("--extract-candidate-study cannot be combined with --summary.");
+
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(
+        studyCommandArgs([
+          "--accept-candidate",
+          "pubmed|au|creatine|28615996",
+          "--accepted-reference-id",
+          "ref-creatine-position-stand"
+        ])
+      )
+    ).toThrow("Review options cannot be combined with --extract-candidate-study.");
+
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(
+        studyCommandArgs(["--link-candidate-claim", "pubmed|au|creatine|28615996"])
+      )
+    ).toThrow(
+      "--link-candidate-claim cannot be combined with --extract-candidate-study."
+    );
+
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(
+        studyCommandArgs(["--candidate-claim-id", "creatine-strength"])
+      )
+    ).toThrow("Candidate-list filters cannot be combined with --extract-candidate-study.");
+
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(studyCommandArgs(["--queue-pubmed", "creatine"]))
+    ).toThrow("--extract-candidate-study cannot be combined with queue options.");
+
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(studyCommandArgs(["--limit", "2"]))
+    ).toThrow("--extract-candidate-study cannot be combined with run options.");
   });
 
   it("parses read-only candidate review queue mode", () => {
@@ -2401,6 +2514,118 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("extracts accepted source candidate study data without running jobs", async () => {
+    const stdout = vi.fn();
+    const extractCandidateStudy = vi.fn().mockResolvedValue({
+      acceptedReference: {
+        id: "ref-creatine-position-stand",
+        title: "Creatine position stand",
+        source: "PubMed",
+        identifier: "PMID: 28615996",
+        year: 2017,
+        url: "https://pubmed.ncbi.nlm.nih.gov/28615996/"
+      },
+      candidate: sourceCandidate({
+        decision: "Accepted",
+        reviewStatus: "Human reviewed",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        claimId: "creatine-strength"
+      }),
+      created: true,
+      status: {
+        acceptedReferenceId: "ref-creatine-position-stand",
+        candidate: sourceCandidate({
+          decision: "Accepted",
+          reviewStatus: "Human reviewed",
+          acceptedReferenceId: "ref-creatine-position-stand",
+          claimId: "creatine-strength"
+        }),
+        candidateClaimLinked: true,
+        claimLinks: [
+          {
+            claimId: "creatine-strength",
+            note: "Primary source.",
+            relevance: 5
+          }
+        ],
+        nextAction: "Review for public source packet inclusion.",
+        publicSourcePacketReady: true,
+        status: "Public source packet ready",
+        studies: [
+          {
+            id: "study-creatine-issn",
+            referenceId: "ref-creatine-position-stand",
+            title: "Creatine position stand extraction",
+            year: 2017
+          }
+        ]
+      },
+      study: {
+        id: "study-creatine-issn",
+        referenceId: "ref-creatine-position-stand",
+        title: "Creatine position stand extraction",
+        year: 2017
+      }
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        studyCommandArgs([
+          "--study-source-type",
+          "systematic-review",
+          "--study-dose",
+          "3-5 g/day"
+        ]),
+        { stdout },
+        { extractCandidateStudy, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(extractCandidateStudy).toHaveBeenCalledWith({
+      abstract: undefined,
+      adverseEvents: "No serious adverse events reported.",
+      dedupeKey: "pubmed|au|creatine|28615996",
+      dose: "3-5 g/day",
+      duration: undefined,
+      fundingConflicts: "Funding conflicts disclosed.",
+      interventionName: "Creatine monohydrate",
+      mainResults: undefined,
+      outcomes: ["Strength", "Lean mass"],
+      population: "Healthy adults",
+      relevance: undefined,
+      riskOfBias: "Moderate risk of bias.",
+      sampleSize: "n=80",
+      sourceType: "SYSTEMATIC_REVIEW",
+      updateExisting: undefined
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      '[STUDY_EXTRACTED] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" reference=ref-creatine-position-stand study=study-creatine-issn created=true status="Public source packet ready" publicSourcePacketReady=true nextAction="Review for public source packet inclusion." title="Creatine position stand extraction" candidateClaim=creatine-strength year=2017'
+    );
+  });
+
+  it("returns a failing exit code when study extraction fails", async () => {
+    const stderr = vi.fn();
+    const extractCandidateStudy = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("Accepted source candidate claim link is required before study extraction.")
+      );
+
+    await expect(
+      runSourceCandidateJobCommand(
+        studyCommandArgs(),
+        { stderr },
+        { extractCandidateStudy }
+      )
+    ).resolves.toBe(1);
+
+    expect(stderr).toHaveBeenCalledWith(
+      "Accepted source candidate claim link is required before study extraction."
+    );
+  });
+
   it("prints read-only source-candidate review queue rows without running jobs", async () => {
     const stdout = vi.fn();
     const listCandidates = vi.fn().mockResolvedValue([
@@ -2914,4 +3139,28 @@ function sourceCandidate(overrides: Record<string, unknown> = {}) {
     metadata: {},
     ...overrides
   };
+}
+
+function studyCommandArgs(extra: string[] = []) {
+  return [
+    "--extract-candidate-study",
+    "pubmed|au|creatine|28615996",
+    "--study-sample-size",
+    "n=80",
+    "--study-population",
+    "Healthy adults",
+    "--study-intervention-name",
+    "Creatine monohydrate",
+    "--study-outcome",
+    "Strength",
+    "--study-outcome",
+    "Lean mass",
+    "--study-adverse-events",
+    "No serious adverse events reported.",
+    "--study-funding-conflicts",
+    "Funding conflicts disclosed.",
+    "--study-risk-of-bias",
+    "Moderate risk of bias.",
+    ...extra
+  ];
 }

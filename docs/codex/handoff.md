@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-03. Treat the worktree as authoritative: run `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04. Treat the worktree as authoritative: run `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Start Here
 
@@ -16,7 +16,7 @@ Refreshed on 2026-06-03. Treat the worktree as authoritative: run `git status -s
 - Default lens is Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Public live-source API routes must stay read-only and must not import or call source-candidate persistence.
 - Source-candidate ingestion and review remain local operator-only under `npm run ingest:sources`.
-- The committed ingestion-job context migration still needs local PostgreSQL application before DB-backed manual checks.
+- Local Docker/PostgreSQL setup has been verified; migrations and seed have been applied locally.
 
 ## Recent Source-Candidate Work
 
@@ -28,6 +28,7 @@ Refreshed on 2026-06-03. Treat the worktree as authoritative: run `git status -s
 - Operator-only curation views now include candidate detail, siblings, reference matches, curation status, curation draft, curation handoff, and summary.
 - Review actions can accept/reject pending candidates with human constraints.
 - `--link-candidate-claim <dedupe-key>` is a guarded local write that upserts only the accepted reference's `ClaimReference`; it does not create references, studies, or public promotions.
+- `--extract-candidate-study <dedupe-key>` is a guarded local write that creates or explicitly updates only a structured `Study` extraction after acceptance, matching-reference, claim-context, and claim-link gates pass.
 - Ingestion job identity is source/query/region plus optional intervention and claim context; PostgreSQL partial unique indexes separate unscoped, intervention, claim, and intervention+claim queue buckets.
 - Queueing validates requested intervention/claim context before job creation.
 
@@ -48,11 +49,8 @@ Refreshed on 2026-06-03. Treat the worktree as authoritative: run `git status -s
 
 ## Useful Next Tasks
 
-- Apply and verify the committed migrations against local PostgreSQL, then seed:
-  - `docker compose up -d postgres`
-  - `npm run db:migrate`
-  - `npm run db:seed`
-- Later, decide whether to add a guarded local study-extraction write command; keep public promotion human-reviewed and never automatic.
+- Use `--candidate-curation-handoff --candidate-curation-handoff-status extraction-pending` to find accepted, claim-linked candidates ready for manual study extraction.
+- Continue source-packet curation in small guarded slices; keep public promotion human-reviewed and never automatic.
 
 ## Guardrails
 
