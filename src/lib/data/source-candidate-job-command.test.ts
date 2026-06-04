@@ -3936,8 +3936,8 @@ describe("runSourceCandidateJobCommand", () => {
       [
         "Source-candidate duplicate identities: total=1",
         '- PubMed externalId="42141930" candidates=2 pending=2 accepted=0 rejected=0 identityList="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 42141930 --candidates-limit 2" title="Creatine meta-analysis"',
-        `  - triage=80/100 dedupe="pubmed|au|creatine-meta|42141930||" key=${safeCandidateKey("pubmed|au|creatine-meta|42141930||")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-meta|42141930||")}" query="creatine meta" decision="Pending review" reviewStatus="Unreviewed AI draft" ingestionJob=job-unscoped`,
-        `  - triage=80/100 dedupe="pubmed|au|creatine-strength|42141930|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" query="creatine strength" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-strength ingestionJob=job-claim`
+        `  - triage=80/100 dedupe="pubmed|au|creatine-meta|42141930||" key=${safeCandidateKey("pubmed|au|creatine-meta|42141930||")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-meta|42141930||")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine-meta|42141930||")}" query="creatine meta" decision="Pending review" reviewStatus="Unreviewed AI draft" ingestionJob=job-unscoped`,
+        `  - triage=80/100 dedupe="pubmed|au|creatine-strength|42141930|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" query="creatine strength" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-strength ingestionJob=job-claim`
       ].join("\n")
     );
   });
@@ -3998,8 +3998,8 @@ describe("runSourceCandidateJobCommand", () => {
       [
         "Source-candidate duplicate identities: total=1",
         '- ClinicalTrials.gov externalId="NCT00715676" candidates=2 pending=2 accepted=0 rejected=0 identityList="--candidates --candidate-duplicates --candidate-source clinical-trials --candidate-external-id NCT00715676 --candidates-limit 2" title="Phase 2 Safety and Efficacy Study of a Vitamin D Compound"',
-        `  - triage=80/100 dedupe="${unscopedKey}" key=${safeCandidateKey(unscopedKey)} packet="--candidate-review-packet ${safeCandidateKey(unscopedKey)}" query="Vitamin D" decision="Pending review" reviewStatus="Unreviewed AI draft" ingestionJob=job-unscoped`,
-        `  - triage=80/100 dedupe="${claimKey}" key=${safeCandidateKey(claimKey)} packet="--candidate-review-packet ${safeCandidateKey(claimKey)}" query="Vitamin D safety adverse effects" decision="Pending review" reviewStatus="Unreviewed AI draft" reviewFlags="broad-safety-query, low-title-query-overlap" flags="--candidate-review-flags --candidate-review-flags-limit 10" intervention=vitamin-d claim=vitamin-d-deficiency ingestionJob=job-claim`
+        `  - triage=80/100 dedupe="${unscopedKey}" key=${safeCandidateKey(unscopedKey)} packet="--candidate-review-packet ${safeCandidateKey(unscopedKey)}" referenceMatches="--candidate-reference-matches ${safeCandidateKey(unscopedKey)}" query="Vitamin D" decision="Pending review" reviewStatus="Unreviewed AI draft" ingestionJob=job-unscoped`,
+        `  - triage=80/100 dedupe="${claimKey}" key=${safeCandidateKey(claimKey)} packet="--candidate-review-packet ${safeCandidateKey(claimKey)}" referenceMatches="--candidate-reference-matches ${safeCandidateKey(claimKey)}" query="Vitamin D safety adverse effects" decision="Pending review" reviewStatus="Unreviewed AI draft" reviewFlags="broad-safety-query, low-title-query-overlap" flags="--candidate-review-flags --candidate-review-flags-limit 10" intervention=vitamin-d claim=vitamin-d-deficiency ingestionJob=job-claim`
       ].join("\n")
     );
   });

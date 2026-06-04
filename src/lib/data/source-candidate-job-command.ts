@@ -3308,12 +3308,14 @@ function formatSourceCandidateIdentityGroup(group: SourceCandidateIdentityGroup)
 
 function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate) {
   const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+  const key = safeCandidateKey(candidate.dedupeKey);
   const parts = [
     "  -",
     `triage=${candidate.triageScore}/100`,
     `dedupe=${quote(candidate.dedupeKey)}`,
-    `key=${safeCandidateKey(candidate.dedupeKey)}`,
-    `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`,
+    `key=${key}`,
+    `packet=${quote(`--candidate-review-packet ${key}`)}`,
+    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
     `query=${quote(candidate.query)}`,
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
