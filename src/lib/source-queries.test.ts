@@ -39,6 +39,26 @@ describe("buildSourceSearchQueries", () => {
     expect(queries.trialTerm).toBe("Omega-3 EPA/DHA cardiovascular events prevention");
   });
 
+  it("adds compact claim-specific anchors to broad outcome terms", () => {
+    const queries = buildSourceSearchQueries({
+      intervention: {
+        name: "Vitamin D",
+        synonyms: ["cholecalciferol"]
+      },
+      claim: {
+        outcome: "Safety/adverse effects",
+        claimText: "Correcting deficiency or low status."
+      }
+    });
+
+    expect(queries).toEqual({
+      label: "Vitamin D - Safety/adverse effects",
+      pubMedTerm:
+        "Vitamin D safety adverse effects deficiency low status randomized trial systematic review",
+      trialTerm: "Vitamin D safety adverse effects deficiency low status"
+    });
+  });
+
   it("falls back when intervention context is unavailable", () => {
     const queries = buildSourceSearchQueries({});
 

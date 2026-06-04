@@ -3464,9 +3464,9 @@ describe("runSourceCandidateJobCommand", () => {
       interventionId: "creatine",
       label: "Creatine monohydrate - Muscle/strength",
       pubMedTerm:
-        "Creatine monohydrate strength resistance training lean mass randomized trial systematic review",
+        "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review",
       region: "AU",
-      trialTerm: "Creatine monohydrate strength resistance training lean mass",
+      trialTerm: "Creatine monohydrate strength resistance training lean mass gains",
       jobs: [
         {
           claimId: "creatine-strength",
@@ -3476,7 +3476,7 @@ describe("runSourceCandidateJobCommand", () => {
           jobId: "job-pubmed-creatine-strength",
           source: "PUBMED",
           query:
-            "Creatine monohydrate strength resistance training lean mass randomized trial systematic review",
+            "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review",
           region: "AU",
           status: "QUEUED"
         },
@@ -3487,7 +3487,7 @@ describe("runSourceCandidateJobCommand", () => {
           interventionId: "creatine",
           jobId: "job-trials-creatine-strength",
           source: "CLINICALTRIALS_GOV",
-          query: "Creatine monohydrate strength resistance training lean mass",
+          query: "Creatine monohydrate strength resistance training lean mass gains",
           region: "AU",
           status: "SUCCEEDED"
         }
@@ -3511,8 +3511,8 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         'Claim source-candidate jobs: "Creatine monohydrate - Muscle/strength" claim=creatine-strength intervention=creatine region=AU',
-        '- [QUEUED] job-pubmed-creatine-strength PUBMED AU "Creatine monohydrate strength resistance training lean mass randomized trial systematic review" created=true intervention=creatine claim=creatine-strength',
-        '- [SUCCEEDED] job-trials-creatine-strength CLINICALTRIALS_GOV AU "Creatine monohydrate strength resistance training lean mass" created=false intervention=creatine claim=creatine-strength'
+        '- [QUEUED] job-pubmed-creatine-strength PUBMED AU "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review" created=true intervention=creatine claim=creatine-strength',
+        '- [SUCCEEDED] job-trials-creatine-strength CLINICALTRIALS_GOV AU "Creatine monohydrate strength resistance training lean mass gains" created=false intervention=creatine claim=creatine-strength'
       ].join("\n")
     );
   });

@@ -879,14 +879,14 @@ describe("queueClaimSourceCandidateIngestionJobs", () => {
         dbIngestionJob({
           id: "job-pubmed-creatine-strength",
           query:
-            "Creatine monohydrate strength resistance training lean mass randomized trial systematic review"
+            "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review"
         })
       )
       .mockResolvedValueOnce(
         dbIngestionJob({
           id: "job-trials-creatine-strength",
           source: "CLINICALTRIALS_GOV",
-          query: "Creatine monohydrate strength resistance training lean mass"
+          query: "Creatine monohydrate strength resistance training lean mass gains"
         })
       );
 
@@ -900,9 +900,9 @@ describe("queueClaimSourceCandidateIngestionJobs", () => {
       interventionId: "creatine",
       label: "Creatine monohydrate - Muscle/strength",
       pubMedTerm:
-        "Creatine monohydrate strength resistance training lean mass randomized trial systematic review",
+        "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review",
       region: "AU",
-      trialTerm: "Creatine monohydrate strength resistance training lean mass",
+      trialTerm: "Creatine monohydrate strength resistance training lean mass gains",
       jobs: [
         {
           claimId: "creatine-strength",
@@ -912,7 +912,7 @@ describe("queueClaimSourceCandidateIngestionJobs", () => {
           jobId: "job-pubmed-creatine-strength",
           source: "PUBMED",
           query:
-            "Creatine monohydrate strength resistance training lean mass randomized trial systematic review",
+            "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review",
           region: "AU",
           status: "QUEUED"
         },
@@ -923,7 +923,7 @@ describe("queueClaimSourceCandidateIngestionJobs", () => {
           interventionId: "creatine",
           jobId: "job-trials-creatine-strength",
           source: "CLINICALTRIALS_GOV",
-          query: "Creatine monohydrate strength resistance training lean mass",
+          query: "Creatine monohydrate strength resistance training lean mass gains",
           region: "AU",
           status: "QUEUED"
         }
@@ -952,7 +952,7 @@ describe("queueClaimSourceCandidateIngestionJobs", () => {
         source: "PUBMED",
         status: "QUEUED",
         query:
-          "Creatine monohydrate strength resistance training lean mass randomized trial systematic review",
+          "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review",
         region: "AU",
         interventionId: "creatine",
         claimId: "creatine-strength",
@@ -966,7 +966,7 @@ describe("queueClaimSourceCandidateIngestionJobs", () => {
       data: {
         source: "CLINICALTRIALS_GOV",
         status: "QUEUED",
-        query: "Creatine monohydrate strength resistance training lean mass",
+        query: "Creatine monohydrate strength resistance training lean mass gains",
         region: "AU",
         interventionId: "creatine",
         claimId: "creatine-strength",
