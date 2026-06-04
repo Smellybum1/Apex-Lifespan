@@ -2464,7 +2464,10 @@ function formatSourceCandidateReferenceMatches(
   const heading = formatSourceCandidateReferenceMatchHeading(matches);
 
   if (matches.references.length === 0) {
-    return heading;
+    return [
+      heading,
+      formatSourceCandidateReferenceDraft(matches.candidate)
+    ].join("\n");
   }
 
   return [
@@ -2513,6 +2516,47 @@ function formatSourceCandidateReferenceMatch(reference: Reference) {
   }
 
   return parts.join(" ");
+}
+
+function formatSourceCandidateReferenceDraft(candidate: SourceCandidate) {
+  const parts = [
+    `- referenceDraft=${quote(sourceCandidateReferenceDraftId(candidate))}`,
+    `source=${quote(candidate.source)}`,
+    `identifier=${quote(sourceCandidateReferenceIdentifier(candidate))}`,
+    `title=${quote(candidate.title)}`,
+    `url=${candidate.url}`,
+    'note="Draft only; verify before adding a curated reference."'
+  ];
+
+  if (candidate.publishedYear !== undefined) {
+    parts.push(`year=${candidate.publishedYear}`);
+  }
+
+  return parts.join(" ");
+}
+
+function sourceCandidateReferenceDraftId(candidate: SourceCandidate) {
+  const sourceSlug =
+    candidate.source === "ClinicalTrials.gov" ? "clinicaltrials-gov" : "pubmed";
+  const externalIdSlug = slugReferenceIdPart(candidate.externalId);
+
+  return `ref-${sourceSlug}-${externalIdSlug || "candidate"}`;
+}
+
+function sourceCandidateReferenceIdentifier(candidate: SourceCandidate) {
+  if (candidate.source === "PubMed") {
+    return `PMID: ${candidate.externalId}`;
+  }
+
+  return candidate.externalId.toUpperCase();
+}
+
+function slugReferenceIdPart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {

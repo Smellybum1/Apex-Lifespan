@@ -2554,7 +2554,10 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(0);
 
     expect(stdout).toHaveBeenCalledWith(
-      `Source-candidate accepted-reference matches: total=0 dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" url=https://clinicaltrials.gov/study/NCT123 decision="Accepted" reviewStatus="Human reviewed"`
+      [
+        `Source-candidate accepted-reference matches: total=0 dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" url=https://clinicaltrials.gov/study/NCT123 decision="Accepted" reviewStatus="Human reviewed"`,
+        '- referenceDraft="ref-clinicaltrials-gov-nct123" source="ClinicalTrials.gov" identifier="NCT123" title="Creatine and aging" url=https://clinicaltrials.gov/study/NCT123 note="Draft only; verify before adding a curated reference." year=2017'
+      ].join("\n")
     );
   });
 
