@@ -2716,6 +2716,7 @@ function formatSourceCandidateReviewPacketCommandHints(
   const candidate = packet.candidate;
   const key = safeCandidateKey(candidate.dedupeKey);
   const duplicateIdentityCount = sourceCandidateReviewPacketDuplicateIdentityCount(packet);
+  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
   const lines = [
     "Source-candidate review command hints",
     "safeReadOnly=true",
@@ -2735,6 +2736,10 @@ function formatSourceCandidateReviewPacketCommandHints(
         })
       )}`
     );
+  }
+
+  if (reviewFlagCodes.length > 0) {
+    lines.push(`reviewFlags=${quote(formatSourceCandidateReviewFlagsCommand())}`);
   }
 
   lines.push(

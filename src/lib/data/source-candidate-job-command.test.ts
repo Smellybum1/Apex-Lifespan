@@ -2464,6 +2464,45 @@ describe("runSourceCandidateJobCommand", () => {
     expect(output).not.toContain("duplicates=");
   });
 
+  it("prints review flag hints in flagged review packet command hints", async () => {
+    const stdout = vi.fn();
+    const candidateKey =
+      "clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency";
+    const candidate = sourceCandidate({
+      dedupeKey: candidateKey,
+      source: "ClinicalTrials.gov",
+      externalId: "NCT00715676",
+      query: "Vitamin D safety adverse effects",
+      title: "Calcium fracture prevention trial",
+      url: "https://clinicaltrials.gov/study/NCT00715676",
+      interventionId: "vitamin-d",
+      claimId: "vitamin-d-deficiency"
+    });
+    const getCandidate = vi.fn().mockResolvedValue(candidate);
+    const listReferenceMatches = vi.fn().mockResolvedValue({
+      candidate,
+      references: []
+    });
+    const listSiblings = vi.fn().mockResolvedValue({
+      target: candidate,
+      siblings: []
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-review-packet", candidateKey],
+        { stdout },
+        { getCandidate, listReferenceMatches, listSiblings }
+      )
+    ).resolves.toBe(0);
+
+    const output = stdout.mock.calls[0]?.[0] ?? "";
+    expect(output).toContain("Source-candidate review command hints");
+    expect(output).toContain(
+      'reviewFlags="--candidate-review-flags --candidate-review-flags-limit 10"'
+    );
+  });
+
   it("prints read-only source-candidate curation status for public-ready accepted candidates", async () => {
     const stdout = vi.fn();
     const getCurationStatus = vi.fn().mockResolvedValue({

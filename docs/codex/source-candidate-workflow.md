@@ -47,7 +47,7 @@ Candidate list rows print `packet="..."` for read-only packet review plus source
 Review overview rows print `list="..."` for the filtered pending group, including region, `packet="..."` for the top candidate drill-in, duplicate hints when the top PMID/NCT identity repeats, and `topReviewFlags` plus a `flags="..."` drill-in when applicable.
 Review flag rows filter the bounded overview to flagged top candidates only, optionally narrow with `--candidate-review-flag`, and print compact `flags`, duplicate hints, `list="..."`, and `packet="..."` without changing review state.
 Reference-match headings print `packet="..."`, `groupList="..."`, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable; draft references remain draft-only and require manual verification.
-Review packets print read-only follow-up commands, conditional duplicate hints, and accept/reject templates; write templates still require explicit human review.
+Review packets print read-only follow-up commands, conditional duplicate and review-flag hints, and accept/reject templates; write templates still require explicit human review.
 Sibling rows print `packet="..."` for read-only packet review of related candidates plus `targetReviewFlags`/`reviewFlags` and a `flags="..."` drill-in when applicable.
 Duplicate identity rows print `identityList="..."` for the filtered duplicate group and `packet="..."` plus `reviewFlags` and `flags="..."` for each candidate row when applicable.
 Curation handoff rows print read-only packet, reference-match, curation-status, curation-draft hints, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable.

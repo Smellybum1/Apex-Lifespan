@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after consolidating review-flag command hint formatting. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding review-flag command hints to review packets. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -25,7 +25,7 @@ Refreshed on 2026-06-04 after consolidating review-flag command hint formatting.
 - Candidate detail output is read-only and prints packet, reference-match, sibling, group-list, curation-status, curation-draft hints, compact `reviewFlags` plus `flags="..."` drill-ins, and explanatory `reviewCautions` for flagged claim-scoped candidates.
 - Candidate list rows are read-only and print `packet="..."` hints plus query, ingestion-job trace fields, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Reference-match headings print read-only `packet="..."`, `groupList="..."`, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable; reference drafts remain draft-only.
-- Review packets print safe read-only follow-up commands, duplicate hints when the identity repeats, and explicit human-reviewed accept/reject templates.
+- Review packets print safe read-only follow-up commands, duplicate hints when the identity repeats, review-flag hints when the candidate is flagged, and explicit human-reviewed accept/reject templates.
 - Sibling rows print read-only `packet="..."` hints plus compact `targetReviewFlags`/`reviewFlags` and `flags="..."` drill-ins when applicable.
 - Duplicate identity output prints read-only `identityList="..."`, per-candidate `packet="..."` hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Curation handoff rows print read-only packet, reference-match, curation-status, curation-draft hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
@@ -56,6 +56,7 @@ Last CLI snapshot after local ingestion:
 - Read-only curation handoff smoke returned `total=0`; non-empty handoff row hints are covered by exact output tests.
 - Read-only review overview smoke returned 9 pending groups across 50 candidates; the `creatine-strength` PubMed top identity showed `topIdentityCandidates=2` and a duplicate-list hint for PMID `42141930`.
 - Read-only review overview smoke showed `topReviewFlags="broad-safety-query"` plus `flags="..."` drill-ins on broad `vitamin-d-deficiency` ClinicalTrials.gov and PubMed groups; omega-3 triglycerides did not carry a low-overlap flag after token-root overlap handling.
+- Read-only `NCT00715676` review packet smoke showed `reviewFlags="--candidate-review-flags --candidate-review-flags-limit 10"` in the top safe command hints without writes.
 - Read-only `NCT00715676` detail smoke showed compact `reviewFlags="broad-safety-query"` plus `flags="..."` and explanatory `reviewCautions` with no writes.
 - Read-only candidate list smoke for the top `vitamin-d-deficiency` ClinicalTrials.gov rows showed compact `reviewFlags="broad-safety-query"` plus `flags="..."` drill-ins and no writes.
 - Read-only `NCT00715676` sibling smoke showed `targetReviewFlags` plus `flags="..."` on the heading and row-level `reviewFlags` plus `flags="..."`, including low-title-query-overlap prompts for disconnected sibling titles.
@@ -80,6 +81,7 @@ Last CLI snapshot after local ingestion:
 
 Latest local validation:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --candidate-review-packet b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
 - `npm run ingest:sources -- --candidate-detail b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
 - `npm run ingest:sources -- --candidate-reference-matches b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
 - `npm run ingest:sources -- --candidate-curation-status b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
