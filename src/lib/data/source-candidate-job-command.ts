@@ -3441,6 +3441,7 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${key}`,
     ...formatSourceCandidateReviewDrillInHints(candidate, key),
+    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
     `query=${quote(candidate.query)}`,
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
