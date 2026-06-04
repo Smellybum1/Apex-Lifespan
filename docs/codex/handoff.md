@@ -1,72 +1,36 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04. Treat the worktree as authoritative: run `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after context-efficiency work. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
-## Start Here
+## Startup Scope
 
-1. Read `AGENTS.md`.
-2. Use `$project-workflow`; if unavailable, read `.agents/skills/project-workflow/SKILL.md`.
-3. Read `docs/codex/project.md` for stable memory.
-4. Read `docs/codex/source-candidate-workflow.md` before ingestion or curation work.
-5. For docs-only memory edits, review the diff and run `git diff --check`.
+- Normal startup: read `AGENTS.md` and `docs/codex/project.md`.
+- Read this file only when resuming current work or needing current operator state.
+- Open `docs/codex/source-candidate-workflow.md` only for ingestion or curation work.
+- Do not read archives wholesale; search them only for targeted history.
 
-## Current State
+## Current Checkpoint
 
-- The app is a public read-only Next.js evidence dashboard with PostgreSQL/Prisma support and seed fallback.
-- Default lens is Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
-- Public live-source API routes must stay read-only and must not import or call source-candidate persistence.
-- Source-candidate ingestion and review remain local operator-only under `npm run ingest:sources`.
-- Local Docker/PostgreSQL setup has been verified; migrations and seed have been applied locally.
+- Branch: `codex/queue-claim-sources`.
+- Verify latest commit with `git log -1 --oneline`; this handoff was prepared during the context-efficiency docs refactor.
+- App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
+- Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
+- Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
+- Local Docker/PostgreSQL setup was verified earlier; migrations and seed were applied locally.
 
-## Recent Source-Candidate Work
+## Current Source-Candidate State
 
-- Curation readiness is guarded:
-  - accepted-reference mismatch blocks readiness;
-  - accepted candidates without a claim id report `Candidate claim missing`;
-  - handoff/status wording stays source-packet readiness, not evidence quality.
-- Database-mode dashboard regression coverage verifies claim reference links and structured study extraction rows map into complete public source packets.
-- Operator-only curation views now include candidate detail, siblings, reference matches, curation status, curation draft, curation handoff, and summary.
-- Review actions can accept/reject pending candidates with human constraints.
-- `--link-candidate-claim <dedupe-key>` is a guarded local write that upserts only the accepted reference's `ClaimReference`; it does not create references, studies, or public promotions.
-- `--extract-candidate-study <dedupe-key>` is a guarded local write that creates or explicitly updates only a structured `Study` extraction after acceptance, matching-reference, claim-context, and claim-link gates pass.
-- `--queue-claim-sources <claim-id>` queues or reports the claim-scoped PubMed and ClinicalTrials.gov jobs generated from active-claim source terms without running ingestion or writing review/curation rows.
-- `--summary` is read-only and now shows source-candidate ingestion job status counts before backlog and curation handoff counts.
-- `--jobs --jobs-status queued` lists only queued source-candidate ingestion jobs.
-- `--jobs-source`, `--jobs-region`, `--jobs-intervention-id`, and `--jobs-claim-id` can narrow read-only job lists.
-- Candidate-oriented output includes `key=b64:...`; use that shell-safe value on Windows anywhere a source-candidate `<dedupe-key>` is accepted.
-- `--candidates --candidate-external-id <id>` narrows the read-only review queue by PMID/NCT id and list rows show `externalId=...` for duplicate source-identity scans.
-- `--candidates --candidate-duplicates` surfaces duplicate PMID/NCT identity groups across query and claim scopes without changing review state.
-- `--candidate-review-packet <dedupe-key>` prints detail, accepted-reference matches, and same-identity siblings for one candidate without changing review state.
-- Empty accepted-reference match output includes a draft-only `referenceDraft=...` line for manual curated-reference creation; it does not write references or accept candidates.
-- Ingestion job identity is source/query/region plus optional intervention and claim context; PostgreSQL partial unique indexes separate unscoped, intervention, claim, and intervention+claim queue buckets.
-- Queueing validates requested intervention/claim context before job creation.
+Last read-only CLI snapshot:
+- Ingestion jobs: total 3; PubMed AU succeeded 2; ClinicalTrials.gov AU succeeded 1.
+- Queued jobs: 0.
+- Pending backlog: 10 candidates; PubMed AU 5 and ClinicalTrials.gov AU 5.
+- Curation handoff: 0 accepted candidates ready for next curation status buckets.
+- Useful current view: `npm run ingest:sources -- --candidates --candidates-limit 10`.
 
-## Recent Validation
+## Next Useful Tasks
 
-- `npm run db:validate`
-- `npm run db:generate`
-- `npm run test -- src/lib/data/source-candidate-jobs.test.ts`
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run test -- src/lib/data/source-candidates.test.ts`
-- `npm run test -- src/lib/data/dashboard.test.ts`
-- `npm run ingest:sources -- --help`
-- `npm run test`
-- `npm run lint`
-- `npm run typecheck`
-- `npm run build`
-- HTTP smoke for `http://localhost:3000` returned `200`
+- Continue pending source-candidate review in small human-reviewed slices.
+- Queue claim-scoped sources for the next claim target with `--queue-claim-sources <claim-id>`.
+- Keep public promotion manual: accepted candidates still need curated references, claim links, and structured study extraction.
 
-## Useful Next Tasks
-
-- Use `--candidate-curation-handoff --candidate-curation-handoff-status extraction-pending` to find accepted, claim-linked candidates ready for manual study extraction.
-- Use `--queue-claim-sources <claim-id>` to queue both source-candidate searches for the next claim-level curation target.
-- Use `--jobs --jobs-status queued` after summary to inspect queued source-candidate ingestion work.
-- Add `--jobs-claim-id <claim-id>` when queued job history needs claim-level narrowing.
-- Continue source-packet curation in small guarded slices; keep public promotion human-reviewed and never automatic.
-
-## Guardrails
-
-- Keep medical claims citation-traceable and review-status visible.
-- Keep live PubMed/ClinicalTrials.gov previews labeled as unreviewed leads.
-- Keep source-candidate curation wording framed as handoff/readiness, not source quality or medical advice.
-- Avoid peptide sourcing, compounding, reconstitution, injection, cycling, dosing, or self-administration guidance.
+Historical source-candidate progress was moved to `docs/codex/archive/handoff/2026-06-04-source-candidate-progress.md`.

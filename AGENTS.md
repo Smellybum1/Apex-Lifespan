@@ -3,6 +3,8 @@
 ## Codex rules
 - Use `$project-workflow` for non-trivial features, bugs, refactors, tests, reviews, PR prep, or fuzzy implementation work. If local skills are unavailable, follow `.agents/skills/project-workflow/SKILL.md` manually.
 - Keep this file under 80 lines; move workflow detail and learnings to `docs/codex/`.
+- Startup scope: always read `AGENTS.md` and `docs/codex/project.md`; read `docs/codex/handoff.md` only when resuming or needing current thread state.
+- Read domain/reference docs only when the task enters that surface; do not load `docs/codex/plans/archive/`, `docs/codex/reference/`, or command catalogs wholesale.
 - Inspect existing patterns before editing. Do not invent commands, architecture, or facts.
 - Plan before multi-file or risky changes. Use formal `docs/codex/plans/` files only when the workflow calls for them. Ask only blocking questions.
 - Use helper agents only for bounded, nonblocking research, review, test triage, UI QA, or alternatives; keep final decisions and edits in this thread.

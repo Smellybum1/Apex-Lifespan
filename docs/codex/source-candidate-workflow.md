@@ -1,130 +1,45 @@
 # Source Candidate Workflow
 
-Source-candidate ingestion is a private local operator workflow. It writes to configured PostgreSQL and must stay out of public app routes.
+Open this only for source-candidate ingestion, review, or curation work. Use `npm run ingest:sources -- --help` for the live flag list and `docs/codex/reference/source-candidate-command-reference.md` for the full command catalog.
 
 ## Boundary
 
-- Public PubMed and ClinicalTrials.gov previews are read-only leads.
-- Ingestion and review writes live under `npm run ingest:sources`.
-- Accepted candidates do not auto-promote into curated evidence cards.
-- Accepted candidates must link to an existing curated reference whose source and external id match the candidate.
-- Rejected candidates require a nonblank human review note.
-- Curation handoff status is readiness for public source packets, not evidence quality.
+- Private local operator workflow; writes go only to configured PostgreSQL.
+- Public PubMed and ClinicalTrials.gov previews stay read-only leads.
+- Candidate `/100` values are triage scores, not evidence quality.
+- Accepted candidates do not auto-promote into public evidence cards.
+- Accepting requires an existing curated reference matching candidate source and external id.
+- Rejections require a nonblank human review note.
 
-## Commands
+## Quick Flow
 
-Run one queued job:
+1. Inspect state: `npm run ingest:sources -- --summary`.
+2. List pending candidates: `npm run ingest:sources -- --candidates --candidates-limit 10`.
+3. Inspect one candidate: `npm run ingest:sources -- --candidate-review-packet <dedupe-key>`.
+4. Human review only after checking candidate, siblings, and reference matches.
+5. Post-acceptance curation stays explicit: claim link first, then structured study extraction.
 
-```bash
-npm run ingest:sources
-```
-
-Queue jobs:
-
-```bash
-npm run ingest:sources -- --queue-pubmed "creatine strength randomized trial systematic review"
-npm run ingest:sources -- --queue-clinical-trials "creatine aging"
-npm run ingest:sources -- --queue-claim-sources <claim-id>
-```
-
-Queue metadata:
+## Common Commands
 
 ```bash
-npm run ingest:sources -- --queue-pubmed "creatine strength" --region AU --intervention-id <intervention-id> --claim-id <claim-id>
-npm run ingest:sources -- --queue-claim-sources <claim-id> --region AU
-```
-
-Queue options create a missing job or report the existing job for the same source, query, region, intervention id, and claim id. They do not reset completed jobs or retarget stored intervention/claim context. When queueing with both intervention and claim context, the claim must belong to that intervention; missing claim or intervention context fails before a job is created. The migration backfills valid older metadata-backed job context into first-class columns, and new queue identity is context-aware so the same query can be queued separately for different claim-level curation work.
-
-`--queue-claim-sources <claim-id>` validates the claim and intervention through Prisma, builds the active-claim PubMed and ClinicalTrials.gov terms, and queues or reports both claim-scoped jobs. It does not run ingestion or write review, curation, claim-link, study-extraction, or public evidence rows.
-
-Read-only operator views:
-
-```bash
-npm run ingest:sources -- --jobs
-npm run ingest:sources -- --jobs --jobs-status queued
-npm run ingest:sources -- --jobs --jobs-status failed
-npm run ingest:sources -- --jobs --jobs-status queued --jobs-claim-id <claim-id>
-npm run ingest:sources -- --jobs --jobs-source pubmed --jobs-region AU
-npm run ingest:sources -- --candidates
-npm run ingest:sources -- --candidates --candidate-source pubmed --candidates-limit 10
-npm run ingest:sources -- --candidates --candidate-duplicates
-npm run ingest:sources -- --candidates --candidate-duplicates --candidate-source pubmed
-npm run ingest:sources -- --candidates --candidate-job-id <ingestion-job-id>
-npm run ingest:sources -- --candidates --candidate-external-id <pmid-or-nct-id>
-npm run ingest:sources -- --candidates --candidate-intervention-id <intervention-id>
-npm run ingest:sources -- --candidates --candidate-claim-id <claim-id>
-npm run ingest:sources -- --candidates --candidate-decision accepted
-npm run ingest:sources -- --candidates --candidate-decision rejected
-npm run ingest:sources -- --candidate-detail <dedupe-key>
-npm run ingest:sources -- --candidate-review-packet <dedupe-key>
-npm run ingest:sources -- --candidate-curation-draft <dedupe-key>
-npm run ingest:sources -- --candidate-siblings <dedupe-key>
-npm run ingest:sources -- --candidate-siblings <dedupe-key> --candidate-siblings-limit 10
-npm run ingest:sources -- --candidate-reference-matches <dedupe-key>
-npm run ingest:sources -- --candidate-curation-status <dedupe-key>
-npm run ingest:sources -- --candidate-curation-handoff
-npm run ingest:sources -- --candidate-curation-handoff --candidate-claim-id <claim-id>
-npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-status candidate-claim-missing
-npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-status reference-mismatch
-npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-status extraction-pending
 npm run ingest:sources -- --summary
-```
-
-Candidate-oriented output prints both the raw `dedupe="..."` value and a shell-safe `key=b64:...` value. On Windows, prefer copying the `key=b64:...` value into any command argument shown as `<dedupe-key>`; all detail, sibling, reference-match, curation, review, claim-link, and study-extraction commands accept either form.
-
-Review actions:
-
-```bash
+npm run ingest:sources -- --jobs --jobs-status queued
+npm run ingest:sources -- --queue-claim-sources <claim-id>
+npm run ingest:sources -- --candidates --candidate-duplicates
+npm run ingest:sources -- --candidate-review-packet <dedupe-key>
 npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id>
-npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Not relevant to this claim."
-npm run ingest:sources -- --link-candidate-claim <dedupe-key>
-npm run ingest:sources -- --link-candidate-claim <dedupe-key> --claim-link-relevance 4 --claim-link-note "Primary source for this claim."
-npm run ingest:sources -- --extract-candidate-study <dedupe-key> --study-sample-size "n=80" --study-population "Healthy adults" --study-intervention-name "Creatine monohydrate" --study-outcome "Strength" --study-adverse-events "No serious adverse events reported." --study-funding-conflicts "Funding disclosed." --study-risk-of-bias "Moderate risk of bias."
+npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Reason."
+npm run ingest:sources -- --candidate-curation-handoff
 ```
 
-`--link-candidate-claim` writes only a `ClaimReference` row after validating the candidate is accepted, claim-scoped, and attached to a matching accepted reference. It does not create references, study extractions, source documents, or public evidence promotions.
-
-`--extract-candidate-study` writes only a `Study` row after validating the candidate is accepted, claim-scoped, attached to a matching accepted reference, and already claim-linked. The operator must supply the manual extraction fields; ambiguous source types require `--study-source-type`. It does not create references, claim links, source documents, decisions, or public evidence promotions.
-
-Run controls:
-
-```bash
-npm run ingest:sources -- --limit 5
-npm run ingest:sources -- --job-id <ingestion-job-id>
-npm run ingest:sources -- --pubmed-retmax 10
-npm run ingest:sources -- --clinical-trial-page-size 10
-```
-
-## Output Rules
-
-- Job output reports ingestion-operation counts, not evidence-quality scores.
-- `--jobs` reports recent job ids, statuses, counts, stored context, and errors.
-- `--jobs-status` filters `--jobs` by `queued`, `running`, `succeeded`, `failed`, or `skipped`.
-- `--jobs-source`, `--jobs-region`, `--jobs-intervention-id`, and `--jobs-claim-id` narrow `--jobs` without running ingestion.
-- `--queue-claim-sources` prints the generated PubMed and ClinicalTrials.gov query text plus queued or existing job ids.
-- `--summary` includes ingestion job counts by source, region, and status before candidate backlog and curation handoff counts.
-- `--candidates` defaults to pending rows and can filter by source, external id, job, intervention, claim, or decision.
-- `--candidates --candidate-duplicates` prints duplicate source/external-id groups before review decisions; combine it with candidate filters to narrow the scan.
-- Candidate-oriented outputs include `key=b64:...` next to raw dedupe keys so pipe-heavy keys can be reused safely from Windows shells.
-- Candidate review queue rows include `externalId=...` so the same PMID or NCT record can be spotted across query and claim scopes.
-- `--candidate-detail` prints one candidate with triage reasons, review fields, and compact metadata.
-- `--candidate-review-packet` prints detail, accepted-reference matches, and same-identity sibling context for one candidate without changing review state.
-- `--candidate-curation-draft` prints one candidate's accepted-reference status plus read-only claim-link and study-extraction draft fields; it does not create references, claim links, studies, or decisions.
-- `--candidate-siblings` prints the target candidate plus same-source/external-id and same-query/context sibling rows with match reasons; it is read-only curation context, not review automation.
-- `--candidate-reference-matches` prints candidate identity plus curated references eligible for acceptance.
-- Empty `--candidate-reference-matches` output includes a `referenceDraft=...` line with draft-only curated-reference fields for manual verification; it does not create a reference or mark the candidate accepted.
-- `--candidate-curation-status` reports candidate-claim, accepted-reference, claim-link, extraction, readiness, and next action for one candidate.
-- `--candidate-curation-handoff` lists accepted candidates by readiness and can filter before applying the row limit.
-- `--extract-candidate-study` reports the written study id and resulting curation readiness.
-- `--summary` groups ingestion job status counts, backlog counts, and accepted-candidate curation handoff counts.
+Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on Windows anywhere `<dedupe-key>` is accepted.
 
 ## Curation Readiness
 
 - `Not accepted`: pending or rejected candidates.
-- `Accepted reference missing`: accepted candidate has no accepted reference id or the referenced row is missing.
-- `Accepted reference mismatch`: accepted reference exists but no longer matches the candidate source and external id.
-- `Candidate claim missing`: accepted candidate has no claim id, so it is not ready for claim-level public source packets.
+- `Accepted reference missing`: no accepted reference id or referenced row missing.
+- `Accepted reference mismatch`: accepted reference no longer matches candidate source/external id.
+- `Candidate claim missing`: accepted candidate has no claim id.
 - `Claim link missing`: accepted reference is not linked to the candidate claim.
 - `Extraction pending`: accepted reference is claim-linked but lacks structured study extraction.
 - `Public source packet ready`: accepted reference is claim-linked and structurally extracted.

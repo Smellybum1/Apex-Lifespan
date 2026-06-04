@@ -10,6 +10,8 @@ After completion, either:
 
 Keep the top-level `plans/` folder for active work plus this README.
 
+Do not read `archive/` wholesale during startup or routine task orientation. Search archived plans only for a specific historical decision, file, command, or failure pattern.
+
 Template:
 
 ```md
