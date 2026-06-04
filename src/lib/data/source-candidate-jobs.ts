@@ -63,6 +63,18 @@ export interface SourceCandidateIngestionJobListItem {
   updatedAt: string;
 }
 
+export interface SourceCandidateIngestionJobSummaryGroup {
+  count: number;
+  region: string;
+  source: DbSourceKind;
+  status: DbIngestionStatus;
+}
+
+export interface SourceCandidateIngestionJobSummary {
+  groups: SourceCandidateIngestionJobSummaryGroup[];
+  total: number;
+}
+
 export interface QueueSourceCandidateIngestionJobInput {
   claimId?: string;
   interventionId?: string;
@@ -113,6 +125,13 @@ const MAX_NEXT_JOB_CLAIM_ATTEMPTS = 3;
 const DEFAULT_JOB_LIST_LIMIT = 10;
 const MAX_JOB_LIST_LIMIT = 50;
 const DEFAULT_REGION = "AU";
+const INGESTION_JOB_STATUS_ORDER = [
+  DbIngestionStatus.QUEUED,
+  DbIngestionStatus.RUNNING,
+  DbIngestionStatus.SUCCEEDED,
+  DbIngestionStatus.FAILED,
+  DbIngestionStatus.SKIPPED
+] satisfies DbIngestionStatus[];
 
 const outcomeMap: Record<DbOutcomeArea, OutcomeArea> = {
   MORTALITY_LIFESPAN: "Mortality/lifespan",
@@ -148,6 +167,33 @@ export async function listSourceCandidateIngestionJobs(
   });
 
   return jobs.map(mapJobListItem);
+}
+
+export async function summarizeSourceCandidateIngestionJobs(): Promise<SourceCandidateIngestionJobSummary> {
+  const groupedJobs = await prisma.ingestionJob.groupBy({
+    by: ["source", "status", "region"],
+    where: {
+      source: {
+        in: SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES
+      }
+    },
+    _count: {
+      _all: true
+    }
+  });
+  const groups = groupedJobs
+    .map((group) => ({
+      count: group._count._all,
+      region: group.region,
+      source: group.source,
+      status: group.status
+    }))
+    .sort(compareJobSummaryGroups);
+
+  return {
+    groups,
+    total: groups.reduce((total, group) => total + group.count, 0)
+  };
 }
 
 export async function queueClaimSourceCandidateIngestionJobs(
@@ -457,6 +503,26 @@ function mapJobListItem(job: DbIngestionJob): SourceCandidateIngestionJobListIte
     status: job.status,
     updatedAt: job.updatedAt.toISOString()
   };
+}
+
+function compareJobSummaryGroups(
+  left: SourceCandidateIngestionJobSummaryGroup,
+  right: SourceCandidateIngestionJobSummaryGroup
+) {
+  return (
+    INGESTION_JOB_STATUS_ORDER.indexOf(left.status) -
+      INGESTION_JOB_STATUS_ORDER.indexOf(right.status) ||
+    sourceSummaryOrder(left.source) - sourceSummaryOrder(right.source) ||
+    left.region.localeCompare(right.region)
+  );
+}
+
+function sourceSummaryOrder(source: DbSourceKind) {
+  const index = SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES.indexOf(
+    source as SupportedSourceCandidateJobSource
+  );
+
+  return index === -1 ? SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES.length : index;
 }
 
 function normaliseJobListLimit(limit: number | undefined) {

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
   findMany: vi.fn(),
   findUnique: vi.fn(),
+  groupBy: vi.fn(),
   interventionFindUnique: vi.fn(),
   update: vi.fn(),
   updateMany: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("@/lib/db/prisma", () => ({
       findFirst: mocks.findFirst,
       findMany: mocks.findMany,
       findUnique: mocks.findUnique,
+      groupBy: mocks.groupBy,
       update: mocks.update,
       updateMany: mocks.updateMany
     },
@@ -42,7 +44,8 @@ import {
   queueClaimSourceCandidateIngestionJobs,
   queueSourceCandidateIngestionJob,
   runNextSourceCandidateIngestionJob,
-  runSourceCandidateIngestionJob
+  runSourceCandidateIngestionJob,
+  summarizeSourceCandidateIngestionJobs
 } from "@/lib/data/source-candidate-jobs";
 
 const timestamp = new Date("2026-06-02T03:00:00.000Z");
@@ -149,6 +152,86 @@ describe("listSourceCandidateIngestionJobs", () => {
     mocks.findMany.mockResolvedValue([]);
 
     await expect(listSourceCandidateIngestionJobs()).resolves.toEqual([]);
+  });
+});
+
+describe("summarizeSourceCandidateIngestionJobs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("summarizes supported ingestion jobs by status, source, and region", async () => {
+    mocks.groupBy.mockResolvedValue([
+      {
+        _count: {
+          _all: 2
+        },
+        region: "AU",
+        source: "CLINICALTRIALS_GOV",
+        status: "QUEUED"
+      },
+      {
+        _count: {
+          _all: 1
+        },
+        region: "AU",
+        source: "PUBMED",
+        status: "SUCCEEDED"
+      },
+      {
+        _count: {
+          _all: 3
+        },
+        region: "NZ",
+        source: "PUBMED",
+        status: "QUEUED"
+      }
+    ]);
+
+    await expect(summarizeSourceCandidateIngestionJobs()).resolves.toEqual({
+      groups: [
+        {
+          count: 3,
+          region: "NZ",
+          source: "PUBMED",
+          status: "QUEUED"
+        },
+        {
+          count: 2,
+          region: "AU",
+          source: "CLINICALTRIALS_GOV",
+          status: "QUEUED"
+        },
+        {
+          count: 1,
+          region: "AU",
+          source: "PUBMED",
+          status: "SUCCEEDED"
+        }
+      ],
+      total: 6
+    });
+
+    expect(mocks.groupBy).toHaveBeenCalledWith({
+      by: ["source", "status", "region"],
+      where: {
+        source: {
+          in: ["PUBMED", "CLINICALTRIALS_GOV"]
+        }
+      },
+      _count: {
+        _all: true
+      }
+    });
+  });
+
+  it("returns an empty summary", async () => {
+    mocks.groupBy.mockResolvedValue([]);
+
+    await expect(summarizeSourceCandidateIngestionJobs()).resolves.toEqual({
+      groups: [],
+      total: 0
+    });
   });
 });
 

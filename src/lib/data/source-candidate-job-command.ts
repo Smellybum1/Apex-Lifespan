@@ -4,6 +4,7 @@ import {
   queueSourceCandidateIngestionJob,
   runNextSourceCandidateIngestionJob,
   runSourceCandidateIngestionJob,
+  summarizeSourceCandidateIngestionJobs,
   type QueueClaimSourceCandidateIngestionJobsInput,
   type QueueSourceCandidateIngestionJobInput,
   type QueuedClaimSourceCandidateIngestionJobs,
@@ -11,7 +12,8 @@ import {
   type SourceCandidateIngestionJobListItem,
   type SourceCandidateIngestionJobListOptions,
   type SourceCandidateIngestionJobOptions,
-  type SourceCandidateIngestionJobRunResult
+  type SourceCandidateIngestionJobRunResult,
+  type SourceCandidateIngestionJobSummary
 } from "@/lib/data/source-candidate-jobs";
 import {
   extractAcceptedSourceCandidateStudy,
@@ -162,6 +164,7 @@ export interface SourceCandidateJobCommandRunners {
   ) => Promise<SourceCandidate>;
   summarizeBacklog?: () => Promise<SourceCandidateBacklogSummary>;
   summarizeCurationHandoff?: () => Promise<SourceCandidateCurationHandoffSummary>;
+  summarizeJobs?: () => Promise<SourceCandidateIngestionJobSummary>;
 }
 
 const DEFAULT_JOB_LIMIT = 1;
@@ -223,6 +226,8 @@ export async function runSourceCandidateJobCommand(
   const summarizeBacklog = runners.summarizeBacklog ?? summarizeSourceCandidateBacklog;
   const summarizeCurationHandoff =
     runners.summarizeCurationHandoff ?? summarizeSourceCandidateCurationHandoff;
+  const summarizeJobs =
+    runners.summarizeJobs ?? summarizeSourceCandidateIngestionJobs;
 
   let options: SourceCandidateJobCommandOptions;
 
@@ -425,13 +430,15 @@ export async function runSourceCandidateJobCommand(
     }
 
     if (options.summary) {
-      const [backlogSummary, curationHandoffSummary] = await Promise.all([
+      const [jobSummary, backlogSummary, curationHandoffSummary] = await Promise.all([
+        summarizeJobs(),
         summarizeBacklog(),
         summarizeCurationHandoff()
       ]);
 
       stdout(
         formatSourceCandidateWorkflowSummary(
+          jobSummary,
           backlogSummary,
           curationHandoffSummary
         )
@@ -2353,12 +2360,29 @@ function appendJobContext(
 }
 
 function formatSourceCandidateWorkflowSummary(
+  jobSummary: SourceCandidateIngestionJobSummary,
   backlogSummary: SourceCandidateBacklogSummary,
   curationHandoffSummary: SourceCandidateCurationHandoffSummary
 ) {
   return [
+    formatSourceCandidateIngestionJobSummary(jobSummary),
     formatSourceCandidateBacklogSummary(backlogSummary),
     formatSourceCandidateCurationHandoffSummary(curationHandoffSummary)
+  ].join("\n");
+}
+
+function formatSourceCandidateIngestionJobSummary(
+  summary: SourceCandidateIngestionJobSummary
+) {
+  if (summary.total === 0) {
+    return "Source-candidate ingestion jobs: total=0";
+  }
+
+  return [
+    `Source-candidate ingestion jobs: total=${summary.total}`,
+    ...summary.groups.map(
+      (group) => `- ${group.source} ${group.region} ${group.status}: ${group.count}`
+    )
   ].join("\n");
 }
 

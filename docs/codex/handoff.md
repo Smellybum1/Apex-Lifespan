@@ -30,6 +30,7 @@ Refreshed on 2026-06-04. Treat the worktree as authoritative: run `git status -s
 - `--link-candidate-claim <dedupe-key>` is a guarded local write that upserts only the accepted reference's `ClaimReference`; it does not create references, studies, or public promotions.
 - `--extract-candidate-study <dedupe-key>` is a guarded local write that creates or explicitly updates only a structured `Study` extraction after acceptance, matching-reference, claim-context, and claim-link gates pass.
 - `--queue-claim-sources <claim-id>` queues or reports the claim-scoped PubMed and ClinicalTrials.gov jobs generated from active-claim source terms without running ingestion or writing review/curation rows.
+- `--summary` is read-only and now shows source-candidate ingestion job status counts before backlog and curation handoff counts.
 - Ingestion job identity is source/query/region plus optional intervention and claim context; PostgreSQL partial unique indexes separate unscoped, intervention, claim, and intervention+claim queue buckets.
 - Queueing validates requested intervention/claim context before job creation.
 

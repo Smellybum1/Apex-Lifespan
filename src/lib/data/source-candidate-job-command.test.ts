@@ -1460,6 +1460,23 @@ describe("runSourceCandidateJobCommand", () => {
   it("prints read-only backlog summary without running jobs", async () => {
     const stdout = vi.fn();
     const runNextJob = vi.fn();
+    const summarizeJobs = vi.fn().mockResolvedValue({
+      total: 5,
+      groups: [
+        {
+          source: "PUBMED",
+          region: "AU",
+          status: "QUEUED",
+          count: 2
+        },
+        {
+          source: "CLINICALTRIALS_GOV",
+          region: "AU",
+          status: "SUCCEEDED",
+          count: 3
+        }
+      ]
+    });
     const summarizeBacklog = vi.fn().mockResolvedValue({
       total: 4,
       groups: [
@@ -1504,15 +1521,19 @@ describe("runSourceCandidateJobCommand", () => {
       runSourceCandidateJobCommand(
         ["--summary"],
         { stdout },
-        { runNextJob, summarizeBacklog, summarizeCurationHandoff }
+        { runNextJob, summarizeBacklog, summarizeCurationHandoff, summarizeJobs }
       )
     ).resolves.toBe(0);
 
     expect(runNextJob).not.toHaveBeenCalled();
+    expect(summarizeJobs).toHaveBeenCalledTimes(1);
     expect(summarizeBacklog).toHaveBeenCalledTimes(1);
     expect(summarizeCurationHandoff).toHaveBeenCalledTimes(1);
     expect(stdout).toHaveBeenCalledWith(
       [
+        "Source-candidate ingestion jobs: total=5",
+        "- PUBMED AU QUEUED: 2",
+        "- CLINICALTRIALS_GOV AU SUCCEEDED: 3",
         "Source-candidate backlog: total=4",
         "- PubMed AU Pending review / Unreviewed AI draft: 3",
         "- ClinicalTrials.gov AU Accepted / Human reviewed: 1",
@@ -3098,6 +3119,10 @@ describe("runSourceCandidateJobCommand", () => {
 
   it("prints an empty backlog summary", async () => {
     const stdout = vi.fn();
+    const summarizeJobs = vi.fn().mockResolvedValue({
+      total: 0,
+      groups: []
+    });
     const summarizeBacklog = vi.fn().mockResolvedValue({
       total: 0,
       groups: []
@@ -3111,12 +3136,13 @@ describe("runSourceCandidateJobCommand", () => {
       runSourceCandidateJobCommand(
         ["--summary"],
         { stdout },
-        { summarizeBacklog, summarizeCurationHandoff }
+        { summarizeBacklog, summarizeCurationHandoff, summarizeJobs }
       )
     ).resolves.toBe(0);
 
     expect(stdout).toHaveBeenCalledWith(
       [
+        "Source-candidate ingestion jobs: total=0",
         "Source-candidate backlog: total=0",
         "Source-candidate curation handoff: total=0"
       ].join("\n")

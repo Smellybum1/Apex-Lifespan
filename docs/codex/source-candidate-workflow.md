@@ -91,6 +91,7 @@ npm run ingest:sources -- --clinical-trial-page-size 10
 - Job output reports ingestion-operation counts, not evidence-quality scores.
 - `--jobs` reports recent job ids, statuses, counts, stored context, and errors.
 - `--queue-claim-sources` prints the generated PubMed and ClinicalTrials.gov query text plus queued or existing job ids.
+- `--summary` includes ingestion job counts by source, region, and status before candidate backlog and curation handoff counts.
 - `--candidates` defaults to pending rows and can filter by source, job, intervention, claim, or decision.
 - `--candidate-detail` prints one candidate with triage reasons, review fields, and compact metadata.
 - `--candidate-curation-draft` prints one candidate's accepted-reference status plus read-only claim-link and study-extraction draft fields; it does not create references, claim links, studies, or decisions.
@@ -99,7 +100,7 @@ npm run ingest:sources -- --clinical-trial-page-size 10
 - `--candidate-curation-status` reports candidate-claim, accepted-reference, claim-link, extraction, readiness, and next action for one candidate.
 - `--candidate-curation-handoff` lists accepted candidates by readiness and can filter before applying the row limit.
 - `--extract-candidate-study` reports the written study id and resulting curation readiness.
-- `--summary` groups backlog counts and accepted-candidate curation handoff counts.
+- `--summary` groups ingestion job status counts, backlog counts, and accepted-candidate curation handoff counts.
 
 ## Curation Readiness
 
