@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after scoping source-candidate review-flag focus drill-ins to row context. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding scoped review-flag focus drill-ins to source-candidate summary rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -21,7 +21,7 @@ Refreshed on 2026-06-04 after scoping source-candidate review-flag focus drill-i
 - Packet/reference/sibling/curation drill-in hints share one local formatter helper in `src/lib/data/source-candidate-job-command.ts`; exact CLI output is covered by source-candidate command tests.
 - Candidate filters support read-only `--candidate-claim-missing` and `--candidate-intervention-missing`; generated list hints use them when a group or candidate lacks claim/intervention context.
 - Duplicate identity candidate rows include exact read-only `groupList="..."` hints so repeated PMID/NCT identities can be reviewed in their scoped or unscoped context.
-- Flagged overview and candidate-level rows include context-scoped read-only `flagFocus="..."` hints for the first listed review flag while preserving broader `flags="..."` drill-ins.
+- Flagged summary, overview, and candidate-level rows include context-scoped read-only `flagFocus="..."` hints while preserving broader `flags="..."` drill-ins.
 - Claim-scoped source queries append compact claim-text anchors after outcome terms before queueing.
 - Local Docker/PostgreSQL setup was verified earlier; migrations and seed were applied locally.
 
@@ -38,11 +38,10 @@ Refreshed on 2026-06-04 after scoping source-candidate review-flag focus drill-i
 
 ## Latest Local Validation
 
-Current code validation for context-scoped review-flag focus drill-ins:
+Current code validation for summary-scoped review-flag focus drill-ins:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-review-packet b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBsb25nZXZpdHklMjBtb3J0YWxpdHklMjBsaWZlc3BhbnxuY3QwNzQ1MTQ5NnxjcmVhdGluZXxjcmVhdGluZS1saWZlc3Bhbg`
-- `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`
-- `npm run ingest:sources -- --candidate-review-flags --candidate-review-flag low-title-query-overlap --candidate-claim-id creatine-lifespan --candidate-intervention-id creatine --candidate-region AU --candidate-source clinical-trials --candidate-review-flags-limit 10`
+- `npm run ingest:sources -- --summary`
+- `npm run ingest:sources -- --candidate-review-flags --candidate-review-flag broad-safety-query --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidate-review-flags-limit 10`
 - `npm run test`
 - `npm run lint`
 - `npm run dev:stop`

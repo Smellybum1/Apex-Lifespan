@@ -4135,6 +4135,12 @@ function formatSourceCandidateReviewFlagSummaryGroup(
     ` list=${quote(formatSourceCandidateReviewOverviewListCommand(exampleGroup))}` +
     drillInHints +
     ` flags=${quote(formatSourceCandidateReviewFlagsCommand(group.flag))}` +
+    ` flagFocus=${quote(
+      formatSourceCandidateReviewFlagsCommand(
+        group.flag,
+        sourceCandidateReviewFlagGroupContext(exampleGroup)
+      )
+    )}` +
     ` overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
   );
 }

@@ -2170,8 +2170,8 @@ describe("runSourceCandidateJobCommand", () => {
         '- status="Extraction pending" publicSourcePacketReady=false: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status extraction-pending"',
         '- status="Public source packet ready" publicSourcePacketReady=true: 1 handoff="--candidate-curation-handoff --candidate-curation-handoff-status ready"',
         "Source-candidate review flag focus: totalGroups=3 candidateCount=15 flaggedTopGroups=2",
-        `- flag="broad-safety-query" topGroups=1 pendingInTopGroups=10 topGroup="vitamin-d-deficiency vitamin-d ClinicalTrials.gov AU" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" siblings="--candidate-siblings ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" curationStatus="--candidate-curation-status ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" flags="--candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10" overview="--candidate-review-overview --candidate-review-overview-limit 10"`,
-        `- flag="low-title-query-overlap" topGroups=1 pendingInTopGroups=1 topGroup="creatine-lifespan creatine ClinicalTrials.gov AU" list="--candidates --candidate-claim-id creatine-lifespan --candidate-intervention-id creatine --candidate-region AU --candidate-source clinical-trials --candidates-limit 1" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" siblings="--candidate-siblings ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" curationStatus="--candidate-curation-status ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" flags="--candidate-review-flags --candidate-review-flag low-title-query-overlap --candidate-review-flags-limit 10" overview="--candidate-review-overview --candidate-review-overview-limit 10"`,
+        `- flag="broad-safety-query" topGroups=1 pendingInTopGroups=10 topGroup="vitamin-d-deficiency vitamin-d ClinicalTrials.gov AU" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" siblings="--candidate-siblings ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" curationStatus="--candidate-curation-status ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" flags="--candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10" flagFocus="--candidate-review-flags --candidate-review-flag broad-safety-query --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidate-review-flags-limit 10" overview="--candidate-review-overview --candidate-review-overview-limit 10"`,
+        `- flag="low-title-query-overlap" topGroups=1 pendingInTopGroups=1 topGroup="creatine-lifespan creatine ClinicalTrials.gov AU" list="--candidates --candidate-claim-id creatine-lifespan --candidate-intervention-id creatine --candidate-region AU --candidate-source clinical-trials --candidates-limit 1" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" siblings="--candidate-siblings ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" curationStatus="--candidate-curation-status ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" flags="--candidate-review-flags --candidate-review-flag low-title-query-overlap --candidate-review-flags-limit 10" flagFocus="--candidate-review-flags --candidate-review-flag low-title-query-overlap --candidate-claim-id creatine-lifespan --candidate-intervention-id creatine --candidate-region AU --candidate-source clinical-trials --candidate-review-flags-limit 10" overview="--candidate-review-overview --candidate-review-overview-limit 10"`,
         "Source-candidate read-only next commands",
         'reviewOverview="--candidate-review-overview --candidate-review-overview-limit 10"',
         'reviewFlags="--candidate-review-flags --candidate-review-flags-limit 10"',
@@ -4443,6 +4443,51 @@ describe("runSourceCandidateJobCommand", () => {
       [
         'Source-candidate review flags: totalGroups=4 candidateCount=12 shown=3 flag="broad-safety-query" flaggedTopGroups=1',
         `- flags="broad-safety-query" flagFocus="--candidate-review-flags --candidate-review-flag broad-safety-query --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidate-review-flags-limit 10" claim=vitamin-d-deficiency intervention=vitamin-d ClinicalTrials.gov AU pending=10 topTriage=100/100 topKey=${safeCandidateKey(flaggedKey)} topExternalId="NCT00715676" topIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source clinical-trials --candidate-external-id NCT00715676 --candidates-limit 2" topTitle="Vitamin D safety monitoring trial" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" packet="--candidate-review-packet ${safeCandidateKey(flaggedKey)}" referenceMatches="--candidate-reference-matches ${safeCandidateKey(flaggedKey)}" siblings="--candidate-siblings ${safeCandidateKey(flaggedKey)}" curationStatus="--candidate-curation-status ${safeCandidateKey(flaggedKey)}" curationDraft="--candidate-curation-draft ${safeCandidateKey(flaggedKey)}" overview="--candidate-review-overview --candidate-review-overview-limit 10"`
+      ].join("\n")
+    );
+  });
+
+  it("prints missing-intervention filters in source-candidate review flag focus commands", async () => {
+    const stdout = vi.fn();
+    const candidateKey =
+      "clinicaltrials.gov|au|vitamin-d-safety|nct00715676||vitamin-d-deficiency";
+    const listReviewOverview = vi.fn().mockResolvedValue({
+      candidateCount: 1,
+      totalGroups: 1,
+      groups: [
+        {
+          claimId: "vitamin-d-deficiency",
+          count: 1,
+          interventionId: undefined,
+          region: "AU",
+          source: "ClinicalTrials.gov",
+          topCandidate: sourceCandidate({
+            dedupeKey: candidateKey,
+            source: "ClinicalTrials.gov",
+            externalId: "NCT00715676",
+            query: "Vitamin D safety adverse effects",
+            title: "Calcium fracture prevention trial",
+            url: "https://clinicaltrials.gov/study/NCT00715676",
+            claimId: "vitamin-d-deficiency"
+          }),
+          topIdentityCandidateCount: 1,
+          topTriageScore: 80
+        }
+      ]
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-review-flags", "--candidate-review-flag", "broad-safety-query"],
+        { stdout },
+        { listReviewOverview }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        'Source-candidate review flags: totalGroups=1 candidateCount=1 flag="broad-safety-query" flaggedTopGroups=1',
+        `- flags="broad-safety-query, low-title-query-overlap" flagFocus="--candidate-review-flags --candidate-review-flag broad-safety-query --candidate-claim-id vitamin-d-deficiency --candidate-intervention-missing --candidate-region AU --candidate-source clinical-trials --candidate-review-flags-limit 10" claim=vitamin-d-deficiency intervention=none ClinicalTrials.gov AU pending=1 topTriage=80/100 topKey=${safeCandidateKey(candidateKey)} topExternalId="NCT00715676" topTitle="Calcium fracture prevention trial" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-missing --candidate-region AU --candidate-source clinical-trials --candidates-limit 1" packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}" siblings="--candidate-siblings ${safeCandidateKey(candidateKey)}" curationStatus="--candidate-curation-status ${safeCandidateKey(candidateKey)}" curationDraft="--candidate-curation-draft ${safeCandidateKey(candidateKey)}" overview="--candidate-review-overview --candidate-review-overview-limit 10"`
       ].join("\n")
     );
   });
