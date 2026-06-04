@@ -2983,6 +2983,61 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("prints review flags in source-candidate sibling context", async () => {
+    const stdout = vi.fn();
+    const targetKey =
+      "clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency";
+    const siblingKey =
+      "clinicaltrials.gov|au|vitamin-d-safety|nct00706004|vitamin-d|vitamin-d-deficiency";
+    const listSiblings = vi.fn().mockResolvedValue({
+      target: sourceCandidate({
+        dedupeKey: targetKey,
+        source: "ClinicalTrials.gov",
+        externalId: "NCT00715676",
+        query: "Vitamin D safety adverse effects",
+        title: "Phase 2 Safety and Efficacy Study of a Vitamin D Compound",
+        url: "https://clinicaltrials.gov/study/NCT00715676",
+        interventionId: "vitamin-d",
+        claimId: "vitamin-d-deficiency"
+      }),
+      siblings: [
+        {
+          candidate: sourceCandidate({
+            dedupeKey: siblingKey,
+            source: "ClinicalTrials.gov",
+            externalId: "NCT00706004",
+            query: "Vitamin D safety adverse effects",
+            title: "Calcium fracture prevention trial",
+            url: "https://clinicaltrials.gov/study/NCT00706004",
+            triageScore: 95,
+            interventionId: "vitamin-d",
+            claimId: "vitamin-d-deficiency"
+          }),
+          matchReasons: [
+            "Same query/region",
+            "Same intervention context",
+            "Same claim context"
+          ]
+        }
+      ]
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-siblings", targetKey],
+        { stdout },
+        { listSiblings }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        `Source-candidate siblings: total=1 target="${targetKey}" targetKey=${safeCandidateKey(targetKey)} candidate="Phase 2 Safety and Efficacy Study of a Vitamin D Compound" source="ClinicalTrials.gov" externalId="NCT00715676" query="Vitamin D safety adverse effects" region="AU" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=vitamin-d claim=vitamin-d-deficiency targetReviewFlags="broad-safety-query"`,
+        `- match="Same query/region, Same intervention context, Same claim context" triage=95/100 ClinicalTrials.gov AU dedupe="${siblingKey}" key=${safeCandidateKey(siblingKey)} packet="--candidate-review-packet ${safeCandidateKey(siblingKey)}" externalId="NCT00706004" query="Vitamin D safety adverse effects" title="Calcium fracture prevention trial" url=https://clinicaltrials.gov/study/NCT00706004 decision="Pending review" reviewStatus="Unreviewed AI draft" reviewFlags="broad-safety-query, low-title-query-overlap" intervention=vitamin-d claim=vitamin-d-deficiency`
+      ].join("\n")
+    );
+  });
+
   it("returns a failing exit code when sibling lookup targets a missing candidate", async () => {
     const stderr = vi.fn();
     const listSiblings = vi.fn().mockResolvedValue(null);
@@ -3455,6 +3510,68 @@ describe("runSourceCandidateJobCommand", () => {
         '- PubMed externalId="42141930" candidates=2 pending=2 accepted=0 rejected=0 identityList="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 42141930 --candidates-limit 2" title="Creatine meta-analysis"',
         `  - triage=80/100 dedupe="pubmed|au|creatine-meta|42141930||" key=${safeCandidateKey("pubmed|au|creatine-meta|42141930||")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-meta|42141930||")}" query="creatine meta" decision="Pending review" reviewStatus="Unreviewed AI draft" ingestionJob=job-unscoped`,
         `  - triage=80/100 dedupe="pubmed|au|creatine-strength|42141930|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-strength|42141930|creatine|creatine-strength")}" query="creatine strength" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-strength ingestionJob=job-claim`
+      ].join("\n")
+    );
+  });
+
+  it("prints review flags in duplicate identity candidate rows", async () => {
+    const stdout = vi.fn();
+    const listCandidates = vi.fn();
+    const unscopedKey = "clinicaltrials.gov|au|vitamin-d|nct00715676||";
+    const claimKey =
+      "clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency";
+    const listIdentityGroups = vi.fn().mockResolvedValue([
+      {
+        source: "ClinicalTrials.gov",
+        externalId: "NCT00715676",
+        candidates: [
+          sourceCandidate({
+            dedupeKey: unscopedKey,
+            source: "ClinicalTrials.gov",
+            externalId: "NCT00715676",
+            query: "Vitamin D",
+            title: "Phase 2 Safety and Efficacy Study of a Vitamin D Compound",
+            ingestionJobId: "job-unscoped",
+            interventionId: undefined,
+            claimId: undefined
+          }),
+          sourceCandidate({
+            dedupeKey: claimKey,
+            source: "ClinicalTrials.gov",
+            externalId: "NCT00715676",
+            query: "Vitamin D safety adverse effects",
+            title: "Calcium fracture prevention trial",
+            ingestionJobId: "job-claim",
+            interventionId: "vitamin-d",
+            claimId: "vitamin-d-deficiency"
+          })
+        ]
+      }
+    ]);
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--candidates",
+          "--candidate-duplicates",
+          "--candidate-source",
+          "clinical-trials",
+          "--candidate-external-id",
+          "NCT00715676",
+          "--candidates-limit",
+          "2"
+        ],
+        { stdout },
+        { listCandidates, listIdentityGroups }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate duplicate identities: total=1",
+        '- ClinicalTrials.gov externalId="NCT00715676" candidates=2 pending=2 accepted=0 rejected=0 identityList="--candidates --candidate-duplicates --candidate-source clinical-trials --candidate-external-id NCT00715676 --candidates-limit 2" title="Phase 2 Safety and Efficacy Study of a Vitamin D Compound"',
+        `  - triage=80/100 dedupe="${unscopedKey}" key=${safeCandidateKey(unscopedKey)} packet="--candidate-review-packet ${safeCandidateKey(unscopedKey)}" query="Vitamin D" decision="Pending review" reviewStatus="Unreviewed AI draft" ingestionJob=job-unscoped`,
+        `  - triage=80/100 dedupe="${claimKey}" key=${safeCandidateKey(claimKey)} packet="--candidate-review-packet ${safeCandidateKey(claimKey)}" query="Vitamin D safety adverse effects" decision="Pending review" reviewStatus="Unreviewed AI draft" reviewFlags="broad-safety-query, low-title-query-overlap" intervention=vitamin-d claim=vitamin-d-deficiency ingestionJob=job-claim`
       ].join("\n")
     );
   });

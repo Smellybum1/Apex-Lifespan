@@ -2902,6 +2902,7 @@ function slugReferenceIdPart(value: string) {
 
 function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
   const target = siblings.target;
+  const targetReviewFlagCodes = sourceCandidateReviewFlagCodes(target);
   const headingParts = [
     `Source-candidate siblings: total=${siblings.siblings.length}`,
     `target=${quote(target.dedupeKey)}`,
@@ -2927,6 +2928,10 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
     headingParts.push(`acceptedReference=${target.acceptedReferenceId}`);
   }
 
+  if (targetReviewFlagCodes.length > 0) {
+    headingParts.push(`targetReviewFlags=${quote(targetReviewFlagCodes.join(", "))}`);
+  }
+
   const heading = headingParts.join(" ");
 
   if (siblings.siblings.length === 0) {
@@ -2941,6 +2946,7 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
 
 function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings"][number]) {
   const candidate = sibling.candidate;
+  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
   const parts = [
     `- match=${quote(sibling.matchReasons.join(", "))}`,
     `triage=${candidate.triageScore}/100`,
@@ -2956,6 +2962,10 @@ function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
+
+  if (reviewFlagCodes.length > 0) {
+    parts.push(`reviewFlags=${quote(reviewFlagCodes.join(", "))}`);
+  }
 
   if (candidate.acceptedReferenceId) {
     parts.push(`acceptedReference=${candidate.acceptedReferenceId}`);
@@ -3037,6 +3047,7 @@ function formatSourceCandidateIdentityGroup(group: SourceCandidateIdentityGroup)
 }
 
 function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate) {
+  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
   const parts = [
     "  -",
     `triage=${candidate.triageScore}/100`,
@@ -3047,6 +3058,10 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
+
+  if (reviewFlagCodes.length > 0) {
+    parts.push(`reviewFlags=${quote(reviewFlagCodes.join(", "))}`);
+  }
 
   if (candidate.interventionId) {
     parts.push(`intervention=${candidate.interventionId}`);

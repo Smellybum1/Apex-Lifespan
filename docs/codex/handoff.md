@@ -24,8 +24,8 @@ Refreshed on 2026-06-04 after adding source-candidate review flags. Verify local
 - Candidate list rows are read-only and print `packet="..."` hints plus query, ingestion-job trace fields, and compact `reviewFlags` when applicable.
 - Reference-match headings print read-only `packet="..."` and `groupList="..."` hints; reference drafts remain draft-only.
 - Review packets print safe read-only follow-up commands, duplicate hints when the identity repeats, and explicit human-reviewed accept/reject templates.
-- Sibling rows print read-only `packet="..."` hints for related candidate packet review.
-- Duplicate identity output prints read-only `identityList="..."` and per-candidate `packet="..."` hints.
+- Sibling rows print read-only `packet="..."` hints plus compact `targetReviewFlags`/`reviewFlags` when applicable.
+- Duplicate identity output prints read-only `identityList="..."`, per-candidate `packet="..."` hints, and compact `reviewFlags` when applicable.
 - Curation handoff rows print read-only packet, reference-match, curation-status, and curation-draft hints when rows exist.
 - Curation status and draft output print read-only packet, reference-match, group-list, and paired curation-view hints.
 - Claim-scoped source queries now append compact claim-text anchors after outcome terms before queueing.
@@ -56,6 +56,8 @@ Last CLI snapshot after local ingestion:
 - Read-only review overview smoke showed `topReviewFlags="broad-safety-query"` on broad `vitamin-d-deficiency` ClinicalTrials.gov and PubMed groups; omega-3 triglycerides did not carry a low-overlap flag after token-root overlap handling.
 - Read-only review packet smoke for `NCT00715676` showed detail `reviewCautions` with `broad-safety-query` and no writes.
 - Read-only candidate list smoke for the top `vitamin-d-deficiency` ClinicalTrials.gov rows showed compact `reviewFlags="broad-safety-query"` and no writes.
+- Read-only `NCT00715676` review packet smoke showed `targetReviewFlags` on the sibling heading and row-level sibling `reviewFlags`, including low-title-query-overlap prompts for disconnected sibling titles.
+- Exact output tests cover `reviewFlags` on duplicate identity rows; no live duplicate write smoke was needed.
 - Read-only sibling smoke for repeated PMID `42141930` showed packet hints on each sibling row without writes.
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 - New `creatine-lifespan` candidate: `NCT07451496`, triage 80/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBsb25nZXZpdHklMjBtb3J0YWxpdHklMjBsaWZlc3BhbnxuY3QwNzQ1MTQ5NnxjcmVhdGluZXxjcmVhdGluZS1saWZlc3Bhbg`; review packet showed no accepted-reference match and no siblings.

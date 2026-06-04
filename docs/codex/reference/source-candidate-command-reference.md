@@ -52,10 +52,10 @@ Read-only output rules:
 - `--candidate-detail` prints one record plus read-only packet/reference/sibling/group/curation hints and explanatory `reviewCautions` when a claim-scoped candidate needs extra broad-query/off-claim scrutiny.
 - `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."`, `packet="..."`, top-identity duplicate hints, and `topReviewFlags` when applicable.
 - `--candidates` defaults to pending rows, prints `packet="..."` hints plus query/job trace fields and compact `reviewFlags` when applicable, and can filter by source, region, external id, job, intervention, claim, or decision.
-- `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."` and `packet="..."` hints.
+- `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."`, `packet="..."`, and compact `reviewFlags` when applicable.
 - `--candidate-reference-matches` prints candidate identity plus `packet="..."` and `groupList="..."` hints before eligible curated references or draft-only reference context.
 - `--candidate-review-packet` prints command hints, detail, accepted-reference matches, sibling context, and duplicate hints when the identity repeats.
-- `--candidate-siblings` prints match reasons and `packet="..."` hints for related candidate review.
+- `--candidate-siblings` prints match reasons, `packet="..."` hints, and compact `targetReviewFlags`/`reviewFlags` when applicable.
 - Packet accept/reject templates are copied commands only; they still require explicit human review and do not create references or public evidence.
 - `reviewFlags`/`reviewCautions` are local reviewer prompts, not rejection reasons or evidence-quality scores.
 - Empty `--candidate-reference-matches` output includes a draft-only `referenceDraft=...` line for manual verification; it does not create a reference or mark the candidate accepted.
