@@ -2723,7 +2723,9 @@ function formatSourceCandidateReviewPacketCommandHints(
     `detail=${quote(`--candidate-detail ${key}`)}`,
     `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
     `siblings=${quote(`--candidate-siblings ${key}`)}`,
-    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`
+    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
+    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
+    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`
   ];
 
   if (duplicateIdentityCount > 1) {

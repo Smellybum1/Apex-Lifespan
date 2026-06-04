@@ -57,7 +57,7 @@ Read-only output rules:
 - `--candidates` defaults to pending rows, prints `packet="..."` hints plus query/job trace fields and compact `reviewFlags` plus a `flags="..."` drill-in when applicable, and can filter by source, region, external id, job, intervention, claim, or decision.
 - `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."`, `packet="..."`, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable.
 - `--candidate-reference-matches` prints candidate identity plus `packet="..."`, `groupList="..."`, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable before eligible curated references or draft-only reference context.
-- `--candidate-review-packet` prints command hints, detail, accepted-reference matches, sibling context, duplicate hints when the identity repeats, and review-flag hints when the candidate is flagged.
+- `--candidate-review-packet` prints command hints, detail, accepted-reference matches, sibling context, curation-status/draft hints, duplicate hints when the identity repeats, and review-flag hints when the candidate is flagged.
 - `--candidate-siblings` prints match reasons, `packet="..."` hints, and compact `targetReviewFlags`/`reviewFlags` plus a `flags="..."` drill-in when applicable.
 - Packet accept/reject templates are copied commands only; they still require explicit human review and do not create references or public evidence.
 - `reviewFlags`/`reviewCautions` are local reviewer prompts, not rejection reasons or evidence-quality scores.
