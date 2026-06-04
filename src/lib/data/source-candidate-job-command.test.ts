@@ -4043,7 +4043,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate review queue: total=1",
-        `- triage=100/100 ClinicalTrials.gov AU dedupe="${candidateKey}" key=${safeCandidateKey(candidateKey)} packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" externalId="NCT00715676" query="Vitamin D safety adverse effects" title="Calcium fracture prevention trial" url=https://clinicaltrials.gov/study/NCT00715676 reviewFlags="broad-safety-query, low-title-query-overlap" intervention=vitamin-d claim=vitamin-d-deficiency`
+        `- triage=100/100 ClinicalTrials.gov AU dedupe="${candidateKey}" key=${safeCandidateKey(candidateKey)} packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" externalId="NCT00715676" query="Vitamin D safety adverse effects" title="Calcium fracture prevention trial" url=https://clinicaltrials.gov/study/NCT00715676 reviewFlags="broad-safety-query, low-title-query-overlap" flags="--candidate-review-flags --candidate-review-flags-limit 10" intervention=vitamin-d claim=vitamin-d-deficiency`
       ].join("\n")
     );
   });

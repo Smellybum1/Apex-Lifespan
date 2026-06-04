@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding review-flag drill-ins to review overview rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding review-flag drill-ins to candidate list rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -22,7 +22,7 @@ Refreshed on 2026-06-04 after adding review-flag drill-ins to review overview ro
 - Review overview is read-only and prints region-qualified `list="..."` filtered queue hints, `packet="..."` top-candidate hints, duplicate hints when the top identity repeats, and compact `topReviewFlags` plus `flags="..."` drill-ins when applicable.
 - Review flags view is read-only (`--candidate-review-flags`) and filters the bounded review overview to flagged top candidates only; it can narrow by `--candidate-review-flag broad-safety-query` or `--candidate-review-flag low-title-query-overlap`, with compact `flags`, duplicate hints, `list="..."`, and `packet="..."`.
 - Candidate detail output is read-only and prints packet, reference-match, sibling, group-list, curation-status, curation-draft hints, and explanatory `reviewCautions` for flagged claim-scoped candidates.
-- Candidate list rows are read-only and print `packet="..."` hints plus query, ingestion-job trace fields, and compact `reviewFlags` when applicable.
+- Candidate list rows are read-only and print `packet="..."` hints plus query, ingestion-job trace fields, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Reference-match headings print read-only `packet="..."`, `groupList="..."`, and compact `reviewFlags` when applicable; reference drafts remain draft-only.
 - Review packets print safe read-only follow-up commands, duplicate hints when the identity repeats, and explicit human-reviewed accept/reject templates.
 - Sibling rows print read-only `packet="..."` hints plus compact `targetReviewFlags`/`reviewFlags` when applicable.
@@ -56,7 +56,7 @@ Last CLI snapshot after local ingestion:
 - Read-only review overview smoke returned 9 pending groups across 50 candidates; the `creatine-strength` PubMed top identity showed `topIdentityCandidates=2` and a duplicate-list hint for PMID `42141930`.
 - Read-only review overview smoke showed `topReviewFlags="broad-safety-query"` plus `flags="..."` drill-ins on broad `vitamin-d-deficiency` ClinicalTrials.gov and PubMed groups; omega-3 triglycerides did not carry a low-overlap flag after token-root overlap handling.
 - Read-only review packet smoke for `NCT00715676` showed detail `reviewCautions` with `broad-safety-query` and no writes.
-- Read-only candidate list smoke for the top `vitamin-d-deficiency` ClinicalTrials.gov rows showed compact `reviewFlags="broad-safety-query"` and no writes.
+- Read-only candidate list smoke for the top `vitamin-d-deficiency` ClinicalTrials.gov rows showed compact `reviewFlags="broad-safety-query"` plus `flags="..."` drill-ins and no writes.
 - Read-only `NCT00715676` review packet smoke showed `targetReviewFlags` on the sibling heading and row-level sibling `reviewFlags`, including low-title-query-overlap prompts for disconnected sibling titles.
 - Exact output tests cover `reviewFlags` on duplicate identity rows; no live duplicate write smoke was needed.
 - Exact output tests cover `reviewFlags` on accepted-reference match headings, curation status, curation draft, and curation handoff rows.
@@ -79,11 +79,12 @@ Last CLI snapshot after local ingestion:
 
 Latest local validation:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`
+- `npm run ingest:sources -- --candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 3`
 - `npm run test`
 - `npm run lint`
 - `npm run dev:stop`
 - `npm run typecheck`
+- `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`
 - `npm run ingest:sources -- --summary`
 - `npm run ingest:sources -- --candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10`
 - `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`
