@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import {
   listSourceCandidateIngestionJobs,
   queueClaimSourceCandidateIngestionJobs,
@@ -176,6 +178,7 @@ const DEFAULT_JOB_LIMIT = 1;
 const MAX_JOB_LIMIT = 25;
 const MAX_METADATA_ARRAY_ITEMS = 8;
 const MAX_METADATA_VALUE_LENGTH = 240;
+const CANDIDATE_KEY_B64_PREFIX = "b64:";
 const PRINTABLE_METADATA_KEYS = new Set([
   "abstractAvailable",
   "authors",
@@ -543,19 +546,27 @@ export function parseSourceCandidateJobCommandArgs(
     }
 
     if (arg === "--candidate-detail") {
-      options.candidateDetailDedupeKey = readRequiredValue(args, index, arg);
+      options.candidateDetailDedupeKey = readCandidateKeyValue(args, index, arg);
       index += 1;
       continue;
     }
 
     if (arg === "--candidate-curation-status") {
-      options.candidateCurationStatusDedupeKey = readRequiredValue(args, index, arg);
+      options.candidateCurationStatusDedupeKey = readCandidateKeyValue(
+        args,
+        index,
+        arg
+      );
       index += 1;
       continue;
     }
 
     if (arg === "--candidate-curation-draft") {
-      options.candidateCurationDraftDedupeKey = readRequiredValue(args, index, arg);
+      options.candidateCurationDraftDedupeKey = readCandidateKeyValue(
+        args,
+        index,
+        arg
+      );
       index += 1;
       continue;
     }
@@ -587,13 +598,17 @@ export function parseSourceCandidateJobCommandArgs(
     }
 
     if (arg === "--candidate-reference-matches") {
-      options.candidateReferenceMatchesDedupeKey = readRequiredValue(args, index, arg);
+      options.candidateReferenceMatchesDedupeKey = readCandidateKeyValue(
+        args,
+        index,
+        arg
+      );
       index += 1;
       continue;
     }
 
     if (arg === "--candidate-siblings") {
-      options.candidateSiblingsDedupeKey = readRequiredValue(args, index, arg);
+      options.candidateSiblingsDedupeKey = readCandidateKeyValue(args, index, arg);
       index += 1;
       continue;
     }
@@ -609,7 +624,7 @@ export function parseSourceCandidateJobCommandArgs(
       setCandidateReviewOption(
         options,
         "Accepted",
-        readRequiredValue(args, index, arg)
+        readCandidateKeyValue(args, index, arg)
       );
       index += 1;
       continue;
@@ -619,20 +634,24 @@ export function parseSourceCandidateJobCommandArgs(
       setCandidateReviewOption(
         options,
         "Rejected",
-        readRequiredValue(args, index, arg)
+        readCandidateKeyValue(args, index, arg)
       );
       index += 1;
       continue;
     }
 
     if (arg === "--link-candidate-claim") {
-      options.linkCandidateClaimDedupeKey = readRequiredValue(args, index, arg);
+      options.linkCandidateClaimDedupeKey = readCandidateKeyValue(args, index, arg);
       index += 1;
       continue;
     }
 
     if (arg === "--extract-candidate-study") {
-      options.extractCandidateStudyDedupeKey = readRequiredValue(args, index, arg);
+      options.extractCandidateStudyDedupeKey = readCandidateKeyValue(
+        args,
+        index,
+        arg
+      );
       index += 1;
       continue;
     }
@@ -1765,6 +1784,7 @@ export function commandUsage() {
     "  --update-existing-study           Update the one existing extraction for this accepted reference.",
     "  --candidates                      Print pending source-candidate review queue rows.",
     "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
+    "  <dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse.",
     "  --candidate-source <source>       Filter candidates or handoff by source: pubmed or clinical-trials.",
     "  --candidate-decision <decision>   Candidate decision: pending, accepted, or rejected.",
     "  --candidate-job-id <id>           Filter --candidates or handoff by ingestion job id.",
@@ -1873,6 +1893,7 @@ function formatReviewedSourceCandidate(candidate: SourceCandidate) {
     candidate.source,
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(candidate.dedupeKey)}`,
     `title=${quote(candidate.title)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
@@ -1894,6 +1915,7 @@ function formatLinkedSourceCandidateClaim(result: LinkedSourceCandidateClaim) {
     result.candidate.source,
     result.candidate.region,
     `dedupe=${quote(result.candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(result.candidate.dedupeKey)}`,
     `reference=${result.acceptedReference.id}`,
     `claim=${result.claimLink.claimId}`,
     `created=${result.created}`,
@@ -1916,6 +1938,7 @@ function formatExtractedSourceCandidateStudy(result: ExtractedSourceCandidateStu
     result.candidate.source,
     result.candidate.region,
     `dedupe=${quote(result.candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(result.candidate.dedupeKey)}`,
     `reference=${result.acceptedReference.id}`,
     `study=${result.study.id}`,
     `created=${result.created}`,
@@ -1940,6 +1963,7 @@ function formatSourceCandidateDetail(candidate: SourceCandidate) {
   const lines = [
     "Source-candidate detail",
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(candidate.dedupeKey)}`,
     `source=${quote(candidate.source)}`,
     `externalId=${quote(candidate.externalId)}`,
     `region=${quote(candidate.region)}`,
@@ -2006,6 +2030,7 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
     "Source-candidate curation draft",
     "readOnly=true",
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(candidate.dedupeKey)}`,
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`,
     `status=${quote(status.status)}`,
@@ -2095,6 +2120,7 @@ function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStat
   const lines = [
     "Source-candidate curation status",
     `dedupe=${quote(status.candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(status.candidate.dedupeKey)}`,
     `decision=${quote(status.candidate.decision)}`,
     `reviewStatus=${quote(status.candidate.reviewStatus)}`,
     `status=${quote(status.status)}`,
@@ -2161,6 +2187,7 @@ function formatSourceCandidateCurationHandoffItem(
     candidate.source,
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(candidate.dedupeKey)}`,
     `title=${quote(candidate.title)}`
   ];
 
@@ -2230,6 +2257,7 @@ function formatSourceCandidateReferenceMatchHeading(
   const parts = [
     `Source-candidate accepted-reference matches: total=${matches.references.length}`,
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(candidate.dedupeKey)}`,
     `candidate=${quote(candidate.title)}`,
     `source=${quote(candidate.source)}`,
     `externalId=${quote(candidate.externalId)}`,
@@ -2269,6 +2297,7 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
   const headingParts = [
     `Source-candidate siblings: total=${siblings.siblings.length}`,
     `target=${quote(target.dedupeKey)}`,
+    `targetKey=${safeCandidateKey(target.dedupeKey)}`,
     `candidate=${quote(target.title)}`,
     `source=${quote(target.source)}`,
     `externalId=${quote(target.externalId)}`,
@@ -2310,6 +2339,7 @@ function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings
     candidate.source,
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(candidate.dedupeKey)}`,
     `externalId=${quote(candidate.externalId)}`,
     `query=${quote(candidate.query)}`,
     `title=${quote(candidate.title)}`,
@@ -2365,6 +2395,7 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
     candidate.source,
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(candidate.dedupeKey)}`,
     `title=${quote(candidate.title)}`,
     `url=${candidate.url}`
   ];
@@ -2565,6 +2596,44 @@ function readRequiredValue(args: readonly string[], index: number, option: strin
   }
 
   return value;
+}
+
+function readCandidateKeyValue(
+  args: readonly string[],
+  index: number,
+  option: string
+) {
+  return decodeCandidateKeyValue(readRequiredValue(args, index, option), option);
+}
+
+function decodeCandidateKeyValue(value: string, option: string) {
+  if (!value.startsWith(CANDIDATE_KEY_B64_PREFIX)) {
+    return value;
+  }
+
+  const encoded = value.slice(CANDIDATE_KEY_B64_PREFIX.length);
+
+  if (!encoded || !/^[A-Za-z0-9_-]+={0,2}$/.test(encoded)) {
+    throw new Error(`${option} has an invalid b64 candidate key.`);
+  }
+
+  try {
+    const decoded = Buffer.from(encoded, "base64url").toString("utf8");
+    const normalisedInput = encoded.replace(/=+$/g, "");
+    const normalisedRoundTrip = Buffer.from(decoded, "utf8").toString("base64url");
+
+    if (!decoded || normalisedInput !== normalisedRoundTrip) {
+      throw new Error("Candidate key did not round-trip.");
+    }
+
+    return decoded;
+  } catch {
+    throw new Error(`${option} has an invalid b64 candidate key.`);
+  }
+}
+
+function safeCandidateKey(dedupeKey: string) {
+  return `${CANDIDATE_KEY_B64_PREFIX}${Buffer.from(dedupeKey, "utf8").toString("base64url")}`;
 }
 
 function readPositiveInteger(

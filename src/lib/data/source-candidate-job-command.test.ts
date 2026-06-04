@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -5,6 +7,10 @@ import {
   parseSourceCandidateJobCommandArgs,
   runSourceCandidateJobCommand
 } from "@/lib/data/source-candidate-job-command";
+
+function safeCandidateKey(dedupeKey: string) {
+  return `b64:${Buffer.from(dedupeKey, "utf8").toString("base64url")}`;
+}
 
 describe("commandUsage", () => {
   it("describes source-candidate review guardrails", () => {
@@ -19,6 +25,9 @@ describe("commandUsage", () => {
     );
     expect(commandUsage()).toContain(
       "--candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
+    );
+    expect(commandUsage()).toContain(
+      "<dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse."
     );
     expect(commandUsage()).toContain(
       "--review-note <note>              Human review note; required for --reject-candidate."
@@ -88,6 +97,8 @@ describe("parseSourceCandidateJobCommandArgs", () => {
   });
 
   it("parses read-only source-candidate detail mode", () => {
+    const encodedKey = safeCandidateKey("pubmed|au|creatine|28615996");
+
     expect(
       parseSourceCandidateJobCommandArgs([
         "--candidate-detail",
@@ -99,6 +110,13 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       limit: 1,
       summary: false
     });
+    expect(
+      parseSourceCandidateJobCommandArgs(["--candidate-detail", encodedKey])
+        .candidateDetailDedupeKey
+    ).toBe("pubmed|au|creatine|28615996");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-detail", "b64:not valid"])
+    ).toThrow("--candidate-detail has an invalid b64 candidate key.");
   });
 
   it("parses read-only source-candidate reference match mode", () => {
@@ -254,6 +272,14 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       reviewNote: "Full-text reviewed.",
       summary: false
     });
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--accept-candidate",
+        safeCandidateKey("pubmed|au|creatine|28615996"),
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ]).reviewCandidateDedupeKey
+    ).toBe("pubmed|au|creatine|28615996");
 
     expect(
       parseSourceCandidateJobCommandArgs([
@@ -1642,6 +1668,7 @@ describe("runSourceCandidateJobCommand", () => {
       [
         "Source-candidate detail",
         'dedupe="pubmed|au|creatine|28615996"',
+        `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
         'source="PubMed"',
         'externalId="28615996"',
         'region="AU"',
@@ -1702,6 +1729,7 @@ describe("runSourceCandidateJobCommand", () => {
       [
         "Source-candidate detail",
         'dedupe="pubmed|au|creatine|28615996"',
+        `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
         'source="PubMed"',
         'externalId="28615996"',
         'region="AU"',
@@ -1800,6 +1828,7 @@ describe("runSourceCandidateJobCommand", () => {
       [
         "Source-candidate curation status",
         'dedupe="pubmed|au|creatine|28615996"',
+        `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
         'decision="Accepted"',
         'reviewStatus="Human reviewed"',
         'status="Public source packet ready"',
@@ -1858,6 +1887,7 @@ describe("runSourceCandidateJobCommand", () => {
       [
         "Source-candidate curation status",
         'dedupe="pubmed|au|creatine|28615996"',
+        `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
         'decision="Accepted"',
         'reviewStatus="Human reviewed"',
         'status="Accepted reference mismatch"',
@@ -1898,6 +1928,7 @@ describe("runSourceCandidateJobCommand", () => {
       [
         "Source-candidate curation status",
         'dedupe="pubmed|au|creatine|28615996"',
+        `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
         'decision="Pending review"',
         'reviewStatus="Unreviewed AI draft"',
         'status="Not accepted"',
@@ -2012,6 +2043,7 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate curation draft",
         "readOnly=true",
         'dedupe="pubmed|au|creatine|28615996"',
+        `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
         'decision="Accepted"',
         'reviewStatus="Human reviewed"',
         'status="Claim link missing"',
@@ -2073,6 +2105,7 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate curation draft",
         "readOnly=true",
         'dedupe="pubmed|au|creatine|28615996"',
+        `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
         'decision="Pending review"',
         'reviewStatus="Unreviewed AI draft"',
         'status="Not accepted"',
@@ -2191,8 +2224,8 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate curation handoff: total=2",
-        '- status="Extraction pending" nextAction="Add structured study extraction for the accepted reference." publicSourcePacketReady=false PubMed AU dedupe="pubmed|au|creatine|28615996" title="Creatine position stand" acceptedReference=ref-creatine-position-stand candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0',
-        '- status="Claim link missing" nextAction="Link the accepted reference to the candidate claim before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" title="Creatine and aging" acceptedReference=trial-nct123 candidateClaim=creatine-aging candidateClaimLinked=false claimLinks=0 studies=1'
+        `- status="Extraction pending" nextAction="Add structured study extraction for the accepted reference." publicSourcePacketReady=false PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} title="Creatine position stand" acceptedReference=ref-creatine-position-stand candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0`,
+        `- status="Claim link missing" nextAction="Link the accepted reference to the candidate claim before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} title="Creatine and aging" acceptedReference=trial-nct123 candidateClaim=creatine-aging candidateClaimLinked=false claimLinks=0 studies=1`
       ].join("\n")
     );
   });
@@ -2265,7 +2298,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
-        'Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996" candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-existing',
+        `Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-existing`,
         '- reference="ref-creatine-position-stand" source="PubMed" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ identifier="PMID: 28615996" year=2017',
         '- reference="ref-creatine-publisher" source="PubMed" title="Creatine\\npublisher record" url=https://publisher.example/creatine-position-stand'
       ].join("\n")
@@ -2296,7 +2329,7 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(0);
 
     expect(stdout).toHaveBeenCalledWith(
-      'Source-candidate accepted-reference matches: total=0 dedupe="clinicaltrials.gov|au|creatine|nct123" candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" url=https://clinicaltrials.gov/study/NCT123 decision="Accepted" reviewStatus="Human reviewed"'
+      `Source-candidate accepted-reference matches: total=0 dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" url=https://clinicaltrials.gov/study/NCT123 decision="Accepted" reviewStatus="Human reviewed"`
     );
   });
 
@@ -2386,9 +2419,9 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
-        'Source-candidate siblings: total=2 target="pubmed|au|creatine|28615996|creatine|creatine-strength" candidate="Creatine position stand" source="PubMed" externalId="28615996" query="creatine strength" region="AU" decision="Accepted" reviewStatus="Human reviewed" intervention=creatine claim=creatine-strength acceptedReference=ref-creatine-position-stand',
-        '- match="Same source/external id, Same intervention context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine-aging|28615996|creatine|aging" externalId="28615996" query="creatine aging" title="Creatine position stand duplicate" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-aging',
-        '- match="Same query/region, Same intervention context, Same claim context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine|999999|creatine|creatine-strength" externalId="999999" query="creatine strength" title="Creatine strength companion" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Rejected" reviewStatus="Human reviewed" reviewed=2026-06-02T04:00:00.000Z note="Wrong population." intervention=creatine claim=creatine-strength'
+        `Source-candidate siblings: total=2 target="pubmed|au|creatine|28615996|creatine|creatine-strength" targetKey=${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")} candidate="Creatine position stand" source="PubMed" externalId="28615996" query="creatine strength" region="AU" decision="Accepted" reviewStatus="Human reviewed" intervention=creatine claim=creatine-strength acceptedReference=ref-creatine-position-stand`,
+        `- match="Same source/external id, Same intervention context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine-aging|28615996|creatine|aging" key=${safeCandidateKey("pubmed|au|creatine-aging|28615996|creatine|aging")} externalId="28615996" query="creatine aging" title="Creatine position stand duplicate" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-aging`,
+        `- match="Same query/region, Same intervention context, Same claim context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine|999999|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|999999|creatine|creatine-strength")} externalId="999999" query="creatine strength" title="Creatine strength companion" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Rejected" reviewStatus="Human reviewed" reviewed=2026-06-02T04:00:00.000Z note="Wrong population." intervention=creatine claim=creatine-strength`
       ].join("\n")
     );
   });
@@ -2416,7 +2449,7 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(0);
 
     expect(stdout).toHaveBeenCalledWith(
-      'Source-candidate siblings: total=0 target="clinicaltrials.gov|au|creatine|nct123" candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" query="creatine aging" region="AU" decision="Pending review" reviewStatus="Unreviewed AI draft"'
+      `Source-candidate siblings: total=0 target="clinicaltrials.gov|au|creatine|nct123" targetKey=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" query="creatine aging" region="AU" decision="Pending review" reviewStatus="Unreviewed AI draft"`
     );
   });
 
@@ -2478,7 +2511,7 @@ describe("runSourceCandidateJobCommand", () => {
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
-      '[Accepted] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" title="Creatine position stand" reviewStatus="Human reviewed" acceptedReference=ref-creatine-position-stand note="Full-text reviewed."'
+      `[Accepted] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} title="Creatine position stand" reviewStatus="Human reviewed" acceptedReference=ref-creatine-position-stand note="Full-text reviewed."`
     );
   });
 
@@ -2521,7 +2554,7 @@ describe("runSourceCandidateJobCommand", () => {
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
-      '[Rejected] source-candidate ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" title="Creatine and aging" reviewStatus="Human reviewed" note="Not relevant to the consumer claim."'
+      `[Rejected] source-candidate ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} title="Creatine and aging" reviewStatus="Human reviewed" note="Not relevant to the consumer claim."`
     );
   });
 
@@ -2620,7 +2653,7 @@ describe("runSourceCandidateJobCommand", () => {
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
-      '[CLAIM_LINKED] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" reference=ref-creatine-position-stand claim=creatine-strength created=true relevance=4 status="Extraction pending" publicSourcePacketReady=false nextAction="Add structured study extraction for the accepted reference." note="Primary source for this claim."'
+      `[CLAIM_LINKED] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} reference=ref-creatine-position-stand claim=creatine-strength created=true relevance=4 status="Extraction pending" publicSourcePacketReady=false nextAction="Add structured study extraction for the accepted reference." note="Primary source for this claim."`
     );
   });
 
@@ -2732,7 +2765,7 @@ describe("runSourceCandidateJobCommand", () => {
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
-      '[STUDY_EXTRACTED] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" reference=ref-creatine-position-stand study=study-creatine-issn created=true status="Public source packet ready" publicSourcePacketReady=true nextAction="Review for public source packet inclusion." title="Creatine position stand extraction" candidateClaim=creatine-strength year=2017'
+      `[STUDY_EXTRACTED] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} reference=ref-creatine-position-stand study=study-creatine-issn created=true status="Public source packet ready" publicSourcePacketReady=true nextAction="Review for public source packet inclusion." title="Creatine position stand extraction" candidateClaim=creatine-strength year=2017`
     );
   });
 
@@ -2813,8 +2846,8 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate review queue: total=2",
-        '- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine|creatine-strength" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ intervention=creatine claim=creatine-strength',
-        '- triage=70/100 ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" title="Creatine and aging" url=https://clinicaltrials.gov/study/NCT123'
+        `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")} title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ intervention=creatine claim=creatine-strength`,
+        `- triage=70/100 ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} title="Creatine and aging" url=https://clinicaltrials.gov/study/NCT123`
       ].join("\n")
     );
   });
@@ -2860,7 +2893,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         'Source-candidate review records: decision="Accepted": total=1',
-        '- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-creatine-position-stand reviewed=2026-06-02T03:00:00.000Z note="Matched PMID and claim context." intervention=creatine claim=creatine-strength'
+        `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-creatine-position-stand reviewed=2026-06-02T03:00:00.000Z note="Matched PMID and claim context." intervention=creatine claim=creatine-strength`
       ].join("\n")
     );
   });
@@ -2904,7 +2937,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate review queue: total=1",
-        '- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine-strength" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/'
+        `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|28615996|creatine-strength")} title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/`
       ].join("\n")
     );
   });

@@ -67,6 +67,8 @@ npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-hand
 npm run ingest:sources -- --summary
 ```
 
+Candidate-oriented output prints both the raw `dedupe="..."` value and a shell-safe `key=b64:...` value. On Windows, prefer copying the `key=b64:...` value into any command argument shown as `<dedupe-key>`; all detail, sibling, reference-match, curation, review, claim-link, and study-extraction commands accept either form.
+
 Review actions:
 
 ```bash
@@ -99,6 +101,7 @@ npm run ingest:sources -- --clinical-trial-page-size 10
 - `--queue-claim-sources` prints the generated PubMed and ClinicalTrials.gov query text plus queued or existing job ids.
 - `--summary` includes ingestion job counts by source, region, and status before candidate backlog and curation handoff counts.
 - `--candidates` defaults to pending rows and can filter by source, job, intervention, claim, or decision.
+- Candidate-oriented outputs include `key=b64:...` next to raw dedupe keys so pipe-heavy keys can be reused safely from Windows shells.
 - `--candidate-detail` prints one candidate with triage reasons, review fields, and compact metadata.
 - `--candidate-curation-draft` prints one candidate's accepted-reference status plus read-only claim-link and study-extraction draft fields; it does not create references, claim links, studies, or decisions.
 - `--candidate-siblings` prints the target candidate plus same-source/external-id and same-query/context sibling rows with match reasons; it is read-only curation context, not review automation.

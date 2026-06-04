@@ -33,6 +33,7 @@ Refreshed on 2026-06-04. Treat the worktree as authoritative: run `git status -s
 - `--summary` is read-only and now shows source-candidate ingestion job status counts before backlog and curation handoff counts.
 - `--jobs --jobs-status queued` lists only queued source-candidate ingestion jobs.
 - `--jobs-source`, `--jobs-region`, `--jobs-intervention-id`, and `--jobs-claim-id` can narrow read-only job lists.
+- Candidate-oriented output includes `key=b64:...`; use that shell-safe value on Windows anywhere a source-candidate `<dedupe-key>` is accepted.
 - Ingestion job identity is source/query/region plus optional intervention and claim context; PostgreSQL partial unique indexes separate unscoped, intervention, claim, and intervention+claim queue buckets.
 - Queueing validates requested intervention/claim context before job creation.
 
