@@ -2684,6 +2684,8 @@ describe("runSourceCandidateJobCommand", () => {
         decision: "Accepted",
         reviewStatus: "Human reviewed",
         acceptedReferenceId: "ref-creatine-position-stand",
+        reviewedAt: "2026-06-02T03:00:00.000Z",
+        reviewNote: "Matched PMID and claim context.",
         claimId: "creatine-strength"
       }),
       candidateClaimLinked: true,
@@ -2733,6 +2735,8 @@ describe("runSourceCandidateJobCommand", () => {
         'status="Public source packet ready"',
         'nextAction="Review for public source packet inclusion."',
         "publicSourcePacketReady=true",
+        "reviewed=2026-06-02T03:00:00.000Z",
+        'note="Matched PMID and claim context."',
         "acceptedReference=ref-creatine-position-stand",
         'acceptedReferenceTitle="Creatine position stand"',
         "acceptedReferenceUrl=https://pubmed.ncbi.nlm.nih.gov/28615996/",
@@ -2956,6 +2960,8 @@ describe("runSourceCandidateJobCommand", () => {
           decision: "Accepted",
           reviewStatus: "Human reviewed",
           acceptedReferenceId: "ref-creatine-position-stand",
+          reviewedAt: "2026-06-02T03:00:00.000Z",
+          reviewNote: "Matched PMID and claim context.",
           claimId: "creatine-strength"
         }),
         candidateClaimLinked: false,
@@ -3026,6 +3032,8 @@ describe("runSourceCandidateJobCommand", () => {
         'status="Claim link missing"',
         'nextAction="Link the accepted reference to the candidate claim before public packet review."',
         "publicSourcePacketReady=false",
+        "reviewed=2026-06-02T03:00:00.000Z",
+        'note="Matched PMID and claim context."',
         "acceptedReference=ref-creatine-position-stand",
         'acceptedReferenceTitle="Creatine position stand"',
         "acceptedReferenceUrl=https://pubmed.ncbi.nlm.nih.gov/28615996/",
@@ -3195,6 +3203,8 @@ describe("runSourceCandidateJobCommand", () => {
           decision: "Accepted",
           reviewStatus: "Human reviewed",
           acceptedReferenceId: "ref-creatine-position-stand",
+          reviewedAt: "2026-06-02T03:00:00.000Z",
+          reviewNote: "Matched PMID and claim context.",
           claimId: "creatine-strength"
         }),
         candidateClaimLinked: true,
@@ -3220,6 +3230,8 @@ describe("runSourceCandidateJobCommand", () => {
           decision: "Accepted",
           reviewStatus: "Human reviewed",
           acceptedReferenceId: "trial-nct123",
+          reviewedAt: "2026-06-02T04:00:00.000Z",
+          reviewNote: "Needs claim link before promotion.",
           claimId: "creatine-aging"
         }),
         candidateClaimLinked: false,
@@ -3277,8 +3289,8 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate curation handoff: total=2",
-        `- status="Extraction pending" nextAction="Add structured study extraction for the accepted reference." publicSourcePacketReady=false PubMed AU dedupe="pubmed|au|creatine|28615996" key=${creatineKey} packet="--candidate-review-packet ${creatineKey}" referenceMatches="--candidate-reference-matches ${creatineKey}" siblings="--candidate-siblings ${creatineKey}" curationStatus="--candidate-curation-status ${creatineKey}" curationDraft="--candidate-curation-draft ${creatineKey}" title="Creatine position stand" acceptedReference=ref-creatine-position-stand candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0`,
-        `- status="Claim link missing" nextAction="Link the accepted reference to the candidate claim before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${agingKey} packet="--candidate-review-packet ${agingKey}" referenceMatches="--candidate-reference-matches ${agingKey}" siblings="--candidate-siblings ${agingKey}" curationStatus="--candidate-curation-status ${agingKey}" curationDraft="--candidate-curation-draft ${agingKey}" title="Creatine and aging" acceptedReference=trial-nct123 candidateClaim=creatine-aging candidateClaimLinked=false claimLinks=0 studies=1`
+        `- status="Extraction pending" nextAction="Add structured study extraction for the accepted reference." publicSourcePacketReady=false PubMed AU dedupe="pubmed|au|creatine|28615996" key=${creatineKey} packet="--candidate-review-packet ${creatineKey}" referenceMatches="--candidate-reference-matches ${creatineKey}" siblings="--candidate-siblings ${creatineKey}" curationStatus="--candidate-curation-status ${creatineKey}" curationDraft="--candidate-curation-draft ${creatineKey}" title="Creatine position stand" acceptedReference=ref-creatine-position-stand reviewed=2026-06-02T03:00:00.000Z note="Matched PMID and claim context." candidateClaim=creatine-strength candidateClaimLinked=true claimLinks=1 studies=0`,
+        `- status="Claim link missing" nextAction="Link the accepted reference to the candidate claim before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${agingKey} packet="--candidate-review-packet ${agingKey}" referenceMatches="--candidate-reference-matches ${agingKey}" siblings="--candidate-siblings ${agingKey}" curationStatus="--candidate-curation-status ${agingKey}" curationDraft="--candidate-curation-draft ${agingKey}" title="Creatine and aging" acceptedReference=trial-nct123 reviewed=2026-06-02T04:00:00.000Z note="Needs claim link before promotion." candidateClaim=creatine-aging candidateClaimLinked=false claimLinks=0 studies=1`
       ].join("\n")
     );
   });

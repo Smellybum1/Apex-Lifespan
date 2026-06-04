@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candidate and improving mixed-decision duplicate identity review/overview surfacing. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candidate and improving mixed-decision duplicate identity plus curation review-audit surfacing. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -18,7 +18,7 @@ Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candid
 - `npm run ingest:sources` now prints the read-only summary; queued ingestion runs require explicit `--run-next` or `--job-id`.
 - Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover static, dynamic, and CommonJS `source-candidate*` route imports.
 - Source-candidate acceptance/rejection, claim linking, and study extraction stay explicit human-reviewed local writes; persistence accepts only accepted/rejected review decisions, accept/reject decisions require human review notes at CLI, type, and persistence layers, rejected decisions cannot carry accepted-reference ids, study extraction preflights required manual fields and explicit source types before DB reads, and accepted candidates still need curated references, claim links, and structured study extraction before public use.
-- Source-candidate CLI output now provides copyable read-only review/curation drill-ins and Not-accepted accept-gate hints across summary, jobs, queues, detail, packets, reference matches, siblings, duplicates, and curation views; see `docs/codex/source-candidate-workflow.md` for the compact catalog.
+- Source-candidate CLI output now provides copyable read-only review/curation drill-ins and Not-accepted accept-gate hints across summary, jobs, queues, detail, packets, reference matches, siblings, duplicates, and curation views; curation status/draft/handoff rows include accepted-reference/review-note fields for reviewed rows; see `docs/codex/source-candidate-workflow.md` for the compact catalog.
 - Packet command hints include accepted-reference match counts and explicit accept-gate booleans; packet/reference/sibling/curation drill-ins share one local formatter helper in `src/lib/data/source-candidate-job-command.ts`, and exact CLI output is covered by source-candidate command tests.
 - Candidate filters support read-only `--candidate-claim-missing` and `--candidate-intervention-missing`; generated list hints use them when a group or candidate lacks claim/intervention context.
 - Duplicate identity review surfaces include `duplicateCaution` prompts plus exact read-only duplicate/list hints, accepted-reference/review-note fields for reviewed rows, and explicit `intervention`/`claim` values, including `none`, so repeated PMID/NCT identities can be reviewed in scoped or unscoped context before any decision.
@@ -34,7 +34,7 @@ Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candid
 - Last local snapshot: 15 ingestion jobs total, 0 queued jobs, 49 pending candidates, 1 accepted candidate, and curation handoff `total=1`.
 - Pending backlog split: PubMed AU 19 and ClinicalTrials.gov AU 30.
 - Accepted candidate: scoped PubMed AU `PMID 42141930` for `claim=creatine-strength` / `intervention=creatine`, accepted with `ref-pubmed-42141930` and human review note: "Human reviewed PMID 42141930; relevant to creatine and lean mass/strength outcomes, but needs curated reference before promotion."
-- Current curation handoff status for accepted `PMID 42141930`: `Claim link missing`, `publicSourcePacketReady=false`; do not link or extract without explicit human-owned curation.
+- Current curation handoff status for accepted `PMID 42141930`: `Claim link missing`, `publicSourcePacketReady=false`; curation status/draft/handoff show the stored `reviewed` timestamp and human review note, but do not link or extract without explicit human-owned curation.
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 - Review overview currently has 9 pending groups. Useful entry point: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
 - Review flags currently show 3 flagged top groups: two broad `vitamin-d-deficiency` safety-query groups and one `creatine-lifespan` low-title-overlap group. Useful focus command: `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`.
@@ -44,6 +44,17 @@ Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candid
 - Notable current groups: `creatine-lifespan` has one ClinicalTrials.gov lead (`NCT07451496`); `omega-3-triglycerides` has ClinicalTrials.gov leads; `omega-3-cv-events` has PubMed and ClinicalTrials.gov leads. Regenerate exact packet keys from the overview or candidate lists.
 
 ## Latest Local Validation
+
+Current code validation for curation review audit fields:
+- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --candidate-curation-status <accepted PMID 42141930 key>` (read-only smoke)
+- `npm run ingest:sources -- --candidate-curation-draft <accepted PMID 42141930 key>` (read-only smoke)
+- `npm run ingest:sources -- --candidate-curation-handoff` (read-only smoke)
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `git diff --check` (only LF-to-CRLF warnings for modified files)
 
 Current closeout validation:
 - `npm run ingest:sources -- --summary` (read-only state check)

@@ -2970,6 +2970,14 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
     );
   }
 
+  if (candidate.reviewedAt) {
+    lines.push(`reviewed=${candidate.reviewedAt}`);
+  }
+
+  if (candidate.reviewNote) {
+    lines.push(`note=${quote(candidate.reviewNote)}`);
+  }
+
   if (reviewFlagFields.length > 0) {
     lines.push(...reviewFlagFields);
   }
@@ -3076,6 +3084,14 @@ function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStat
     );
   }
 
+  if (status.candidate.reviewedAt) {
+    lines.push(`reviewed=${status.candidate.reviewedAt}`);
+  }
+
+  if (status.candidate.reviewNote) {
+    lines.push(`note=${quote(status.candidate.reviewNote)}`);
+  }
+
   if (reviewFlagFields.length > 0) {
     lines.push(...reviewFlagFields);
   }
@@ -3173,6 +3189,14 @@ function formatSourceCandidateCurationHandoffItem(
 
   if (status.acceptedReferenceId) {
     parts.push(`acceptedReference=${status.acceptedReferenceId}`);
+  }
+
+  if (candidate.reviewedAt) {
+    parts.push(`reviewed=${candidate.reviewedAt}`);
+  }
+
+  if (candidate.reviewNote) {
+    parts.push(`note=${quote(candidate.reviewNote)}`);
   }
 
   if (candidate.claimId) {
