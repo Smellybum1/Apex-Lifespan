@@ -3440,15 +3440,17 @@ function formatSourceCandidateCurationHandoffItem(
   options: { duplicateIdentityCandidateCount?: number } = {}
 ) {
   const candidate = status.candidate;
+  const key = safeCandidateKey(candidate.dedupeKey);
   const reviewFlagFields = sourceCandidateReviewFlagFields("reviewFlags", candidate);
   const parts = [
     `- status=${quote(status.status)}`,
     `nextAction=${quote(status.nextAction)}`,
     `publicSourcePacketReady=${status.publicSourcePacketReady}`,
+    ...formatSourceCandidateCurationWriteFields(status, key),
     candidate.source,
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
-    `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    `key=${key}`,
     ...formatSourceCandidateCurationHandoffCommandHints(candidate),
     `title=${quote(candidate.title)}`
   ];
@@ -3488,6 +3490,75 @@ function formatSourceCandidateCurationHandoffItem(
   parts.push(`studies=${status.studies.length}`);
 
   return parts.join(" ");
+}
+
+function formatSourceCandidateCurationWriteFields(
+  status: SourceCandidateCurationStatus,
+  key: string
+) {
+  const assessment = sourceCandidateCurationWriteAssessment(status);
+  const fields = [
+    `nextWrite=${quote(assessment.nextWrite)}`,
+    `writeReady=${assessment.ready}`
+  ];
+
+  if (assessment.blockedUntil) {
+    fields.push(`blockedUntil=${quote(assessment.blockedUntil)}`);
+  }
+
+  if (assessment.nextWrite !== "none") {
+    fields.push(`writeReview=${quote(`--candidate-curation-draft ${key}`)}`);
+  }
+
+  return fields;
+}
+
+function sourceCandidateCurationWriteAssessment(
+  status: SourceCandidateCurationStatus
+) {
+  switch (status.status) {
+    case "Claim link missing":
+      return status.candidate.claimId && status.acceptedReferenceId
+        ? { nextWrite: "claimLink", ready: true }
+        : {
+            blockedUntil:
+              "Accepted candidate claim id and reference required before claim linking.",
+            nextWrite: "claimLink",
+            ready: false
+          };
+    case "Extraction pending":
+      return {
+        nextWrite: "studyExtraction",
+        ...sourceCandidateStudyExtractionWriteReadiness(status)
+      };
+    case "Public source packet ready":
+      return { nextWrite: "none", ready: false };
+    case "Candidate claim missing":
+      return {
+        blockedUntil: "Accepted candidate claim id required before claim linking.",
+        nextWrite: "claimLink",
+        ready: false
+      };
+    case "Accepted reference missing":
+      return {
+        blockedUntil: "Accepted candidate reference required before claim linking.",
+        nextWrite: "claimLink",
+        ready: false
+      };
+    case "Accepted reference mismatch":
+      return {
+        blockedUntil:
+          "Accepted candidate reference must match candidate source and external id.",
+        nextWrite: "claimLink",
+        ready: false
+      };
+    case "Not accepted":
+      return {
+        blockedUntil: "Accepted candidate review decision required before curation writes.",
+        nextWrite: "reviewDecision",
+        ready: false
+      };
+  }
 }
 
 function formatSourceCandidateCurationHandoffCommandHints(
