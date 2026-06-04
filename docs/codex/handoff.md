@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding curation hints to duplicate identity rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding curation hints to sibling rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -26,7 +26,7 @@ Refreshed on 2026-06-04 after adding curation hints to duplicate identity rows. 
 - Candidate list rows are read-only and print `packet="..."`, `referenceMatches="..."`, and `siblings="..."` hints, query, ingestion-job trace fields, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Reference-match headings print read-only `packet="..."`, `siblings="..."`, `groupList="..."`, curation-status/draft hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable; reference drafts remain draft-only.
 - Review packets print safe read-only follow-up commands, curation-status/draft hints, duplicate hints when the identity repeats, review-flag hints when the candidate is flagged, and explicit human-reviewed accept/reject templates.
-- Sibling headings print read-only `targetPacket="..."` and `targetReferenceMatches="..."` hints, and sibling rows print `packet="..."` and `referenceMatches="..."` hints plus compact `targetReviewFlags`/`reviewFlags` and `flags="..."` drill-ins when applicable.
+- Sibling headings print read-only `targetPacket="..."`, `targetReferenceMatches="..."`, and target curation-status/draft hints, and sibling rows print `packet="..."`, `referenceMatches="..."`, and curation-status/draft hints plus compact `targetReviewFlags`/`reviewFlags` and `flags="..."` drill-ins when applicable.
 - Duplicate identity output prints read-only `identityList="..."`, per-candidate `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Curation handoff rows print read-only packet, reference-match, sibling, curation-status, curation-draft hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
 - Curation status and draft output print read-only packet, reference-match, sibling, group-list, paired curation-view hints, and compact `reviewFlags` plus `flags="..."` drill-ins when applicable.
@@ -59,14 +59,14 @@ Last CLI snapshot after local ingestion:
 - Read-only `NCT00715676` review packet smoke showed curation-status/draft hints plus `reviewFlags="--candidate-review-flags --candidate-review-flags-limit 10"` in the top safe command hints without writes.
 - Read-only `NCT00715676` detail smoke showed compact `reviewFlags="broad-safety-query"` plus `flags="..."` and explanatory `reviewCautions` with no writes.
 - Read-only candidate list smoke for the top `vitamin-d-deficiency` ClinicalTrials.gov rows showed packet/reference-match/sibling hints, compact `reviewFlags="broad-safety-query"` plus `flags="..."` drill-ins, and no writes.
-- Read-only `NCT00715676` sibling smoke showed `targetPacket`, `targetReferenceMatches`, `targetReviewFlags`, and `flags="..."` on the heading plus row-level `referenceMatches`, `reviewFlags`, and `flags="..."`, including low-title-query-overlap prompts for disconnected sibling titles.
+- Read-only `NCT00715676` sibling smoke showed `targetPacket`, `targetReferenceMatches`, target curation-status/draft, `targetReviewFlags`, and `flags="..."` on the heading plus row-level `referenceMatches`, curation-status/draft, `reviewFlags`, and `flags="..."`, including low-title-query-overlap prompts for disconnected sibling titles.
 - Exact output tests cover `reviewFlags` plus `flags="..."` drill-ins on sibling headings/rows, duplicate identity rows, accepted-reference match headings, curation status, curation draft, and non-empty curation handoff rows; helper consolidation preserved the same output, and no live duplicate write smoke was needed.
 - Read-only `NCT00715676` reference-match smoke showed curation-status/draft hints, compact `reviewFlags="broad-safety-query"` plus a `flags="..."` drill-in without writes; paired curation-status/draft smokes remained read-only.
 - Read-only curation handoff smoke still returned `total=0`; non-empty flagged handoff drill-ins are covered by exact output tests.
 - Read-only summary smoke showed `flag="broad-safety-query"` with 2 top groups / 20 pending in top groups and `flag="low-title-query-overlap"` with 1 top group / 1 pending in top groups; each flag row included `list`, `packet`, `referenceMatches`, `siblings`, and `overview` drill-ins.
 - Read-only review flags smoke showed 3 flagged top groups: vitamin-d-deficiency ClinicalTrials.gov and PubMed broad-safety-query groups plus the creatine-lifespan ClinicalTrials.gov low-title-query-overlap group.
 - Read-only filtered review flags smoke for `broad-safety-query` showed only the two vitamin-d-deficiency broad-query top groups; each row now includes `referenceMatches="..."`, `siblings="..."`, and `overview="..."`, summary rows include filtered `flags="..."` drill-ins, and the summary footer includes the generic `reviewFlags="--candidate-review-flags --candidate-review-flags-limit 10"` hint.
-- Read-only sibling smoke for repeated PMID `42141930` showed packet hints on each sibling row without writes.
+- Read-only sibling smoke for repeated PMID `42141930` showed packet, reference-match, and curation-status/draft hints on each sibling row without writes.
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 - New `creatine-lifespan` candidate: `NCT07451496`, triage 80/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBsb25nZXZpdHklMjBtb3J0YWxpdHklMjBsaWZlc3BhbnxuY3QwNzQ1MTQ5NnxjcmVhdGluZXxjcmVhdGluZS1saWZlc3Bhbg`; review packet showed no accepted-reference match and no siblings.
 - Top `vitamin-d-deficiency` candidate: `NCT00715676`, triage 100/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`; review packet showed no accepted-reference match and 9 same-query siblings.
