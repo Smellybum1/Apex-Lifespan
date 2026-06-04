@@ -75,6 +75,8 @@ export interface SourceCandidateJobCommandOptions
   candidateJobId?: string;
   candidateReferenceMatchesDedupeKey?: string;
   candidateRegion?: string;
+  candidateReviewFlags?: boolean;
+  candidateReviewFlagsLimit?: number;
   candidateReviewOverview?: boolean;
   candidateReviewOverviewLimit?: number;
   candidateReviewPacketDedupeKey?: string;
@@ -359,6 +361,20 @@ export async function runSourceCandidateJobCommand(
       return 0;
     }
 
+    if (options.candidateReviewFlags) {
+      const overview = await listReviewOverview({
+        claimId: options.candidateClaimId,
+        ingestionJobId: options.candidateJobId,
+        interventionId: options.candidateInterventionId,
+        limit: options.candidateReviewFlagsLimit,
+        region: options.candidateRegion,
+        source: options.candidateSource
+      });
+
+      stdout(formatSourceCandidateReviewFlags(overview));
+      return 0;
+    }
+
     if (options.candidateReviewOverview) {
       const overview = await listReviewOverview({
         claimId: options.candidateClaimId,
@@ -632,6 +648,7 @@ export function parseSourceCandidateJobCommandArgs(
   let candidateCurationHandoffLimitProvided = false;
   let candidateCurationHandoffStatusProvided = false;
   let candidateRegionProvided = false;
+  let candidateReviewFlagsLimitProvided = false;
   let candidateReviewOverviewLimitProvided = false;
   let candidateSiblingsLimitProvided = false;
   let acceptedReferenceIdProvided = false;
@@ -724,6 +741,18 @@ export function parseSourceCandidateJobCommandArgs(
         index,
         arg
       );
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-review-flags") {
+      options.candidateReviewFlags = true;
+      continue;
+    }
+
+    if (arg === "--candidate-review-flags-limit") {
+      options.candidateReviewFlagsLimit = readPositiveInteger(args, index, arg, 50);
+      candidateReviewFlagsLimitProvided = true;
       index += 1;
       continue;
     }
@@ -1107,6 +1136,10 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (candidateReviewFlagsLimitProvided && !options.candidateReviewFlags) {
+    throw new Error("--candidate-review-flags-limit requires --candidate-review-flags.");
+  }
+
   if (candidateReviewOverviewLimitProvided && !options.candidateReviewOverview) {
     throw new Error("--candidate-review-overview-limit requires --candidate-review-overview.");
   }
@@ -1140,6 +1173,22 @@ export function parseSourceCandidateJobCommandArgs(
   if (options.candidateReviewOverview && options.extractCandidateStudyDedupeKey) {
     throw new Error(
       "--candidate-review-overview cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.reviewDecision) {
+    throw new Error("--candidate-review-flags cannot be combined with review options.");
+  }
+
+  if (options.candidateReviewFlags && options.linkCandidateClaimDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --link-candidate-claim."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.extractCandidateStudyDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --extract-candidate-study."
     );
   }
 
@@ -1982,11 +2031,132 @@ export function parseSourceCandidateJobCommandArgs(
     }) &&
     !options.candidates &&
     !options.candidateCurationHandoff &&
+    !options.candidateReviewFlags &&
     !options.candidateReviewOverview
   ) {
     throw new Error(
       "Candidate-list filters require --candidates."
     );
+  }
+
+  if (options.candidateReviewFlags && options.candidateReviewOverview) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-review-overview."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.candidateCurationHandoff) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-curation-handoff."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.candidateDetailDedupeKey) {
+    throw new Error("--candidate-review-flags cannot be combined with --candidate-detail.");
+  }
+
+  if (options.candidateReviewFlags && options.candidateCurationStatusDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-curation-status."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.candidateCurationDraftDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-curation-draft."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.candidateReferenceMatchesDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-reference-matches."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.candidateReviewPacketDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.candidateSiblingsDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-siblings."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.summary) {
+    throw new Error("--candidate-review-flags cannot be combined with --summary.");
+  }
+
+  if (options.candidateReviewFlags && options.candidates) {
+    throw new Error("--candidate-review-flags cannot be combined with --candidates.");
+  }
+
+  if (options.candidateReviewFlags && options.candidateDuplicates) {
+    throw new Error(
+      "--candidate-duplicates cannot be combined with --candidate-review-flags."
+    );
+  }
+
+  if (options.candidateReviewFlags && candidatesLimitProvided) {
+    throw new Error(
+      "--candidates-limit cannot be combined with --candidate-review-flags."
+    );
+  }
+
+  if (options.candidateReviewFlags && candidateDecisionProvided) {
+    throw new Error(
+      "--candidate-decision cannot be combined with --candidate-review-flags."
+    );
+  }
+
+  if (options.candidateReviewFlags && candidateExternalIdProvided) {
+    throw new Error(
+      "--candidate-external-id cannot be combined with --candidate-review-flags."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.reviewDecision) {
+    throw new Error("--candidate-review-flags cannot be combined with review options.");
+  }
+
+  if (options.candidateReviewFlags && options.linkCandidateClaimDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --link-candidate-claim."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.extractCandidateStudyDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.jobs) {
+    throw new Error("--candidate-review-flags cannot be combined with --jobs.");
+  }
+
+  if (options.candidateReviewFlags && hasQueueOption(options)) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with queue options."
+    );
+  }
+
+  if (
+    options.candidateReviewFlags &&
+    (options.region || options.interventionId || options.claimId)
+  ) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with queue metadata."
+    );
+  }
+
+  if (
+    options.candidateReviewFlags &&
+    (options.jobId || limitProvided || sourceLimitProvided)
+  ) {
+    throw new Error("--candidate-review-flags cannot be combined with run options.");
   }
 
   if (options.candidateReviewOverview && options.candidateCurationHandoff) {
@@ -2195,6 +2365,8 @@ export function commandUsage() {
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
     "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
     "  --candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance.",
+    "  --candidate-review-flags        Print read-only pending review groups whose top candidate has reviewer flags.",
+    "  --candidate-review-flags-limit <count> Review flag group count (default 25, max 50).",
     "  --candidate-review-overview     Print read-only pending review groups with list, packet, and duplicate hints.",
     "  --candidate-review-overview-limit <count> Review overview group count (default 25, max 50).",
     "  --candidate-review-packet <dedupe-key> Print command hints, detail, accepted-reference matches, and sibling/duplicate context.",
@@ -2225,14 +2397,14 @@ export function commandUsage() {
     "  --candidates                      Print source-candidate review rows with packet hints.",
     "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
     "  <dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse.",
-    "  --candidate-source <source>       Filter candidates, overview, or handoff by source: pubmed or clinical-trials.",
+    "  --candidate-source <source>       Filter candidates, overview, flags, or handoff by source: pubmed or clinical-trials.",
     "  --candidate-decision <decision>   Candidate decision: pending, accepted, or rejected.",
     "  --candidate-duplicates            With --candidates, print duplicate source/external-id groups with packet hints.",
     "  --candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id.",
-    "  --candidate-job-id <id>           Filter candidates, overview, or handoff by ingestion job id.",
-    "  --candidate-intervention-id <id>  Filter candidates, overview, or handoff by intervention id.",
-    "  --candidate-claim-id <id>         Filter candidates, overview, or handoff by claim id.",
-    "  --candidate-region <region>       Filter candidates, overview, or handoff by region.",
+    "  --candidate-job-id <id>           Filter candidates, overview, flags, or handoff by ingestion job id.",
+    "  --candidate-intervention-id <id>  Filter candidates, overview, flags, or handoff by intervention id.",
+    "  --candidate-claim-id <id>         Filter candidates, overview, flags, or handoff by claim id.",
+    "  --candidate-region <region>       Filter candidates, overview, flags, or handoff by region.",
     "  --jobs                            Print recent source-candidate ingestion jobs with read-only hints.",
     "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
     "  --jobs-source <source>            Filter --jobs by source: pubmed or clinical-trials.",
@@ -3153,6 +3325,62 @@ function formatSourceCandidateReviewOverview(overview: SourceCandidateReviewOver
     `Source-candidate review overview: totalGroups=${overview.totalGroups} candidateCount=${overview.candidateCount}${suffix}`,
     ...overview.groups.map(formatSourceCandidateReviewOverviewGroup)
   ].join("\n");
+}
+
+function formatSourceCandidateReviewFlags(overview: SourceCandidateReviewOverview) {
+  const groups = overview.groups.filter(
+    (group) => sourceCandidateReviewFlagCodes(group.topCandidate).length > 0
+  );
+  const suffix = overview.groups.length < overview.totalGroups
+    ? ` shown=${overview.groups.length}`
+    : "";
+  const heading =
+    `Source-candidate review flags: totalGroups=${overview.totalGroups}` +
+    ` candidateCount=${overview.candidateCount}${suffix}` +
+    ` flaggedTopGroups=${groups.length}`;
+
+  if (groups.length === 0) {
+    return heading;
+  }
+
+  return [
+    heading,
+    ...groups.map(formatSourceCandidateReviewFlagGroup)
+  ].join("\n");
+}
+
+function formatSourceCandidateReviewFlagGroup(
+  group: SourceCandidateReviewOverview["groups"][number]
+) {
+  const candidate = group.topCandidate;
+  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+  const parts = [
+    "-",
+    `flags=${quote(reviewFlagCodes.join(", "))}`,
+    `claim=${group.claimId ?? "none"}`,
+    `intervention=${group.interventionId ?? "none"}`,
+    group.source,
+    group.region,
+    `pending=${group.count}`,
+    `topTriage=${group.topTriageScore}/100`,
+    `topKey=${safeCandidateKey(candidate.dedupeKey)}`,
+    `topExternalId=${quote(candidate.externalId)}`
+  ];
+
+  if (group.topIdentityCandidateCount > 1) {
+    parts.push(
+      `topIdentityCandidates=${group.topIdentityCandidateCount}`,
+      `duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(group))}`
+    );
+  }
+
+  parts.push(
+    `topTitle=${quote(candidate.title)}`,
+    `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
+    `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`
+  );
+
+  return parts.join(" ");
 }
 
 function formatSourceCandidateReviewOverviewGroup(

@@ -21,10 +21,13 @@ describe("commandUsage", () => {
       "--candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance."
     );
     expect(commandUsage()).toContain(
+      "--candidate-review-flags        Print read-only pending review groups whose top candidate has reviewer flags."
+    );
+    expect(commandUsage()).toContain(
       "--candidate-review-overview     Print read-only pending review groups with list, packet, and duplicate hints."
     );
     expect(commandUsage()).toContain(
-      "--candidate-region <region>       Filter candidates, overview, or handoff by region."
+      "--candidate-region <region>       Filter candidates, overview, flags, or handoff by region."
     );
     expect(commandUsage()).toContain(
       "--candidate-review-packet <dedupe-key> Print command hints, detail, accepted-reference matches, and sibling/duplicate context."
@@ -567,6 +570,43 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       candidateReviewOverview: true,
       candidateReviewOverviewLimit: 50,
       candidateSource: "PubMed",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+  });
+
+  it("parses read-only candidate review flags mode", () => {
+    expect(parseSourceCandidateJobCommandArgs(["--candidate-review-flags"])).toEqual({
+      candidateReviewFlags: true,
+      help: false,
+      limit: 1,
+      summary: false
+    });
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-flags",
+        "--candidate-review-flags-limit",
+        "200",
+        "--candidate-source",
+        "clinical-trials",
+        "--candidate-job-id",
+        "job-trials",
+        "--candidate-intervention-id",
+        "vitamin-d",
+        "--candidate-claim-id",
+        "vitamin-d-deficiency",
+        "--candidate-region",
+        "AU"
+      ])
+    ).toEqual({
+      candidateClaimId: "vitamin-d-deficiency",
+      candidateInterventionId: "vitamin-d",
+      candidateJobId: "job-trials",
+      candidateRegion: "AU",
+      candidateReviewFlags: true,
+      candidateReviewFlagsLimit: 50,
+      candidateSource: "ClinicalTrials.gov",
       help: false,
       limit: 1,
       summary: false
@@ -1693,6 +1733,63 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "pubmed|au|omega|32634581"
       ])
     ).toThrow("--candidate-review-overview cannot be combined with review options.");
+  });
+
+  it("does not combine candidate review flags mode with write or run modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-review-flags-limit", "2"])
+    ).toThrow("--candidate-review-flags-limit requires --candidate-review-flags.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-flags",
+        "--candidate-decision",
+        "accepted"
+      ])
+    ).toThrow("--candidate-decision cannot be combined with --candidate-review-flags.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-flags",
+        "--candidate-external-id",
+        "NCT00715676"
+      ])
+    ).toThrow("--candidate-external-id cannot be combined with --candidate-review-flags.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-flags",
+        "--candidate-duplicates"
+      ])
+    ).toThrow("--candidate-duplicates cannot be combined with --candidate-review-flags.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-flags",
+        "--candidate-review-overview"
+      ])
+    ).toThrow(
+      "--candidate-review-flags cannot be combined with --candidate-review-overview."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-review-flags", "--summary"])
+    ).toThrow("--candidate-review-flags cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-review-flags", "--candidates"])
+    ).toThrow("--candidate-review-flags cannot be combined with --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-flags",
+        "--queue-pubmed",
+        "vitamin d"
+      ])
+    ).toThrow("--candidate-review-flags cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-review-flags", "--limit", "2"])
+    ).toThrow("--candidate-review-flags cannot be combined with run options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-flags",
+        "--accept-candidate",
+        "clinicaltrials.gov|au|vitamin-d|nct00715676"
+      ])
+    ).toThrow("--candidate-review-flags cannot be combined with review options.");
   });
 
   it("does not combine queue mode with other command modes", () => {
@@ -4039,6 +4136,127 @@ describe("runSourceCandidateJobCommand", () => {
         `- claim=omega-3-cv-events intervention=omega-3 ClinicalTrials.gov AU pending=9 topTriage=100/100 topKey=${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")} topExternalId="NCT01492361" topIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source clinical-trials --candidate-external-id NCT01492361 --candidates-limit 2" topTitle="A Study of AMR101 to Evaluate Its Ability to Reduce Cardiovascular Events" list="--candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source clinical-trials --candidates-limit 9" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")}"`,
         `- claim=omega-3-cv-events intervention=omega-3 PubMed AU pending=5 topTriage=80/100 topKey=${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")} topExternalId="32634581" topTitle="Omega-3 cardiovascular outcomes meta-analysis" list="--candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source pubmed --candidates-limit 5" packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}"`
       ].join("\n")
+    );
+  });
+
+  it("prints read-only source-candidate review flags", async () => {
+    const stdout = vi.fn();
+    const flaggedKey =
+      "clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency";
+    const unflaggedKey = "pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events";
+    const listReviewOverview = vi.fn().mockResolvedValue({
+      candidateCount: 11,
+      totalGroups: 3,
+      groups: [
+        {
+          claimId: "vitamin-d-deficiency",
+          count: 10,
+          interventionId: "vitamin-d",
+          region: "AU",
+          source: "ClinicalTrials.gov",
+          topCandidate: sourceCandidate({
+            dedupeKey: flaggedKey,
+            source: "ClinicalTrials.gov",
+            externalId: "NCT00715676",
+            query: "Vitamin D safety adverse effects",
+            title: "Vitamin D safety monitoring trial",
+            triageScore: 100,
+            interventionId: "vitamin-d",
+            claimId: "vitamin-d-deficiency"
+          }),
+          topIdentityCandidateCount: 2,
+          topTriageScore: 100
+        },
+        {
+          claimId: "omega-3-cv-events",
+          count: 1,
+          interventionId: "omega-3",
+          region: "AU",
+          source: "PubMed",
+          topCandidate: sourceCandidate({
+            dedupeKey: unflaggedKey,
+            externalId: "32634581",
+            query: "omega-3 cardiovascular events",
+            title: "Omega-3 cardiovascular events meta-analysis",
+            claimId: "omega-3-cv-events",
+            interventionId: "omega-3"
+          }),
+          topIdentityCandidateCount: 1,
+          topTriageScore: 80
+        }
+      ]
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--candidate-review-flags",
+          "--candidate-review-flags-limit",
+          "2",
+          "--candidate-claim-id",
+          "vitamin-d-deficiency",
+          "--candidate-region",
+          "AU"
+        ],
+        { stdout },
+        { listReviewOverview, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(listReviewOverview).toHaveBeenCalledWith({
+      claimId: "vitamin-d-deficiency",
+      ingestionJobId: undefined,
+      interventionId: undefined,
+      limit: 2,
+      region: "AU",
+      source: undefined
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate review flags: totalGroups=3 candidateCount=11 shown=2 flaggedTopGroups=1",
+        `- flags="broad-safety-query" claim=vitamin-d-deficiency intervention=vitamin-d ClinicalTrials.gov AU pending=10 topTriage=100/100 topKey=${safeCandidateKey(flaggedKey)} topExternalId="NCT00715676" topIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source clinical-trials --candidate-external-id NCT00715676 --candidates-limit 2" topTitle="Vitamin D safety monitoring trial" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" packet="--candidate-review-packet ${safeCandidateKey(flaggedKey)}"`
+      ].join("\n")
+    );
+  });
+
+  it("prints an empty source-candidate review flags view", async () => {
+    const stdout = vi.fn();
+    const listReviewOverview = vi.fn().mockResolvedValue({
+      candidateCount: 1,
+      totalGroups: 1,
+      groups: [
+        {
+          claimId: "omega-3-cv-events",
+          count: 1,
+          interventionId: "omega-3",
+          region: "AU",
+          source: "PubMed",
+          topCandidate: sourceCandidate({
+            dedupeKey: "pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events",
+            externalId: "32634581",
+            query: "omega-3 cardiovascular events",
+            title: "Omega-3 cardiovascular events meta-analysis",
+            claimId: "omega-3-cv-events",
+            interventionId: "omega-3"
+          }),
+          topIdentityCandidateCount: 1,
+          topTriageScore: 80
+        }
+      ]
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-review-flags"],
+        { stdout },
+        { listReviewOverview }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      "Source-candidate review flags: totalGroups=1 candidateCount=1 flaggedTopGroups=0"
     );
   });
 

@@ -29,6 +29,7 @@ npm run ingest:sources -- --jobs --jobs-status queued --jobs-claim-id <claim-id>
 npm run ingest:sources -- --jobs --jobs-source pubmed --jobs-region AU
 npm run ingest:sources -- --candidates
 npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10
+npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10
 npm run ingest:sources -- --candidates --candidate-source pubmed --candidates-limit 10
 npm run ingest:sources -- --candidates --candidate-region AU --candidate-source pubmed --candidates-limit 10
 npm run ingest:sources -- --candidates --candidate-duplicates
@@ -51,6 +52,7 @@ Read-only output rules:
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
 - `--candidate-detail` prints one record plus read-only packet/reference/sibling/group/curation hints and explanatory `reviewCautions` when a claim-scoped candidate needs extra broad-query/off-claim scrutiny.
 - `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."`, `packet="..."`, top-identity duplicate hints, and `topReviewFlags` when applicable.
+- `--candidate-review-flags` filters the bounded review overview to flagged top candidates only and prints read-only `flags`, `list="..."`, `packet="..."`, and top-identity duplicate hints when applicable.
 - `--candidates` defaults to pending rows, prints `packet="..."` hints plus query/job trace fields and compact `reviewFlags` when applicable, and can filter by source, region, external id, job, intervention, claim, or decision.
 - `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."`, `packet="..."`, and compact `reviewFlags` when applicable.
 - `--candidate-reference-matches` prints candidate identity plus `packet="..."`, `groupList="..."`, and compact `reviewFlags` when applicable before eligible curated references or draft-only reference context.

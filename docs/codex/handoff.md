@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding source-candidate review flags. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding the focused source-candidate review flag view. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -16,10 +16,11 @@ Refreshed on 2026-06-04 after adding source-candidate review flags. Verify local
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
-- Summary output is read-only and prints next-command hints for overview, duplicate scan, queued jobs, and curation handoff; non-empty curation status bucket rows include filtered handoff hints, and the bounded review flag focus block counts flagged top review groups with list/packet drill-ins.
+- Summary output is read-only and prints next-command hints for overview, duplicate scan, queued jobs, and curation handoff; non-empty curation status bucket rows include filtered handoff hints, and the bounded review flag focus block counts flagged top review groups with list/packet/overview drill-ins.
 - Job rows are read-only and print candidate-list, context-jobs, and status-jobs hints.
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; exact output tests cover these write-result surfaces without live write smokes.
 - Review overview is read-only and prints region-qualified `list="..."` filtered queue hints, `packet="..."` top-candidate hints, duplicate hints when the top identity repeats, and compact `topReviewFlags` when applicable.
+- Review flags view is read-only (`--candidate-review-flags`) and filters the bounded review overview to flagged top candidates only, with compact `flags`, duplicate hints, `list="..."`, and `packet="..."`.
 - Candidate detail output is read-only and prints packet, reference-match, sibling, group-list, curation-status, curation-draft hints, and explanatory `reviewCautions` for flagged claim-scoped candidates.
 - Candidate list rows are read-only and print `packet="..."` hints plus query, ingestion-job trace fields, and compact `reviewFlags` when applicable.
 - Reference-match headings print read-only `packet="..."`, `groupList="..."`, and compact `reviewFlags` when applicable; reference drafts remain draft-only.
@@ -61,6 +62,7 @@ Last CLI snapshot after local ingestion:
 - Exact output tests cover `reviewFlags` on accepted-reference match headings, curation status, curation draft, and curation handoff rows.
 - Read-only `NCT00715676` reference-match, curation-status, and curation-draft smokes showed compact `reviewFlags="broad-safety-query"` without writes.
 - Read-only summary smoke showed `flag="broad-safety-query"` with 2 top groups / 20 pending in top groups and `flag="low-title-query-overlap"` with 1 top group / 1 pending in top groups; each flag row included `list`, `packet`, and `overview` drill-ins.
+- Read-only review flags smoke showed 3 flagged top groups: vitamin-d-deficiency ClinicalTrials.gov and PubMed broad-safety-query groups plus the creatine-lifespan ClinicalTrials.gov low-title-query-overlap group.
 - Read-only sibling smoke for repeated PMID `42141930` showed packet hints on each sibling row without writes.
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 - New `creatine-lifespan` candidate: `NCT07451496`, triage 80/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBsb25nZXZpdHklMjBtb3J0YWxpdHklMjBsaWZlc3BhbnxuY3QwNzQ1MTQ5NnxjcmVhdGluZXxjcmVhdGluZS1saWZlc3Bhbg`; review packet showed no accepted-reference match and no siblings.
@@ -72,10 +74,15 @@ Last CLI snapshot after local ingestion:
 - Read-only `omega-3-cv-events` PubMed list smoke showed packet hints on each candidate row.
 - Duplicate scan currently shows one pending PubMed identity group for PMID `42141930`; output includes copyable duplicate-list and packet hints.
 - Curation handoff: 0 accepted candidates ready for next curation status buckets.
-- Useful current view: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
+- Useful current views: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10` and `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`.
 
 Latest local validation:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
 - `npm run ingest:sources -- --candidates --candidate-job-id cmpyzoc7500039jwcbu1ii4o7 --candidates-limit 3`
 - `npm run ingest:sources -- --jobs --jobs-limit 2`
 - `npm run ingest:sources -- --candidate-detail b64:cHVibWVkfGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBzdHJlbmd0aCUyMHJlc2lzdGFuY2UlMjB0cmFpbmluZyUyMGxlYW4lMjBtYXNzJTIwcmFuZG9taXplZCUyMHRyaWFsJTIwc3lzdGVtYXRpYyUyMHJldmlld3w0MjE0MTkzMHxjcmVhdGluZXxjcmVhdGluZS1zdHJlbmd0aA`
