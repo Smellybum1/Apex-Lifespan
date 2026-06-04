@@ -3336,7 +3336,7 @@ function slugReferenceIdPart(value: string) {
 function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
   const target = siblings.target;
   const targetKey = safeCandidateKey(target.dedupeKey);
-  const targetReviewFlagCodes = sourceCandidateReviewFlagCodes(target);
+  const targetReviewFlags = sourceCandidateReviewFlags(target);
   const headingParts = [
     `Source-candidate siblings: total=${siblings.siblings.length}`,
     `target=${quote(target.dedupeKey)}`,
@@ -3366,11 +3366,11 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
     headingParts.push(`acceptedReference=${target.acceptedReferenceId}`);
   }
 
-  if (targetReviewFlagCodes.length > 0) {
+  if (targetReviewFlags.length > 0) {
     headingParts.push(
-      ...formatSourceCandidateReviewFlagFields(
+      ...formatSourceCandidateReviewFields(
         "targetReviewFlags",
-        targetReviewFlagCodes,
+        targetReviewFlags,
         sourceCandidateReviewFlagContext(target)
       )
     );
@@ -3390,7 +3390,7 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
 
 function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings"][number]) {
   const candidate = sibling.candidate;
-  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+  const reviewFlags = sourceCandidateReviewFlags(candidate);
   const key = safeCandidateKey(candidate.dedupeKey);
   const parts = [
     `- match=${quote(sibling.matchReasons.join(", "))}`,
@@ -3413,11 +3413,11 @@ function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
 
-  if (reviewFlagCodes.length > 0) {
+  if (reviewFlags.length > 0) {
     parts.push(
-      ...formatSourceCandidateReviewFlagFields(
+      ...formatSourceCandidateReviewFields(
         "reviewFlags",
-        reviewFlagCodes,
+        reviewFlags,
         sourceCandidateReviewFlagContext(candidate)
       )
     );
@@ -3503,7 +3503,7 @@ function formatSourceCandidateIdentityGroup(group: SourceCandidateIdentityGroup)
 }
 
 function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate) {
-  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+  const reviewFlags = sourceCandidateReviewFlags(candidate);
   const key = safeCandidateKey(candidate.dedupeKey);
   const parts = [
     "  -",
@@ -3517,11 +3517,11 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
 
-  if (reviewFlagCodes.length > 0) {
+  if (reviewFlags.length > 0) {
     parts.push(
-      ...formatSourceCandidateReviewFlagFields(
+      ...formatSourceCandidateReviewFields(
         "reviewFlags",
-        reviewFlagCodes,
+        reviewFlags,
         sourceCandidateReviewFlagContext(candidate)
       )
     );
@@ -3817,7 +3817,7 @@ function sourceCandidateSourceCliValue(source: SourceCandidateSource) {
 }
 
 function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
-  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+  const reviewFlags = sourceCandidateReviewFlags(candidate);
   const key = safeCandidateKey(candidate.dedupeKey);
   const parts = [
     `- triage=${candidate.triageScore}/100`,
@@ -3832,11 +3832,11 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
     `url=${candidate.url}`
   ];
 
-  if (reviewFlagCodes.length > 0) {
+  if (reviewFlags.length > 0) {
     parts.push(
-      ...formatSourceCandidateReviewFlagFields(
+      ...formatSourceCandidateReviewFields(
         "reviewFlags",
-        reviewFlagCodes,
+        reviewFlags,
         sourceCandidateReviewFlagContext(candidate)
       )
     );
@@ -3923,11 +3923,26 @@ function sourceCandidateReviewFlagGroupContext(
 }
 
 function sourceCandidateReviewFlagFields(label: string, candidate: SourceCandidate) {
-  return formatSourceCandidateReviewFlagFields(
+  return formatSourceCandidateReviewFields(
     label,
-    sourceCandidateReviewFlagCodes(candidate),
+    sourceCandidateReviewFlags(candidate),
     sourceCandidateReviewFlagContext(candidate)
   );
+}
+
+function formatSourceCandidateReviewFields(
+  label: string,
+  reviewFlags: ReturnType<typeof sourceCandidateReviewFlags>,
+  context?: SourceCandidateReviewFlagCommandContext
+) {
+  return [
+    ...formatSourceCandidateReviewFlagFields(
+      label,
+      reviewFlags.map((flag) => flag.code),
+      context
+    ),
+    ...formatSourceCandidateReviewCautionFields(label, reviewFlags)
+  ];
 }
 
 function formatSourceCandidateReviewFlagFields(
@@ -3944,6 +3959,27 @@ function formatSourceCandidateReviewFlagFields(
     `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
     `flagFocus=${quote(formatSourceCandidateReviewFlagsCommand(reviewFlagCodes[0], context))}`
   ];
+}
+
+function formatSourceCandidateReviewCautionFields(
+  flagLabel: string,
+  reviewFlags: ReturnType<typeof sourceCandidateReviewFlags>
+) {
+  const cautions = sourceCandidateReviewCautions(reviewFlags);
+
+  if (cautions.length === 0) {
+    return [];
+  }
+
+  return [
+    `${sourceCandidateReviewCautionLabel(flagLabel)}=${quote(cautions.join(" | "))}`
+  ];
+}
+
+function sourceCandidateReviewCautionLabel(flagLabel: string) {
+  return flagLabel.endsWith("Flags")
+    ? `${flagLabel.slice(0, -"Flags".length)}Cautions`
+    : `${flagLabel}Cautions`;
 }
 
 function sourceCandidateReviewFlags(candidate: SourceCandidate) {

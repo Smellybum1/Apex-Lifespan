@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding top-level read-only review caution text to source-candidate summary/overview/flag rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after extending read-only review caution text to source-candidate candidate-level rows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -39,7 +39,7 @@ Refreshed on 2026-06-04 after adding top-level read-only review caution text to 
 
 ## Latest Local Validation
 
-Current code validation for source-candidate top-level review cautions:
+Current code validation for source-candidate candidate-level review cautions:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
 - `npm run test`, `npm run lint`, `npm run dev:stop`, `npm run typecheck`
 - `git diff --check` (only LF-to-CRLF warnings for modified files)
