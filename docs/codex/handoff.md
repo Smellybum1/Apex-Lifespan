@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding focused source-candidate review-flag drill-ins. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding focused candidate-level review-flag drill-ins. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -21,7 +21,7 @@ Refreshed on 2026-06-04 after adding focused source-candidate review-flag drill-
 - Packet/reference/sibling/curation drill-in hints share one local formatter helper in `src/lib/data/source-candidate-job-command.ts`; exact CLI output is covered by source-candidate command tests.
 - Candidate filters support read-only `--candidate-claim-missing` and `--candidate-intervention-missing`; generated list hints use them when a group or candidate lacks claim/intervention context.
 - Duplicate identity candidate rows include exact read-only `groupList="..."` hints so repeated PMID/NCT identities can be reviewed in their scoped or unscoped context.
-- Flagged overview rows include read-only `flagFocus="..."` hints for the first listed review flag while preserving broader `flags="..."` drill-ins.
+- Flagged overview and candidate-level rows include read-only `flagFocus="..."` hints for the first listed review flag while preserving broader `flags="..."` drill-ins.
 - Claim-scoped source queries append compact claim-text anchors after outcome terms before queueing.
 - Local Docker/PostgreSQL setup was verified earlier; migrations and seed were applied locally.
 
@@ -38,10 +38,10 @@ Refreshed on 2026-06-04 after adding focused source-candidate review-flag drill-
 
 ## Latest Local Validation
 
-Current code validation for focused review-flag drill-ins:
+Current code validation for focused candidate-level review-flag drill-ins:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`
-- `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`
+- `npm run ingest:sources -- --candidate-review-packet b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBsb25nZXZpdHklMjBtb3J0YWxpdHklMjBsaWZlc3BhbnxuY3QwNzQ1MTQ5NnxjcmVhdGluZXxjcmVhdGluZS1saWZlc3Bhbg`
+- `npm run ingest:sources -- --candidates --candidate-claim-id creatine-lifespan --candidate-intervention-id creatine --candidate-region AU --candidate-source clinical-trials --candidates-limit 1`
 - `npm run test`
 - `npm run lint`
 - `npm run dev:stop`

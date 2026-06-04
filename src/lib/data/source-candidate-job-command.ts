@@ -2724,9 +2724,9 @@ function formatSourceCandidateDetail(
   lines.push(formatStringList("triageReasons", candidate.triageReasons));
 
   if (reviewFlags.length > 0) {
-    lines.push(`reviewFlags=${quote(reviewFlags.map((flag) => flag.code).join(", "))}`);
+    const reviewFlagCodes = reviewFlags.map((flag) => flag.code);
     lines.push(
-      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
+      ...formatSourceCandidateReviewFlagFields("reviewFlags", reviewFlagCodes)
     );
     lines.push(
       formatStringList(
@@ -2856,7 +2856,10 @@ function formatSourceCandidateReviewPacketCommandHints(
   }
 
   if (reviewFlagCodes.length > 0) {
-    lines.push(`reviewFlags=${quote(formatSourceCandidateReviewFlagsCommand())}`);
+    lines.push(
+      `reviewFlags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
+      `flagFocus=${quote(formatSourceCandidateReviewFlagsCommand(reviewFlagCodes[0]))}`
+    );
   }
 
   lines.push(
@@ -2883,7 +2886,7 @@ function sourceCandidateReviewPacketDuplicateIdentityCount(
 function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft) {
   const status = draft.status;
   const candidate = status.candidate;
-  const reviewFlagField = sourceCandidateReviewFlagField("reviewFlags", candidate);
+  const reviewFlagFields = sourceCandidateReviewFlagFields("reviewFlags", candidate);
   const lines = [
     "Source-candidate curation draft",
     "readOnly=true",
@@ -2897,11 +2900,8 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
     `publicSourcePacketReady=${status.publicSourcePacketReady}`
   ];
 
-  if (reviewFlagField) {
-    lines.push(reviewFlagField);
-    lines.push(
-      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
-    );
+  if (reviewFlagFields.length > 0) {
+    lines.push(...reviewFlagFields);
   }
 
   if (status.acceptedReferenceId) {
@@ -2983,7 +2983,7 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
 }
 
 function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStatus) {
-  const reviewFlagField = sourceCandidateReviewFlagField(
+  const reviewFlagFields = sourceCandidateReviewFlagFields(
     "reviewFlags",
     status.candidate
   );
@@ -2999,11 +2999,8 @@ function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStat
     `publicSourcePacketReady=${status.publicSourcePacketReady}`
   ];
 
-  if (reviewFlagField) {
-    lines.push(reviewFlagField);
-    lines.push(
-      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
-    );
+  if (reviewFlagFields.length > 0) {
+    lines.push(...reviewFlagFields);
   }
 
   if (status.acceptedReferenceId) {
@@ -3080,7 +3077,7 @@ function formatSourceCandidateCurationHandoffItem(
   status: SourceCandidateCurationStatus
 ) {
   const candidate = status.candidate;
-  const reviewFlagField = sourceCandidateReviewFlagField("reviewFlags", candidate);
+  const reviewFlagFields = sourceCandidateReviewFlagFields("reviewFlags", candidate);
   const parts = [
     `- status=${quote(status.status)}`,
     `nextAction=${quote(status.nextAction)}`,
@@ -3093,11 +3090,8 @@ function formatSourceCandidateCurationHandoffItem(
     `title=${quote(candidate.title)}`
   ];
 
-  if (reviewFlagField) {
-    parts.push(reviewFlagField);
-    parts.push(
-      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
-    );
+  if (reviewFlagFields.length > 0) {
+    parts.push(...reviewFlagFields);
   }
 
   if (status.acceptedReferenceId) {
@@ -3175,7 +3169,7 @@ function formatSourceCandidateReferenceMatchHeading(
 ) {
   const candidate = matches.candidate;
   const key = safeCandidateKey(candidate.dedupeKey);
-  const reviewFlagField = sourceCandidateReviewFlagField("reviewFlags", candidate);
+  const reviewFlagFields = sourceCandidateReviewFlagFields("reviewFlags", candidate);
   const parts = [
     `Source-candidate accepted-reference matches: total=${matches.references.length}`,
     `dedupe=${quote(candidate.dedupeKey)}`,
@@ -3195,11 +3189,8 @@ function formatSourceCandidateReferenceMatchHeading(
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
 
-  if (reviewFlagField) {
-    parts.push(reviewFlagField);
-    parts.push(
-      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
-    );
+  if (reviewFlagFields.length > 0) {
+    parts.push(...reviewFlagFields);
   }
 
   if (candidate.acceptedReferenceId) {
@@ -3303,9 +3294,11 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
   }
 
   if (targetReviewFlagCodes.length > 0) {
-    headingParts.push(`targetReviewFlags=${quote(targetReviewFlagCodes.join(", "))}`);
     headingParts.push(
-      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
+      ...formatSourceCandidateReviewFlagFields(
+        "targetReviewFlags",
+        targetReviewFlagCodes
+      )
     );
   }
 
@@ -3347,9 +3340,8 @@ function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings
   ];
 
   if (reviewFlagCodes.length > 0) {
-    parts.push(`reviewFlags=${quote(reviewFlagCodes.join(", "))}`);
     parts.push(
-      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
+      ...formatSourceCandidateReviewFlagFields("reviewFlags", reviewFlagCodes)
     );
   }
 
@@ -3449,8 +3441,7 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
 
   if (reviewFlagCodes.length > 0) {
     parts.push(
-      `reviewFlags=${quote(reviewFlagCodes.join(", "))}`,
-      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
+      ...formatSourceCandidateReviewFlagFields("reviewFlags", reviewFlagCodes)
     );
   }
 
@@ -3745,8 +3736,7 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
 
   if (reviewFlagCodes.length > 0) {
     parts.push(
-      `reviewFlags=${quote(reviewFlagCodes.join(", "))}`,
-      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
+      ...formatSourceCandidateReviewFlagFields("reviewFlags", reviewFlagCodes)
     );
   }
 
@@ -3789,14 +3779,26 @@ function sourceCandidateReviewFlagCodes(candidate: SourceCandidate) {
   return sourceCandidateReviewFlags(candidate).map((flag) => flag.code);
 }
 
-function sourceCandidateReviewFlagField(label: string, candidate: SourceCandidate) {
-  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+function sourceCandidateReviewFlagFields(label: string, candidate: SourceCandidate) {
+  return formatSourceCandidateReviewFlagFields(
+    label,
+    sourceCandidateReviewFlagCodes(candidate)
+  );
+}
 
+function formatSourceCandidateReviewFlagFields(
+  label: string,
+  reviewFlagCodes: readonly SourceCandidateReviewFlagCode[]
+) {
   if (reviewFlagCodes.length === 0) {
-    return undefined;
+    return [];
   }
 
-  return `${label}=${quote(reviewFlagCodes.join(", "))}`;
+  return [
+    `${label}=${quote(reviewFlagCodes.join(", "))}`,
+    `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
+    `flagFocus=${quote(formatSourceCandidateReviewFlagsCommand(reviewFlagCodes[0]))}`
+  ];
 }
 
 function sourceCandidateReviewFlags(candidate: SourceCandidate) {
