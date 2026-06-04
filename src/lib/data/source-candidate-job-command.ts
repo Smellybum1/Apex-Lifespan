@@ -3596,13 +3596,35 @@ function formatSourceCandidateReviewFlagSummary(
 
   return [
     heading,
-    ...groups.map(
-      (group) =>
-        `- flag=${quote(group.flag)} topGroups=${group.topGroups}` +
-        ` pendingInTopGroups=${group.pendingInTopGroups}` +
-        ` overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
-    )
+    ...groups.map(formatSourceCandidateReviewFlagSummaryGroup)
   ].join("\n");
+}
+
+function formatSourceCandidateReviewFlagSummaryGroup(
+  group: ReturnType<typeof sourceCandidateReviewFlagSummaryGroups>[number]
+) {
+  const exampleGroup = group.exampleGroup;
+  const candidate = exampleGroup.topCandidate;
+
+  return (
+    `- flag=${quote(group.flag)} topGroups=${group.topGroups}` +
+    ` pendingInTopGroups=${group.pendingInTopGroups}` +
+    ` topGroup=${quote(formatSourceCandidateReviewFlagSummaryGroupLabel(exampleGroup))}` +
+    ` list=${quote(formatSourceCandidateReviewOverviewListCommand(exampleGroup))}` +
+    ` packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}` +
+    ` overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
+  );
+}
+
+function formatSourceCandidateReviewFlagSummaryGroupLabel(
+  group: SourceCandidateReviewOverview["groups"][number]
+) {
+  return [
+    group.claimId ?? "none",
+    group.interventionId ?? "none",
+    group.source,
+    group.region
+  ].join(" ");
 }
 
 function sourceCandidateReviewFlagSummaryGroups(
@@ -3610,20 +3632,30 @@ function sourceCandidateReviewFlagSummaryGroups(
 ) {
   const groupsByFlag = new Map<
     string,
-    { flag: string; pendingInTopGroups: number; topGroups: number }
+    {
+      exampleGroup: SourceCandidateReviewOverview["groups"][number];
+      flag: string;
+      pendingInTopGroups: number;
+      topGroups: number;
+    }
   >();
 
   for (const group of reviewOverview.groups) {
     for (const flag of sourceCandidateReviewFlagCodes(group.topCandidate)) {
-      const current = groupsByFlag.get(flag) ?? {
-        flag,
-        pendingInTopGroups: 0,
-        topGroups: 0
-      };
+      let current = groupsByFlag.get(flag);
+
+      if (!current) {
+        current = {
+          exampleGroup: group,
+          flag,
+          pendingInTopGroups: 0,
+          topGroups: 0
+        };
+        groupsByFlag.set(flag, current);
+      }
 
       current.pendingInTopGroups += group.count;
       current.topGroups += 1;
-      groupsByFlag.set(flag, current);
     }
   }
 
