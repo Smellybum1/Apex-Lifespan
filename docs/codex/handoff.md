@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding source-candidate duplicate identity hints. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding source-candidate row packet hints. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -17,6 +17,7 @@ Refreshed on 2026-06-04 after adding source-candidate duplicate identity hints. 
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
 - Review overview is read-only and prints region-qualified `list="..."` filtered queue hints plus `packet="..."` top-candidate hints.
+- Candidate list rows are read-only and print `packet="..."` hints for direct packet review.
 - Review packets print safe read-only follow-up commands and explicit human-reviewed accept/reject templates.
 - Duplicate identity output prints read-only `identityList="..."` and per-candidate `packet="..."` hints.
 - Claim-scoped source queries now append compact claim-text anchors after outcome terms before queueing.
@@ -43,11 +44,14 @@ Last CLI snapshot after local ingestion:
 - Top `omega-3-triglycerides` candidate: `NCT00435045`, triage 100/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fG9tZWdhLTMlMjBlcGElMkZkaGElMjBsaXBpZHMlMjB0cmlnbHljZXJpZGVzJTIwYXBvYiUyMHRyaWdseWNlcmlkZSUyMGxvd2VyaW5nfG5jdDAwNDM1MDQ1fG9tZWdhLTN8b21lZ2EtMy10cmlnbHljZXJpZGVz`; review packet showed no accepted-reference match and 4 same-query siblings.
 - Top `omega-3-cv-events` ClinicalTrials.gov candidate: `NCT01492361`, triage 100/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fG9tZWdhLTMlMjBlcGElMkZkaGElMjBjYXJkaW92YXNjdWxhciUyMGV2ZW50cyUyMHByZXZlbnRpb258bmN0MDE0OTIzNjF8b21lZ2EtM3xvbWVnYS0zLWN2LWV2ZW50cw`; review packet showed no accepted-reference match and 8 same-query siblings.
 - Top `omega-3-cv-events` PubMed candidate: PMID `32634581`, triage 80/100, key `b64:cHVibWVkfGF1fG9tZWdhLTMlMjBlcGElMkZkaGElMjBjYXJkaW92YXNjdWxhciUyMGV2ZW50cyUyMHByZXZlbnRpb24lMjByYW5kb21pemVkJTIwdHJpYWwlMjBzeXN0ZW1hdGljJTIwcmV2aWV3fDMyNjM0NTgxfG9tZWdhLTN8b21lZ2EtMy1jdi1ldmVudHM`; review packet showed no accepted-reference match and 4 same-query siblings.
+- Read-only `omega-3-cv-events` PubMed list smoke showed packet hints on each candidate row.
 - Duplicate scan currently shows one pending PubMed identity group for PMID `42141930`; output includes copyable duplicate-list and packet hints.
 - Curation handoff: 0 accepted candidates ready for next curation status buckets.
 - Useful current view: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
 
 Latest local validation:
+- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source pubmed --candidates-limit 3`
 - `npm run test -- src/lib/data/source-candidates.test.ts src/lib/data/source-candidate-job-command.test.ts`
 - `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`
 - `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 3`

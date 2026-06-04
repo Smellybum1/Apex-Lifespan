@@ -27,6 +27,9 @@ describe("commandUsage", () => {
       "--candidate-review-packet <dedupe-key> Print command hints, detail, accepted-reference matches, and sibling context."
     );
     expect(commandUsage()).toContain(
+      "--candidates                      Print source-candidate review rows with packet hints."
+    );
+    expect(commandUsage()).toContain(
       "--candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons."
     );
     expect(commandUsage()).toContain(
@@ -3193,8 +3196,8 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate review queue: total=2",
-        `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")} externalId="28615996" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ intervention=creatine claim=creatine-strength`,
-        `- triage=70/100 ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} externalId="NCT123" title="Creatine and aging" url=https://clinicaltrials.gov/study/NCT123`
+        `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}" externalId="28615996" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ intervention=creatine claim=creatine-strength`,
+        `- triage=70/100 ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" externalId="NCT123" title="Creatine and aging" url=https://clinicaltrials.gov/study/NCT123`
       ].join("\n")
     );
   });
@@ -3313,7 +3316,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         'Source-candidate review records: decision="Accepted": total=1',
-        `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} externalId="28615996" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-creatine-position-stand reviewed=2026-06-02T03:00:00.000Z note="Matched PMID and claim context." intervention=creatine claim=creatine-strength`
+        `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}" externalId="28615996" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-creatine-position-stand reviewed=2026-06-02T03:00:00.000Z note="Matched PMID and claim context." intervention=creatine claim=creatine-strength`
       ].join("\n")
     );
   });
@@ -3359,7 +3362,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate review queue: total=1",
-        `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|28615996|creatine-strength")} externalId="28615996" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/`
+        `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|28615996|creatine-strength")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996|creatine-strength")}" externalId="28615996" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/`
       ].join("\n")
     );
   });

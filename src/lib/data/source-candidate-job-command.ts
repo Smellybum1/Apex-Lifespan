@@ -2193,7 +2193,7 @@ export function commandUsage() {
     "  --study-abstract <text>           Optional abstract field for --extract-candidate-study.",
     "  --study-relevance <1-5>           Optional relevance score for --extract-candidate-study.",
     "  --update-existing-study           Update the one existing extraction for this accepted reference.",
-    "  --candidates                      Print pending source-candidate review queue rows.",
+    "  --candidates                      Print source-candidate review rows with packet hints.",
     "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
     "  <dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse.",
     "  --candidate-source <source>       Filter candidates, overview, or handoff by source: pubmed or clinical-trials.",
@@ -3083,6 +3083,7 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`,
     `externalId=${quote(candidate.externalId)}`,
     `title=${quote(candidate.title)}`,
     `url=${candidate.url}`
