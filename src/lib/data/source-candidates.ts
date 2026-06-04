@@ -50,10 +50,12 @@ export interface SourceCandidateCurationHandoffSummary {
 
 export interface SourceCandidateReviewQueueOptions {
   claimId?: string;
+  claimIdMissing?: boolean;
   decision?: SourceCandidateDecision;
   externalId?: string;
   ingestionJobId?: string;
   interventionId?: string;
+  interventionIdMissing?: boolean;
   limit?: number;
   region?: string;
   source?: SourceCandidateSource;
@@ -61,8 +63,10 @@ export interface SourceCandidateReviewQueueOptions {
 
 export interface SourceCandidateReviewOverviewOptions {
   claimId?: string;
+  claimIdMissing?: boolean;
   ingestionJobId?: string;
   interventionId?: string;
+  interventionIdMissing?: boolean;
   limit?: number;
   region?: string;
   source?: SourceCandidateSource;
@@ -238,8 +242,10 @@ export interface ExtractedSourceCandidateStudy {
 
 export interface SourceCandidateCurationHandoffOptions {
   claimId?: string;
+  claimIdMissing?: boolean;
   ingestionJobId?: string;
   interventionId?: string;
+  interventionIdMissing?: boolean;
   limit?: number;
   region?: string;
   source?: SourceCandidateSource;
@@ -360,8 +366,10 @@ export async function listSourceCandidateReviewOverview(
     await prisma.sourceCandidate.findMany({
       where: sourceCandidateReviewQueueWhere({
         claimId: options.claimId,
+        claimIdMissing: options.claimIdMissing,
         ingestionJobId: options.ingestionJobId,
         interventionId: options.interventionId,
+        interventionIdMissing: options.interventionIdMissing,
         region: options.region,
         source: options.source
       }),
@@ -871,11 +879,15 @@ export async function listSourceCandidateCurationHandoff(
     where.ingestionJobId = options.ingestionJobId;
   }
 
-  if (options.interventionId) {
+  if (options.interventionIdMissing) {
+    where.interventionId = null;
+  } else if (options.interventionId) {
     where.interventionId = options.interventionId;
   }
 
-  if (options.claimId) {
+  if (options.claimIdMissing) {
+    where.claimId = null;
+  } else if (options.claimId) {
     where.claimId = options.claimId;
   }
 
@@ -1169,11 +1181,15 @@ function sourceCandidateReviewQueueWhere(
     where.externalId = options.externalId;
   }
 
-  if (options.interventionId) {
+  if (options.interventionIdMissing) {
+    where.interventionId = null;
+  } else if (options.interventionId) {
     where.interventionId = options.interventionId;
   }
 
-  if (options.claimId) {
+  if (options.claimIdMissing) {
+    where.claimId = null;
+  } else if (options.claimId) {
     where.claimId = options.claimId;
   }
 

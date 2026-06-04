@@ -256,6 +256,29 @@ describe("listSourceCandidateReviewQueue", () => {
       take: 1
     });
   });
+
+  it("filters review candidates with missing claim or intervention ids", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([]);
+
+    await listSourceCandidateReviewQueue({
+      claimIdMissing: true,
+      interventionIdMissing: true,
+      region: "AU",
+      source: "PubMed"
+    });
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        claimId: null,
+        decision: "PENDING_REVIEW",
+        interventionId: null,
+        region: "AU",
+        source: "PUBMED"
+      },
+      orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
+      take: 25
+    });
+  });
 });
 
 describe("listSourceCandidateReviewOverview", () => {
@@ -2045,6 +2068,34 @@ describe("listSourceCandidateCurationHandoff", () => {
 
     await expect(listSourceCandidateCurationHandoff()).resolves.toEqual([]);
 
+    expect(prismaMocks.referenceFindMany).not.toHaveBeenCalled();
+    expect(prismaMocks.claimReferenceFindMany).not.toHaveBeenCalled();
+    expect(prismaMocks.studyFindMany).not.toHaveBeenCalled();
+  });
+
+  it("filters curation handoff rows with missing claim or intervention ids", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([]);
+
+    await expect(
+      listSourceCandidateCurationHandoff({
+        claimIdMissing: true,
+        interventionIdMissing: true,
+        region: "AU",
+        source: "PubMed"
+      })
+    ).resolves.toEqual([]);
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        claimId: null,
+        decision: "ACCEPTED",
+        interventionId: null,
+        region: "AU",
+        source: "PUBMED"
+      },
+      orderBy: [{ reviewedAt: "asc" }, { updatedAt: "desc" }],
+      take: 25
+    });
     expect(prismaMocks.referenceFindMany).not.toHaveBeenCalled();
     expect(prismaMocks.claimReferenceFindMany).not.toHaveBeenCalled();
     expect(prismaMocks.studyFindMany).not.toHaveBeenCalled();

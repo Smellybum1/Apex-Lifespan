@@ -33,6 +33,12 @@ describe("commandUsage", () => {
       "--candidate-region <region>       Filter candidates, overview, flags, or handoff by region."
     );
     expect(commandUsage()).toContain(
+      "--candidate-claim-missing         Filter candidates, overview, flags, or handoff to rows without claim id."
+    );
+    expect(commandUsage()).toContain(
+      "--candidate-intervention-missing  Filter candidates, overview, flags, or handoff to rows without intervention id."
+    );
+    expect(commandUsage()).toContain(
       "--candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, sibling/duplicate context, and curation hints."
     );
     expect(commandUsage()).toContain(
@@ -268,6 +274,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       candidateJobId: "job-pubmed",
       candidateRegion: "AU",
       candidateSource: "PubMed",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-curation-handoff",
+        "--candidate-claim-missing",
+        "--candidate-intervention-missing"
+      ])
+    ).toEqual({
+      candidateClaimMissing: true,
+      candidateCurationHandoff: true,
+      candidateInterventionMissing: true,
       help: false,
       limit: 1,
       summary: false
@@ -540,6 +560,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       limit: 1,
       summary: false
     });
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidates",
+        "--candidate-claim-missing",
+        "--candidate-intervention-missing"
+      ])
+    ).toEqual({
+      candidates: true,
+      candidateClaimMissing: true,
+      candidateInterventionMissing: true,
+      help: false,
+      limit: 1,
+      summary: false
+    });
   });
 
   it("parses read-only candidate review overview mode", () => {
@@ -573,6 +607,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       candidateReviewOverview: true,
       candidateReviewOverviewLimit: 50,
       candidateSource: "PubMed",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-overview",
+        "--candidate-claim-missing",
+        "--candidate-intervention-missing"
+      ])
+    ).toEqual({
+      candidateClaimMissing: true,
+      candidateInterventionMissing: true,
+      candidateReviewOverview: true,
       help: false,
       limit: 1,
       summary: false
@@ -613,6 +661,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       candidateReviewFlags: true,
       candidateReviewFlagsLimit: 50,
       candidateSource: "ClinicalTrials.gov",
+      help: false,
+      limit: 1,
+      summary: false
+    });
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-flags",
+        "--candidate-claim-missing",
+        "--candidate-intervention-missing"
+      ])
+    ).toEqual({
+      candidateClaimMissing: true,
+      candidateInterventionMissing: true,
+      candidateReviewFlags: true,
       help: false,
       limit: 1,
       summary: false
@@ -786,6 +848,13 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "pubmed|au|creatine|28615996",
         "--candidate-job-id",
         "job-pubmed"
+      ])
+    ).toThrow("Candidate-list filters cannot be combined with --candidate-detail.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-detail",
+        "pubmed|au|creatine|28615996",
+        "--candidate-claim-missing"
       ])
     ).toThrow("Candidate-list filters cannot be combined with --candidate-detail.");
     expect(() =>
@@ -1663,6 +1732,30 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       parseSourceCandidateJobCommandArgs(["--candidate-claim-id", "creatine-strength"])
     ).toThrow("Candidate-list filters require --candidates.");
     expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-claim-missing"])
+    ).toThrow("Candidate-list filters require --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--candidate-intervention-missing"])
+    ).toThrow("Candidate-list filters require --candidates.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidates",
+        "--candidate-claim-id",
+        "creatine-strength",
+        "--candidate-claim-missing"
+      ])
+    ).toThrow("--candidate-claim-missing cannot be combined with --candidate-claim-id.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--candidates",
+        "--candidate-intervention-id",
+        "creatine",
+        "--candidate-intervention-missing"
+      ])
+    ).toThrow(
+      "--candidate-intervention-missing cannot be combined with --candidate-intervention-id."
+    );
+    expect(() =>
       parseSourceCandidateJobCommandArgs(["--candidate-region", "AU"])
     ).toThrow("Candidate-list filters require --candidates.");
     expect(() =>
@@ -2204,7 +2297,7 @@ describe("runSourceCandidateJobCommand", () => {
         `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
-        'groupList="--candidates --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        'groupList="--candidates --candidate-claim-missing --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
         `curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'source="PubMed"',
@@ -2563,7 +2656,7 @@ describe("runSourceCandidateJobCommand", () => {
         `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
-        'groupList="--candidates --candidate-claim-id creatine-strength --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        'groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
         `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Accepted"',
         'reviewStatus="Human reviewed"',
@@ -2627,7 +2720,7 @@ describe("runSourceCandidateJobCommand", () => {
         `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
-        'groupList="--candidates --candidate-claim-id creatine-strength --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        'groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
         `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Accepted"',
         'reviewStatus="Human reviewed"',
@@ -2732,7 +2825,7 @@ describe("runSourceCandidateJobCommand", () => {
         `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
-        'groupList="--candidates --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        'groupList="--candidates --candidate-claim-missing --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
         `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Pending review"',
         'reviewStatus="Unreviewed AI draft"',
@@ -2852,7 +2945,7 @@ describe("runSourceCandidateJobCommand", () => {
         `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
-        'groupList="--candidates --candidate-claim-id creatine-strength --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        'groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
         `curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Accepted"',
         'reviewStatus="Human reviewed"',
@@ -2919,7 +3012,7 @@ describe("runSourceCandidateJobCommand", () => {
         `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
-        'groupList="--candidates --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        'groupList="--candidates --candidate-claim-missing --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
         `curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'decision="Pending review"',
         'reviewStatus="Unreviewed AI draft"',
@@ -3226,7 +3319,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
-        `Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}" groupList="--candidates --candidate-region AU --candidate-source pubmed --candidates-limit 10" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}" decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-existing`,
+        `Source-candidate accepted-reference matches: total=2 dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} candidate="Creatine position stand" source="PubMed" externalId="28615996" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}" groupList="--candidates --candidate-claim-missing --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}" decision="Accepted" reviewStatus="Human reviewed" acceptedReference=ref-existing`,
         '- reference="ref-creatine-position-stand" source="PubMed" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ identifier="PMID: 28615996" year=2017',
         '- reference="ref-creatine-publisher" source="PubMed" title="Creatine\\npublisher record" url=https://publisher.example/creatine-position-stand'
       ].join("\n")
@@ -3258,7 +3351,7 @@ describe("runSourceCandidateJobCommand", () => {
 
     expect(stdout).toHaveBeenCalledWith(
       [
-        `Source-candidate accepted-reference matches: total=0 dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" url=https://clinicaltrials.gov/study/NCT123 packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" siblings="--candidate-siblings ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" groupList="--candidates --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" curationStatus="--candidate-curation-status ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" decision="Accepted" reviewStatus="Human reviewed"`,
+        `Source-candidate accepted-reference matches: total=0 dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" url=https://clinicaltrials.gov/study/NCT123 packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" siblings="--candidate-siblings ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" groupList="--candidates --candidate-claim-missing --candidate-intervention-missing --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" curationStatus="--candidate-curation-status ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" decision="Accepted" reviewStatus="Human reviewed"`,
         '- referenceDraft="ref-clinicaltrials-gov-nct123" source="ClinicalTrials.gov" identifier="NCT123" title="Creatine and aging" url=https://clinicaltrials.gov/study/NCT123 note="Draft only; verify before adding a curated reference." year=2017'
       ].join("\n")
     );
@@ -3878,6 +3971,27 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("passes missing claim and intervention filters to read-only candidate lists", async () => {
+    const stdout = vi.fn();
+    const listCandidates = vi.fn().mockResolvedValue([]);
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidates", "--candidate-claim-missing", "--candidate-intervention-missing"],
+        { stdout },
+        { listCandidates }
+      )
+    ).resolves.toBe(0);
+
+    expect(listCandidates).toHaveBeenCalledWith(
+      expect.objectContaining({
+        claimIdMissing: true,
+        interventionIdMissing: true
+      })
+    );
+    expect(stdout).toHaveBeenCalledWith("Source-candidate review queue: total=0");
+  });
+
   it("prints duplicate source-candidate identity groups without running jobs", async () => {
     const stdout = vi.fn();
     const listCandidates = vi.fn();
@@ -4138,8 +4252,8 @@ describe("runSourceCandidateJobCommand", () => {
   it("prints a read-only source-candidate review overview", async () => {
     const stdout = vi.fn();
     const listReviewOverview = vi.fn().mockResolvedValue({
-      candidateCount: 14,
-      totalGroups: 2,
+      candidateCount: 17,
+      totalGroups: 3,
       groups: [
         {
           claimId: "omega-3-cv-events",
@@ -4168,6 +4282,20 @@ describe("runSourceCandidateJobCommand", () => {
             dedupeKey: "pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events",
             externalId: "32634581",
             title: "Omega-3 cardiovascular outcomes meta-analysis"
+          }),
+          topIdentityCandidateCount: 1,
+          topTriageScore: 80
+        },
+        {
+          count: 3,
+          region: "AU",
+          source: "PubMed",
+          topCandidate: sourceCandidate({
+            claimId: undefined,
+            dedupeKey: "pubmed|au|creatine-meta|42158825||",
+            externalId: "42158825",
+            interventionId: undefined,
+            title: "Unscoped creatine meta-analysis"
           }),
           topIdentityCandidateCount: 1,
           topTriageScore: 80
@@ -4203,9 +4331,10 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
-        "Source-candidate review overview: totalGroups=2 candidateCount=14",
+        "Source-candidate review overview: totalGroups=3 candidateCount=17",
         `- claim=omega-3-cv-events intervention=omega-3 ClinicalTrials.gov AU pending=9 topTriage=100/100 topKey=${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")} topExternalId="NCT01492361" topIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source clinical-trials --candidate-external-id NCT01492361 --candidates-limit 2" topTitle="A Study of AMR101 to Evaluate Its Ability to Reduce Cardiovascular Events" list="--candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source clinical-trials --candidates-limit 9" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")}" siblings="--candidate-siblings ${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")}" curationStatus="--candidate-curation-status ${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events")}"`,
-        `- claim=omega-3-cv-events intervention=omega-3 PubMed AU pending=5 topTriage=80/100 topKey=${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")} topExternalId="32634581" topTitle="Omega-3 cardiovascular outcomes meta-analysis" list="--candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source pubmed --candidates-limit 5" packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}"`
+        `- claim=omega-3-cv-events intervention=omega-3 PubMed AU pending=5 topTriage=80/100 topKey=${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")} topExternalId="32634581" topTitle="Omega-3 cardiovascular outcomes meta-analysis" list="--candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source pubmed --candidates-limit 5" packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events")}"`,
+        `- claim=none intervention=none PubMed AU pending=3 topTriage=80/100 topKey=${safeCandidateKey("pubmed|au|creatine-meta|42158825||")} topExternalId="42158825" topTitle="Unscoped creatine meta-analysis" list="--candidates --candidate-claim-missing --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 3" packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-meta|42158825||")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine-meta|42158825||")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine-meta|42158825||")}" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine-meta|42158825||")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine-meta|42158825||")}"`
       ].join("\n")
     );
   });

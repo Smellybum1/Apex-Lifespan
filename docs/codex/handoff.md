@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after compacting resume state following source-candidate drill-in formatter consolidation. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding exact missing-claim/intervention source-candidate filters. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -19,6 +19,7 @@ Refreshed on 2026-06-04 after compacting resume state following source-candidate
 - Source-candidate acceptance, claim linking, and study extraction stay explicit human-reviewed local writes; accepted candidates still need curated references, claim links, and structured study extraction before public use.
 - Source-candidate CLI output now provides copyable read-only review/curation drill-ins across summary, jobs, queues, detail, packets, reference matches, siblings, duplicates, and curation views; see `docs/codex/source-candidate-workflow.md` for the compact catalog.
 - Packet/reference/sibling/curation drill-in hints share one local formatter helper in `src/lib/data/source-candidate-job-command.ts`; exact CLI output is covered by source-candidate command tests.
+- Candidate filters support read-only `--candidate-claim-missing` and `--candidate-intervention-missing`; generated list hints use them when a group or candidate lacks claim/intervention context.
 - Claim-scoped source queries append compact claim-text anchors after outcome terms before queueing.
 - Local Docker/PostgreSQL setup was verified earlier; migrations and seed were applied locally.
 
@@ -35,7 +36,18 @@ Refreshed on 2026-06-04 after compacting resume state following source-candidate
 
 ## Latest Local Validation
 
-Docs compaction check:
+Current code validation for missing-context candidate filters:
+- `npm run test -- src/lib/data/source-candidates.test.ts src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`
+- `npm run ingest:sources -- --candidates --candidate-claim-missing --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 3`
+- `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `git diff --check` (only LF-to-CRLF warnings for modified files)
+
+Previous docs compaction check:
 - `(Get-Content docs/codex/handoff.md).Count` returned 60.
 - Guardrail search confirmed local-only review, public read-only, human-reviewed writes, no accept/reject without review, peptide guardrails, workflow doc pointer, and historical archive pointer remain present.
 - `git diff --check` (only LF-to-CRLF warning for `docs/codex/handoff.md`).

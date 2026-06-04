@@ -37,6 +37,7 @@ npm run ingest:sources -- --candidates --candidate-duplicates
 npm run ingest:sources -- --candidates --candidate-external-id <pmid-or-nct-id>
 npm run ingest:sources -- --candidates --candidate-intervention-id <intervention-id>
 npm run ingest:sources -- --candidates --candidate-claim-id <claim-id>
+npm run ingest:sources -- --candidates --candidate-claim-missing --candidate-intervention-missing
 npm run ingest:sources -- --candidate-detail <dedupe-key>
 npm run ingest:sources -- --candidate-review-packet <dedupe-key>
 npm run ingest:sources -- --candidate-reference-matches <dedupe-key>
@@ -52,9 +53,9 @@ Read-only output rules:
 - `--jobs` prints recent ingestion jobs plus read-only candidate-list, context-jobs, and status-jobs hints.
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
 - `--candidate-detail` prints one record plus read-only packet/reference/sibling/group/curation hints, compact `reviewFlags` plus a `flags="..."` drill-in, and explanatory `reviewCautions` when a claim-scoped candidate needs extra broad-query/off-claim scrutiny.
-- `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."`, `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft hints, top-identity duplicate hints, and `topReviewFlags` plus a `flags="..."` drill-in when applicable.
+- `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."`, `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft hints, top-identity duplicate hints, and `topReviewFlags` plus a `flags="..."` drill-in when applicable. Unscoped groups include `--candidate-claim-missing` and/or `--candidate-intervention-missing` in generated list hints.
 - `--candidate-review-flags` filters the bounded review overview to flagged top candidates only, can narrow with `--candidate-review-flag`, and prints read-only `flags`, `list="..."`, `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft hints, `overview="..."`, and top-identity duplicate hints when applicable.
-- `--candidates` defaults to pending rows, prints `packet="..."`, `referenceMatches="..."`, `siblings="..."`, and curation-status/draft hints plus query/job trace fields and compact `reviewFlags` plus a `flags="..."` drill-in when applicable, and can filter by source, region, external id, job, intervention, claim, or decision.
+- `--candidates` defaults to pending rows, prints `packet="..."`, `referenceMatches="..."`, `siblings="..."`, and curation-status/draft hints plus query/job trace fields and compact `reviewFlags` plus a `flags="..."` drill-in when applicable, and can filter by source, region, external id, job, intervention, missing intervention, claim, missing claim, or decision.
 - `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."`, `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft hints, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable.
 - `--candidate-reference-matches` prints candidate identity plus `packet="..."`, `siblings="..."`, `groupList="..."`, curation-status/draft hints, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable before eligible curated references or draft-only reference context.
 - `--candidate-review-packet` prints command hints, detail, accepted-reference matches, sibling context, curation-status/draft hints, duplicate hints when the identity repeats, and review-flag hints when the candidate is flagged.

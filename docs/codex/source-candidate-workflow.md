@@ -31,6 +31,7 @@ npm run ingest:sources -- --queue-claim-sources <claim-id>
 npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10
 npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10
 npm run ingest:sources -- --candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10
+npm run ingest:sources -- --candidates --candidate-claim-missing --candidate-intervention-missing
 npm run ingest:sources -- --candidates --candidate-duplicates
 npm run ingest:sources -- --candidate-review-packet <dedupe-key>
 npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id>
@@ -42,9 +43,10 @@ Summary output prints read-only next-command hints for overview, review flags, d
 Job rows print read-only candidate-list, context-jobs, and status-jobs hints.
 Queue and run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
 Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on Windows anywhere `<dedupe-key>` is accepted.
+Candidate filters support `--candidate-claim-missing` and `--candidate-intervention-missing` for exact read-only slices of unscoped rows.
 Candidate detail output prints read-only packet, reference-match, sibling, group-list, curation-status, curation-draft hints, compact `reviewFlags` plus a `flags="..."` drill-in, and explanatory `reviewCautions` when a claim-scoped candidate needs extra broad-query/off-claim scrutiny.
 Candidate list rows print `packet="..."`, `referenceMatches="..."`, `siblings="..."`, and curation-status/draft hints for read-only review plus source-query, ingestion-job trace fields, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable.
-Review overview rows print `list="..."` for the filtered pending group, including region, `packet="..."`, `referenceMatches="..."`, `siblings="..."`, and curation-status/draft hints for the top candidate drill-in, duplicate hints when the top PMID/NCT identity repeats, and `topReviewFlags` plus a `flags="..."` drill-in when applicable.
+Review overview rows print `list="..."` for the filtered pending group, including missing-claim/intervention filters for unscoped contexts, region, `packet="..."`, `referenceMatches="..."`, `siblings="..."`, and curation-status/draft hints for the top candidate drill-in, duplicate hints when the top PMID/NCT identity repeats, and `topReviewFlags` plus a `flags="..."` drill-in when applicable.
 Review flag rows filter the bounded overview to flagged top candidates only, optionally narrow with `--candidate-review-flag`, and print compact `flags`, duplicate hints, `list="..."`, `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft hints, and `overview="..."` without changing review state.
 Reference-match headings print `packet="..."`, `siblings="..."`, `groupList="..."`, curation-status/draft hints, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable; draft references remain draft-only and require manual verification.
 Review packets print read-only follow-up commands, curation-status/draft hints, conditional duplicate and review-flag hints, and accept/reject templates; write templates still require explicit human review.

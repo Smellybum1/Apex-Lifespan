@@ -77,8 +77,10 @@ export interface SourceCandidateJobCommandOptions
   candidateDetailDedupeKey?: string;
   candidateDecision?: SourceCandidateDecision;
   candidateDuplicates?: boolean;
+  candidateClaimMissing?: boolean;
   candidateClaimId?: string;
   candidateExternalId?: string;
+  candidateInterventionMissing?: boolean;
   candidateInterventionId?: string;
   candidateJobId?: string;
   candidateReferenceMatchesDedupeKey?: string;
@@ -328,6 +330,7 @@ export async function runSourceCandidateJobCommand(
     if (options.candidateCurationHandoff) {
       const statuses = await listCurationHandoff({
         claimId: options.candidateClaimId,
+        ...sourceCandidateMissingFilterOptions(options),
         ingestionJobId: options.candidateJobId,
         interventionId: options.candidateInterventionId,
         region: options.candidateRegion,
@@ -373,6 +376,7 @@ export async function runSourceCandidateJobCommand(
     if (options.candidateReviewFlags) {
       const overview = await listReviewOverview({
         claimId: options.candidateClaimId,
+        ...sourceCandidateMissingFilterOptions(options),
         ingestionJobId: options.candidateJobId,
         interventionId: options.candidateInterventionId,
         limit: options.candidateReviewFlagsLimit,
@@ -387,6 +391,7 @@ export async function runSourceCandidateJobCommand(
     if (options.candidateReviewOverview) {
       const overview = await listReviewOverview({
         claimId: options.candidateClaimId,
+        ...sourceCandidateMissingFilterOptions(options),
         ingestionJobId: options.candidateJobId,
         interventionId: options.candidateInterventionId,
         limit: options.candidateReviewOverviewLimit,
@@ -520,6 +525,7 @@ export async function runSourceCandidateJobCommand(
       const candidateListOptions = {
         decision: options.candidateDecision,
         claimId: options.candidateClaimId,
+        ...sourceCandidateMissingFilterOptions(options),
         externalId: options.candidateExternalId,
         ingestionJobId: options.candidateJobId,
         interventionId: options.candidateInterventionId,
@@ -651,8 +657,10 @@ export function parseSourceCandidateJobCommandArgs(
   let candidatesLimitProvided = false;
   let candidateDecisionProvided = false;
   let candidateClaimIdProvided = false;
+  let candidateClaimMissingProvided = false;
   let candidateExternalIdProvided = false;
   let candidateInterventionIdProvided = false;
+  let candidateInterventionMissingProvided = false;
   let candidateJobIdProvided = false;
   let candidateCurationHandoffLimitProvided = false;
   let candidateCurationHandoffStatusProvided = false;
@@ -1021,10 +1029,22 @@ export function parseSourceCandidateJobCommandArgs(
       continue;
     }
 
+    if (arg === "--candidate-intervention-missing") {
+      options.candidateInterventionMissing = true;
+      candidateInterventionMissingProvided = true;
+      continue;
+    }
+
     if (arg === "--candidate-claim-id") {
       options.candidateClaimId = readRequiredValue(args, index, arg);
       candidateClaimIdProvided = true;
       index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-claim-missing") {
+      options.candidateClaimMissing = true;
+      candidateClaimMissingProvided = true;
       continue;
     }
 
@@ -1307,6 +1327,18 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (options.candidateClaimId && options.candidateClaimMissing) {
+    throw new Error(
+      "--candidate-claim-missing cannot be combined with --candidate-claim-id."
+    );
+  }
+
+  if (options.candidateInterventionId && options.candidateInterventionMissing) {
+    throw new Error(
+      "--candidate-intervention-missing cannot be combined with --candidate-intervention-id."
+    );
+  }
+
   if (options.candidateCurationHandoff && options.reviewDecision) {
     throw new Error(
       "--candidate-curation-handoff cannot be combined with review options."
@@ -1383,7 +1415,9 @@ export function parseSourceCandidateJobCommandArgs(
       candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
       candidateRegionProvided,
       candidateSource: options.candidateSource
     })
@@ -1464,7 +1498,9 @@ export function parseSourceCandidateJobCommandArgs(
       candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
       candidateRegionProvided,
       candidateSource: options.candidateSource
     })
@@ -1549,7 +1585,9 @@ export function parseSourceCandidateJobCommandArgs(
       candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
       candidateRegionProvided,
       candidateSource: options.candidateSource
     })
@@ -1610,7 +1648,9 @@ export function parseSourceCandidateJobCommandArgs(
       candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
       candidateRegionProvided,
       candidateSource: options.candidateSource
     })
@@ -1725,7 +1765,9 @@ export function parseSourceCandidateJobCommandArgs(
       candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
       candidateRegionProvided,
       candidateSource: options.candidateSource
     })
@@ -1792,7 +1834,9 @@ export function parseSourceCandidateJobCommandArgs(
       candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
       candidateRegionProvided,
       candidateSource: options.candidateSource
     })
@@ -1860,7 +1904,9 @@ export function parseSourceCandidateJobCommandArgs(
       candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
       candidateRegionProvided,
       candidateSource: options.candidateSource
     })
@@ -1908,7 +1954,9 @@ export function parseSourceCandidateJobCommandArgs(
       candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
       candidateRegionProvided,
       candidateSource: options.candidateSource
     })
@@ -1999,7 +2047,9 @@ export function parseSourceCandidateJobCommandArgs(
       candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
       candidateRegionProvided,
       candidateSource: options.candidateSource
     })
@@ -2048,7 +2098,9 @@ export function parseSourceCandidateJobCommandArgs(
       candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
       candidateRegionProvided,
       candidateSource: options.candidateSource
     }) &&
@@ -2427,7 +2479,9 @@ export function commandUsage() {
     "  --candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id.",
     "  --candidate-job-id <id>           Filter candidates, overview, flags, or handoff by ingestion job id.",
     "  --candidate-intervention-id <id>  Filter candidates, overview, flags, or handoff by intervention id.",
+    "  --candidate-intervention-missing  Filter candidates, overview, flags, or handoff to rows without intervention id.",
     "  --candidate-claim-id <id>         Filter candidates, overview, flags, or handoff by claim id.",
+    "  --candidate-claim-missing         Filter candidates, overview, flags, or handoff to rows without claim id.",
     "  --candidate-region <region>       Filter candidates, overview, flags, or handoff by region.",
     "  --jobs                            Print recent source-candidate ingestion jobs with read-only hints.",
     "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
@@ -2455,6 +2509,13 @@ function sourceCandidateIngestionJobOptions(
   return {
     clinicalTrialPageSize: options.clinicalTrialPageSize,
     pubMedRetmax: options.pubMedRetmax
+  };
+}
+
+function sourceCandidateMissingFilterOptions(options: SourceCandidateJobCommandOptions) {
+  return {
+    ...(options.candidateClaimMissing ? { claimIdMissing: true } : {}),
+    ...(options.candidateInterventionMissing ? { interventionIdMissing: true } : {})
   };
 }
 
@@ -3564,7 +3625,9 @@ function formatSourceCandidateReviewOverviewListCommand(
 ) {
   return formatSourceCandidateContextListCommand({
     claimId: group.claimId,
+    claimIdMissing: !group.claimId,
     interventionId: group.interventionId,
+    interventionIdMissing: !group.interventionId,
     limit: Math.min(group.count, DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT),
     region: group.region,
     source: group.source
@@ -3605,7 +3668,9 @@ function formatSourceCandidateDuplicateIdentityListCommand({
 function formatSourceCandidateGroupListCommand(candidate: SourceCandidate) {
   return formatSourceCandidateContextListCommand({
     claimId: candidate.claimId,
+    claimIdMissing: !candidate.claimId,
     interventionId: candidate.interventionId,
+    interventionIdMissing: !candidate.interventionId,
     limit: DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT,
     region: candidate.region,
     source: candidate.source
@@ -3614,13 +3679,17 @@ function formatSourceCandidateGroupListCommand(candidate: SourceCandidate) {
 
 function formatSourceCandidateContextListCommand({
   claimId,
+  claimIdMissing,
   interventionId,
+  interventionIdMissing,
   limit,
   region,
   source
 }: {
   claimId?: string;
+  claimIdMissing?: boolean;
   interventionId?: string;
+  interventionIdMissing?: boolean;
   limit: number;
   region: string;
   source: SourceCandidateSource;
@@ -3629,10 +3698,14 @@ function formatSourceCandidateContextListCommand({
 
   if (claimId) {
     args.push("--candidate-claim-id", claimId);
+  } else if (claimIdMissing) {
+    args.push("--candidate-claim-missing");
   }
 
   if (interventionId) {
     args.push("--candidate-intervention-id", interventionId);
+  } else if (interventionIdMissing) {
+    args.push("--candidate-intervention-missing");
   }
 
   args.push(
@@ -4474,7 +4547,9 @@ function hasCandidateListFilter({
   candidateExternalIdProvided,
   candidateJobIdProvided,
   candidateInterventionIdProvided,
+  candidateInterventionMissingProvided,
   candidateClaimIdProvided,
+  candidateClaimMissingProvided,
   candidateRegionProvided,
   candidateSource
 }: {
@@ -4483,7 +4558,9 @@ function hasCandidateListFilter({
   candidateExternalIdProvided: boolean;
   candidateJobIdProvided: boolean;
   candidateInterventionIdProvided: boolean;
+  candidateInterventionMissingProvided?: boolean;
   candidateClaimIdProvided: boolean;
+  candidateClaimMissingProvided?: boolean;
   candidateRegionProvided: boolean;
   candidateSource?: SourceCandidateSource;
 }) {
@@ -4494,7 +4571,9 @@ function hasCandidateListFilter({
       candidateExternalIdProvided ||
       candidateJobIdProvided ||
       candidateInterventionIdProvided ||
+      candidateInterventionMissingProvided ||
       candidateClaimIdProvided ||
+      candidateClaimMissingProvided ||
       candidateRegionProvided
   );
 }
