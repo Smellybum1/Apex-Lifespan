@@ -2726,7 +2726,11 @@ function formatSourceCandidateDetail(
   if (reviewFlags.length > 0) {
     const reviewFlagCodes = reviewFlags.map((flag) => flag.code);
     lines.push(
-      ...formatSourceCandidateReviewFlagFields("reviewFlags", reviewFlagCodes)
+      ...formatSourceCandidateReviewFlagFields(
+        "reviewFlags",
+        reviewFlagCodes,
+        sourceCandidateReviewFlagContext(candidate)
+      )
     );
     lines.push(
       formatStringList(
@@ -2858,7 +2862,12 @@ function formatSourceCandidateReviewPacketCommandHints(
   if (reviewFlagCodes.length > 0) {
     lines.push(
       `reviewFlags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
-      `flagFocus=${quote(formatSourceCandidateReviewFlagsCommand(reviewFlagCodes[0]))}`
+      `flagFocus=${quote(
+        formatSourceCandidateReviewFlagsCommand(
+          reviewFlagCodes[0],
+          sourceCandidateReviewFlagContext(candidate)
+        )
+      )}`
     );
   }
 
@@ -3297,7 +3306,8 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
     headingParts.push(
       ...formatSourceCandidateReviewFlagFields(
         "targetReviewFlags",
-        targetReviewFlagCodes
+        targetReviewFlagCodes,
+        sourceCandidateReviewFlagContext(target)
       )
     );
   }
@@ -3341,7 +3351,11 @@ function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings
 
   if (reviewFlagCodes.length > 0) {
     parts.push(
-      ...formatSourceCandidateReviewFlagFields("reviewFlags", reviewFlagCodes)
+      ...formatSourceCandidateReviewFlagFields(
+        "reviewFlags",
+        reviewFlagCodes,
+        sourceCandidateReviewFlagContext(candidate)
+      )
     );
   }
 
@@ -3441,7 +3455,11 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
 
   if (reviewFlagCodes.length > 0) {
     parts.push(
-      ...formatSourceCandidateReviewFlagFields("reviewFlags", reviewFlagCodes)
+      ...formatSourceCandidateReviewFlagFields(
+        "reviewFlags",
+        reviewFlagCodes,
+        sourceCandidateReviewFlagContext(candidate)
+      )
     );
   }
 
@@ -3544,7 +3562,12 @@ function formatSourceCandidateReviewFlagGroup(
   const parts = [
     "-",
     `flags=${quote(reviewFlagCodes.join(", "))}`,
-    `flagFocus=${quote(formatSourceCandidateReviewFlagsCommand(reviewFlagCodes[0]))}`,
+    `flagFocus=${quote(
+      formatSourceCandidateReviewFlagsCommand(
+        reviewFlagCodes[0],
+        sourceCandidateReviewFlagGroupContext(group)
+      )
+    )}`,
     `claim=${group.claimId ?? "none"}`,
     `intervention=${group.interventionId ?? "none"}`,
     group.source,
@@ -3601,7 +3624,12 @@ function formatSourceCandidateReviewOverviewGroup(
     parts.push(
       `topReviewFlags=${quote(reviewFlagCodes.join(", "))}`,
       `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
-      `flagFocus=${quote(formatSourceCandidateReviewFlagsCommand(reviewFlagCodes[0]))}`
+      `flagFocus=${quote(
+        formatSourceCandidateReviewFlagsCommand(
+          reviewFlagCodes[0],
+          sourceCandidateReviewFlagGroupContext(group)
+        )
+      )}`
     );
   }
 
@@ -3736,7 +3764,11 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
 
   if (reviewFlagCodes.length > 0) {
     parts.push(
-      ...formatSourceCandidateReviewFlagFields("reviewFlags", reviewFlagCodes)
+      ...formatSourceCandidateReviewFlagFields(
+        "reviewFlags",
+        reviewFlagCodes,
+        sourceCandidateReviewFlagContext(candidate)
+      )
     );
   }
 
@@ -3779,16 +3811,53 @@ function sourceCandidateReviewFlagCodes(candidate: SourceCandidate) {
   return sourceCandidateReviewFlags(candidate).map((flag) => flag.code);
 }
 
+interface SourceCandidateReviewFlagCommandContext {
+  claimId?: string;
+  claimIdMissing?: boolean;
+  interventionId?: string;
+  interventionIdMissing?: boolean;
+  region?: string;
+  source?: SourceCandidateSource;
+}
+
+function sourceCandidateReviewFlagContext(
+  candidate: SourceCandidate
+): SourceCandidateReviewFlagCommandContext {
+  return {
+    claimId: candidate.claimId,
+    claimIdMissing: !candidate.claimId,
+    interventionId: candidate.interventionId,
+    interventionIdMissing: !candidate.interventionId,
+    region: candidate.region,
+    source: candidate.source
+  };
+}
+
+function sourceCandidateReviewFlagGroupContext(
+  group: SourceCandidateReviewOverview["groups"][number]
+): SourceCandidateReviewFlagCommandContext {
+  return {
+    claimId: group.claimId,
+    claimIdMissing: !group.claimId,
+    interventionId: group.interventionId,
+    interventionIdMissing: !group.interventionId,
+    region: group.region,
+    source: group.source
+  };
+}
+
 function sourceCandidateReviewFlagFields(label: string, candidate: SourceCandidate) {
   return formatSourceCandidateReviewFlagFields(
     label,
-    sourceCandidateReviewFlagCodes(candidate)
+    sourceCandidateReviewFlagCodes(candidate),
+    sourceCandidateReviewFlagContext(candidate)
   );
 }
 
 function formatSourceCandidateReviewFlagFields(
   label: string,
-  reviewFlagCodes: readonly SourceCandidateReviewFlagCode[]
+  reviewFlagCodes: readonly SourceCandidateReviewFlagCode[],
+  context?: SourceCandidateReviewFlagCommandContext
 ) {
   if (reviewFlagCodes.length === 0) {
     return [];
@@ -3797,7 +3866,7 @@ function formatSourceCandidateReviewFlagFields(
   return [
     `${label}=${quote(reviewFlagCodes.join(", "))}`,
     `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
-    `flagFocus=${quote(formatSourceCandidateReviewFlagsCommand(reviewFlagCodes[0]))}`
+    `flagFocus=${quote(formatSourceCandidateReviewFlagsCommand(reviewFlagCodes[0], context))}`
   ];
 }
 
@@ -4070,11 +4139,34 @@ function formatSourceCandidateReviewFlagSummaryGroup(
   );
 }
 
-function formatSourceCandidateReviewFlagsCommand(flag?: SourceCandidateReviewFlagCode) {
+function formatSourceCandidateReviewFlagsCommand(
+  flag?: SourceCandidateReviewFlagCode,
+  context?: SourceCandidateReviewFlagCommandContext
+) {
   const parts = ["--candidate-review-flags"];
 
   if (flag) {
     parts.push("--candidate-review-flag", flag);
+  }
+
+  if (context?.claimId) {
+    parts.push("--candidate-claim-id", context.claimId);
+  } else if (context?.claimIdMissing) {
+    parts.push("--candidate-claim-missing");
+  }
+
+  if (context?.interventionId) {
+    parts.push("--candidate-intervention-id", context.interventionId);
+  } else if (context?.interventionIdMissing) {
+    parts.push("--candidate-intervention-missing");
+  }
+
+  if (context?.region) {
+    parts.push("--candidate-region", context.region);
+  }
+
+  if (context?.source) {
+    parts.push("--candidate-source", sourceCandidateSourceCliValue(context.source));
   }
 
   parts.push("--candidate-review-flags-limit", "10");
