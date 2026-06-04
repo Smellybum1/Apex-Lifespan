@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candidate and improving mixed-decision duplicate identity plus overview/flag/list/detail/sibling/reference/curation review-audit surfacing. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 closeout after source-candidate duplicate review-cue work. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,300 +11,52 @@ Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candid
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; verify latest commit with `git log -1 --oneline`.
+- Branch: `codex/queue-claim-sources`; current code commit before this closeout doc pass is `ac893f1 Show mixed duplicate cues in review overview`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
-- `npm run ingest:sources` now prints the read-only summary; queued ingestion runs require explicit `--run-next` or `--job-id`.
 - Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover static, dynamic, and CommonJS `source-candidate*` route imports.
-- Source-candidate acceptance/rejection, claim linking, and study extraction stay explicit human-reviewed local writes; persistence accepts only accepted/rejected review decisions, accept/reject decisions require human review notes at CLI, type, and persistence layers, rejected decisions cannot carry accepted-reference ids, study extraction preflights required manual fields and explicit source types before DB reads, and accepted candidates still need curated references, claim links, and structured study extraction before public use.
-- Source-candidate CLI output now provides copyable read-only review/curation drill-ins and Not-accepted accept-gate hints across summary, jobs, queues, detail, packets, reference matches, siblings, duplicates, and curation views; curation summary buckets include status-specific `nextAction`, `nextWrite`/`writeReady`, and blockers when applicable, curation handoff/status rows and explicit claim-link/study-extraction result rows include `nextWrite`/`writeReady` plus draft review drill-ins when a follow-on guarded write is available, curation drafts include guarded explicit-write `commandTemplate` values plus `writeReady`/`blockedUntil` fields, and curation status/draft/handoff rows include accepted-reference audit fields plus review-note fields for reviewed rows; see `docs/codex/source-candidate-workflow.md` for the compact catalog.
-- Packet command hints include accepted-reference match counts and explicit accept-gate booleans; packet/reference/sibling/curation drill-ins share one local formatter helper in `src/lib/data/source-candidate-job-command.ts`, and exact CLI output is covered by source-candidate command tests.
+- Source-candidate acceptance/rejection, claim linking, and study extraction stay explicit human-reviewed local writes. Accepted candidates still need curated references, claim links, and structured study extraction before public use.
+- Guarded curation writes are `--link-candidate-claim` for `ClaimReference` and `--extract-candidate-study` for `Study`; neither creates references, source documents, decisions, or public promotions.
+- Source-candidate CLI output provides copyable read-only review/curation drill-ins and Not-accepted accept-gate hints across summary, jobs, queues, detail, packets, reference matches, siblings, duplicates, curation views, review overview, review flags, and candidate lists.
+- Duplicate identity review surfaces include `duplicateCaution`, `duplicateIdentityMixedDecision`, and read-only duplicate next actions when the same PMID/NCT spans multiple decision states. Use these cues to review scoped/unscoped identity context before any decision.
 - Candidate filters support read-only `--candidate-claim-missing` and `--candidate-intervention-missing`; generated list hints use them when a group or candidate lacks claim/intervention context.
-- Duplicate identity review surfaces include `duplicateCaution` prompts plus exact read-only duplicate/list hints in summary flag focus, overview, flags, candidate lists, detail, packets, siblings, reference matches, curation views, and duplicate rows; duplicate identity group headings include `mixedDecision=true` plus a read-only `nextAction`, and summary flag focus, review overview, review flags, candidate list rows, standalone detail rows, packet command hints, reference-match headings, sibling headings, plus curation status/draft/handoff rows include `duplicateIdentityMixedDecision` plus a read-only duplicate next action, when the same PMID/NCT spans multiple decision states; accepted-reference/review-note fields for reviewed rows; and explicit `intervention`/`claim` values, including `none`, so repeated PMID/NCT identities can be reviewed in scoped or unscoped context before any decision.
-- Duplicate identity scans now surface mixed-decision identities by default, while explicit `--candidate-decision` filters still narrow the scan.
-- Review overview top-candidate selection now prefers repeated PMID/NCT identities when triage scores tie, so mixed accepted/pending duplicates are more visible from the overview.
-- Flagged summary, overview, and candidate-level rows include caution text plus context-scoped read-only `flagFocus="..."` hints while preserving broader `flags="..."` drill-ins; filtered review-flag rows focus the selected flag.
-- Claim-scoped source queries append compact claim-text anchors after outcome terms before queueing.
-- Completed 2026-06-04 source-candidate plan files have been moved out of top-level `docs/codex/plans/` into `docs/codex/plans/archive/2026-06-04/`; keep the top-level plans folder for active plans only.
-- Local Docker/PostgreSQL setup was verified earlier; migrations and seed were applied locally.
+- Review overview top-candidate selection prefers repeated PMID/NCT identities when triage scores tie, so mixed accepted/pending duplicates are more visible from the overview.
+- Completed 2026-06-04 source-candidate plan files were moved to `docs/codex/plans/archive/2026-06-04/`; keep top-level `docs/codex/plans/` for active plans only.
+- Startup/workflow docs reviewed during closeout: `AGENTS.md`, `docs/codex/project.md`, `docs/codex/workflow.md`, and `.agents/skills/project-workflow/SKILL.md` were already compact. This handoff was the clear bloat point, so its repeated historical validation log was compressed.
 
 ## Current Source-Candidate State
 
-- Last local snapshot: 15 ingestion jobs total, 0 queued jobs, 49 pending candidates, 1 accepted candidate, and curation handoff `total=1`.
-- Pending backlog split: PubMed AU 19 and ClinicalTrials.gov AU 30.
-- Accepted candidate: scoped PubMed AU `PMID 42141930` for `claim=creatine-strength` / `intervention=creatine`, accepted with `ref-pubmed-42141930` and human review note: "Human reviewed PMID 42141930; relevant to creatine and lean mass/strength outcomes, but needs curated reference before promotion."
-- Current curation handoff status for accepted `PMID 42141930`: `Claim link missing`, `publicSourcePacketReady=false`; curation status/draft/handoff show the stored `reviewed` timestamp, human review note, and duplicate identity caution, but do not link or extract without explicit human-owned curation.
-- All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
+- Latest read-only summary: 15 ingestion jobs total, 0 queued jobs, 49 pending candidates, 1 accepted candidate, curation handoff `total=1`.
+- Pending split: PubMed AU 19 and ClinicalTrials.gov AU 30.
+- Accepted candidate: scoped PubMed AU `PMID 42141930` for `claim=creatine-strength` / `intervention=creatine`, accepted with `ref-pubmed-42141930`.
+- Human review note for accepted `PMID 42141930`: "Human reviewed PMID 42141930; relevant to creatine and lean mass/strength outcomes, but needs curated reference before promotion."
+- Current curation handoff status for accepted `PMID 42141930`: `Claim link missing`, `publicSourcePacketReady=false`. Do not link or extract without explicit human-owned curation.
+- Duplicate scan currently shows one mixed PubMed identity group for `PMID 42141930`, with one pending unscoped row and one accepted scoped `creatine-strength` row.
 - Review overview currently has 9 pending groups. Useful entry point: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
-- Review flags currently show 3 flagged top groups: two broad `vitamin-d-deficiency` safety-query groups and one `creatine-lifespan` low-title-overlap group. Useful focus command: `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`.
-- Duplicate scan currently shows one mixed PubMed identity group for `PMID 42141930`, with one pending unscoped row and one accepted scoped `creatine-strength` row. Useful command: `npm run ingest:sources -- --candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 42141930 --candidates-limit 2`.
-- Review overview now surfaces the pending unscoped `PMID 42141930` row as the top `claim=none`/`intervention=none` PubMed group candidate with `topIdentityCandidates=2`.
+- Review flags currently show 3 flagged top groups: two broad `vitamin-d-deficiency` safety-query groups and one `creatine-lifespan` low-title-overlap group. Useful entry point: `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`.
 - Treat `vitamin-d-deficiency` results as broad-query leads; review title, population, outcomes, source identity, siblings, and reference matches carefully before any accept/reject decision.
-- Notable current groups: `creatine-lifespan` has one ClinicalTrials.gov lead (`NCT07451496`); `omega-3-triglycerides` has ClinicalTrials.gov leads; `omega-3-cv-events` has PubMed and ClinicalTrials.gov leads. Regenerate exact packet keys from the overview or candidate lists.
+- Notable current groups: `creatine-lifespan` has one ClinicalTrials.gov lead (`NCT07451496`); `omega-3-triglycerides` has ClinicalTrials.gov leads; `omega-3-cv-events` has PubMed and ClinicalTrials.gov leads.
+- All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
 
-Current code validation for review overview/flag mixed duplicate decision cues:
+Latest code validation for `ac893f1`:
 - `npm run test -- src/lib/data/source-candidates.test.ts`
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-review-overview --candidate-claim-missing --candidate-intervention-missing --candidate-source pubmed --candidate-review-overview-limit 10` (read-only smoke)
-- `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10` (read-only smoke)
-- `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10` (read-only smoke)
-- `npm run ingest:sources -- --summary` (read-only smoke)
+- Read-only CLI smokes for review overview, review flags, summary, and exact `PMID 42141930` duplicate/review surfaces.
 - `npm run test`
 - `npm run lint`
 - `npm run dev:stop`
 - `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for curation mixed duplicate decision cues:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-curation-status <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-curation-draft <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-curation-handoff` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for candidate-list mixed duplicate decision cues:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidates --candidate-source pubmed --candidate-external-id 42141930 --candidates-limit 2` (read-only smoke)
-- `npm run ingest:sources -- --candidates --candidate-decision accepted --candidate-source pubmed --candidate-external-id 42141930 --candidates-limit 2` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for detail mixed duplicate decision cues:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-detail <pending unscoped PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-detail <accepted scoped PMID 42141930 key>` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for reference-match mixed duplicate decision cues:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-reference-matches <pending unscoped PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-review-packet <pending unscoped PMID 42141930 key>` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for packet/sibling mixed duplicate decision cues:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-review-packet <pending unscoped PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-siblings <pending unscoped PMID 42141930 key>` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for duplicate identity mixed-decision next actions:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 42141930 --candidates-limit 2` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for curation accepted-reference audit fields:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-curation-handoff` (read-only smoke)
-- `npm run ingest:sources -- --candidate-curation-status <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-curation-draft <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for curation write-result readiness:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --summary` (read-only smoke; guarded write commands were not run)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for curation status write readiness:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-curation-status <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for summary curation write readiness:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --summary` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for curation handoff write readiness:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-curation-handoff` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for curation draft readiness fields:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-curation-draft <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for curation draft command templates:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-curation-draft <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for summary curation next actions:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --summary` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for summary flag duplicate cautions:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --summary` (read-only smoke)
-- `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for candidate-list duplicate cautions:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidates --candidate-source pubmed --candidate-external-id 42141930 --candidates-limit 2` (read-only smoke)
-- `npm run ingest:sources -- --candidates --candidate-decision accepted --candidate-source pubmed --candidate-external-id 42141930 --candidates-limit 2` (read-only smoke)
-- `npm run ingest:sources -- --candidates --candidate-source pubmed --candidate-external-id 30762623 --candidates-limit 1` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for detail duplicate cautions:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-detail <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-detail <pending unscoped PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-detail <non-duplicate PMID 30762623 key>` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for sibling duplicate cautions:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-siblings <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-siblings <pending unscoped PMID 42141930 key>` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for reference-match duplicate cautions:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-reference-matches <pending unscoped PMID 42141930 key>` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for curation duplicate cautions:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-curation-status <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-curation-draft <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-curation-handoff` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for curation review audit fields:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidate-curation-status <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-curation-draft <accepted PMID 42141930 key>` (read-only smoke)
-- `npm run ingest:sources -- --candidate-curation-handoff` (read-only smoke)
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 
 Current closeout validation:
 - `npm run ingest:sources -- --summary` (read-only state check)
+- Startup/workflow docs and tracked workflow config reviewed.
 - `git diff --check`
-- Startup/workflow docs and tracked workflow config reviewed; no code changed in closeout.
 
-Current code validation for mixed-decision duplicate identity scans:
-- `npm run test -- src/lib/data/source-candidates.test.ts`
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- Read-only CLI smokes for exact `PMID 42141930` duplicate scan and summary.
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for duplicate identity audit fields:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- Read-only CLI smoke for exact `PMID 42141930` duplicate scan.
-
-Current code validation for overview duplicate tie-breaks:
-- `npm run test -- src/lib/data/source-candidates.test.ts`
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- Read-only CLI smoke for review overview.
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Current code validation for source-candidate duplicate identity cautions:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run test`, `npm run lint`, `npm run dev:stop`, `npm run typecheck`
-- Read-only CLI smokes for duplicate packet, duplicate scan, and review overview.
-- `git diff --check` (only LF-to-CRLF warnings for modified files)
-
-Recent code validation for source-candidate CLI/type/persistence guardrails:
-- Focused source-candidate command/persistence tests plus `npm run test`, `npm run lint`, `npm run dev:stop`, and `npm run typecheck`.
+Older per-surface validation details live in git history and tests; do not replay old check matrices unless touching those surfaces.
 
 ## Next Useful Tasks
 
