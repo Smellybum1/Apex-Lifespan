@@ -15,6 +15,9 @@ function safeCandidateKey(dedupeKey: string) {
 describe("commandUsage", () => {
   it("describes source-candidate review guardrails", () => {
     expect(commandUsage()).toContain(
+      "--candidate-detail <dedupe-key>   Print one source-candidate detail record with command hints."
+    );
+    expect(commandUsage()).toContain(
       "--candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance."
     );
     expect(commandUsage()).toContain(
@@ -1938,6 +1941,14 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate detail",
         'dedupe="pubmed|au|creatine|28615996"',
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
+        "Source-candidate detail command hints",
+        "safeReadOnly=true",
+        `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        'groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-id creatine --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        `curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'source="PubMed"',
         'externalId="28615996"',
         'region="AU"',
@@ -1999,6 +2010,14 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate detail",
         'dedupe="pubmed|au|creatine|28615996"',
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
+        "Source-candidate detail command hints",
+        "safeReadOnly=true",
+        `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        'groupList="--candidates --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+        `curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         'source="PubMed"',
         'externalId="28615996"',
         'region="AU"',

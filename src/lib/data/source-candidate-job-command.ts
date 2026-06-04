@@ -2159,7 +2159,7 @@ export function commandUsage() {
     "Options:",
     "  --job-id <id>                     Run one specific ingestion job.",
     "  --limit <count>                   Run up to count queued jobs (default 1, max 25).",
-    "  --candidate-detail <dedupe-key>   Print one source-candidate detail record.",
+    "  --candidate-detail <dedupe-key>   Print one source-candidate detail record with command hints.",
     "  --candidate-curation-draft <dedupe-key> Print read-only claim-link/study draft fields with command hints.",
     "  --candidate-curation-status <dedupe-key> Print curation handoff status, next action, and command hints.",
     "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows, next actions, and command hints.",
@@ -2374,11 +2374,17 @@ function formatExtractedSourceCandidateStudy(result: ExtractedSourceCandidateStu
   return parts.join(" ");
 }
 
-function formatSourceCandidateDetail(candidate: SourceCandidate) {
+function formatSourceCandidateDetail(
+  candidate: SourceCandidate,
+  options: { commandHints?: boolean } = {}
+) {
   const lines = [
     "Source-candidate detail",
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    ...(options.commandHints === false
+      ? []
+      : formatSourceCandidateDetailCommandHints(candidate)),
     `source=${quote(candidate.source)}`,
     `externalId=${quote(candidate.externalId)}`,
     `region=${quote(candidate.region)}`,
@@ -2438,11 +2444,26 @@ function formatSourceCandidateDetail(candidate: SourceCandidate) {
   return lines.join("\n");
 }
 
+function formatSourceCandidateDetailCommandHints(candidate: SourceCandidate) {
+  const key = safeCandidateKey(candidate.dedupeKey);
+
+  return [
+    "Source-candidate detail command hints",
+    "safeReadOnly=true",
+    `packet=${quote(`--candidate-review-packet ${key}`)}`,
+    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
+    `siblings=${quote(`--candidate-siblings ${key}`)}`,
+    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
+    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
+    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`
+  ];
+}
+
 function formatSourceCandidateReviewPacket(packet: SourceCandidateReviewPacket) {
   return [
     "Source-candidate review packet",
     formatSourceCandidateReviewPacketCommandHints(packet),
-    formatSourceCandidateDetail(packet.candidate),
+    formatSourceCandidateDetail(packet.candidate, { commandHints: false }),
     formatSourceCandidateReferenceMatches(packet.referenceMatches),
     formatSourceCandidateSiblings(packet.siblings)
   ].join("\n\n");
