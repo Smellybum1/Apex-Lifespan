@@ -2162,7 +2162,7 @@ export function commandUsage() {
     "  --candidate-detail <dedupe-key>   Print one source-candidate detail record.",
     "  --candidate-curation-draft <dedupe-key> Print read-only claim-link/study draft fields with command hints.",
     "  --candidate-curation-status <dedupe-key> Print curation handoff status, next action, and command hints.",
-    "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows and next actions.",
+    "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows, next actions, and command hints.",
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
     "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
     "  --candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance.",
@@ -2682,6 +2682,7 @@ function formatSourceCandidateCurationHandoffItem(
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    ...formatSourceCandidateCurationHandoffCommandHints(candidate),
     `title=${quote(candidate.title)}`
   ];
 
@@ -2701,6 +2702,19 @@ function formatSourceCandidateCurationHandoffItem(
   parts.push(`studies=${status.studies.length}`);
 
   return parts.join(" ");
+}
+
+function formatSourceCandidateCurationHandoffCommandHints(
+  candidate: SourceCandidate
+) {
+  const key = safeCandidateKey(candidate.dedupeKey);
+
+  return [
+    `packet=${quote(`--candidate-review-packet ${key}`)}`,
+    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
+    `curationStatus=${quote(`--candidate-curation-status ${key}`)}`,
+    `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`
+  ];
 }
 
 function formatCurationClaimLink(

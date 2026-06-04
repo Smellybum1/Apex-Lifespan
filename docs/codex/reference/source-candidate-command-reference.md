@@ -56,7 +56,7 @@ Read-only output rules:
 - Packet accept/reject templates are copied commands only; they still require explicit human review and do not create references or public evidence.
 - Empty `--candidate-reference-matches` output includes a draft-only `referenceDraft=...` line for manual verification; it does not create a reference or mark the candidate accepted.
 - `--candidate-curation-status` and `--candidate-curation-draft` report readiness for public source packets, not evidence quality, and print read-only packet/reference/group/paired-curation hints.
-- `--candidate-curation-handoff` reports accepted-candidate readiness for public source packets, not evidence quality.
+- `--candidate-curation-handoff` reports accepted-candidate readiness for public source packets, not evidence quality, and non-empty rows print read-only packet/reference/status/draft hints.
 
 ## Review And Curation Writes
 
