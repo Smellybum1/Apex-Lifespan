@@ -610,15 +610,15 @@ export async function runSourceCandidateJobCommand(
       }
 
       const candidates = await listCandidates(candidateListOptions);
-      const duplicateIdentityCandidateCounts =
-        await sourceCandidateDuplicateIdentityCandidateCountMap(
+      const duplicateIdentityInfoByDedupeKey =
+        await sourceCandidateDuplicateIdentityInfoMap(
           candidates,
           listSiblings
         );
 
       stdout(
         formatSourceCandidateReviewQueue(candidates, options.candidateDecision, {
-          duplicateIdentityCandidateCounts
+          duplicateIdentityInfoByDedupeKey
         })
       );
       return 0;
@@ -3092,6 +3092,36 @@ async function sourceCandidateDuplicateIdentityCandidateCountMap(
   return new Map(counts);
 }
 
+interface SourceCandidateDuplicateIdentityInfo {
+  candidateCount: number;
+  mixedDecision: boolean;
+}
+
+async function sourceCandidateDuplicateIdentityInfoMap(
+  candidates: SourceCandidate[],
+  listSiblings: NonNullable<SourceCandidateJobCommandRunners["listSiblings"]>
+) {
+  const info = await Promise.all(
+    candidates.map(async (candidate) => {
+      const siblings = await listSiblings(candidate.dedupeKey, {});
+
+      return [
+        candidate.dedupeKey,
+        {
+          candidateCount: siblings
+            ? sourceCandidateSiblingDuplicateIdentityCount(siblings)
+            : 1,
+          mixedDecision: siblings
+            ? sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(siblings)
+            : false
+        }
+      ] as const;
+    })
+  );
+
+  return new Map(info);
+}
+
 function formatSourceCandidateDuplicateIdentityFields(
   candidate: SourceCandidate,
   duplicateIdentityCandidateCount: number,
@@ -3978,7 +4008,12 @@ function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings
 function formatSourceCandidateReviewQueue(
   candidates: SourceCandidate[],
   decision?: SourceCandidateDecision,
-  options: { duplicateIdentityCandidateCounts?: Map<string, number> } = {}
+  options: {
+    duplicateIdentityInfoByDedupeKey?: Map<
+      string,
+      SourceCandidateDuplicateIdentityInfo
+    >;
+  } = {}
 ) {
   const heading = decision && decision !== "Pending review"
     ? `Source-candidate review records: decision=${quote(decision)}`
@@ -3990,12 +4025,15 @@ function formatSourceCandidateReviewQueue(
 
   return [
     `${heading}: total=${candidates.length}`,
-    ...candidates.map((candidate) =>
-      formatSourceCandidateReviewQueueItem(candidate, {
-        duplicateIdentityCandidateCount:
-          options.duplicateIdentityCandidateCounts?.get(candidate.dedupeKey)
-      })
-    )
+    ...candidates.map((candidate) => {
+      const duplicateIdentityInfo =
+        options.duplicateIdentityInfoByDedupeKey?.get(candidate.dedupeKey);
+
+      return formatSourceCandidateReviewQueueItem(candidate, {
+        duplicateIdentityCandidateCount: duplicateIdentityInfo?.candidateCount,
+        duplicateIdentityMixedDecision: duplicateIdentityInfo?.mixedDecision
+      });
+    })
   ].join("\n");
 }
 
@@ -4384,7 +4422,10 @@ function sourceCandidateSourceCliValue(source: SourceCandidateSource) {
 
 function formatSourceCandidateReviewQueueItem(
   candidate: SourceCandidate,
-  options: { duplicateIdentityCandidateCount?: number } = {}
+  options: {
+    duplicateIdentityCandidateCount?: number;
+    duplicateIdentityMixedDecision?: boolean;
+  } = {}
 ) {
   const reviewFlags = sourceCandidateReviewFlags(candidate);
   const key = safeCandidateKey(candidate.dedupeKey);
@@ -4397,7 +4438,10 @@ function formatSourceCandidateReviewQueueItem(
     ...formatSourceCandidateReviewDrillInHints(candidate, key),
     ...formatSourceCandidateDuplicateIdentityFields(
       candidate,
-      options.duplicateIdentityCandidateCount ?? 1
+      options.duplicateIdentityCandidateCount ?? 1,
+      {
+        duplicateIdentityMixedDecision: options.duplicateIdentityMixedDecision
+      }
     ),
     `externalId=${quote(candidate.externalId)}`,
     `query=${quote(candidate.query)}`,
