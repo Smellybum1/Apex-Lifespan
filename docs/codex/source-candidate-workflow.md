@@ -49,7 +49,7 @@ Review flag rows filter the bounded overview to flagged top candidates only, opt
 Reference-match headings print `packet="..."`, `groupList="..."`, and compact `reviewFlags` when applicable; draft references remain draft-only and require manual verification.
 Review packets print read-only follow-up commands, conditional duplicate hints, and accept/reject templates; write templates still require explicit human review.
 Sibling rows print `packet="..."` for read-only packet review of related candidates plus `targetReviewFlags`/`reviewFlags` when applicable.
-Duplicate identity rows print `identityList="..."` for the filtered duplicate group and `packet="..."` plus `reviewFlags` for each candidate row when applicable.
+Duplicate identity rows print `identityList="..."` for the filtered duplicate group and `packet="..."` plus `reviewFlags` and `flags="..."` for each candidate row when applicable.
 Curation handoff rows print read-only packet, reference-match, curation-status, curation-draft hints, and compact `reviewFlags` when applicable.
 Curation status and draft rows print read-only packet, reference-match, group-list, paired curation-view hints, and compact `reviewFlags` when applicable.
 

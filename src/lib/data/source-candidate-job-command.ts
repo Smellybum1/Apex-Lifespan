@@ -3287,7 +3287,10 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
   ];
 
   if (reviewFlagCodes.length > 0) {
-    parts.push(`reviewFlags=${quote(reviewFlagCodes.join(", "))}`);
+    parts.push(
+      `reviewFlags=${quote(reviewFlagCodes.join(", "))}`,
+      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+    );
   }
 
   if (candidate.interventionId) {

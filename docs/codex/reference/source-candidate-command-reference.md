@@ -55,7 +55,7 @@ Read-only output rules:
 - `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."`, `packet="..."`, top-identity duplicate hints, and `topReviewFlags` plus a `flags="..."` drill-in when applicable.
 - `--candidate-review-flags` filters the bounded review overview to flagged top candidates only, can narrow with `--candidate-review-flag`, and prints read-only `flags`, `list="..."`, `packet="..."`, and top-identity duplicate hints when applicable.
 - `--candidates` defaults to pending rows, prints `packet="..."` hints plus query/job trace fields and compact `reviewFlags` plus a `flags="..."` drill-in when applicable, and can filter by source, region, external id, job, intervention, claim, or decision.
-- `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."`, `packet="..."`, and compact `reviewFlags` when applicable.
+- `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."`, `packet="..."`, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable.
 - `--candidate-reference-matches` prints candidate identity plus `packet="..."`, `groupList="..."`, and compact `reviewFlags` when applicable before eligible curated references or draft-only reference context.
 - `--candidate-review-packet` prints command hints, detail, accepted-reference matches, sibling context, and duplicate hints when the identity repeats.
 - `--candidate-siblings` prints match reasons, `packet="..."` hints, and compact `targetReviewFlags`/`reviewFlags` when applicable.
