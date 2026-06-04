@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after preflighting manual study extraction fields and explicit source types before DB reads. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after making source-candidate CLI no-arg mode read-only summary and queued runs explicit. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -15,6 +15,7 @@ Refreshed on 2026-06-04 after preflighting manual study extraction fields and ex
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
+- `npm run ingest:sources` now prints the read-only summary; queued ingestion runs require explicit `--run-next` or `--job-id`.
 - Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover static, dynamic, and CommonJS `source-candidate*` route imports.
 - Source-candidate acceptance/rejection, claim linking, and study extraction stay explicit human-reviewed local writes; persistence accepts only accepted/rejected review decisions, accept/reject decisions require human review notes at CLI, type, and persistence layers, rejected decisions cannot carry accepted-reference ids, study extraction preflights required manual fields and explicit source types before DB reads, and accepted candidates still need curated references, claim links, and structured study extraction before public use.
 - Source-candidate CLI output now provides copyable read-only review/curation drill-ins and Not-accepted accept-gate hints across summary, jobs, queues, detail, packets, reference matches, siblings, duplicates, and curation views; see `docs/codex/source-candidate-workflow.md` for the compact catalog.
@@ -38,8 +39,8 @@ Refreshed on 2026-06-04 after preflighting manual study extraction fields and ex
 
 ## Latest Local Validation
 
-Current code validation for study extraction manual/source-type preflight:
-- `npm run test -- src/lib/data/source-candidates.test.ts`
+Current code validation for read-only source-candidate CLI default:
+- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
 - `npm run test`, `npm run lint`, `npm run dev:stop`, `npm run typecheck`
 - `git diff --check` (only LF-to-CRLF warnings for modified files)
 

@@ -119,6 +119,7 @@ export interface SourceCandidateJobCommandOptions
   reviewCandidateDedupeKey?: string;
   reviewDecision?: ReviewedSourceCandidateDecision;
   reviewNote?: string;
+  runNextJobs?: boolean;
   studyAbstract?: string;
   studyAdverseEvents?: string;
   studyDose?: string;
@@ -633,21 +634,26 @@ export async function runSourceCandidateJobCommand(
       return 0;
     }
 
-    const runnerOptions = sourceCandidateIngestionJobOptions(options);
-    const results = options.jobId
-      ? [await runJobById(options.jobId, runnerOptions)]
-      : await runNextJobs(options.limit, runnerOptions, runNextJob);
+    if (options.jobId || options.runNextJobs) {
+      const runnerOptions = sourceCandidateIngestionJobOptions(options);
+      const results = options.jobId
+        ? [await runJobById(options.jobId, runnerOptions)]
+        : await runNextJobs(options.limit, runnerOptions, runNextJob);
 
-    if (results.length === 0) {
-      stdout("No queued PubMed or ClinicalTrials.gov source-candidate jobs found.");
-      return 0;
+      if (results.length === 0) {
+        stdout("No queued PubMed or ClinicalTrials.gov source-candidate jobs found.");
+        return 0;
+      }
+
+      for (const result of results) {
+        stdout(formatSourceCandidateJobResult(result));
+      }
+
+      return results.some((result) => result.status === "FAILED") ? 1 : 0;
     }
 
-    for (const result of results) {
-      stdout(formatSourceCandidateJobResult(result));
-    }
-
-    return results.some((result) => result.status === "FAILED") ? 1 : 0;
+    stdout(commandUsage());
+    return 0;
   } catch (error) {
     stderr(error instanceof Error ? error.message : String(error));
     return 1;
@@ -701,6 +707,11 @@ export function parseSourceCandidateJobCommandArgs(
     if (arg === "--job-id") {
       options.jobId = readRequiredValue(args, index, arg);
       index += 1;
+      continue;
+    }
+
+    if (arg === "--run-next") {
+      options.runNextJobs = true;
       continue;
     }
 
@@ -1171,6 +1182,13 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--job-id runs exactly one job and cannot be combined with --limit.");
   }
 
+  if (options.runNextJobs && options.jobId) {
+    throw new Error("--run-next cannot be combined with --job-id.");
+  }
+
+  const runOptionProvided =
+    options.runNextJobs || Boolean(options.jobId) || limitProvided || sourceLimitProvided;
+
   if (candidateCurationHandoffLimitProvided && !options.candidateCurationHandoff) {
     throw new Error(
       "--candidate-curation-handoff-limit requires --candidate-curation-handoff."
@@ -1380,7 +1398,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateCurationHandoff &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-curation-handoff cannot be combined with run options.");
   }
@@ -1458,7 +1476,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateDetailDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-detail cannot be combined with run options.");
   }
@@ -1554,7 +1572,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateCurationStatusDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-curation-status cannot be combined with run options.");
   }
@@ -1635,7 +1653,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateCurationDraftDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-curation-draft cannot be combined with run options.");
   }
@@ -1704,7 +1722,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateReferenceMatchesDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-reference-matches cannot be combined with run options.");
   }
@@ -1821,7 +1839,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateReviewPacketDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-review-packet cannot be combined with run options.");
   }
@@ -1879,7 +1897,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateSiblingsDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-siblings cannot be combined with run options.");
   }
@@ -1938,7 +1956,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("Review options cannot be combined with queue metadata.");
   }
 
-  if (options.reviewDecision && (options.jobId || limitProvided || sourceLimitProvided)) {
+  if (options.reviewDecision && runOptionProvided) {
     throw new Error("Review options cannot be combined with run options.");
   }
 
@@ -1995,7 +2013,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.linkCandidateClaimDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--link-candidate-claim cannot be combined with run options.");
   }
@@ -2098,7 +2116,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.extractCandidateStudyDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--extract-candidate-study cannot be combined with run options.");
   }
@@ -2241,7 +2259,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateReviewFlags &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-review-flags cannot be combined with run options.");
   }
@@ -2355,7 +2373,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateReviewOverview &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-review-overview cannot be combined with run options.");
   }
@@ -2376,7 +2394,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidates is read-only and cannot be combined with queue options.");
   }
 
-  if (options.candidates && (options.jobId || limitProvided || sourceLimitProvided)) {
+  if (options.candidates && runOptionProvided) {
     throw new Error("--candidates is read-only and cannot be combined with run options.");
   }
 
@@ -2406,7 +2424,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--jobs is read-only and cannot be combined with queue options.");
   }
 
-  if (options.jobs && (options.jobId || limitProvided || sourceLimitProvided)) {
+  if (options.jobs && runOptionProvided) {
     throw new Error("--jobs is read-only and cannot be combined with run options.");
   }
 
@@ -2414,7 +2432,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--summary is read-only and cannot be combined with queue options.");
   }
 
-  if (hasQueueOption(options) && (options.jobId || limitProvided || sourceLimitProvided)) {
+  if (hasQueueOption(options) && runOptionProvided) {
     throw new Error("Queue options cannot be combined with run options.");
   }
 
@@ -2431,8 +2449,22 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--region, --intervention-id, and --claim-id require a queue option.");
   }
 
-  if (options.summary && (options.jobId || limitProvided || sourceLimitProvided)) {
+  if (options.summary && runOptionProvided) {
     throw new Error("--summary is read-only and cannot be combined with run options.");
+  }
+
+  if (limitProvided && !options.runNextJobs) {
+    throw new Error("--limit requires --run-next.");
+  }
+
+  if (sourceLimitProvided && !options.runNextJobs && !options.jobId) {
+    throw new Error(
+      "--pubmed-retmax and --clinical-trial-page-size require --run-next or --job-id."
+    );
+  }
+
+  if (args.length === 0) {
+    options.summary = true;
   }
 
   return options;
@@ -2444,7 +2476,8 @@ export function commandUsage() {
     "",
     "Options:",
     "  --job-id <id>                     Run one specific ingestion job.",
-    "  --limit <count>                   Run up to count queued jobs (default 1, max 25).",
+    "  --run-next                        Run queued PubMed/ClinicalTrials.gov jobs.",
+    "  --limit <count>                   With --run-next, run up to count queued jobs (default 1, max 25).",
     "  --candidate-detail <dedupe-key>   Print one source-candidate detail record with review/curation hints.",
     "  --candidate-curation-draft <dedupe-key> Print read-only claim-link/study draft fields with command hints.",
     "  --candidate-curation-status <dedupe-key> Print curation handoff status, next action, and command hints.",

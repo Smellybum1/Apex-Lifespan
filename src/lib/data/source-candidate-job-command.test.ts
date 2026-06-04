@@ -92,21 +92,28 @@ describe("commandUsage", () => {
     expect(commandUsage()).toContain(
       "--jobs-claim-id <id>              Filter --jobs by claim id."
     );
+    expect(commandUsage()).toContain(
+      "--run-next                        Run queued PubMed/ClinicalTrials.gov jobs."
+    );
+    expect(commandUsage()).toContain(
+      "--limit <count>                   With --run-next, run up to count queued jobs (default 1, max 25)."
+    );
   });
 });
 
 describe("parseSourceCandidateJobCommandArgs", () => {
-  it("uses bounded defaults for the local ingestion command", () => {
+  it("uses a read-only summary default for the local ingestion command", () => {
     expect(parseSourceCandidateJobCommandArgs([])).toEqual({
       help: false,
       limit: 1,
-      summary: false
+      summary: true
     });
   });
 
-  it("parses job, batch, and source-specific limits", () => {
+  it("parses explicit job, batch, and source-specific run limits", () => {
     expect(
       parseSourceCandidateJobCommandArgs([
+        "--run-next",
         "--limit",
         "99",
         "--pubmed-retmax",
@@ -118,6 +125,7 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       help: false,
       limit: 25,
       summary: false,
+      runNextJobs: true,
       pubMedRetmax: 20,
       clinicalTrialPageSize: 3
     });
@@ -128,6 +136,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       limit: 1,
       summary: false
     });
+
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--limit", "2"])
+    ).toThrow("--limit requires --run-next.");
+
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--pubmed-retmax", "3"])
+    ).toThrow(
+      "--pubmed-retmax and --clinical-trial-page-size require --run-next or --job-id."
+    );
+
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--run-next", "--job-id", "job-pubmed"])
+    ).toThrow("--run-next cannot be combined with --job-id.");
   });
 
   it("parses read-only summary mode", () => {
@@ -2171,7 +2193,7 @@ describe("runSourceCandidateJobCommand", () => {
 
     await expect(
       runSourceCandidateJobCommand(
-        ["--summary"],
+        [],
         { stdout },
         {
           listReviewOverview,
@@ -5033,14 +5055,14 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
-  it("runs one queued job by default", async () => {
+  it("runs one queued job with an explicit run-next flag", async () => {
     const stdout = vi.fn();
     const runNextJob = vi
       .fn()
       .mockResolvedValueOnce(jobResult({ jobId: "job-pubmed" }));
 
     await expect(
-      runSourceCandidateJobCommand([], { stdout }, { runNextJob })
+      runSourceCandidateJobCommand(["--run-next"], { stdout }, { runNextJob })
     ).resolves.toBe(0);
 
     expect(runNextJob).toHaveBeenCalledTimes(1);
@@ -5063,7 +5085,7 @@ describe("runSourceCandidateJobCommand", () => {
 
     await expect(
       runSourceCandidateJobCommand(
-        ["--limit", "5", "--pubmed-retmax", "3"],
+        ["--run-next", "--limit", "5", "--pubmed-retmax", "3"],
         { stdout },
         { runNextJob }
       )
@@ -5105,7 +5127,7 @@ describe("runSourceCandidateJobCommand", () => {
     const runNextJob = vi.fn().mockResolvedValue(null);
 
     await expect(
-      runSourceCandidateJobCommand([], { stdout }, { runNextJob })
+      runSourceCandidateJobCommand(["--run-next"], { stdout }, { runNextJob })
     ).resolves.toBe(0);
 
     expect(stdout).toHaveBeenCalledWith(
@@ -5125,7 +5147,7 @@ describe("runSourceCandidateJobCommand", () => {
     );
 
     await expect(
-      runSourceCandidateJobCommand([], { stdout }, { runNextJob })
+      runSourceCandidateJobCommand(["--run-next"], { stdout }, { runNextJob })
     ).resolves.toBe(1);
 
     expect(stdout).toHaveBeenCalledWith(

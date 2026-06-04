@@ -14,7 +14,7 @@ Open this only for source-candidate ingestion, review, or curation work. Use `np
 
 ## Quick Flow
 
-1. Inspect state: `npm run ingest:sources -- --summary`.
+1. Inspect state: `npm run ingest:sources` or `npm run ingest:sources -- --summary`.
 2. Choose a review group: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
 3. Optional flag focus: `npm run ingest:sources -- --candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10`.
 4. List pending candidates: `npm run ingest:sources -- --candidates --candidates-limit 10`.
@@ -27,6 +27,7 @@ Open this only for source-candidate ingestion, review, or curation work. Use `np
 ```bash
 npm run ingest:sources -- --summary
 npm run ingest:sources -- --jobs --jobs-status queued
+npm run ingest:sources -- --run-next --limit 1
 npm run ingest:sources -- --queue-claim-sources <claim-id>
 npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10
 npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10
@@ -39,9 +40,10 @@ npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Reason.
 npm run ingest:sources -- --candidate-curation-handoff
 ```
 
+No-arg command output matches `--summary` and stays read-only.
 Summary output prints read-only next-command hints for overview, review flags, duplicate scan, queued jobs, and curation handoff; non-empty curation bucket rows include status-filtered handoff hints, and a bounded review flag focus block highlights flagged top review groups with list/packet/reference-match/sibling/curation/flag-wide `flags` and scoped `flagFocus` drill-ins.
 Job rows print read-only candidate-list, context-jobs, and status-jobs hints.
-Queue and run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
+Queue and explicit `--run-next` result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
 Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on Windows anywhere `<dedupe-key>` is accepted.
 Candidate filters support `--candidate-claim-missing` and `--candidate-intervention-missing` for exact read-only slices of unscoped rows.
 When emitted beside a row or review group, `flags="..."` stays broad while `flagFocus="..."` includes the selected review flag, or the first listed flag when no flag filter is active, plus the row context filters for claim, intervention, region, and source; copy `flagFocus` exactly for a narrowed read-only focus view.
