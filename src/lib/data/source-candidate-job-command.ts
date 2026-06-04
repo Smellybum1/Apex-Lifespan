@@ -3463,13 +3463,10 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
     );
   }
 
-  if (candidate.interventionId) {
-    parts.push(`intervention=${candidate.interventionId}`);
-  }
-
-  if (candidate.claimId) {
-    parts.push(`claim=${candidate.claimId}`);
-  }
+  parts.push(
+    `intervention=${candidate.interventionId ?? "none"}`,
+    `claim=${candidate.claimId ?? "none"}`
+  );
 
   if (candidate.ingestionJobId) {
     parts.push(`ingestionJob=${candidate.ingestionJobId}`);
