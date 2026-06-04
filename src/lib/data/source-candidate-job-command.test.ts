@@ -4364,7 +4364,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate review overview: totalGroups=1 candidateCount=1",
-        `- claim=vitamin-d-deficiency intervention=vitamin-d ClinicalTrials.gov AU pending=1 topTriage=100/100 topKey=${safeCandidateKey(candidateKey)} topExternalId="NCT00715676" topReviewFlags="broad-safety-query, low-title-query-overlap" topTitle="Calcium fracture prevention trial" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 1" packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}"`
+        `- claim=vitamin-d-deficiency intervention=vitamin-d ClinicalTrials.gov AU pending=1 topTriage=100/100 topKey=${safeCandidateKey(candidateKey)} topExternalId="NCT00715676" topReviewFlags="broad-safety-query, low-title-query-overlap" flags="--candidate-review-flags --candidate-review-flags-limit 10" topTitle="Calcium fracture prevention trial" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 1" packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}"`
       ].join("\n")
     );
   });

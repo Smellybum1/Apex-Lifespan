@@ -3439,7 +3439,10 @@ function formatSourceCandidateReviewOverviewGroup(
   }
 
   if (reviewFlagCodes.length > 0) {
-    parts.push(`topReviewFlags=${quote(reviewFlagCodes.join(", "))}`);
+    parts.push(
+      `topReviewFlags=${quote(reviewFlagCodes.join(", "))}`,
+      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+    );
   }
 
   parts.push(

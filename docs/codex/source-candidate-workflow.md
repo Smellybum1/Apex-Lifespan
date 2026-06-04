@@ -44,7 +44,7 @@ Queue and run result rows print read-only candidate-list, context-jobs, and stat
 Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on Windows anywhere `<dedupe-key>` is accepted.
 Candidate detail output prints read-only packet, reference-match, sibling, group-list, curation-status, curation-draft hints, and explanatory `reviewCautions` when a claim-scoped candidate needs extra broad-query/off-claim scrutiny.
 Candidate list rows print `packet="..."` for read-only packet review plus source-query, ingestion-job trace fields, and compact `reviewFlags` when applicable.
-Review overview rows print `list="..."` for the filtered pending group, including region, `packet="..."` for the top candidate drill-in, duplicate hints when the top PMID/NCT identity repeats, and `topReviewFlags` when applicable.
+Review overview rows print `list="..."` for the filtered pending group, including region, `packet="..."` for the top candidate drill-in, duplicate hints when the top PMID/NCT identity repeats, and `topReviewFlags` plus a `flags="..."` drill-in when applicable.
 Review flag rows filter the bounded overview to flagged top candidates only, optionally narrow with `--candidate-review-flag`, and print compact `flags`, duplicate hints, `list="..."`, and `packet="..."` without changing review state.
 Reference-match headings print `packet="..."`, `groupList="..."`, and compact `reviewFlags` when applicable; draft references remain draft-only and require manual verification.
 Review packets print read-only follow-up commands, conditional duplicate hints, and accept/reject templates; write templates still require explicit human review.
