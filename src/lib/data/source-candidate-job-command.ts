@@ -3941,6 +3941,7 @@ function formatSourceCandidateWorkflowSummaryCommandHints() {
   return [
     "Source-candidate read-only next commands",
     `reviewOverview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`,
+    `reviewFlags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`,
     `duplicates=${quote("--candidates --candidate-duplicates")}`,
     `queuedJobs=${quote("--jobs --jobs-status queued")}`,
     `curationHandoff=${quote("--candidate-curation-handoff")}`

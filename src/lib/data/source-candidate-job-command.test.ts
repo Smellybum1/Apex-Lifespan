@@ -2081,6 +2081,7 @@ describe("runSourceCandidateJobCommand", () => {
         `- flag="low-title-query-overlap" topGroups=1 pendingInTopGroups=1 topGroup="creatine-lifespan creatine ClinicalTrials.gov AU" list="--candidates --candidate-claim-id creatine-lifespan --candidate-intervention-id creatine --candidate-region AU --candidate-source clinical-trials --candidates-limit 1" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" flags="--candidate-review-flags --candidate-review-flag low-title-query-overlap --candidate-review-flags-limit 10" overview="--candidate-review-overview --candidate-review-overview-limit 10"`,
         "Source-candidate read-only next commands",
         'reviewOverview="--candidate-review-overview --candidate-review-overview-limit 10"',
+        'reviewFlags="--candidate-review-flags --candidate-review-flags-limit 10"',
         'duplicates="--candidates --candidate-duplicates"',
         'queuedJobs="--jobs --jobs-status queued"',
         'curationHandoff="--candidate-curation-handoff"'
@@ -4747,6 +4748,7 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate review flag focus: totalGroups=0 candidateCount=0 flaggedTopGroups=0",
         "Source-candidate read-only next commands",
         'reviewOverview="--candidate-review-overview --candidate-review-overview-limit 10"',
+        'reviewFlags="--candidate-review-flags --candidate-review-flags-limit 10"',
         'duplicates="--candidates --candidate-duplicates"',
         'queuedJobs="--jobs --jobs-status queued"',
         'curationHandoff="--candidate-curation-handoff"'
