@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after making duplicate identity rows explicit about missing claim/intervention context. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after broadening the public API read-only boundary test for source-candidate imports. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -15,7 +15,7 @@ Refreshed on 2026-06-04 after making duplicate identity rows explicit about miss
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
-- Public routes stay read-only and must not import source-candidate persistence or promote source candidates.
+- Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover direct `source-candidate*` route imports.
 - Source-candidate acceptance, claim linking, and study extraction stay explicit human-reviewed local writes; accepted candidates still need curated references, claim links, and structured study extraction before public use.
 - Source-candidate CLI output now provides copyable read-only review/curation drill-ins across summary, jobs, queues, detail, packets, reference matches, siblings, duplicates, and curation views; see `docs/codex/source-candidate-workflow.md` for the compact catalog.
 - Packet/reference/sibling/curation drill-in hints share one local formatter helper in `src/lib/data/source-candidate-job-command.ts`; exact CLI output is covered by source-candidate command tests.
@@ -38,9 +38,8 @@ Refreshed on 2026-06-04 after making duplicate identity rows explicit about miss
 
 ## Latest Local Validation
 
-Current code validation for duplicate identity context readability:
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run ingest:sources -- --candidates --candidate-duplicates`
+Current code validation for public API source-candidate boundary coverage:
+- `npm run test -- src/app/api/live-source-readonly-boundary.test.ts`
 - `npm run test`
 - `npm run lint`
 - `npm run dev:stop`

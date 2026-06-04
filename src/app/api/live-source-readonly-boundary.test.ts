@@ -7,16 +7,8 @@ const API_DIR = path.join(process.cwd(), "src", "app", "api");
 
 const DISALLOWED_ROUTE_PATTERNS = [
   {
-    label: "source-candidate data helper import",
-    pattern: /@\/lib\/data\/source-candidates?\b/
-  },
-  {
-    label: "source-candidate job helper import",
-    pattern: /@\/lib\/data\/source-candidate-(jobs|ingestion)\b/
-  },
-  {
-    label: "source-candidate draft mapper import",
-    pattern: /@\/lib\/source-candidates\b/
+    label: "source-candidate module import",
+    pattern: /from\s+["'][^"']*source-candidate(?:s|-[^"']*)?["']/
   },
   {
     label: "source-candidate Prisma write surface",
