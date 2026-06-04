@@ -1888,6 +1888,10 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--accept-candidate requires --accepted-reference-id.");
   }
 
+  if (options.reviewDecision === "Accepted" && !options.reviewNote?.trim()) {
+    throw new Error("--accept-candidate requires --review-note.");
+  }
+
   if (options.reviewDecision && options.summary) {
     throw new Error("Review options cannot be combined with --summary.");
   }
@@ -2451,7 +2455,7 @@ export function commandUsage() {
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
     "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
     "  --accepted-reference-id <id>      Required curated reference id for --accept-candidate.",
-    "  --review-note <note>              Human review note; required for --reject-candidate.",
+    "  --review-note <note>              Human review note; required for --accept-candidate and --reject-candidate.",
     "  --link-candidate-claim <dedupe-key> Link an accepted candidate reference to its claim.",
     "  --claim-link-note <note>          Optional note for --link-candidate-claim.",
     "  --claim-link-relevance <1-5>      Optional relevance for --link-candidate-claim.",

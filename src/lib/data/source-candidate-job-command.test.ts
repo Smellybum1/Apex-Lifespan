@@ -69,7 +69,7 @@ describe("commandUsage", () => {
       "<dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse."
     );
     expect(commandUsage()).toContain(
-      "--review-note <note>              Human review note; required for --reject-candidate."
+      "--review-note <note>              Human review note; required for --accept-candidate and --reject-candidate."
     );
     expect(commandUsage()).toContain(
       "--link-candidate-claim <dedupe-key> Link an accepted candidate reference to its claim."
@@ -356,7 +356,9 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "--accept-candidate",
         safeCandidateKey("pubmed|au|creatine|28615996"),
         "--accepted-reference-id",
-        "ref-creatine-position-stand"
+        "ref-creatine-position-stand",
+        "--review-note",
+        "Full-text reviewed."
       ]).reviewCandidateDedupeKey
     ).toBe("pubmed|au|creatine|28615996");
 
@@ -476,7 +478,9 @@ describe("parseSourceCandidateJobCommandArgs", () => {
           "--accept-candidate",
           "pubmed|au|creatine|28615996",
           "--accepted-reference-id",
-          "ref-creatine-position-stand"
+          "ref-creatine-position-stand",
+          "--review-note",
+          "Full-text reviewed."
         ])
       )
     ).toThrow("Review options cannot be combined with --extract-candidate-study.");
@@ -1558,7 +1562,9 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "--accept-candidate",
         "pubmed|au|creatine|28615996",
         "--accepted-reference-id",
-        "ref-creatine-position-stand"
+        "ref-creatine-position-stand",
+        "--review-note",
+        "Full-text reviewed."
       ])
     ).toThrow("Review options cannot be combined with --link-candidate-claim.");
     expect(() =>
@@ -1586,6 +1592,24 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "pubmed|au|creatine|28615996"
       ])
     ).toThrow("--accept-candidate requires --accepted-reference-id.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ])
+    ).toThrow("--accept-candidate requires --review-note.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand",
+        "--review-note",
+        " "
+      ])
+    ).toThrow("--accept-candidate requires --review-note.");
     expect(() =>
       parseSourceCandidateJobCommandArgs([
         "--accepted-reference-id",
@@ -1631,6 +1655,8 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "pubmed|au|creatine|28615996",
         "--accepted-reference-id",
         "ref-creatine-position-stand",
+        "--review-note",
+        "Full-text reviewed.",
         "--candidate-decision",
         "accepted"
       ])
@@ -1641,6 +1667,8 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "pubmed|au|creatine|28615996",
         "--accepted-reference-id",
         "ref-creatine-position-stand",
+        "--review-note",
+        "Full-text reviewed.",
         "--summary"
       ])
     ).toThrow("Review options cannot be combined with --summary.");
@@ -1650,6 +1678,8 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "pubmed|au|creatine|28615996",
         "--accepted-reference-id",
         "ref-creatine-position-stand",
+        "--review-note",
+        "Full-text reviewed.",
         "--candidates"
       ])
     ).toThrow("Review options cannot be combined with --candidates.");
@@ -1659,6 +1689,8 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "pubmed|au|creatine|28615996",
         "--accepted-reference-id",
         "ref-creatine-position-stand",
+        "--review-note",
+        "Full-text reviewed.",
         "--candidate-source",
         "pubmed"
       ])
@@ -1669,6 +1701,8 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "pubmed|au|creatine|28615996",
         "--accepted-reference-id",
         "ref-creatine-position-stand",
+        "--review-note",
+        "Full-text reviewed.",
         "--candidate-intervention-id",
         "creatine"
       ])
@@ -3688,7 +3722,9 @@ describe("runSourceCandidateJobCommand", () => {
           "--accept-candidate",
           "pubmed|au|creatine|28615996",
           "--accepted-reference-id",
-          "ref-creatine-position-stand"
+          "ref-creatine-position-stand",
+          "--review-note",
+          "Full-text reviewed."
         ],
         { stderr },
         { recordDecision }

@@ -61,7 +61,7 @@ Read-only output rules:
 - `--candidate-reference-matches` prints candidate identity plus `packet="..."`, `siblings="..."`, `groupList="..."`, curation-status/draft hints, and compact `reviewFlags` plus `flags="..."` and `flagFocus="..."` drill-ins when applicable before eligible curated references or draft-only reference context.
 - `--candidate-review-packet` prints command hints, detail, accepted-reference matches, sibling context, curation-status/draft hints, duplicate hints when the identity repeats, and focused review-flag hints when the candidate is flagged.
 - `--candidate-siblings` prints match reasons, `targetPacket="..."`, `targetReferenceMatches="..."`, and target curation-status/draft heading hints, row-level `packet="..."`, `referenceMatches="..."`, and curation-status/draft hints, and compact `targetReviewFlags`/`reviewFlags` plus `flags="..."` and `flagFocus="..."` drill-ins when applicable.
-- Packet accept/reject templates are copied commands only; they still require explicit human review and do not create references or public evidence.
+- Packet accept/reject templates are copied commands only; they still require explicit human review notes and do not create references or public evidence.
 - `reviewFlags`/`reviewCautions` are local reviewer prompts, not rejection reasons or evidence-quality scores.
 - Empty `--candidate-reference-matches` output includes a draft-only `referenceDraft=...` line for manual verification; it does not create a reference or mark the candidate accepted.
 - `--candidate-curation-status` and `--candidate-curation-draft` report readiness for public source packets, not evidence quality, and print read-only packet/reference/sibling/group/paired-curation hints plus compact `reviewFlags`, `flags="..."`, and `flagFocus="..."` drill-ins when applicable.
@@ -70,7 +70,7 @@ Read-only output rules:
 ## Review And Curation Writes
 
 ```bash
-npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id>
+npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id> --review-note "Human-reviewed rationale."
 npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Not relevant to this claim."
 npm run ingest:sources -- --link-candidate-claim <dedupe-key>
 npm run ingest:sources -- --link-candidate-claim <dedupe-key> --claim-link-relevance 4 --claim-link-note "Primary source for this claim."
@@ -78,7 +78,7 @@ npm run ingest:sources -- --extract-candidate-study <dedupe-key> --study-sample-
 ```
 
 Write boundaries:
-- `--accept-candidate` records human review only after a matching curated reference exists.
+- `--accept-candidate` records human review only after a matching curated reference exists and the operator supplies a nonblank human note.
 - `--reject-candidate` requires a nonblank human note.
 - `--link-candidate-claim` writes only a `ClaimReference` row after accepted candidate, claim context, and matching-reference gates pass.
 - `--extract-candidate-study` writes only a `Study` row after acceptance, matching-reference, claim-context, and claim-link gates pass. The operator must supply manual extraction fields.

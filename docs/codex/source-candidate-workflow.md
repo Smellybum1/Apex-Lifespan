@@ -9,7 +9,7 @@ Open this only for source-candidate ingestion, review, or curation work. Use `np
 - Candidate `/100` values are triage scores, not evidence quality.
 - `reviewFlags`/`reviewCautions` are local reviewer prompts, not rejection reasons or evidence-quality scores.
 - Accepted candidates do not auto-promote into public evidence cards.
-- Accepting requires an existing curated reference matching candidate source and external id.
+- Accepting requires an existing curated reference matching candidate source and external id plus a nonblank human review note.
 - Rejections require a nonblank human review note.
 
 ## Quick Flow
@@ -34,7 +34,7 @@ npm run ingest:sources -- --candidate-review-flags --candidate-review-flag broad
 npm run ingest:sources -- --candidates --candidate-claim-missing --candidate-intervention-missing
 npm run ingest:sources -- --candidates --candidate-duplicates
 npm run ingest:sources -- --candidate-review-packet <dedupe-key>
-npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id>
+npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id> --review-note "Human-reviewed rationale."
 npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Reason."
 npm run ingest:sources -- --candidate-curation-handoff
 ```
@@ -50,7 +50,7 @@ Candidate list rows print `packet="..."`, `referenceMatches="..."`, `siblings=".
 Review overview rows print `list="..."` for the filtered pending group, including missing-claim/intervention filters for unscoped contexts, region, `packet="..."`, `referenceMatches="..."`, `siblings="..."`, and curation-status/draft hints for the top candidate drill-in, duplicate hints when the top PMID/NCT identity repeats, and `topReviewFlags` plus `flags="..."` and first-flag `flagFocus="..."` drill-ins when applicable.
 Review flag rows filter the bounded overview to flagged top candidates only, optionally narrow with `--candidate-review-flag`, and print compact `flags`, `flagFocus="..."`, duplicate hints, `list="..."`, `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft hints, and `overview="..."` without changing review state.
 Reference-match headings print `packet="..."`, `siblings="..."`, `groupList="..."`, curation-status/draft hints, and compact `reviewFlags` plus `flags="..."` and `flagFocus="..."` drill-ins when applicable; draft references remain draft-only and require manual verification.
-Review packets print read-only follow-up commands, curation-status/draft hints, conditional duplicate and focused review-flag hints, and accept/reject templates; write templates still require explicit human review.
+Review packets print read-only follow-up commands, curation-status/draft hints, conditional duplicate and focused review-flag hints, and accept/reject templates; write templates still require explicit human review notes.
 Sibling headings print `targetPacket="..."`, `targetReferenceMatches="..."`, and target curation-status/draft hints for the target candidate, and rows print `packet="..."`, `referenceMatches="..."`, and curation-status/draft hints for read-only review of related candidates plus `targetReviewFlags`/`reviewFlags`, `flags="..."`, and `flagFocus="..."` drill-ins when applicable.
 Duplicate identity rows print `identityList="..."` for the filtered duplicate group and `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft, exact `groupList="..."` hints, and explicit `intervention`/`claim` context including `none`, plus `reviewFlags`, `flags="..."`, and `flagFocus="..."` for each candidate row when applicable.
 Curation handoff rows print read-only packet, reference-match, sibling, curation-status, curation-draft hints, and compact `reviewFlags` plus `flags="..."` and `flagFocus="..."` drill-ins when applicable.
