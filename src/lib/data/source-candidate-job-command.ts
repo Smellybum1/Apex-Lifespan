@@ -3317,6 +3317,7 @@ function formatSourceCandidateCurationStatus(
   status: SourceCandidateCurationStatus,
   options: { duplicateIdentityCandidateCount?: number } = {}
 ) {
+  const key = safeCandidateKey(status.candidate.dedupeKey);
   const reviewFlagFields = sourceCandidateReviewFlagFields(
     "reviewFlags",
     status.candidate
@@ -3324,13 +3325,14 @@ function formatSourceCandidateCurationStatus(
   const lines = [
     "Source-candidate curation status",
     `dedupe=${quote(status.candidate.dedupeKey)}`,
-    `key=${safeCandidateKey(status.candidate.dedupeKey)}`,
+    `key=${key}`,
     ...formatSourceCandidateCurationCommandHints(status.candidate, "status"),
     `decision=${quote(status.candidate.decision)}`,
     `reviewStatus=${quote(status.candidate.reviewStatus)}`,
     `status=${quote(status.status)}`,
     `nextAction=${quote(status.nextAction)}`,
-    `publicSourcePacketReady=${status.publicSourcePacketReady}`
+    `publicSourcePacketReady=${status.publicSourcePacketReady}`,
+    ...formatSourceCandidateCurationWriteFields(status, key)
   ];
 
   if (status.status === "Not accepted") {
@@ -3506,7 +3508,10 @@ function formatSourceCandidateCurationWriteFields(
     fields.push(`blockedUntil=${quote(assessment.blockedUntil)}`);
   }
 
-  if (assessment.nextWrite !== "none") {
+  if (
+    assessment.nextWrite === "claimLink" ||
+    assessment.nextWrite === "studyExtraction"
+  ) {
     fields.push(`writeReview=${quote(`--candidate-curation-draft ${key}`)}`);
   }
 
