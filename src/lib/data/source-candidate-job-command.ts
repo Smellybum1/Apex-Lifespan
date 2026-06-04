@@ -2665,7 +2665,7 @@ function formatSourceCandidateDetail(
   if (reviewFlags.length > 0) {
     lines.push(`reviewFlags=${quote(reviewFlags.map((flag) => flag.code).join(", "))}`);
     lines.push(
-      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
     );
     lines.push(
       formatStringList(
@@ -2778,7 +2778,7 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
   if (reviewFlagField) {
     lines.push(reviewFlagField);
     lines.push(
-      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
     );
   }
 
@@ -2880,7 +2880,7 @@ function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStat
   if (reviewFlagField) {
     lines.push(reviewFlagField);
     lines.push(
-      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
     );
   }
 
@@ -2971,7 +2971,7 @@ function formatSourceCandidateCurationHandoffItem(
   if (reviewFlagField) {
     parts.push(reviewFlagField);
     parts.push(
-      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
     );
   }
 
@@ -3072,7 +3072,7 @@ function formatSourceCandidateReferenceMatchHeading(
   if (reviewFlagField) {
     parts.push(reviewFlagField);
     parts.push(
-      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
     );
   }
 
@@ -3174,7 +3174,7 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
   if (targetReviewFlagCodes.length > 0) {
     headingParts.push(`targetReviewFlags=${quote(targetReviewFlagCodes.join(", "))}`);
     headingParts.push(
-      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
     );
   }
 
@@ -3212,7 +3212,7 @@ function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings
   if (reviewFlagCodes.length > 0) {
     parts.push(`reviewFlags=${quote(reviewFlagCodes.join(", "))}`);
     parts.push(
-      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
     );
   }
 
@@ -3311,7 +3311,7 @@ function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate)
   if (reviewFlagCodes.length > 0) {
     parts.push(
       `reviewFlags=${quote(reviewFlagCodes.join(", "))}`,
-      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
     );
   }
 
@@ -3466,7 +3466,7 @@ function formatSourceCandidateReviewOverviewGroup(
   if (reviewFlagCodes.length > 0) {
     parts.push(
       `topReviewFlags=${quote(reviewFlagCodes.join(", "))}`,
-      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
     );
   }
 
@@ -3589,7 +3589,7 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
   if (reviewFlagCodes.length > 0) {
     parts.push(
       `reviewFlags=${quote(reviewFlagCodes.join(", "))}`,
-      `flags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`
+      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`
     );
   }
 
@@ -3907,14 +3907,16 @@ function formatSourceCandidateReviewFlagSummaryGroup(
   );
 }
 
-function formatSourceCandidateReviewFlagsCommand(flag: SourceCandidateReviewFlagCode) {
-  return [
-    "--candidate-review-flags",
-    "--candidate-review-flag",
-    flag,
-    "--candidate-review-flags-limit",
-    "10"
-  ].join(" ");
+function formatSourceCandidateReviewFlagsCommand(flag?: SourceCandidateReviewFlagCode) {
+  const parts = ["--candidate-review-flags"];
+
+  if (flag) {
+    parts.push("--candidate-review-flag", flag);
+  }
+
+  parts.push("--candidate-review-flags-limit", "10");
+
+  return parts.join(" ");
 }
 
 function formatSourceCandidateReviewFlagSummaryGroupLabel(
@@ -3972,7 +3974,7 @@ function formatSourceCandidateWorkflowSummaryCommandHints() {
   return [
     "Source-candidate read-only next commands",
     `reviewOverview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`,
-    `reviewFlags=${quote("--candidate-review-flags --candidate-review-flags-limit 10")}`,
+    `reviewFlags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
     `duplicates=${quote("--candidates --candidate-duplicates")}`,
     `queuedJobs=${quote("--jobs --jobs-status queued")}`,
     `curationHandoff=${quote("--candidate-curation-handoff")}`
