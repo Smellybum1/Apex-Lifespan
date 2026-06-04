@@ -3513,6 +3513,10 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
     `targetReferenceMatches=${quote(`--candidate-reference-matches ${targetKey}`)}`,
     `targetCurationStatus=${quote(`--candidate-curation-status ${targetKey}`)}`,
     `targetCurationDraft=${quote(`--candidate-curation-draft ${targetKey}`)}`,
+    ...formatSourceCandidateDuplicateIdentityFields(
+      target,
+      sourceCandidateSiblingDuplicateIdentityCount(siblings)
+    ),
     `candidate=${quote(target.title)}`,
     `source=${quote(target.source)}`,
     `externalId=${quote(target.externalId)}`,
