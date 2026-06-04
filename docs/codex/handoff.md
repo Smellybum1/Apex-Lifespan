@@ -31,6 +31,7 @@ Refreshed on 2026-06-04. Treat the worktree as authoritative: run `git status -s
 - `--extract-candidate-study <dedupe-key>` is a guarded local write that creates or explicitly updates only a structured `Study` extraction after acceptance, matching-reference, claim-context, and claim-link gates pass.
 - `--queue-claim-sources <claim-id>` queues or reports the claim-scoped PubMed and ClinicalTrials.gov jobs generated from active-claim source terms without running ingestion or writing review/curation rows.
 - `--summary` is read-only and now shows source-candidate ingestion job status counts before backlog and curation handoff counts.
+- `--jobs --jobs-status queued` lists only queued source-candidate ingestion jobs.
 - Ingestion job identity is source/query/region plus optional intervention and claim context; PostgreSQL partial unique indexes separate unscoped, intervention, claim, and intervention+claim queue buckets.
 - Queueing validates requested intervention/claim context before job creation.
 
@@ -53,6 +54,7 @@ Refreshed on 2026-06-04. Treat the worktree as authoritative: run `git status -s
 
 - Use `--candidate-curation-handoff --candidate-curation-handoff-status extraction-pending` to find accepted, claim-linked candidates ready for manual study extraction.
 - Use `--queue-claim-sources <claim-id>` to queue both source-candidate searches for the next claim-level curation target.
+- Use `--jobs --jobs-status queued` after summary to inspect queued source-candidate ingestion work.
 - Continue source-packet curation in small guarded slices; keep public promotion human-reviewed and never automatic.
 
 ## Guardrails

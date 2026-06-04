@@ -42,6 +42,8 @@ Read-only operator views:
 
 ```bash
 npm run ingest:sources -- --jobs
+npm run ingest:sources -- --jobs --jobs-status queued
+npm run ingest:sources -- --jobs --jobs-status failed
 npm run ingest:sources -- --candidates
 npm run ingest:sources -- --candidates --candidate-source pubmed --candidates-limit 10
 npm run ingest:sources -- --candidates --candidate-job-id <ingestion-job-id>
@@ -90,6 +92,7 @@ npm run ingest:sources -- --clinical-trial-page-size 10
 
 - Job output reports ingestion-operation counts, not evidence-quality scores.
 - `--jobs` reports recent job ids, statuses, counts, stored context, and errors.
+- `--jobs-status` filters `--jobs` by `queued`, `running`, `succeeded`, `failed`, or `skipped`.
 - `--queue-claim-sources` prints the generated PubMed and ClinicalTrials.gov query text plus queued or existing job ids.
 - `--summary` includes ingestion job counts by source, region, and status before candidate backlog and curation handoff counts.
 - `--candidates` defaults to pending rows and can filter by source, job, intervention, claim, or decision.

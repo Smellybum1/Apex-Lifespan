@@ -44,6 +44,7 @@ export interface SourceCandidateIngestionJobRunResult {
 
 export interface SourceCandidateIngestionJobListOptions {
   limit?: number;
+  status?: DbIngestionStatus;
 }
 
 export interface SourceCandidateIngestionJobListItem {
@@ -160,7 +161,8 @@ export async function listSourceCandidateIngestionJobs(
     where: {
       source: {
         in: SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES
-      }
+      },
+      ...(options.status ? { status: options.status } : {})
     },
     orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
     take: normaliseJobListLimit(options.limit)

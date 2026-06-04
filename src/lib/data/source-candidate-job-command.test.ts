@@ -35,6 +35,9 @@ describe("commandUsage", () => {
     expect(commandUsage()).toContain(
       "--queue-claim-sources <claim-id>  Queue PubMed and ClinicalTrials.gov jobs from claim context."
     );
+    expect(commandUsage()).toContain(
+      "--jobs-status <status>            Filter --jobs by queued, running, succeeded, failed, or skipped."
+    );
   });
 });
 
@@ -459,6 +462,23 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       limit: 1,
       summary: false
     });
+    expect(
+      parseSourceCandidateJobCommandArgs(["--jobs", "--jobs-status", "queued"])
+    ).toEqual({
+      help: false,
+      jobs: true,
+      jobsStatus: "QUEUED",
+      limit: 1,
+      summary: false
+    });
+    expect(
+      parseSourceCandidateJobCommandArgs(["--jobs", "--jobs-status", "success"])
+        .jobsStatus
+    ).toBe("SUCCEEDED");
+    expect(
+      parseSourceCandidateJobCommandArgs(["--jobs", "--jobs-status", "failure"])
+        .jobsStatus
+    ).toBe("FAILED");
   });
 
   it("parses queue mode and queue metadata", () => {
@@ -1429,6 +1449,12 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     expect(() => parseSourceCandidateJobCommandArgs(["--jobs-limit", "2"])).toThrow(
       "--jobs-limit requires --jobs."
     );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--jobs-status", "queued"])
+    ).toThrow("--jobs-status requires --jobs.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--jobs", "--jobs-status", "waiting"])
+    ).toThrow("--jobs-status must be queued, running, succeeded, failed, or skipped.");
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--jobs", "--summary"])
     ).toThrow("--jobs cannot be combined with --summary.");
@@ -2940,6 +2966,44 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(0);
 
     expect(stdout).toHaveBeenCalledWith("Source-candidate ingestion jobs: total=0");
+  });
+
+  it("passes recent job status filters to the read-only job list", async () => {
+    const stdout = vi.fn();
+    const listJobs = vi.fn().mockResolvedValue([
+      {
+        jobId: "job-pubmed",
+        source: "PUBMED",
+        query: "creatine strength",
+        region: "AU",
+        status: "QUEUED",
+        recordsFound: 0,
+        recordsChanged: 0,
+        updatedAt: "2026-06-02T01:02:00.000Z",
+        createdAt: "2026-06-02T00:00:00.000Z"
+      }
+    ]);
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--jobs", "--jobs-status", "queued"],
+        { stdout },
+        { listJobs, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(listJobs).toHaveBeenCalledWith({
+      limit: undefined,
+      status: "QUEUED"
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate ingestion jobs: total=1",
+        '- [QUEUED] job-pubmed PUBMED AU "creatine strength" found=0 changed=0 updated=2026-06-02T01:02:00.000Z'
+      ].join("\n")
+    );
   });
 
   it("queues a source-candidate ingestion job without running jobs", async () => {

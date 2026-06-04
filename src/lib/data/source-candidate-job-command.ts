@@ -80,6 +80,7 @@ export interface SourceCandidateJobCommandOptions
   jobId?: string;
   jobs?: boolean;
   jobsLimit?: number;
+  jobsStatus?: SourceCandidateIngestionJobListOptions["status"];
   linkCandidateClaimDedupeKey?: string;
   limit: number;
   queueClaimSourcesClaimId?: string;
@@ -398,9 +399,15 @@ export async function runSourceCandidateJobCommand(
     }
 
     if (options.jobs) {
-      const jobs = await listJobs({
+      const listJobOptions: SourceCandidateIngestionJobListOptions = {
         limit: options.jobsLimit
-      });
+      };
+
+      if (options.jobsStatus) {
+        listJobOptions.status = options.jobsStatus;
+      }
+
+      const jobs = await listJobs(listJobOptions);
 
       stdout(formatSourceCandidateIngestionJobs(jobs));
       return 0;
@@ -488,6 +495,7 @@ export function parseSourceCandidateJobCommandArgs(
   let claimLinkRelevanceProvided = false;
   let limitProvided = false;
   let jobsLimitProvided = false;
+  let jobsStatusProvided = false;
   let reviewNoteProvided = false;
   let sourceLimitProvided = false;
 
@@ -775,6 +783,13 @@ export function parseSourceCandidateJobCommandArgs(
     if (arg === "--jobs-limit") {
       options.jobsLimit = readPositiveInteger(args, index, arg, 50);
       jobsLimitProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--jobs-status") {
+      options.jobsStatus = readJobStatus(readRequiredValue(args, index, arg));
+      jobsStatusProvided = true;
       index += 1;
       continue;
     }
@@ -1604,6 +1619,10 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--jobs-limit requires --jobs.");
   }
 
+  if (jobsStatusProvided && !options.jobs) {
+    throw new Error("--jobs-status requires --jobs.");
+  }
+
   if (options.jobs && options.summary) {
     throw new Error("--jobs cannot be combined with --summary.");
   }
@@ -1691,6 +1710,7 @@ export function commandUsage() {
     "  --candidate-claim-id <id>         Filter --candidates or handoff by claim id.",
     "  --jobs                            Print recent source-candidate ingestion jobs.",
     "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
+    "  --jobs-status <status>            Filter --jobs by queued, running, succeeded, failed, or skipped.",
     "  --queue-pubmed <term>             Queue a PubMed source-candidate job.",
     "  --queue-clinical-trials <term>    Queue a ClinicalTrials.gov source-candidate job.",
     "  --queue-claim-sources <claim-id>  Queue PubMed and ClinicalTrials.gov jobs from claim context.",
@@ -2531,6 +2551,36 @@ function readCandidateDecision(value: string): SourceCandidateDecision {
   }
 
   throw new Error("--candidate-decision must be pending, accepted, or rejected.");
+}
+
+function readJobStatus(
+  value: string
+): SourceCandidateIngestionJobListOptions["status"] {
+  const normalised = value.trim().toLowerCase().replaceAll("_", "-");
+
+  if (normalised === "queued") {
+    return "QUEUED";
+  }
+
+  if (normalised === "running") {
+    return "RUNNING";
+  }
+
+  if (normalised === "succeeded" || normalised === "success") {
+    return "SUCCEEDED";
+  }
+
+  if (normalised === "failed" || normalised === "failure") {
+    return "FAILED";
+  }
+
+  if (normalised === "skipped" || normalised === "skip") {
+    return "SKIPPED";
+  }
+
+  throw new Error(
+    "--jobs-status must be queued, running, succeeded, failed, or skipped."
+  );
 }
 
 function readCurationHandoffStatus(value: string): SourceCandidateCurationStatusKind {

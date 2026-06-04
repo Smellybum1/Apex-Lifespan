@@ -148,6 +148,29 @@ describe("listSourceCandidateIngestionJobs", () => {
     );
   });
 
+  it("filters source-candidate ingestion jobs by status", async () => {
+    mocks.findMany.mockResolvedValue([
+      dbIngestionJob({
+        status: "QUEUED"
+      })
+    ]);
+
+    await listSourceCandidateIngestionJobs({
+      status: "QUEUED"
+    });
+
+    expect(mocks.findMany).toHaveBeenCalledWith({
+      where: {
+        source: {
+          in: ["PUBMED", "CLINICALTRIALS_GOV"]
+        },
+        status: "QUEUED"
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      take: 10
+    });
+  });
+
   it("returns an empty job list", async () => {
     mocks.findMany.mockResolvedValue([]);
 
