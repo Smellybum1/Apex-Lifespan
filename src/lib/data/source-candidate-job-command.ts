@@ -3449,6 +3449,7 @@ function formatSourceCandidateReviewFlagGroup(
     `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
     `packet=${quote(`--candidate-review-packet ${key}`)}`,
     `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
+    `siblings=${quote(`--candidate-siblings ${key}`)}`,
     `overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
   );
 
@@ -3491,7 +3492,8 @@ function formatSourceCandidateReviewOverviewGroup(
     `topTitle=${quote(candidate.title)}`,
     `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
     `packet=${quote(`--candidate-review-packet ${key}`)}`,
-    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`
+    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
+    `siblings=${quote(`--candidate-siblings ${key}`)}`
   );
 
   return parts.join(" ");
@@ -3925,6 +3927,7 @@ function formatSourceCandidateReviewFlagSummaryGroup(
     ` list=${quote(formatSourceCandidateReviewOverviewListCommand(exampleGroup))}` +
     ` packet=${quote(`--candidate-review-packet ${key}`)}` +
     ` referenceMatches=${quote(`--candidate-reference-matches ${key}`)}` +
+    ` siblings=${quote(`--candidate-siblings ${key}`)}` +
     ` flags=${quote(formatSourceCandidateReviewFlagsCommand(group.flag))}` +
     ` overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
   );
