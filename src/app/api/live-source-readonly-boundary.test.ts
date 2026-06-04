@@ -5,10 +5,13 @@ import { describe, expect, it } from "vitest";
 
 const API_DIR = path.join(process.cwd(), "src", "app", "api");
 
+const SOURCE_CANDIDATE_MODULE_IMPORT_PATTERN =
+  /\b(?:from|import\s*\(|require\s*\()\s*["'][^"']*source-candidate(?:s|-[^"']*)?["']/;
+
 const DISALLOWED_ROUTE_PATTERNS = [
   {
     label: "source-candidate module import",
-    pattern: /from\s+["'][^"']*source-candidate(?:s|-[^"']*)?["']/
+    pattern: SOURCE_CANDIDATE_MODULE_IMPORT_PATTERN
   },
   {
     label: "source-candidate Prisma write surface",
@@ -21,6 +24,29 @@ const DISALLOWED_ROUTE_PATTERNS = [
 ];
 
 describe("live source API read-only boundary", () => {
+  it("detects static, dynamic, and CommonJS source-candidate module imports", () => {
+    expect(
+      SOURCE_CANDIDATE_MODULE_IMPORT_PATTERN.test(
+        'import { listSourceCandidateReviewQueue } from "@/lib/data/source-candidates";'
+      )
+    ).toBe(true);
+    expect(
+      SOURCE_CANDIDATE_MODULE_IMPORT_PATTERN.test(
+        'const helpers = await import("@/lib/data/source-candidate-jobs");'
+      )
+    ).toBe(true);
+    expect(
+      SOURCE_CANDIDATE_MODULE_IMPORT_PATTERN.test(
+        'const mapper = require("../../lib/source-candidates");'
+      )
+    ).toBe(true);
+    expect(
+      SOURCE_CANDIDATE_MODULE_IMPORT_PATTERN.test(
+        'import { searchPubMed } from "@/lib/integrations/pubmed";'
+      )
+    ).toBe(false);
+  });
+
   it("does not expose source-candidate persistence from public route handlers", () => {
     const routeFiles = listRouteFiles(API_DIR);
 
