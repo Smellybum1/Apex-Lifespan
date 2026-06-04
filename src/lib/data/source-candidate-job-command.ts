@@ -212,7 +212,7 @@ const DEFAULT_JOB_LIMIT = 1;
 const MAX_JOB_LIMIT = 25;
 const MAX_METADATA_ARRAY_ITEMS = 8;
 const MAX_METADATA_VALUE_LENGTH = 240;
-const DEFAULT_REVIEW_OVERVIEW_GROUP_CANDIDATE_LIMIT = 10;
+const DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT = 10;
 const CANDIDATE_KEY_B64_PREFIX = "b64:";
 const PRINTABLE_METADATA_KEYS = new Set([
   "abstractAvailable",
@@ -2168,7 +2168,7 @@ export function commandUsage() {
     "  --candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance.",
     "  --candidate-review-overview     Print read-only pending review groups with list and packet hints.",
     "  --candidate-review-overview-limit <count> Review overview group count (default 25, max 50).",
-    "  --candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, and sibling context.",
+    "  --candidate-review-packet <dedupe-key> Print command hints, detail, accepted-reference matches, and sibling context.",
     "  --candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons.",
     "  --candidate-siblings-limit <count> Sibling row count (default 25, max 50).",
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
@@ -2441,10 +2441,30 @@ function formatSourceCandidateDetail(candidate: SourceCandidate) {
 function formatSourceCandidateReviewPacket(packet: SourceCandidateReviewPacket) {
   return [
     "Source-candidate review packet",
+    formatSourceCandidateReviewPacketCommandHints(packet.candidate),
     formatSourceCandidateDetail(packet.candidate),
     formatSourceCandidateReferenceMatches(packet.referenceMatches),
     formatSourceCandidateSiblings(packet.siblings)
   ].join("\n\n");
+}
+
+function formatSourceCandidateReviewPacketCommandHints(candidate: SourceCandidate) {
+  const key = safeCandidateKey(candidate.dedupeKey);
+  return [
+    "Source-candidate review command hints",
+    "safeReadOnly=true",
+    `detail=${quote(`--candidate-detail ${key}`)}`,
+    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
+    `siblings=${quote(`--candidate-siblings ${key}`)}`,
+    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
+    "humanReviewedWritesRequireOperator=true",
+    `acceptTemplate=${quote(
+      `--accept-candidate ${key} --accepted-reference-id <reference-id> --review-note "Human-reviewed rationale."`
+    )}`,
+    `rejectTemplate=${quote(
+      `--reject-candidate ${key} --review-note "Human-reviewed rationale."`
+    )}`
+  ].join("\n");
 }
 
 function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft) {
@@ -2981,23 +3001,55 @@ function formatSourceCandidateReviewOverviewGroup(
 function formatSourceCandidateReviewOverviewListCommand(
   group: SourceCandidateReviewOverview["groups"][number]
 ) {
+  return formatSourceCandidateContextListCommand({
+    claimId: group.claimId,
+    interventionId: group.interventionId,
+    limit: Math.min(group.count, DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT),
+    region: group.region,
+    source: group.source
+  });
+}
+
+function formatSourceCandidateGroupListCommand(candidate: SourceCandidate) {
+  return formatSourceCandidateContextListCommand({
+    claimId: candidate.claimId,
+    interventionId: candidate.interventionId,
+    limit: DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT,
+    region: candidate.region,
+    source: candidate.source
+  });
+}
+
+function formatSourceCandidateContextListCommand({
+  claimId,
+  interventionId,
+  limit,
+  region,
+  source
+}: {
+  claimId?: string;
+  interventionId?: string;
+  limit: number;
+  region: string;
+  source: SourceCandidateSource;
+}) {
   const args = ["--candidates"];
 
-  if (group.claimId) {
-    args.push("--candidate-claim-id", group.claimId);
+  if (claimId) {
+    args.push("--candidate-claim-id", claimId);
   }
 
-  if (group.interventionId) {
-    args.push("--candidate-intervention-id", group.interventionId);
+  if (interventionId) {
+    args.push("--candidate-intervention-id", interventionId);
   }
 
   args.push(
     "--candidate-region",
-    group.region,
+    region,
     "--candidate-source",
-    sourceCandidateSourceCliValue(group.source),
+    sourceCandidateSourceCliValue(source),
     "--candidates-limit",
-    String(Math.min(group.count, DEFAULT_REVIEW_OVERVIEW_GROUP_CANDIDATE_LIMIT))
+    String(limit)
   );
 
   return args.join(" ");

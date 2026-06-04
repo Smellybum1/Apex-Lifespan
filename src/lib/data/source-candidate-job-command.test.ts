@@ -24,7 +24,7 @@ describe("commandUsage", () => {
       "--candidate-region <region>       Filter candidates, overview, or handoff by region."
     );
     expect(commandUsage()).toContain(
-      "--candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, and sibling context."
+      "--candidate-review-packet <dedupe-key> Print command hints, detail, accepted-reference matches, and sibling context."
     );
     expect(commandUsage()).toContain(
       "--candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons."
@@ -2066,6 +2066,17 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate review packet",
+        [
+          "Source-candidate review command hints",
+          "safeReadOnly=true",
+          `detail="--candidate-detail ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+          `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+          `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+          'groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-id creatine --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
+          "humanReviewedWritesRequireOperator=true",
+          `acceptTemplate="--accept-candidate ${safeCandidateKey("pubmed|au|creatine|28615996")} --accepted-reference-id <reference-id> --review-note \\"Human-reviewed rationale.\\""`,
+          `rejectTemplate="--reject-candidate ${safeCandidateKey("pubmed|au|creatine|28615996")} --review-note \\"Human-reviewed rationale.\\""`
+        ].join("\n"),
         [
           "Source-candidate detail",
           'dedupe="pubmed|au|creatine|28615996"',
