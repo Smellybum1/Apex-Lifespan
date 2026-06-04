@@ -4447,7 +4447,7 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
-  it("prints missing-intervention filters in source-candidate review flag focus commands", async () => {
+  it("uses selected review flags in missing-intervention flag focus commands", async () => {
     const stdout = vi.fn();
     const candidateKey =
       "clinicaltrials.gov|au|vitamin-d-safety|nct00715676||vitamin-d-deficiency";
@@ -4478,7 +4478,11 @@ describe("runSourceCandidateJobCommand", () => {
 
     await expect(
       runSourceCandidateJobCommand(
-        ["--candidate-review-flags", "--candidate-review-flag", "broad-safety-query"],
+        [
+          "--candidate-review-flags",
+          "--candidate-review-flag",
+          "low-title-query-overlap"
+        ],
         { stdout },
         { listReviewOverview }
       )
@@ -4486,8 +4490,8 @@ describe("runSourceCandidateJobCommand", () => {
 
     expect(stdout).toHaveBeenCalledWith(
       [
-        'Source-candidate review flags: totalGroups=1 candidateCount=1 flag="broad-safety-query" flaggedTopGroups=1',
-        `- flags="broad-safety-query, low-title-query-overlap" flagFocus="--candidate-review-flags --candidate-review-flag broad-safety-query --candidate-claim-id vitamin-d-deficiency --candidate-intervention-missing --candidate-region AU --candidate-source clinical-trials --candidate-review-flags-limit 10" claim=vitamin-d-deficiency intervention=none ClinicalTrials.gov AU pending=1 topTriage=80/100 topKey=${safeCandidateKey(candidateKey)} topExternalId="NCT00715676" topTitle="Calcium fracture prevention trial" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-missing --candidate-region AU --candidate-source clinical-trials --candidates-limit 1" packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}" siblings="--candidate-siblings ${safeCandidateKey(candidateKey)}" curationStatus="--candidate-curation-status ${safeCandidateKey(candidateKey)}" curationDraft="--candidate-curation-draft ${safeCandidateKey(candidateKey)}" overview="--candidate-review-overview --candidate-review-overview-limit 10"`
+        'Source-candidate review flags: totalGroups=1 candidateCount=1 flag="low-title-query-overlap" flaggedTopGroups=1',
+        `- flags="broad-safety-query, low-title-query-overlap" flagFocus="--candidate-review-flags --candidate-review-flag low-title-query-overlap --candidate-claim-id vitamin-d-deficiency --candidate-intervention-missing --candidate-region AU --candidate-source clinical-trials --candidate-review-flags-limit 10" claim=vitamin-d-deficiency intervention=none ClinicalTrials.gov AU pending=1 topTriage=80/100 topKey=${safeCandidateKey(candidateKey)} topExternalId="NCT00715676" topTitle="Calcium fracture prevention trial" list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-missing --candidate-region AU --candidate-source clinical-trials --candidates-limit 1" packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}" siblings="--candidate-siblings ${safeCandidateKey(candidateKey)}" curationStatus="--candidate-curation-status ${safeCandidateKey(candidateKey)}" curationDraft="--candidate-curation-draft ${safeCandidateKey(candidateKey)}" overview="--candidate-review-overview --candidate-review-overview-limit 10"`
       ].join("\n")
     );
   });

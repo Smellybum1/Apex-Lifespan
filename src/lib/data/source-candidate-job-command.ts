@@ -3549,22 +3549,27 @@ function formatSourceCandidateReviewFlags(
 
   return [
     heading,
-    ...groups.map(formatSourceCandidateReviewFlagGroup)
+    ...groups.map((group) => formatSourceCandidateReviewFlagGroup(group, flag))
   ].join("\n");
 }
 
 function formatSourceCandidateReviewFlagGroup(
-  group: SourceCandidateReviewOverview["groups"][number]
+  group: SourceCandidateReviewOverview["groups"][number],
+  requestedFlag?: SourceCandidateReviewFlagCode
 ) {
   const candidate = group.topCandidate;
   const key = safeCandidateKey(candidate.dedupeKey);
   const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+  const focusFlag =
+    requestedFlag && reviewFlagCodes.includes(requestedFlag)
+      ? requestedFlag
+      : reviewFlagCodes[0];
   const parts = [
     "-",
     `flags=${quote(reviewFlagCodes.join(", "))}`,
     `flagFocus=${quote(
       formatSourceCandidateReviewFlagsCommand(
-        reviewFlagCodes[0],
+        focusFlag,
         sourceCandidateReviewFlagGroupContext(group)
       )
     )}`,
