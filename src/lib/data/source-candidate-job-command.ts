@@ -3600,6 +3600,7 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
     `key=${key}`,
     `packet=${quote(`--candidate-review-packet ${key}`)}`,
     `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
+    `siblings=${quote(`--candidate-siblings ${key}`)}`,
     `externalId=${quote(candidate.externalId)}`,
     `query=${quote(candidate.query)}`,
     `title=${quote(candidate.title)}`,
