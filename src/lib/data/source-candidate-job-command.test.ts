@@ -75,6 +75,9 @@ describe("commandUsage", () => {
       "--jobs-status <status>            Filter --jobs by queued, running, succeeded, failed, or skipped."
     );
     expect(commandUsage()).toContain(
+      "--jobs                            Print recent source-candidate ingestion jobs with read-only hints."
+    );
+    expect(commandUsage()).toContain(
       "--jobs-claim-id <id>              Filter --jobs by claim id."
     );
   });
@@ -3656,8 +3659,8 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate ingestion jobs: total=2",
-        '- [SUCCEEDED] job-pubmed PUBMED AU "creatine strength" found=5 changed=3 updated=2026-06-02T01:02:00.000Z intervention=creatine claim=creatine-strength',
-        '- [FAILED] job-trials CLINICALTRIALS_GOV AU "creatine aging" found=0 changed=0 updated=2026-06-02T02:01:00.000Z error=ClinicalTrials unavailable'
+        '- [SUCCEEDED] job-pubmed PUBMED AU "creatine strength" found=5 changed=3 updated=2026-06-02T01:02:00.000Z candidates="--candidates --candidate-job-id job-pubmed --candidates-limit 10" contextJobs="--jobs --jobs-source pubmed --jobs-region AU --jobs-intervention-id creatine --jobs-claim-id creatine-strength --jobs-limit 10" statusJobs="--jobs --jobs-status succeeded --jobs-limit 10" intervention=creatine claim=creatine-strength',
+        '- [FAILED] job-trials CLINICALTRIALS_GOV AU "creatine aging" found=0 changed=0 updated=2026-06-02T02:01:00.000Z candidates="--candidates --candidate-job-id job-trials --candidates-limit 10" contextJobs="--jobs --jobs-source clinical-trials --jobs-region AU --jobs-limit 10" statusJobs="--jobs --jobs-status failed --jobs-limit 10" error=ClinicalTrials unavailable'
       ].join("\n")
     );
   });
@@ -3706,7 +3709,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate ingestion jobs: total=1",
-        '- [QUEUED] job-pubmed PUBMED AU "creatine strength" found=0 changed=0 updated=2026-06-02T01:02:00.000Z'
+        '- [QUEUED] job-pubmed PUBMED AU "creatine strength" found=0 changed=0 updated=2026-06-02T01:02:00.000Z candidates="--candidates --candidate-job-id job-pubmed --candidates-limit 10" contextJobs="--jobs --jobs-source pubmed --jobs-region AU --jobs-limit 10" statusJobs="--jobs --jobs-status queued --jobs-limit 10"'
       ].join("\n")
     );
   });

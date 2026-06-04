@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after adding source-candidate detail command hints. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after adding source-candidate job row hints. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -17,6 +17,7 @@ Refreshed on 2026-06-04 after adding source-candidate detail command hints. Veri
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
 - Summary output is read-only and prints next-command hints for overview, duplicate scan, queued jobs, and curation handoff; non-empty curation status bucket rows include filtered handoff hints.
+- Job rows are read-only and print candidate-list, context-jobs, and status-jobs hints.
 - Review overview is read-only and prints region-qualified `list="..."` filtered queue hints, `packet="..."` top-candidate hints, and duplicate hints when the top identity repeats.
 - Candidate detail output is read-only and prints packet, reference-match, sibling, group-list, curation-status, and curation-draft hints.
 - Candidate list rows are read-only and print `packet="..."` hints for direct packet review.
@@ -41,6 +42,7 @@ Last CLI snapshot after local ingestion:
 - `omega-3-cv-events` run results: PubMed job `cmpyzoc7000019jwckirn1fo0` found 5/changed 5; ClinicalTrials.gov job `cmpyzoc7500039jwcbu1ii4o7` found 9/changed 9.
 - `bpc-157-injury-healing` run results: PubMed job `cmpyzsq7p00019jfsudpodgx6` found 0/changed 0; ClinicalTrials.gov job `cmpyzsq7t00039jfs9pvuqz6p` found 0/changed 0.
 - Pending backlog: 50 candidates; PubMed AU 20 and ClinicalTrials.gov AU 30.
+- Read-only jobs smoke showed recent job rows with candidates/context-jobs/status-jobs hints without writes.
 - Read-only summary smoke showed next-command hints after counts without writes.
 - Read-only summary smoke still returned curation handoff `total=0`; non-empty curation bucket filter hints are covered by exact output tests.
 - Read-only detail smoke for repeated PMID `42141930` showed packet/reference/sibling/group/curation hints without writes.
@@ -63,6 +65,7 @@ Last CLI snapshot after local ingestion:
 
 Latest local validation:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --jobs --jobs-limit 3`
 - `npm run ingest:sources -- --candidate-detail b64:cHVibWVkfGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBzdHJlbmd0aCUyMHJlc2lzdGFuY2UlMjB0cmFpbmluZyUyMGxlYW4lMjBtYXNzJTIwcmFuZG9taXplZCUyMHRyaWFsJTIwc3lzdGVtYXRpYyUyMHJldmlld3w0MjE0MTkzMHxjcmVhdGluZXxjcmVhdGluZS1zdHJlbmd0aA`
 - `npm run ingest:sources -- --summary`
 - `npm run ingest:sources -- --candidate-curation-handoff`

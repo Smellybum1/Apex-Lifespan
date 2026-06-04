@@ -2204,7 +2204,7 @@ export function commandUsage() {
     "  --candidate-intervention-id <id>  Filter candidates, overview, or handoff by intervention id.",
     "  --candidate-claim-id <id>         Filter candidates, overview, or handoff by claim id.",
     "  --candidate-region <region>       Filter candidates, overview, or handoff by region.",
-    "  --jobs                            Print recent source-candidate ingestion jobs.",
+    "  --jobs                            Print recent source-candidate ingestion jobs with read-only hints.",
     "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
     "  --jobs-source <source>            Filter --jobs by source: pubmed or clinical-trials.",
     "  --jobs-region <region>            Filter --jobs by region.",
@@ -3264,7 +3264,8 @@ function formatSourceCandidateIngestionJob(job: SourceCandidateIngestionJobListI
     quote(job.query),
     `found=${job.recordsFound}`,
     `changed=${job.recordsChanged}`,
-    `updated=${job.updatedAt}`
+    `updated=${job.updatedAt}`,
+    ...formatSourceCandidateIngestionJobCommandHints(job)
   ];
 
   appendJobContext(parts, job);
@@ -3274,6 +3275,72 @@ function formatSourceCandidateIngestionJob(job: SourceCandidateIngestionJobListI
   }
 
   return parts.join(" ");
+}
+
+function formatSourceCandidateIngestionJobCommandHints(
+  job: SourceCandidateIngestionJobListItem
+) {
+  return [
+    `candidates=${quote(`--candidates --candidate-job-id ${job.jobId} --candidates-limit 10`)}`,
+    `contextJobs=${quote(formatSourceCandidateIngestionJobContextCommand(job))}`,
+    `statusJobs=${quote(
+      `--jobs --jobs-status ${formatSourceCandidateIngestionJobStatusValue(
+        job.status
+      )} --jobs-limit 10`
+    )}`
+  ];
+}
+
+function formatSourceCandidateIngestionJobContextCommand(
+  job: SourceCandidateIngestionJobListItem
+) {
+  const parts = [
+    "--jobs",
+    "--jobs-source",
+    formatSourceCandidateIngestionJobSourceValue(job.source),
+    "--jobs-region",
+    job.region
+  ];
+
+  if (job.interventionId) {
+    parts.push("--jobs-intervention-id", job.interventionId);
+  }
+
+  if (job.claimId) {
+    parts.push("--jobs-claim-id", job.claimId);
+  }
+
+  parts.push("--jobs-limit", "10");
+
+  return parts.join(" ");
+}
+
+function formatSourceCandidateIngestionJobSourceValue(
+  source: SourceCandidateIngestionJobListItem["source"]
+) {
+  switch (source) {
+    case "PUBMED":
+      return "pubmed";
+    case "CLINICALTRIALS_GOV":
+      return "clinical-trials";
+  }
+}
+
+function formatSourceCandidateIngestionJobStatusValue(
+  status: SourceCandidateIngestionJobListItem["status"]
+) {
+  switch (status) {
+    case "QUEUED":
+      return "queued";
+    case "RUNNING":
+      return "running";
+    case "SUCCEEDED":
+      return "succeeded";
+    case "FAILED":
+      return "failed";
+    case "SKIPPED":
+      return "skipped";
+  }
 }
 
 function appendJobContext(
