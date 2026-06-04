@@ -3154,11 +3154,13 @@ function slugReferenceIdPart(value: string) {
 
 function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
   const target = siblings.target;
+  const targetKey = safeCandidateKey(target.dedupeKey);
   const targetReviewFlagCodes = sourceCandidateReviewFlagCodes(target);
   const headingParts = [
     `Source-candidate siblings: total=${siblings.siblings.length}`,
     `target=${quote(target.dedupeKey)}`,
-    `targetKey=${safeCandidateKey(target.dedupeKey)}`,
+    `targetKey=${targetKey}`,
+    `targetPacket=${quote(`--candidate-review-packet ${targetKey}`)}`,
     `candidate=${quote(target.title)}`,
     `source=${quote(target.source)}`,
     `externalId=${quote(target.externalId)}`,

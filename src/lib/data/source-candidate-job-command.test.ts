@@ -2413,7 +2413,7 @@ describe("runSourceCandidateJobCommand", () => {
           '- reference="ref-creatine-position-stand" source="PubMed" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ identifier="PMID: 28615996" year=2017'
         ].join("\n"),
         [
-          'Source-candidate siblings: total=1 target="pubmed|au|creatine|28615996" targetKey=b64:cHVibWVkfGF1fGNyZWF0aW5lfDI4NjE1OTk2 candidate="Creatine position stand" source="PubMed" externalId="28615996" query="creatine strength" region="AU" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-strength',
+          `Source-candidate siblings: total=1 target="pubmed|au|creatine|28615996" targetKey=${safeCandidateKey("pubmed|au|creatine|28615996")} targetPacket="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}" candidate="Creatine position stand" source="PubMed" externalId="28615996" query="creatine strength" region="AU" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-strength`,
           `- match="Same source/external id, Same intervention context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine-aging|28615996" key=${safeCandidateKey("pubmed|au|creatine-aging|28615996")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-aging|28615996")}" externalId="28615996" query="creatine aging" title="Creatine duplicate" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-aging`
         ].join("\n")
       ].join("\n\n")
@@ -3377,7 +3377,7 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
-        `Source-candidate siblings: total=2 target="pubmed|au|creatine|28615996|creatine|creatine-strength" targetKey=${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")} candidate="Creatine position stand" source="PubMed" externalId="28615996" query="creatine strength" region="AU" decision="Accepted" reviewStatus="Human reviewed" intervention=creatine claim=creatine-strength acceptedReference=ref-creatine-position-stand`,
+        `Source-candidate siblings: total=2 target="pubmed|au|creatine|28615996|creatine|creatine-strength" targetKey=${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")} targetPacket="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}" candidate="Creatine position stand" source="PubMed" externalId="28615996" query="creatine strength" region="AU" decision="Accepted" reviewStatus="Human reviewed" intervention=creatine claim=creatine-strength acceptedReference=ref-creatine-position-stand`,
         `- match="Same source/external id, Same intervention context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine-aging|28615996|creatine|aging" key=${safeCandidateKey("pubmed|au|creatine-aging|28615996|creatine|aging")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine-aging|28615996|creatine|aging")}" externalId="28615996" query="creatine aging" title="Creatine position stand duplicate" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=creatine claim=creatine-aging`,
         `- match="Same query/region, Same intervention context, Same claim context" triage=80/100 PubMed AU dedupe="pubmed|au|creatine|999999|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|999999|creatine|creatine-strength")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|999999|creatine|creatine-strength")}" externalId="999999" query="creatine strength" title="Creatine strength companion" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ decision="Rejected" reviewStatus="Human reviewed" reviewed=2026-06-02T04:00:00.000Z note="Wrong population." intervention=creatine claim=creatine-strength`
       ].join("\n")
@@ -3407,7 +3407,7 @@ describe("runSourceCandidateJobCommand", () => {
     ).resolves.toBe(0);
 
     expect(stdout).toHaveBeenCalledWith(
-      `Source-candidate siblings: total=0 target="clinicaltrials.gov|au|creatine|nct123" targetKey=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" query="creatine aging" region="AU" decision="Pending review" reviewStatus="Unreviewed AI draft"`
+      `Source-candidate siblings: total=0 target="clinicaltrials.gov|au|creatine|nct123" targetKey=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} targetPacket="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" query="creatine aging" region="AU" decision="Pending review" reviewStatus="Unreviewed AI draft"`
     );
   });
 
@@ -3460,7 +3460,7 @@ describe("runSourceCandidateJobCommand", () => {
 
     expect(stdout).toHaveBeenCalledWith(
       [
-        `Source-candidate siblings: total=1 target="${targetKey}" targetKey=${safeCandidateKey(targetKey)} candidate="Phase 2 Safety and Efficacy Study of a Vitamin D Compound" source="ClinicalTrials.gov" externalId="NCT00715676" query="Vitamin D safety adverse effects" region="AU" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=vitamin-d claim=vitamin-d-deficiency targetReviewFlags="broad-safety-query" flags="--candidate-review-flags --candidate-review-flags-limit 10"`,
+        `Source-candidate siblings: total=1 target="${targetKey}" targetKey=${safeCandidateKey(targetKey)} targetPacket="--candidate-review-packet ${safeCandidateKey(targetKey)}" candidate="Phase 2 Safety and Efficacy Study of a Vitamin D Compound" source="ClinicalTrials.gov" externalId="NCT00715676" query="Vitamin D safety adverse effects" region="AU" decision="Pending review" reviewStatus="Unreviewed AI draft" intervention=vitamin-d claim=vitamin-d-deficiency targetReviewFlags="broad-safety-query" flags="--candidate-review-flags --candidate-review-flags-limit 10"`,
         `- match="Same query/region, Same intervention context, Same claim context" triage=95/100 ClinicalTrials.gov AU dedupe="${siblingKey}" key=${safeCandidateKey(siblingKey)} packet="--candidate-review-packet ${safeCandidateKey(siblingKey)}" externalId="NCT00706004" query="Vitamin D safety adverse effects" title="Calcium fracture prevention trial" url=https://clinicaltrials.gov/study/NCT00706004 decision="Pending review" reviewStatus="Unreviewed AI draft" reviewFlags="broad-safety-query, low-title-query-overlap" flags="--candidate-review-flags --candidate-review-flags-limit 10" intervention=vitamin-d claim=vitamin-d-deficiency`
       ].join("\n")
     );
