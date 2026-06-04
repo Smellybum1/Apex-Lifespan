@@ -2273,6 +2273,7 @@ describe("runSourceCandidateJobCommand", () => {
       sourceCandidateSiblings({
         target: sourceCandidate({
           dedupeKey: "pubmed|au|creatine|28615996",
+          decision: "Accepted",
           source: "PubMed",
           externalId: "28615996"
         }),
@@ -2317,6 +2318,8 @@ describe("runSourceCandidateJobCommand", () => {
         "duplicateIdentityCandidates=2",
         'duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2"',
         `duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}"`,
+        "duplicateIdentityMixedDecision=true",
+        'duplicateIdentityNextAction="Review duplicate identity rows together before changing any candidate decision."',
         'source="PubMed"',
         'externalId="28615996"',
         'region="AU"',

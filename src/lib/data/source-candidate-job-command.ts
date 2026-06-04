@@ -521,13 +521,15 @@ export async function runSourceCandidateJobCommand(
         return 1;
       }
 
+      const siblings = await listSiblings(candidate.dedupeKey, {});
+
       stdout(
         formatSourceCandidateDetail(candidate, {
           duplicateIdentityCandidateCount:
-            await sourceCandidateDuplicateIdentityCandidateCountForDedupeKey(
-              candidate.dedupeKey,
-              listSiblings
-            )
+            siblings ? sourceCandidateSiblingDuplicateIdentityCount(siblings) : 1,
+          duplicateIdentityMixedDecision: siblings
+            ? sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(siblings)
+            : false
         })
       );
       return 0;
@@ -2782,6 +2784,7 @@ function formatSourceCandidateDetail(
   options: {
     commandHints?: boolean;
     duplicateIdentityCandidateCount?: number;
+    duplicateIdentityMixedDecision?: boolean;
   } = {}
 ) {
   const reviewFlags = sourceCandidateReviewFlags(candidate);
@@ -2794,7 +2797,10 @@ function formatSourceCandidateDetail(
       : formatSourceCandidateDetailCommandHints(candidate)),
     ...formatSourceCandidateDuplicateIdentityFields(
       candidate,
-      options.duplicateIdentityCandidateCount ?? 1
+      options.duplicateIdentityCandidateCount ?? 1,
+      {
+        duplicateIdentityMixedDecision: options.duplicateIdentityMixedDecision
+      }
     ),
     `source=${quote(candidate.source)}`,
     `externalId=${quote(candidate.externalId)}`,
@@ -3088,13 +3094,14 @@ async function sourceCandidateDuplicateIdentityCandidateCountMap(
 
 function formatSourceCandidateDuplicateIdentityFields(
   candidate: SourceCandidate,
-  duplicateIdentityCandidateCount: number
+  duplicateIdentityCandidateCount: number,
+  options: { duplicateIdentityMixedDecision?: boolean } = {}
 ) {
   if (duplicateIdentityCandidateCount <= 1) {
     return [];
   }
 
-  return [
+  const fields = [
     `duplicateIdentityCandidates=${duplicateIdentityCandidateCount}`,
     `duplicates=${quote(
       formatSourceCandidateDuplicateIdentityListCommand({
@@ -3105,6 +3112,17 @@ function formatSourceCandidateDuplicateIdentityFields(
     )}`,
     `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
   ];
+
+  if (options.duplicateIdentityMixedDecision) {
+    fields.push(
+      "duplicateIdentityMixedDecision=true",
+      `duplicateIdentityNextAction=${quote(
+        SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+      )}`
+    );
+  }
+
+  return fields;
 }
 
 function formatSourceCandidateCurationDraft(

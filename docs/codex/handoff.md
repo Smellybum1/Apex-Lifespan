@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candidate and improving mixed-decision duplicate identity plus sibling/reference/curation review-audit surfacing. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candidate and improving mixed-decision duplicate identity plus detail/sibling/reference/curation review-audit surfacing. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -21,7 +21,7 @@ Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candid
 - Source-candidate CLI output now provides copyable read-only review/curation drill-ins and Not-accepted accept-gate hints across summary, jobs, queues, detail, packets, reference matches, siblings, duplicates, and curation views; curation summary buckets include status-specific `nextAction`, `nextWrite`/`writeReady`, and blockers when applicable, curation handoff/status rows and explicit claim-link/study-extraction result rows include `nextWrite`/`writeReady` plus draft review drill-ins when a follow-on guarded write is available, curation drafts include guarded explicit-write `commandTemplate` values plus `writeReady`/`blockedUntil` fields, and curation status/draft/handoff rows include accepted-reference audit fields plus review-note fields for reviewed rows; see `docs/codex/source-candidate-workflow.md` for the compact catalog.
 - Packet command hints include accepted-reference match counts and explicit accept-gate booleans; packet/reference/sibling/curation drill-ins share one local formatter helper in `src/lib/data/source-candidate-job-command.ts`, and exact CLI output is covered by source-candidate command tests.
 - Candidate filters support read-only `--candidate-claim-missing` and `--candidate-intervention-missing`; generated list hints use them when a group or candidate lacks claim/intervention context.
-- Duplicate identity review surfaces include `duplicateCaution` prompts plus exact read-only duplicate/list hints in summary flag focus, overview, flags, candidate lists, detail, packets, siblings, reference matches, curation views, and duplicate rows; duplicate identity group headings include `mixedDecision=true` plus a read-only `nextAction`, and packet command hints, reference-match headings, plus sibling headings include `duplicateIdentityMixedDecision` plus a read-only duplicate next action, when the same PMID/NCT spans multiple decision states; accepted-reference/review-note fields for reviewed rows; and explicit `intervention`/`claim` values, including `none`, so repeated PMID/NCT identities can be reviewed in scoped or unscoped context before any decision.
+- Duplicate identity review surfaces include `duplicateCaution` prompts plus exact read-only duplicate/list hints in summary flag focus, overview, flags, candidate lists, detail, packets, siblings, reference matches, curation views, and duplicate rows; duplicate identity group headings include `mixedDecision=true` plus a read-only `nextAction`, and standalone detail rows, packet command hints, reference-match headings, plus sibling headings include `duplicateIdentityMixedDecision` plus a read-only duplicate next action, when the same PMID/NCT spans multiple decision states; accepted-reference/review-note fields for reviewed rows; and explicit `intervention`/`claim` values, including `none`, so repeated PMID/NCT identities can be reviewed in scoped or unscoped context before any decision.
 - Duplicate identity scans now surface mixed-decision identities by default, while explicit `--candidate-decision` filters still narrow the scan.
 - Review overview top-candidate selection now prefers repeated PMID/NCT identities when triage scores tie, so mixed accepted/pending duplicates are more visible from the overview.
 - Flagged summary, overview, and candidate-level rows include caution text plus context-scoped read-only `flagFocus="..."` hints while preserving broader `flags="..."` drill-ins; filtered review-flag rows focus the selected flag.
@@ -44,6 +44,16 @@ Refreshed on 2026-06-04 after accepting the scoped `PMID 42141930` source candid
 - Notable current groups: `creatine-lifespan` has one ClinicalTrials.gov lead (`NCT07451496`); `omega-3-triglycerides` has ClinicalTrials.gov leads; `omega-3-cv-events` has PubMed and ClinicalTrials.gov leads. Regenerate exact packet keys from the overview or candidate lists.
 
 ## Latest Local Validation
+
+Current code validation for detail mixed duplicate decision cues:
+- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --candidate-detail <pending unscoped PMID 42141930 key>` (read-only smoke)
+- `npm run ingest:sources -- --candidate-detail <accepted scoped PMID 42141930 key>` (read-only smoke)
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `git diff --check` (only LF-to-CRLF warnings for modified files)
 
 Current code validation for reference-match mixed duplicate decision cues:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
