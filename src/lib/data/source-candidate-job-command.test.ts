@@ -4168,6 +4168,37 @@ describe("runSourceCandidateJobCommand", () => {
         url: "https://clinicaltrials.gov/study/NCT123"
       })
     ]);
+    const listSiblings = vi
+      .fn()
+      .mockResolvedValueOnce(
+        sourceCandidateSiblings({
+          target: sourceCandidate({
+            dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+            source: "PubMed",
+            externalId: "28615996"
+          }),
+          siblings: [
+            {
+              candidate: sourceCandidate({
+                dedupeKey: "pubmed|au|creatine-aging|28615996",
+                source: "PubMed",
+                externalId: "28615996"
+              }),
+              matchReasons: ["Same source/external id"]
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(
+        sourceCandidateSiblings({
+          target: sourceCandidate({
+            dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
+            source: "ClinicalTrials.gov",
+            externalId: "NCT123"
+          }),
+          siblings: []
+        })
+      );
     const runNextJob = vi.fn();
 
     await expect(
@@ -4188,7 +4219,7 @@ describe("runSourceCandidateJobCommand", () => {
           "creatine-strength"
         ],
         { stdout },
-        { listCandidates, runNextJob }
+        { listCandidates, listSiblings, runNextJob }
       )
     ).resolves.toBe(0);
 
@@ -4202,11 +4233,19 @@ describe("runSourceCandidateJobCommand", () => {
       region: undefined,
       source: "PubMed"
     });
+    expect(listSiblings).toHaveBeenCalledWith(
+      "pubmed|au|creatine|28615996|creatine|creatine-strength",
+      {}
+    );
+    expect(listSiblings).toHaveBeenCalledWith(
+      "clinicaltrials.gov|au|creatine|nct123",
+      {}
+    );
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate review queue: total=2",
-        `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}" externalId="28615996" query="creatine strength" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ ingestionJob=job-pubmed intervention=creatine claim=creatine-strength`,
+        `- triage=80/100 PubMed AU dedupe="pubmed|au|creatine|28615996|creatine|creatine-strength" key=${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")} packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}" siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}" curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("pubmed|au|creatine|28615996|creatine|creatine-strength")}" duplicateIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 28615996 --candidates-limit 2" duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}" externalId="28615996" query="creatine strength" title="Creatine position stand" url=https://pubmed.ncbi.nlm.nih.gov/28615996/ ingestionJob=job-pubmed intervention=creatine claim=creatine-strength`,
         `- triage=70/100 ClinicalTrials.gov AU dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" siblings="--candidate-siblings ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" curationStatus="--candidate-curation-status ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" externalId="NCT123" query="creatine strength" title="Creatine and aging" url=https://clinicaltrials.gov/study/NCT123`
       ].join("\n")
     );
@@ -4384,6 +4423,7 @@ describe("runSourceCandidateJobCommand", () => {
         claimId: "creatine-strength"
       })
     ]);
+    const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
     const runNextJob = vi.fn();
 
     await expect(
@@ -4396,7 +4436,7 @@ describe("runSourceCandidateJobCommand", () => {
           "1"
         ],
         { stdout },
-        { listCandidates, runNextJob }
+        { listCandidates, listSiblings, runNextJob }
       )
     ).resolves.toBe(0);
 
@@ -4447,9 +4487,14 @@ describe("runSourceCandidateJobCommand", () => {
         claimId: "vitamin-d-deficiency"
       })
     ]);
+    const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
 
     await expect(
-      runSourceCandidateJobCommand(["--candidates"], { stdout }, { listCandidates })
+      runSourceCandidateJobCommand(
+        ["--candidates"],
+        { stdout },
+        { listCandidates, listSiblings }
+      )
     ).resolves.toBe(0);
 
     expect(stdout).toHaveBeenCalledWith(
@@ -4468,12 +4513,13 @@ describe("runSourceCandidateJobCommand", () => {
         title: "Creatine position stand"
       })
     ]);
+    const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidates", "--candidate-decision", "pending"],
         { stdout },
-        { listCandidates }
+        { listCandidates, listSiblings }
       )
     ).resolves.toBe(0);
 

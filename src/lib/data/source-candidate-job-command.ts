@@ -603,8 +603,17 @@ export async function runSourceCandidateJobCommand(
       }
 
       const candidates = await listCandidates(candidateListOptions);
+      const duplicateIdentityCandidateCounts =
+        await sourceCandidateDuplicateIdentityCandidateCountMap(
+          candidates,
+          listSiblings
+        );
 
-      stdout(formatSourceCandidateReviewQueue(candidates, options.candidateDecision));
+      stdout(
+        formatSourceCandidateReviewQueue(candidates, options.candidateDecision, {
+          duplicateIdentityCandidateCounts
+        })
+      );
       return 0;
     }
 
@@ -3635,7 +3644,8 @@ function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings
 
 function formatSourceCandidateReviewQueue(
   candidates: SourceCandidate[],
-  decision?: SourceCandidateDecision
+  decision?: SourceCandidateDecision,
+  options: { duplicateIdentityCandidateCounts?: Map<string, number> } = {}
 ) {
   const heading = decision && decision !== "Pending review"
     ? `Source-candidate review records: decision=${quote(decision)}`
@@ -3647,7 +3657,12 @@ function formatSourceCandidateReviewQueue(
 
   return [
     `${heading}: total=${candidates.length}`,
-    ...candidates.map(formatSourceCandidateReviewQueueItem)
+    ...candidates.map((candidate) =>
+      formatSourceCandidateReviewQueueItem(candidate, {
+        duplicateIdentityCandidateCount:
+          options.duplicateIdentityCandidateCounts?.get(candidate.dedupeKey)
+      })
+    )
   ].join("\n");
 }
 
@@ -4018,7 +4033,10 @@ function sourceCandidateSourceCliValue(source: SourceCandidateSource) {
   return source === "ClinicalTrials.gov" ? "clinical-trials" : "pubmed";
 }
 
-function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
+function formatSourceCandidateReviewQueueItem(
+  candidate: SourceCandidate,
+  options: { duplicateIdentityCandidateCount?: number } = {}
+) {
   const reviewFlags = sourceCandidateReviewFlags(candidate);
   const key = safeCandidateKey(candidate.dedupeKey);
   const parts = [
@@ -4028,6 +4046,10 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${key}`,
     ...formatSourceCandidateReviewDrillInHints(candidate, key),
+    ...formatSourceCandidateDuplicateIdentityFields(
+      candidate,
+      options.duplicateIdentityCandidateCount ?? 1
+    ),
     `externalId=${quote(candidate.externalId)}`,
     `query=${quote(candidate.query)}`,
     `title=${quote(candidate.title)}`,
