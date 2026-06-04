@@ -2989,6 +2989,8 @@ describe("runSourceCandidateJobCommand", () => {
 
   it("prints a read-only curation draft for accepted candidates", async () => {
     const stdout = vi.fn();
+    const candidateKey = "pubmed|au|creatine|28615996";
+    const safeKey = safeCandidateKey(candidateKey);
     const getCurationDraft = vi.fn().mockResolvedValue({
       claimLinkDraft: {
         alreadyLinked: false,
@@ -3078,26 +3080,26 @@ describe("runSourceCandidateJobCommand", () => {
 
     await expect(
       runSourceCandidateJobCommand(
-        ["--candidate-curation-draft", "pubmed|au|creatine|28615996"],
+        ["--candidate-curation-draft", candidateKey],
         { stdout },
         { getCurationDraft, listSiblings, runNextJob }
       )
     ).resolves.toBe(0);
 
-    expect(getCurationDraft).toHaveBeenCalledWith("pubmed|au|creatine|28615996");
-    expect(listSiblings).toHaveBeenCalledWith("pubmed|au|creatine|28615996", {});
+    expect(getCurationDraft).toHaveBeenCalledWith(candidateKey);
+    expect(listSiblings).toHaveBeenCalledWith(candidateKey, {});
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
         "Source-candidate curation draft",
         "readOnly=true",
-        'dedupe="pubmed|au|creatine|28615996"',
-        `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
-        `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
-        `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
-        `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `dedupe="${candidateKey}"`,
+        `key=${safeKey}`,
+        `packet="--candidate-review-packet ${safeKey}"`,
+        `referenceMatches="--candidate-reference-matches ${safeKey}"`,
+        `siblings="--candidate-siblings ${safeKey}"`,
         'groupList="--candidates --candidate-claim-id creatine-strength --candidate-intervention-missing --candidate-region AU --candidate-source pubmed --candidates-limit 10"',
-        `curationStatus="--candidate-curation-status ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
+        `curationStatus="--candidate-curation-status ${safeKey}"`,
         'decision="Accepted"',
         'reviewStatus="Human reviewed"',
         'status="Claim link missing"',
@@ -3119,6 +3121,9 @@ describe("runSourceCandidateJobCommand", () => {
         "  relevance=5",
         "  alreadyLinked=false",
         '  note="Accepted PubMed candidate 28615996: Creatine position stand"',
+        `  commandTemplate=${JSON.stringify(
+          `--link-candidate-claim ${safeKey} --claim-link-relevance 5 --claim-link-note "Human-reviewed claim-link rationale."`
+        )}`,
         "studyExtractionDraft:",
         "  reference=ref-creatine-position-stand",
         '  title="Creatine position stand"',
@@ -3131,6 +3136,19 @@ describe("runSourceCandidateJobCommand", () => {
         '  doi="10.1186/s12970-017-0173-z"',
         "  abstractAvailable=true",
         '  manualFields="sampleSize, population, interventionName, outcomes, adverseEvents, fundingConflicts, riskOfBias"',
+        `  commandTemplate=${JSON.stringify(
+          [
+            `--extract-candidate-study ${safeKey}`,
+            "--study-source-type systematic-review",
+            '--study-sample-size "Human-entered sample size."',
+            '--study-population "Human-reviewed population."',
+            '--study-intervention-name "Human-reviewed intervention."',
+            '--study-outcome "Human-reviewed outcome."',
+            '--study-adverse-events "Human-reviewed adverse event summary."',
+            '--study-funding-conflicts "Human-reviewed funding/conflict note."',
+            '--study-risk-of-bias "Human-reviewed risk-of-bias assessment."'
+          ].join(" ")
+        )}`,
         "  metadataFields:",
         '    journal="Journal of the International Society of Sports Nutrition"',
         '    publicationTypes="Journal Article, Review"'

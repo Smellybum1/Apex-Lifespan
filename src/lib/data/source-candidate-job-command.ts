@@ -3136,6 +3136,14 @@ function formatSourceCandidateCurationDraft(
     lines.push(`  relevance=${draft.claimLinkDraft.relevance}`);
     lines.push(`  alreadyLinked=${draft.claimLinkDraft.alreadyLinked}`);
     lines.push(`  note=${quote(draft.claimLinkDraft.note)}`);
+    lines.push(
+      `  commandTemplate=${quote(
+        formatSourceCandidateClaimLinkCommandTemplate(
+          candidate,
+          draft.claimLinkDraft
+        )
+      )}`
+    );
   } else {
     lines.push("claimLinkDraft: unavailable");
   }
@@ -3174,6 +3182,14 @@ function formatSourceCandidateCurationDraft(
     lines.push(
       `  manualFields=${quote(draft.studyExtractionDraft.manualFields.join(", "))}`
     );
+    lines.push(
+      `  commandTemplate=${quote(
+        formatSourceCandidateStudyExtractionCommandTemplate(
+          candidate,
+          draft.studyExtractionDraft
+        )
+      )}`
+    );
 
     if (draft.studyExtractionDraft.metadataFields.length > 0) {
       lines.push("  metadataFields:");
@@ -3188,6 +3204,74 @@ function formatSourceCandidateCurationDraft(
   }
 
   return lines.join("\n");
+}
+
+function formatSourceCandidateClaimLinkCommandTemplate(
+  candidate: SourceCandidate,
+  draft: NonNullable<SourceCandidateCurationDraft["claimLinkDraft"]>
+) {
+  return [
+    `--link-candidate-claim ${safeCandidateKey(candidate.dedupeKey)}`,
+    `--claim-link-relevance ${draft.relevance}`,
+    `--claim-link-note ${commandTextArgument("Human-reviewed claim-link rationale.")}`
+  ].join(" ");
+}
+
+function formatSourceCandidateStudyExtractionCommandTemplate(
+  candidate: SourceCandidate,
+  draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>
+) {
+  return [
+    `--extract-candidate-study ${safeCandidateKey(candidate.dedupeKey)}`,
+    `--study-source-type ${formatStudySourceTypeCommandValue(
+      draft.sourceTypeSuggestion
+    )}`,
+    `--study-sample-size ${commandTextArgument("Human-entered sample size.")}`,
+    `--study-population ${commandTextArgument("Human-reviewed population.")}`,
+    `--study-intervention-name ${commandTextArgument(
+      "Human-reviewed intervention."
+    )}`,
+    `--study-outcome ${commandTextArgument("Human-reviewed outcome.")}`,
+    `--study-adverse-events ${commandTextArgument(
+      "Human-reviewed adverse event summary."
+    )}`,
+    `--study-funding-conflicts ${commandTextArgument(
+      "Human-reviewed funding/conflict note."
+    )}`,
+    `--study-risk-of-bias ${commandTextArgument(
+      "Human-reviewed risk-of-bias assessment."
+    )}`,
+    ...(draft.alreadyExtracted ? ["--update-existing-study"] : [])
+  ].join(" ");
+}
+
+function formatStudySourceTypeCommandValue(sourceTypeSuggestion: string) {
+  switch (sourceTypeSuggestion) {
+    case "META_ANALYSIS":
+      return "meta-analysis";
+    case "SYSTEMATIC_REVIEW":
+      return "systematic-review";
+    case "RANDOMIZED_CONTROLLED_TRIAL":
+      return "randomized-controlled-trial";
+    case "OBSERVATIONAL_COHORT":
+      return "observational-cohort";
+    case "CASE_REPORT":
+      return "case-report";
+    case "ANIMAL_STUDY":
+      return "animal-study";
+    case "IN_VITRO_MECHANISTIC":
+      return "in-vitro-mechanistic";
+    case "CLINICAL_TRIAL_RECORD":
+      return "clinical-trial-record";
+    case "REGULATORY_SAFETY_WARNING":
+      return "regulatory-safety-warning";
+    default:
+      return "<source-type>";
+  }
+}
+
+function commandTextArgument(value: string) {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"")}"`;
 }
 
 function formatSourceCandidateCurationStatus(
