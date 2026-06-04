@@ -22,12 +22,12 @@ Refreshed on 2026-06-04 after adding source-candidate review flags. Verify local
 - Review overview is read-only and prints region-qualified `list="..."` filtered queue hints, `packet="..."` top-candidate hints, duplicate hints when the top identity repeats, and compact `topReviewFlags` when applicable.
 - Candidate detail output is read-only and prints packet, reference-match, sibling, group-list, curation-status, curation-draft hints, and explanatory `reviewCautions` for flagged claim-scoped candidates.
 - Candidate list rows are read-only and print `packet="..."` hints plus query, ingestion-job trace fields, and compact `reviewFlags` when applicable.
-- Reference-match headings print read-only `packet="..."` and `groupList="..."` hints; reference drafts remain draft-only.
+- Reference-match headings print read-only `packet="..."`, `groupList="..."`, and compact `reviewFlags` when applicable; reference drafts remain draft-only.
 - Review packets print safe read-only follow-up commands, duplicate hints when the identity repeats, and explicit human-reviewed accept/reject templates.
 - Sibling rows print read-only `packet="..."` hints plus compact `targetReviewFlags`/`reviewFlags` when applicable.
 - Duplicate identity output prints read-only `identityList="..."`, per-candidate `packet="..."` hints, and compact `reviewFlags` when applicable.
-- Curation handoff rows print read-only packet, reference-match, curation-status, and curation-draft hints when rows exist.
-- Curation status and draft output print read-only packet, reference-match, group-list, and paired curation-view hints.
+- Curation handoff rows print read-only packet, reference-match, curation-status, curation-draft hints, and compact `reviewFlags` when applicable.
+- Curation status and draft output print read-only packet, reference-match, group-list, paired curation-view hints, and compact `reviewFlags` when applicable.
 - Claim-scoped source queries now append compact claim-text anchors after outcome terms before queueing.
 - Local Docker/PostgreSQL setup was verified earlier; migrations and seed were applied locally.
 
@@ -58,6 +58,8 @@ Last CLI snapshot after local ingestion:
 - Read-only candidate list smoke for the top `vitamin-d-deficiency` ClinicalTrials.gov rows showed compact `reviewFlags="broad-safety-query"` and no writes.
 - Read-only `NCT00715676` review packet smoke showed `targetReviewFlags` on the sibling heading and row-level sibling `reviewFlags`, including low-title-query-overlap prompts for disconnected sibling titles.
 - Exact output tests cover `reviewFlags` on duplicate identity rows; no live duplicate write smoke was needed.
+- Exact output tests cover `reviewFlags` on accepted-reference match headings, curation status, curation draft, and curation handoff rows.
+- Read-only `NCT00715676` reference-match, curation-status, and curation-draft smokes showed compact `reviewFlags="broad-safety-query"` without writes.
 - Read-only sibling smoke for repeated PMID `42141930` showed packet hints on each sibling row without writes.
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 - New `creatine-lifespan` candidate: `NCT07451496`, triage 80/100, key `b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fGNyZWF0aW5lJTIwbW9ub2h5ZHJhdGUlMjBsb25nZXZpdHklMjBtb3J0YWxpdHklMjBsaWZlc3BhbnxuY3QwNzQ1MTQ5NnxjcmVhdGluZXxjcmVhdGluZS1saWZlc3Bhbg`; review packet showed no accepted-reference match and no siblings.
@@ -86,6 +88,9 @@ Latest local validation:
 - `npm run test -- src/lib/data/source-candidates.test.ts`
 - `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`
 - `npm run ingest:sources -- --candidate-review-packet b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
+- `npm run ingest:sources -- --candidate-reference-matches b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
+- `npm run ingest:sources -- --candidate-curation-status b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
+- `npm run ingest:sources -- --candidate-curation-draft b64:Y2xpbmljYWx0cmlhbHMuZ292fGF1fHZpdGFtaW4lMjBkJTIwc2FmZXR5JTIwYWR2ZXJzZSUyMGVmZmVjdHN8bmN0MDA3MTU2NzZ8dml0YW1pbi1kfHZpdGFtaW4tZC1kZWZpY2llbmN5`
 - `npm run ingest:sources -- --candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 3`
 - `npm run ingest:sources -- --candidates --candidate-claim-id omega-3-cv-events --candidate-intervention-id omega-3 --candidate-region AU --candidate-source pubmed --candidates-limit 3`
 - `npm run test -- src/lib/data/source-candidates.test.ts src/lib/data/source-candidate-job-command.test.ts`

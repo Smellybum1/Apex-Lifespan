@@ -2413,6 +2413,63 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("prints review flags in read-only curation status", async () => {
+    const stdout = vi.fn();
+    const candidateKey =
+      "clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency";
+    const getCurationStatus = vi.fn().mockResolvedValue({
+      acceptedReferenceId: "trial-nct00715676",
+      candidate: sourceCandidate({
+        dedupeKey: candidateKey,
+        source: "ClinicalTrials.gov",
+        externalId: "NCT00715676",
+        query: "Vitamin D safety adverse effects",
+        title: "Calcium fracture prevention trial",
+        url: "https://clinicaltrials.gov/study/NCT00715676",
+        decision: "Accepted",
+        reviewStatus: "Human reviewed",
+        acceptedReferenceId: "trial-nct00715676",
+        interventionId: "vitamin-d",
+        claimId: "vitamin-d-deficiency"
+      }),
+      claimLinks: [],
+      nextAction: "Attach or restore the matching curated reference before public packet review.",
+      publicSourcePacketReady: false,
+      status: "Accepted reference missing",
+      studies: []
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-curation-status", candidateKey],
+        { stdout },
+        { getCurationStatus }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate curation status",
+        `dedupe="${candidateKey}"`,
+        `key=${safeCandidateKey(candidateKey)}`,
+        `packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}"`,
+        `referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}"`,
+        'groupList="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10"',
+        `curationDraft="--candidate-curation-draft ${safeCandidateKey(candidateKey)}"`,
+        'decision="Accepted"',
+        'reviewStatus="Human reviewed"',
+        'status="Accepted reference missing"',
+        'nextAction="Attach or restore the matching curated reference before public packet review."',
+        "publicSourcePacketReady=false",
+        'reviewFlags="broad-safety-query, low-title-query-overlap"',
+        "acceptedReference=trial-nct00715676",
+        "candidateClaim=vitamin-d-deficiency",
+        "claimLinks=0",
+        "studies=0"
+      ].join("\n")
+    );
+  });
+
   it("prints read-only curation status for source candidates that are not accepted", async () => {
     const stdout = vi.fn();
     const getCurationStatus = vi.fn().mockResolvedValue({
@@ -2639,6 +2696,67 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("prints review flags in read-only curation draft", async () => {
+    const stdout = vi.fn();
+    const candidateKey =
+      "clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency";
+    const getCurationDraft = vi.fn().mockResolvedValue({
+      status: {
+        acceptedReferenceId: "trial-nct00715676",
+        candidate: sourceCandidate({
+          dedupeKey: candidateKey,
+          source: "ClinicalTrials.gov",
+          externalId: "NCT00715676",
+          query: "Vitamin D safety adverse effects",
+          title: "Calcium fracture prevention trial",
+          url: "https://clinicaltrials.gov/study/NCT00715676",
+          decision: "Accepted",
+          reviewStatus: "Human reviewed",
+          acceptedReferenceId: "trial-nct00715676",
+          interventionId: "vitamin-d",
+          claimId: "vitamin-d-deficiency"
+        }),
+        claimLinks: [],
+        nextAction:
+          "Attach or restore the matching curated reference before public packet review.",
+        publicSourcePacketReady: false,
+        status: "Accepted reference missing",
+        studies: []
+      }
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-curation-draft", candidateKey],
+        { stdout },
+        { getCurationDraft }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate curation draft",
+        "readOnly=true",
+        `dedupe="${candidateKey}"`,
+        `key=${safeCandidateKey(candidateKey)}`,
+        `packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}"`,
+        `referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}"`,
+        'groupList="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10"',
+        `curationStatus="--candidate-curation-status ${safeCandidateKey(candidateKey)}"`,
+        'decision="Accepted"',
+        'reviewStatus="Human reviewed"',
+        'status="Accepted reference missing"',
+        'nextAction="Attach or restore the matching curated reference before public packet review."',
+        "publicSourcePacketReady=false",
+        'reviewFlags="broad-safety-query, low-title-query-overlap"',
+        "acceptedReference=trial-nct00715676",
+        "candidateClaim=vitamin-d-deficiency",
+        "claimLinkDraft: unavailable",
+        "studyExtractionDraft: unavailable"
+      ].join("\n")
+    );
+  });
+
   it("returns a failing exit code when curation draft targets a missing candidate", async () => {
     const stderr = vi.fn();
     const getCurationDraft = vi.fn().mockResolvedValue(null);
@@ -2782,6 +2900,51 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("prints review flags in curation handoff rows", async () => {
+    const stdout = vi.fn();
+    const candidateKey =
+      "clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency";
+    const listCurationHandoff = vi.fn().mockResolvedValue([
+      {
+        acceptedReferenceId: "trial-nct00715676",
+        candidate: sourceCandidate({
+          dedupeKey: candidateKey,
+          source: "ClinicalTrials.gov",
+          externalId: "NCT00715676",
+          query: "Vitamin D safety adverse effects",
+          title: "Calcium fracture prevention trial",
+          url: "https://clinicaltrials.gov/study/NCT00715676",
+          decision: "Accepted",
+          reviewStatus: "Human reviewed",
+          acceptedReferenceId: "trial-nct00715676",
+          interventionId: "vitamin-d",
+          claimId: "vitamin-d-deficiency"
+        }),
+        claimLinks: [],
+        nextAction:
+          "Attach or restore the matching curated reference before public packet review.",
+        publicSourcePacketReady: false,
+        status: "Accepted reference missing",
+        studies: []
+      }
+    ]);
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-curation-handoff"],
+        { stdout },
+        { listCurationHandoff }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate curation handoff: total=1",
+        `- status="Accepted reference missing" nextAction="Attach or restore the matching curated reference before public packet review." publicSourcePacketReady=false ClinicalTrials.gov AU dedupe="${candidateKey}" key=${safeCandidateKey(candidateKey)} packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}" curationStatus="--candidate-curation-status ${safeCandidateKey(candidateKey)}" curationDraft="--candidate-curation-draft ${safeCandidateKey(candidateKey)}" title="Calcium fracture prevention trial" reviewFlags="broad-safety-query, low-title-query-overlap" acceptedReference=trial-nct00715676 candidateClaim=vitamin-d-deficiency claimLinks=0 studies=0`
+      ].join("\n")
+    );
+  });
+
   it("prints read-only source-candidate accepted-reference matches", async () => {
     const stdout = vi.fn();
     const listReferenceMatches = vi.fn().mockResolvedValue({
@@ -2859,6 +3022,40 @@ describe("runSourceCandidateJobCommand", () => {
       [
         `Source-candidate accepted-reference matches: total=0 dedupe="clinicaltrials.gov|au|creatine|nct123" key=${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")} candidate="Creatine and aging" source="ClinicalTrials.gov" externalId="NCT123" url=https://clinicaltrials.gov/study/NCT123 packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine|nct123")}" groupList="--candidates --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" decision="Accepted" reviewStatus="Human reviewed"`,
         '- referenceDraft="ref-clinicaltrials-gov-nct123" source="ClinicalTrials.gov" identifier="NCT123" title="Creatine and aging" url=https://clinicaltrials.gov/study/NCT123 note="Draft only; verify before adding a curated reference." year=2017'
+      ].join("\n")
+    );
+  });
+
+  it("prints review flags in accepted-reference match headings", async () => {
+    const stdout = vi.fn();
+    const candidateKey =
+      "clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency";
+    const listReferenceMatches = vi.fn().mockResolvedValue({
+      candidate: sourceCandidate({
+        dedupeKey: candidateKey,
+        source: "ClinicalTrials.gov",
+        externalId: "NCT00715676",
+        query: "Vitamin D safety adverse effects",
+        title: "Calcium fracture prevention trial",
+        url: "https://clinicaltrials.gov/study/NCT00715676",
+        interventionId: "vitamin-d",
+        claimId: "vitamin-d-deficiency"
+      }),
+      references: []
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--candidate-reference-matches", candidateKey],
+        { stdout },
+        { listReferenceMatches }
+      )
+    ).resolves.toBe(0);
+
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        `Source-candidate accepted-reference matches: total=0 dedupe="${candidateKey}" key=${safeCandidateKey(candidateKey)} candidate="Calcium fracture prevention trial" source="ClinicalTrials.gov" externalId="NCT00715676" url=https://clinicaltrials.gov/study/NCT00715676 packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}" groupList="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" decision="Pending review" reviewStatus="Unreviewed AI draft" reviewFlags="broad-safety-query, low-title-query-overlap"`,
+        '- referenceDraft="ref-clinicaltrials-gov-nct00715676" source="ClinicalTrials.gov" identifier="NCT00715676" title="Calcium fracture prevention trial" url=https://clinicaltrials.gov/study/NCT00715676 note="Draft only; verify before adding a curated reference." year=2017'
       ].join("\n")
     );
   });

@@ -42,12 +42,12 @@ Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on 
 Candidate detail output prints read-only packet, reference-match, sibling, group-list, curation-status, curation-draft hints, and explanatory `reviewCautions` when a claim-scoped candidate needs extra broad-query/off-claim scrutiny.
 Candidate list rows print `packet="..."` for read-only packet review plus source-query, ingestion-job trace fields, and compact `reviewFlags` when applicable.
 Review overview rows print `list="..."` for the filtered pending group, including region, `packet="..."` for the top candidate drill-in, duplicate hints when the top PMID/NCT identity repeats, and `topReviewFlags` when applicable.
-Reference-match headings print `packet="..."` and `groupList="..."`; draft references remain draft-only and require manual verification.
+Reference-match headings print `packet="..."`, `groupList="..."`, and compact `reviewFlags` when applicable; draft references remain draft-only and require manual verification.
 Review packets print read-only follow-up commands, conditional duplicate hints, and accept/reject templates; write templates still require explicit human review.
 Sibling rows print `packet="..."` for read-only packet review of related candidates plus `targetReviewFlags`/`reviewFlags` when applicable.
 Duplicate identity rows print `identityList="..."` for the filtered duplicate group and `packet="..."` plus `reviewFlags` for each candidate row when applicable.
-Curation handoff rows print read-only packet, reference-match, curation-status, and curation-draft hints.
-Curation status and draft rows print read-only packet, reference-match, group-list, and paired curation-view hints.
+Curation handoff rows print read-only packet, reference-match, curation-status, curation-draft hints, and compact `reviewFlags` when applicable.
+Curation status and draft rows print read-only packet, reference-match, group-list, paired curation-view hints, and compact `reviewFlags` when applicable.
 
 ## Curation Readiness
 

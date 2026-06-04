@@ -2553,6 +2553,7 @@ function sourceCandidateReviewPacketDuplicateIdentityCount(
 function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft) {
   const status = draft.status;
   const candidate = status.candidate;
+  const reviewFlagField = sourceCandidateReviewFlagField("reviewFlags", candidate);
   const lines = [
     "Source-candidate curation draft",
     "readOnly=true",
@@ -2565,6 +2566,10 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
     `nextAction=${quote(status.nextAction)}`,
     `publicSourcePacketReady=${status.publicSourcePacketReady}`
   ];
+
+  if (reviewFlagField) {
+    lines.push(reviewFlagField);
+  }
 
   if (status.acceptedReferenceId) {
     lines.push(`acceptedReference=${status.acceptedReferenceId}`);
@@ -2645,6 +2650,10 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
 }
 
 function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStatus) {
+  const reviewFlagField = sourceCandidateReviewFlagField(
+    "reviewFlags",
+    status.candidate
+  );
   const lines = [
     "Source-candidate curation status",
     `dedupe=${quote(status.candidate.dedupeKey)}`,
@@ -2656,6 +2665,10 @@ function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStat
     `nextAction=${quote(status.nextAction)}`,
     `publicSourcePacketReady=${status.publicSourcePacketReady}`
   ];
+
+  if (reviewFlagField) {
+    lines.push(reviewFlagField);
+  }
 
   if (status.acceptedReferenceId) {
     lines.push(`acceptedReference=${status.acceptedReferenceId}`);
@@ -2728,6 +2741,7 @@ function formatSourceCandidateCurationHandoffItem(
   status: SourceCandidateCurationStatus
 ) {
   const candidate = status.candidate;
+  const reviewFlagField = sourceCandidateReviewFlagField("reviewFlags", candidate);
   const parts = [
     `- status=${quote(status.status)}`,
     `nextAction=${quote(status.nextAction)}`,
@@ -2739,6 +2753,10 @@ function formatSourceCandidateCurationHandoffItem(
     ...formatSourceCandidateCurationHandoffCommandHints(candidate),
     `title=${quote(candidate.title)}`
   ];
+
+  if (reviewFlagField) {
+    parts.push(reviewFlagField);
+  }
 
   if (status.acceptedReferenceId) {
     parts.push(`acceptedReference=${status.acceptedReferenceId}`);
@@ -2819,6 +2837,7 @@ function formatSourceCandidateReferenceMatchHeading(
   matches: SourceCandidateAcceptedReferenceMatches
 ) {
   const candidate = matches.candidate;
+  const reviewFlagField = sourceCandidateReviewFlagField("reviewFlags", candidate);
   const parts = [
     `Source-candidate accepted-reference matches: total=${matches.references.length}`,
     `dedupe=${quote(candidate.dedupeKey)}`,
@@ -2832,6 +2851,10 @@ function formatSourceCandidateReferenceMatchHeading(
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
+
+  if (reviewFlagField) {
+    parts.push(reviewFlagField);
+  }
 
   if (candidate.acceptedReferenceId) {
     parts.push(`acceptedReference=${candidate.acceptedReferenceId}`);
@@ -3309,6 +3332,16 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
 
 function sourceCandidateReviewFlagCodes(candidate: SourceCandidate) {
   return sourceCandidateReviewFlags(candidate).map((flag) => flag.code);
+}
+
+function sourceCandidateReviewFlagField(label: string, candidate: SourceCandidate) {
+  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+
+  if (reviewFlagCodes.length === 0) {
+    return undefined;
+  }
+
+  return `${label}=${quote(reviewFlagCodes.join(", "))}`;
 }
 
 function sourceCandidateReviewFlags(candidate: SourceCandidate) {

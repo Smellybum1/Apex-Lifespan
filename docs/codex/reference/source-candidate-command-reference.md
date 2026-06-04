@@ -53,14 +53,14 @@ Read-only output rules:
 - `--candidate-review-overview` groups pending rows by review context and prints read-only `list="..."`, `packet="..."`, top-identity duplicate hints, and `topReviewFlags` when applicable.
 - `--candidates` defaults to pending rows, prints `packet="..."` hints plus query/job trace fields and compact `reviewFlags` when applicable, and can filter by source, region, external id, job, intervention, claim, or decision.
 - `--candidates --candidate-duplicates` groups duplicate PMID/NCT identities and prints read-only `identityList="..."`, `packet="..."`, and compact `reviewFlags` when applicable.
-- `--candidate-reference-matches` prints candidate identity plus `packet="..."` and `groupList="..."` hints before eligible curated references or draft-only reference context.
+- `--candidate-reference-matches` prints candidate identity plus `packet="..."`, `groupList="..."`, and compact `reviewFlags` when applicable before eligible curated references or draft-only reference context.
 - `--candidate-review-packet` prints command hints, detail, accepted-reference matches, sibling context, and duplicate hints when the identity repeats.
 - `--candidate-siblings` prints match reasons, `packet="..."` hints, and compact `targetReviewFlags`/`reviewFlags` when applicable.
 - Packet accept/reject templates are copied commands only; they still require explicit human review and do not create references or public evidence.
 - `reviewFlags`/`reviewCautions` are local reviewer prompts, not rejection reasons or evidence-quality scores.
 - Empty `--candidate-reference-matches` output includes a draft-only `referenceDraft=...` line for manual verification; it does not create a reference or mark the candidate accepted.
-- `--candidate-curation-status` and `--candidate-curation-draft` report readiness for public source packets, not evidence quality, and print read-only packet/reference/group/paired-curation hints.
-- `--candidate-curation-handoff` reports accepted-candidate readiness for public source packets, not evidence quality, and non-empty rows print read-only packet/reference/status/draft hints.
+- `--candidate-curation-status` and `--candidate-curation-draft` report readiness for public source packets, not evidence quality, and print read-only packet/reference/group/paired-curation hints plus compact `reviewFlags` when applicable.
+- `--candidate-curation-handoff` reports accepted-candidate readiness for public source packets, not evidence quality, and non-empty rows print read-only packet/reference/status/draft hints plus compact `reviewFlags` when applicable.
 
 ## Review And Curation Writes
 
