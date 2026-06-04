@@ -38,14 +38,14 @@ npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Reason.
 npm run ingest:sources -- --candidate-curation-handoff
 ```
 
-Summary output prints read-only next-command hints for overview, review flags, duplicate scan, queued jobs, and curation handoff; non-empty curation bucket rows include status-filtered handoff hints, and a bounded review flag focus block highlights flagged top review groups with list/packet/flags drill-ins.
+Summary output prints read-only next-command hints for overview, review flags, duplicate scan, queued jobs, and curation handoff; non-empty curation bucket rows include status-filtered handoff hints, and a bounded review flag focus block highlights flagged top review groups with list/packet/reference-match/flags drill-ins.
 Job rows print read-only candidate-list, context-jobs, and status-jobs hints.
 Queue and run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
 Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on Windows anywhere `<dedupe-key>` is accepted.
 Candidate detail output prints read-only packet, reference-match, sibling, group-list, curation-status, curation-draft hints, compact `reviewFlags` plus a `flags="..."` drill-in, and explanatory `reviewCautions` when a claim-scoped candidate needs extra broad-query/off-claim scrutiny.
 Candidate list rows print `packet="..."` and `referenceMatches="..."` for read-only review plus source-query, ingestion-job trace fields, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable.
-Review overview rows print `list="..."` for the filtered pending group, including region, `packet="..."` for the top candidate drill-in, duplicate hints when the top PMID/NCT identity repeats, and `topReviewFlags` plus a `flags="..."` drill-in when applicable.
-Review flag rows filter the bounded overview to flagged top candidates only, optionally narrow with `--candidate-review-flag`, and print compact `flags`, duplicate hints, `list="..."`, `packet="..."`, and `overview="..."` without changing review state.
+Review overview rows print `list="..."` for the filtered pending group, including region, `packet="..."` and `referenceMatches="..."` for the top candidate drill-in, duplicate hints when the top PMID/NCT identity repeats, and `topReviewFlags` plus a `flags="..."` drill-in when applicable.
+Review flag rows filter the bounded overview to flagged top candidates only, optionally narrow with `--candidate-review-flag`, and print compact `flags`, duplicate hints, `list="..."`, `packet="..."`, `referenceMatches="..."`, and `overview="..."` without changing review state.
 Reference-match headings print `packet="..."`, `groupList="..."`, curation-status/draft hints, and compact `reviewFlags` plus a `flags="..."` drill-in when applicable; draft references remain draft-only and require manual verification.
 Review packets print read-only follow-up commands, curation-status/draft hints, conditional duplicate and review-flag hints, and accept/reject templates; write templates still require explicit human review.
 Sibling headings print `targetPacket="..."` for the target candidate, and rows print `packet="..."` for read-only packet review of related candidates plus `targetReviewFlags`/`reviewFlags` and a `flags="..."` drill-in when applicable.

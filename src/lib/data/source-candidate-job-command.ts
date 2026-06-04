@@ -3422,6 +3422,7 @@ function formatSourceCandidateReviewFlagGroup(
   group: SourceCandidateReviewOverview["groups"][number]
 ) {
   const candidate = group.topCandidate;
+  const key = safeCandidateKey(candidate.dedupeKey);
   const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
   const parts = [
     "-",
@@ -3432,7 +3433,7 @@ function formatSourceCandidateReviewFlagGroup(
     group.region,
     `pending=${group.count}`,
     `topTriage=${group.topTriageScore}/100`,
-    `topKey=${safeCandidateKey(candidate.dedupeKey)}`,
+    `topKey=${key}`,
     `topExternalId=${quote(candidate.externalId)}`
   ];
 
@@ -3446,7 +3447,8 @@ function formatSourceCandidateReviewFlagGroup(
   parts.push(
     `topTitle=${quote(candidate.title)}`,
     `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
-    `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`,
+    `packet=${quote(`--candidate-review-packet ${key}`)}`,
+    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`,
     `overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
   );
 
@@ -3457,6 +3459,7 @@ function formatSourceCandidateReviewOverviewGroup(
   group: SourceCandidateReviewOverview["groups"][number]
 ) {
   const candidate = group.topCandidate;
+  const key = safeCandidateKey(candidate.dedupeKey);
   const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
   const parts = [
     "-",
@@ -3466,7 +3469,7 @@ function formatSourceCandidateReviewOverviewGroup(
     group.region,
     `pending=${group.count}`,
     `topTriage=${group.topTriageScore}/100`,
-    `topKey=${safeCandidateKey(candidate.dedupeKey)}`,
+    `topKey=${key}`,
     `topExternalId=${quote(candidate.externalId)}`
   ];
 
@@ -3487,7 +3490,8 @@ function formatSourceCandidateReviewOverviewGroup(
   parts.push(
     `topTitle=${quote(candidate.title)}`,
     `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
-    `packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}`
+    `packet=${quote(`--candidate-review-packet ${key}`)}`,
+    `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`
   );
 
   return parts.join(" ");
@@ -3911,13 +3915,15 @@ function formatSourceCandidateReviewFlagSummaryGroup(
 ) {
   const exampleGroup = group.exampleGroup;
   const candidate = exampleGroup.topCandidate;
+  const key = safeCandidateKey(candidate.dedupeKey);
 
   return (
     `- flag=${quote(group.flag)} topGroups=${group.topGroups}` +
     ` pendingInTopGroups=${group.pendingInTopGroups}` +
     ` topGroup=${quote(formatSourceCandidateReviewFlagSummaryGroupLabel(exampleGroup))}` +
     ` list=${quote(formatSourceCandidateReviewOverviewListCommand(exampleGroup))}` +
-    ` packet=${quote(`--candidate-review-packet ${safeCandidateKey(candidate.dedupeKey)}`)}` +
+    ` packet=${quote(`--candidate-review-packet ${key}`)}` +
+    ` referenceMatches=${quote(`--candidate-reference-matches ${key}`)}` +
     ` flags=${quote(formatSourceCandidateReviewFlagsCommand(group.flag))}` +
     ` overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
   );
