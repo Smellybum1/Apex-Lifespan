@@ -750,31 +750,79 @@ function formatSourceCandidateCommandError(
   options: { includePreflightHint?: boolean } = {}
 ) {
   const message = error instanceof Error ? error.message : String(error);
-  const databaseTarget = unreachableDatabaseTarget(message);
+  const databaseIssue = sourceCandidateDatabaseIssue(message);
 
-  if (!databaseTarget) {
+  if (!databaseIssue) {
     return message;
   }
 
+  const preflightHint = options.includePreflightHint
+    ? ["Preflight: npm run ingest:sources -- --db-status"]
+    : [];
+
+  if (databaseIssue.kind === "missing-url") {
+    return [
+      "Source-candidate database configuration missing: DATABASE_URL is not set.",
+      "Copy .env.example to .env, then confirm the local PostgreSQL URL.",
+      ...preflightHint,
+      "Setup: docs/codex/reference/local-operations.md"
+    ].join("\n");
+  }
+
+  if (databaseIssue.kind === "invalid-url") {
+    return [
+      "Source-candidate database configuration invalid: DATABASE_URL could not be parsed.",
+      "Set DATABASE_URL to the local PostgreSQL URL from .env.example, then retry.",
+      ...preflightHint,
+      "Setup: docs/codex/reference/local-operations.md"
+    ].join("\n");
+  }
+
   return [
-    `Source-candidate database unavailable: can't reach PostgreSQL at ${databaseTarget}.`,
+    `Source-candidate database unavailable: can't reach PostgreSQL at ${databaseIssue.target}.`,
     "Start the local PostgreSQL service and confirm DATABASE_URL, then retry.",
-    ...(options.includePreflightHint
-      ? ["Preflight: npm run ingest:sources -- --db-status"]
-      : []),
+    ...preflightHint,
     "Setup: docs/codex/reference/local-operations.md"
   ].join("\n");
 }
 
-function unreachableDatabaseTarget(message: string) {
+function sourceCandidateDatabaseIssue(message: string):
+  | { kind: "unavailable"; target: string }
+  | { kind: "missing-url" }
+  | { kind: "invalid-url" }
+  | null {
+  if (
+    message.includes("Environment variable not found: DATABASE_URL") ||
+    (message.includes("Environment variable not found") &&
+      message.includes("DATABASE_URL"))
+  ) {
+    return { kind: "missing-url" };
+  }
+
+  if (
+    message.includes("DATABASE_URL") &&
+    (message.includes("Error validating datasource") ||
+      message.includes("must start with the protocol") ||
+      message.includes("Invalid value") ||
+      message.includes("invalid database URL"))
+  ) {
+    return { kind: "invalid-url" };
+  }
+
   const target = message.match(/Can't reach database server at `([^`]+)`/);
 
   if (target) {
-    return target[1];
+    return {
+      kind: "unavailable",
+      target: target[1]
+    };
   }
 
   if (message.includes("P1001") || message.includes("Can't reach database server")) {
-    return "the configured DATABASE_URL";
+    return {
+      kind: "unavailable",
+      target: "the configured DATABASE_URL"
+    };
   }
 
   return null;

@@ -2151,6 +2151,77 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("prints sanitized setup guidance when DATABASE_URL is missing", async () => {
+    const stdout = vi.fn();
+    const stderr = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--summary"],
+        { stdout, stderr },
+        {
+          listReviewOverview: vi.fn().mockResolvedValue({
+            candidateCount: 0,
+            totalGroups: 0,
+            groups: []
+          }),
+          summarizeBacklog: vi.fn().mockResolvedValue({
+            total: 0,
+            groups: []
+          }),
+          summarizeCurationHandoff: vi.fn().mockResolvedValue({
+            total: 0,
+            groups: []
+          }),
+          summarizeJobs: vi
+            .fn()
+            .mockRejectedValue(
+              new Error("Environment variable not found: DATABASE_URL")
+            )
+        }
+      )
+    ).resolves.toBe(1);
+
+    expect(stdout).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(
+      [
+        "Source-candidate database configuration missing: DATABASE_URL is not set.",
+        "Copy .env.example to .env, then confirm the local PostgreSQL URL.",
+        "Preflight: npm run ingest:sources -- --db-status",
+        "Setup: docs/codex/reference/local-operations.md"
+      ].join("\n")
+    );
+  });
+
+  it("prints sanitized setup guidance when DATABASE_URL is malformed", async () => {
+    const stdout = vi.fn();
+    const stderr = vi.fn();
+    const checkDatabase = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          'Error validating datasource `db`: the URL must start with the protocol `postgresql://` or `postgres://`. DATABASE_URL="postgres://secret@example"'
+        )
+      );
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--db-status"],
+        { stdout, stderr },
+        { checkDatabase }
+      )
+    ).resolves.toBe(1);
+
+    expect(stdout).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(
+      [
+        "Source-candidate database configuration invalid: DATABASE_URL could not be parsed.",
+        "Set DATABASE_URL to the local PostgreSQL URL from .env.example, then retry.",
+        "Setup: docs/codex/reference/local-operations.md"
+      ].join("\n")
+    );
+  });
+
   it("prints read-only backlog summary without running jobs", async () => {
     const stdout = vi.fn();
     const runNextJob = vi.fn();
