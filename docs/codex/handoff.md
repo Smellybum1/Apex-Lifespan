@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after adding seed reference traceability guards. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after adding seed relationship integrity guards. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,7 +11,7 @@ Refreshed on 2026-06-05 after adding seed reference traceability guards. Verify 
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `44ddd8a Guard seed reference traceability`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `a2cdd69 Guard seed relationship integrity`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Public dashboard seed fallback now preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Public PubMed and ClinicalTrials.gov search routes now return stable public `502` messages for upstream/runtime failures instead of exposing raw integration exception text; request validation errors remain specific.
@@ -34,6 +34,7 @@ Refreshed on 2026-06-05 after adding seed reference traceability guards. Verify 
 - Dashboard component regression coverage now also server-renders the seed-backed public dashboard and checks the active claim, source-packet, and suggested-search cues.
 - Dashboard component regression coverage now verifies sanitized seed fallback reasons render in the public header beside the Seed fallback state.
 - Seed integrity regression coverage now checks that seeded claim key references, study references, and AU/TGA regulatory reference IDs resolve to curated references, and that AU/TGA source URLs stay aligned with their referenced curated source record.
+- Seed integrity regression coverage now also checks seeded claim, safety-alert, trial-watch, and AU/TGA status intervention links, product-level AU/TGA status links, and exactly-one intervention/product target per seeded AU/TGA status.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Label-risk TGA approval overclaim detection now uses one Unicode-aware negation guardrail for `isn't` / `isn\u2019t` / `isnt` forms instead of duplicated apostrophe handling.
 - Label-risk TGA AUST-number findings now link to the same curated `tga-aust-numbers` seed reference URL used by product and regulatory status records.
@@ -64,6 +65,15 @@ Refreshed on 2026-06-05 after adding seed reference traceability guards. Verify 
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `a2cdd69`:
+- `npm run test -- src/lib/seed-integrity.test.ts`
+- `npm run lint`
+- `npm run test`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 
 Latest code validation for `44ddd8a`:
 - `npm run test -- src/lib/seed-integrity.test.ts`
