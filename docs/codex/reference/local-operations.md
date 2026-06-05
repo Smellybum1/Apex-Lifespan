@@ -37,6 +37,19 @@ Set `APEX_DATA_SOURCE=seed` to force seed mode or `APEX_DATA_SOURCE=database` to
 
 On Windows, stop the dev server with `npm run dev:stop` before running Prisma-generating checks such as `npm run typecheck` or `npm run build`; this avoids generated query-engine DLL locks.
 
+## Local Codex Review Sidecar
+
+The dashboard `Ask Codex` button can send its approved review packet to a local sidecar. This is operator-only and is intentionally outside `src/app/api/` so public routes stay read-only.
+
+Setup:
+
+1. Set `APEX_CODEX_THREAD_ID` to the Codex thread/session ID to resume.
+2. Set `APEX_CODEX_REVIEW_TOKEN` to a private local token.
+3. Start the sidecar: `npm run codex:review-sidecar`.
+4. Open the dashboard, enter the sidecar URL and token, then choose `Approve and send`.
+
+The sidecar listens on `127.0.0.1`, defaults to port `3217`, requires the token in `X-Apex-Codex-Token`, and resumes Codex with a read-only sandbox and approvals disabled. Use `APEX_CODEX_REVIEW_ORIGINS` to add local dashboard origins when using a different Next.js port.
+
 ## Local Source-Candidate Ingestion
 
 Source-candidate ingestion is an operator-only local workflow. It writes to the configured PostgreSQL database and is not exposed through public app routes.

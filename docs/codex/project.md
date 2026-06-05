@@ -16,12 +16,14 @@ Compact, stable Codex state. Do not turn this into a command catalog or progress
 - Test/build: `npm run test`, `npm run lint`, `npm run typecheck`, `npm run build`.
 - Database: `npm run db:validate`, `npm run db:generate`, `npm run db:migrate`, `npm run db:migrate:deploy`, `npm run db:push`, `npm run db:seed`.
 - Source-candidate CLI: `npm run ingest:sources -- --help`; open `docs/codex/source-candidate-workflow.md` only for ingestion or curation work.
+- Codex review sidecar: `npm run codex:review-sidecar` for token-gated local dashboard packets.
 
 ## Boundaries
 
 - MVP is public read-only; review/admin writes stay local operator-only.
 - Dashboard reads through `src/lib/data/dashboard.ts`; it prefers Prisma when reachable and falls back to seed data unless `APEX_DATA_SOURCE=database`.
 - Public live-source API routes must not import or call source-candidate persistence.
+- Dashboard-to-Codex packet sends go through the local sidecar, not public Next.js API routes.
 - Live PubMed and ClinicalTrials.gov previews are unreviewed leads; `/100` values are triage scores, not evidence quality.
 - Source-candidate ingestion/review writes live only under `npm run ingest:sources`.
 - Accepted source candidates require a matching curated reference and human review note, and never auto-promote into public evidence cards.

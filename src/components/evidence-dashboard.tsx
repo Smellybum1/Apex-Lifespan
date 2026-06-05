@@ -100,6 +100,9 @@ type SourceSearchSubmission = {
   requestId: number;
 };
 
+const CODEX_REVIEW_SIDECAR_URL_KEY = "apexCodexReviewSidecarUrl";
+const CODEX_REVIEW_TOKEN_KEY = "apexCodexReviewToken";
+const DEFAULT_CODEX_REVIEW_SIDECAR_URL = "http://127.0.0.1:3217/codex/review";
 const scoreColors = ["#1d4ed8", "#0f766e", "#b7791f", "#334155", "#7c3aed", "#b91c1c"];
 
 export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
@@ -430,14 +433,72 @@ function Header({ data }: { data: EvidenceDashboardData }) {
 function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
   const [isApproving, setIsApproving] = useState(false);
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
+  const [sendStatus, setSendStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sidecarUrl, setSidecarUrl] = useState(() => readBrowserStorage(
+    CODEX_REVIEW_SIDECAR_URL_KEY,
+    DEFAULT_CODEX_REVIEW_SIDECAR_URL
+  ));
+  const [operatorToken, setOperatorToken] = useState(() => readBrowserStorage(
+    CODEX_REVIEW_TOKEN_KEY,
+    ""
+  ));
   const packet = useMemo(() => buildCodexReviewPacket(data), [data]);
+
+  const resetStatus = () => {
+    setCopyStatus("idle");
+    setSendStatus("idle");
+    setSendError(null);
+  };
 
   const copyPacket = async () => {
     try {
       await navigator.clipboard.writeText(packet);
       setCopyStatus("copied");
+      setSendStatus("idle");
+      setSendError(null);
     } catch {
       setCopyStatus("error");
+    }
+  };
+
+  const sendPacket = async () => {
+    const nextSidecarUrl = sidecarUrl.trim();
+    const nextToken = operatorToken.trim();
+
+    setCopyStatus("idle");
+
+    if (!nextSidecarUrl || !nextToken) {
+      setSendStatus("error");
+      setSendError("Local sidecar URL and operator token are required.");
+      return;
+    }
+
+    writeBrowserStorage(CODEX_REVIEW_SIDECAR_URL_KEY, nextSidecarUrl);
+    writeBrowserStorage(CODEX_REVIEW_TOKEN_KEY, nextToken);
+    setSendStatus("sending");
+    setSendError(null);
+
+    try {
+      const response = await fetch(nextSidecarUrl, {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Apex-Codex-Token": nextToken
+        },
+        body: JSON.stringify({ packet })
+      });
+      const body = (await response.json().catch(() => ({}))) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(body.error || "Codex sidecar request failed.");
+      }
+
+      setSendStatus("sent");
+    } catch (error) {
+      setSendStatus("error");
+      setSendError(error instanceof Error ? error.message : "Codex sidecar request failed.");
     }
   };
 
@@ -447,7 +508,7 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
         type="button"
         onClick={() => {
           setIsApproving((current) => !current);
-          setCopyStatus("idle");
+          resetStatus();
         }}
         className="inline-flex h-7 items-center gap-1 rounded-md border border-signal/25 bg-blue-50 px-2 text-xs font-semibold text-signal hover:border-signal"
       >
@@ -458,23 +519,51 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
         <div className="absolute right-0 z-20 mt-2 w-[min(88vw,440px)] rounded-lg border border-line bg-white p-3 text-left shadow-panel">
           <p className="text-xs font-semibold text-ink">Approve Codex review packet</p>
           <p className="mt-1 text-xs leading-5 text-slate-600">
-            Creates a read-only dashboard packet for this Codex thread. Source-candidate decisions
+            Sends a read-only packet through the local operator sidecar. Source-candidate decisions
             and public evidence promotion stay human-owned.
           </p>
+          <div className="mt-3 grid gap-2">
+            <label className="grid gap-1 text-xs font-semibold text-slate-600">
+              Local sidecar URL
+              <input
+                value={sidecarUrl}
+                onChange={(event) => setSidecarUrl(event.target.value)}
+                className="h-8 rounded-md border border-line bg-white px-2 font-mono text-[11px] font-normal text-ink outline-none transition focus:border-signal"
+              />
+            </label>
+            <label className="grid gap-1 text-xs font-semibold text-slate-600">
+              Operator token
+              <input
+                value={operatorToken}
+                onChange={(event) => setOperatorToken(event.target.value)}
+                className="h-8 rounded-md border border-line bg-white px-2 font-mono text-[11px] font-normal text-ink outline-none transition focus:border-signal"
+                type="password"
+              />
+            </label>
+          </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={copyPacket}
-              className="inline-flex h-8 items-center gap-2 rounded-md border border-signal/30 bg-blue-50 px-2 text-xs font-semibold text-signal hover:border-signal"
+              onClick={sendPacket}
+              disabled={sendStatus === "sending"}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-signal/30 bg-blue-50 px-2 text-xs font-semibold text-signal hover:border-signal disabled:cursor-wait disabled:opacity-60"
             >
               <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
-              Approve and copy
+              {sendStatus === "sending" ? "Sending" : "Approve and send"}
+            </button>
+            <button
+              type="button"
+              onClick={copyPacket}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-mist px-2 text-xs font-semibold text-slate-700 hover:border-signal"
+            >
+              <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
+              Copy packet
             </button>
             <button
               type="button"
               onClick={() => {
                 setIsApproving(false);
-                setCopyStatus("idle");
+                resetStatus();
               }}
               className="inline-flex h-8 items-center rounded-md border border-line bg-mist px-2 text-xs font-semibold text-slate-700 hover:border-signal"
             >
@@ -486,9 +575,19 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
               Packet copied for Codex.
             </p>
           ) : null}
+          {sendStatus === "sent" ? (
+            <p className="mt-2 rounded-md border border-spruce/25 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
+              Packet sent to the configured Codex thread.
+            </p>
+          ) : null}
           {copyStatus === "error" ? (
             <p className="mt-2 rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
               Clipboard unavailable. Select and copy the packet below.
+            </p>
+          ) : null}
+          {sendStatus === "error" ? (
+            <p className="mt-2 rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+              {sendError ?? "Codex sidecar request failed."}
             </p>
           ) : null}
           <textarea
@@ -542,6 +641,30 @@ function sourcePacketSummaryDetail(summary: ClaimSourcePacketSummary) {
   }
 
   return `${needsWork} need source work: ${summary.extractionPendingClaims} pending, ${summary.missingSourceClaims} missing, ${summary.unlinkedClaims} unlinked`;
+}
+
+function readBrowserStorage(key: string, fallback: string) {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  try {
+    return window.localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeBrowserStorage(key: string, value: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Local storage is only a convenience for the operator sidecar fields.
+  }
 }
 
 export function buildCodexReviewPacket(data: EvidenceDashboardData) {
