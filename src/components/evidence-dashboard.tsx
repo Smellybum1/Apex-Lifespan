@@ -171,8 +171,12 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     filteredClaims.find((claim) => claim.id === activeClaimId) ??
     filteredClaims[0] ??
     claims.find((claim) => claim.id === activeClaimId) ??
-    claims[0];
-  const activeIntervention = interventionsById.get(activeClaim.interventionId);
+    claims[0] ??
+    null;
+  const activeClaimIdForDisplay = activeClaim?.id ?? "";
+  const activeIntervention = activeClaim
+    ? interventionsById.get(activeClaim.interventionId)
+    : undefined;
   const activeAustraliaStatus = activeIntervention
     ? getPrimaryAustraliaStatus(data.australiaRegulatoryStatuses, activeIntervention.id)
     : undefined;
@@ -291,12 +295,12 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             <EvidenceMap
               claims={filteredClaims}
               interventions={filteredInterventions}
-              activeClaimId={activeClaim.id}
+              activeClaimId={activeClaimIdForDisplay}
               onSelectClaim={setActiveClaimId}
             />
           </div>
 
-          {hasFilteredClaims ? (
+          {hasFilteredClaims && activeClaim ? (
             <ScorePanel
               australiaStatus={activeAustraliaStatus}
               claim={activeClaim}
@@ -311,7 +315,11 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
         </section>
 
         <section className="grid items-start gap-4 xl:grid-cols-[1fr_0.8fr]">
-          <ClaimTable rows={tableRows} onSelectClaim={setActiveClaimId} activeClaimId={activeClaim.id} />
+          <ClaimTable
+            rows={tableRows}
+            onSelectClaim={setActiveClaimId}
+            activeClaimId={activeClaimIdForDisplay}
+          />
           <SafetyPanel interventionsById={interventionsById} safetyAlerts={safetyAlerts} />
         </section>
 
@@ -321,7 +329,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             interventionsById={interventionsById}
             referencesById={referencesById}
             studies={studies}
-            activeClaimId={activeClaim.id}
+            activeClaimId={activeClaimIdForDisplay}
             onSelectClaim={setActiveClaimId}
           />
           <LabelAnalyzer
@@ -338,7 +346,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             interventionsById={interventionsById}
             trialWatchItems={trialWatchItems}
           />
-          {hasFilteredClaims ? (
+          {hasFilteredClaims && activeClaim ? (
             <SourceAndStudyPanel
               key={activeClaim.id}
               activeClaim={activeClaim}
