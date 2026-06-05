@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after active-claim filter alignment. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after filter-empty detail panels. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,7 +11,7 @@ Refreshed on 2026-06-05 after active-claim filter alignment. Verify local state 
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `9673a4e Align active claim with filters`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `74fb581 Show filter-empty detail panels`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Public dashboard seed fallback now preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Public PubMed and ClinicalTrials.gov search routes now return stable public `502` messages for upstream/runtime failures instead of exposing raw integration exception text; request validation errors remain specific.
@@ -22,6 +22,7 @@ Refreshed on 2026-06-05 after active-claim filter alignment. Verify local state 
 - Claim Scores and Evidence Cards now render no-match empty states when the current search/category filters hide all local scored claims, with copy that points users back to clearing filters rather than implying no evidence exists.
 - Evidence Map now renders the same no-match guidance instead of building an empty grid when current filters hide all local scored claims.
 - Active evidence-card panels now align with the visible filtered claim set when filters have matches, so ScorePanel and source-packet details do not keep showing a claim hidden by the current filters.
+- ScorePanel and source/review queue areas now render filter-empty placeholders when the current filters match no local scored claims, instead of showing fallback hidden-claim details.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
 - Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover static, dynamic, and CommonJS `source-candidate*` route imports.
@@ -50,6 +51,14 @@ Refreshed on 2026-06-05 after active-claim filter alignment. Verify local state 
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `74fb581`:
+- `npm run dev:stop`
+- `npm run lint`
+- `npm run test`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 
 Latest code validation for `9673a4e`:
 - `npm run dev:stop`
