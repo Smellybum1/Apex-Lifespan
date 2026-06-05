@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 closeout after source-candidate duplicate review-cue work. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after source-candidate DB-outage CLI handling. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,7 +11,7 @@ Refreshed on 2026-06-05 closeout after source-candidate duplicate review-cue wor
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this closeout doc pass is `ac893f1 Show mixed duplicate cues in review overview`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `e90aae9 Handle source-candidate DB outages`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
@@ -22,6 +22,7 @@ Refreshed on 2026-06-05 closeout after source-candidate duplicate review-cue wor
 - Duplicate identity review surfaces include `duplicateCaution`, `duplicateIdentityMixedDecision`, and read-only duplicate next actions when the same PMID/NCT spans multiple decision states. Use these cues to review scoped/unscoped identity context before any decision.
 - Candidate filters support read-only `--candidate-claim-missing` and `--candidate-intervention-missing`; generated list hints use them when a group or candidate lacks claim/intervention context.
 - Review overview top-candidate selection prefers repeated PMID/NCT identities when triage scores tie, so mixed accepted/pending duplicates are more visible from the overview.
+- Source-candidate CLI now reports a concise PostgreSQL-unavailable message when local database reads cannot connect, and the `ingest:sources` script silences Prisma's own error logger for that local command path.
 - Completed 2026-06-04 source-candidate plan files were moved to `docs/codex/plans/archive/2026-06-04/`; keep top-level `docs/codex/plans/` for active plans only.
 - Startup/workflow docs reviewed during closeout: `AGENTS.md`, `docs/codex/project.md`, `docs/codex/workflow.md`, and `.agents/skills/project-workflow/SKILL.md` were already compact. This handoff was the clear bloat point, so its repeated historical validation log was compressed.
 
@@ -40,6 +41,18 @@ Refreshed on 2026-06-05 closeout after source-candidate duplicate review-cue wor
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `e90aae9`:
+- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
+- `npm run ingest:sources -- --summary` with local PostgreSQL unavailable; expected concise DB guidance was printed.
+- `npm run dev:stop`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run test`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
+
+Current environment note:
+- Docker Compose config validates, but Docker daemon is not running; source-candidate DB review cannot continue until local PostgreSQL is started.
 
 Latest code validation for `ac893f1`:
 - `npm run test -- src/lib/data/source-candidates.test.ts`
