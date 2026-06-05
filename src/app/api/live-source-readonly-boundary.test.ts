@@ -7,8 +7,14 @@ const API_DIR = path.join(process.cwd(), "src", "app", "api");
 
 const SOURCE_CANDIDATE_MODULE_IMPORT_PATTERN =
   /\b(?:from|import\s*\(|require\s*\()\s*["'][^"']*source-candidate(?:s|-[^"']*)?["']/;
+const MUTATING_ROUTE_METHOD_PATTERN =
+  /\bexport\s+(?:async\s+)?function\s+(?:POST|PUT|PATCH|DELETE)\b|\bexport\s+const\s+(?:POST|PUT|PATCH|DELETE)\b|\bexport\s*\{[\s\S]*?\bas\s+(?:POST|PUT|PATCH|DELETE)\b[\s\S]*?\}/;
 
 const DISALLOWED_ROUTE_PATTERNS = [
+  {
+    label: "mutating HTTP route handler",
+    pattern: MUTATING_ROUTE_METHOD_PATTERN
+  },
   {
     label: "source-candidate module import",
     pattern: SOURCE_CANDIDATE_MODULE_IMPORT_PATTERN
@@ -45,6 +51,19 @@ describe("live source API read-only boundary", () => {
         'import { searchPubMed } from "@/lib/integrations/pubmed";'
       )
     ).toBe(false);
+  });
+
+  it("detects mutating HTTP route handlers", () => {
+    expect(MUTATING_ROUTE_METHOD_PATTERN.test("export async function POST(request: Request) {}"))
+      .toBe(true);
+    expect(MUTATING_ROUTE_METHOD_PATTERN.test("export function DELETE(request: Request) {}"))
+      .toBe(true);
+    expect(MUTATING_ROUTE_METHOD_PATTERN.test("export const PATCH = handler;"))
+      .toBe(true);
+    expect(MUTATING_ROUTE_METHOD_PATTERN.test("export { handler as PUT };"))
+      .toBe(true);
+    expect(MUTATING_ROUTE_METHOD_PATTERN.test("export async function GET(request: Request) {}"))
+      .toBe(false);
   });
 
   it("does not expose source-candidate persistence from public route handlers", () => {
