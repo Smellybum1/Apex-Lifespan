@@ -15,10 +15,11 @@ Workflow:
 1. Copy `.env.example` to `.env`.
 2. Start PostgreSQL: `docker compose up -d postgres`.
 3. Confirm it is healthy: `docker compose ps`.
-4. Validate and generate Prisma client: `npm run db:validate` and `npm run db:generate`.
-5. Apply committed Prisma migrations: `npm run db:migrate`.
-6. Seed local data and verify expected seed-owned rows: `npm run db:seed`.
-7. Stop the database when done: `docker compose down`.
+4. Check app-level database connectivity: `npm run ingest:sources -- --db-status`.
+5. Validate and generate Prisma client: `npm run db:validate` and `npm run db:generate`.
+6. Apply committed Prisma migrations: `npm run db:migrate`.
+7. Seed local data and verify expected seed-owned rows: `npm run db:seed`.
+8. Stop the database when done: `docker compose down`.
 
 Use `npm run db:migrate:deploy` to apply committed migrations without generating a new one. Keep `npm run db:push` for temporary local prototypes only.
 
@@ -43,6 +44,7 @@ Source-candidate ingestion is an operator-only local workflow. It writes to the 
 Use:
 
 ```bash
+npm run ingest:sources -- --db-status
 npm run ingest:sources -- --help
 ```
 
