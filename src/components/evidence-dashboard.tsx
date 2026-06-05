@@ -777,62 +777,69 @@ function ClaimTable({
           <p className="mt-1 text-sm text-slate-600">Each row is an intervention-outcome pair.</p>
         </div>
       </div>
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full min-w-[960px] border-separate border-spacing-0 text-sm">
-          <thead>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className="border-b border-line bg-mist px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600"
-                  >
-                    <button
-                      type="button"
-                      onClick={header.column.getToggleSortingHandler()}
-                      className="inline-flex items-center gap-1 rounded-sm outline-none focus:ring-4 focus:ring-signal/20"
+      {rows.length > 0 ? (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[960px] border-separate border-spacing-0 text-sm">
+            <thead>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <th
+                      key={header.id}
+                      className="border-b border-line bg-mist px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600"
                     >
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                      <ArrowUpDown aria-hidden="true" className="h-3.5 w-3.5" />
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody>
-            {table.getRowModel().rows.map((row) => {
-              const isActive = row.original.id === activeClaimId;
-              const selectRow = () => onSelectClaim(row.original.id);
-
-              return (
-                <tr
-                  key={row.id}
-                  aria-selected={isActive}
-                  className={cn(
-                    "cursor-pointer transition hover:bg-blue-50 focus:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-inset focus:ring-signal/20",
-                    isActive && "bg-blue-50"
-                  )}
-                  onClick={selectRow}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      selectRow();
-                    }
-                  }}
-                  tabIndex={0}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="border-b border-line px-3 py-3 align-middle text-slate-700">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
+                      <button
+                        type="button"
+                        onClick={header.column.getToggleSortingHandler()}
+                        className="inline-flex items-center gap-1 rounded-sm outline-none focus:ring-4 focus:ring-signal/20"
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        <ArrowUpDown aria-hidden="true" className="h-3.5 w-3.5" />
+                      </button>
+                    </th>
                   ))}
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              ))}
+            </thead>
+            <tbody>
+              {table.getRowModel().rows.map((row) => {
+                const isActive = row.original.id === activeClaimId;
+                const selectRow = () => onSelectClaim(row.original.id);
+
+                return (
+                  <tr
+                    key={row.id}
+                    aria-selected={isActive}
+                    className={cn(
+                      "cursor-pointer transition hover:bg-blue-50 focus:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-inset focus:ring-signal/20",
+                      isActive && "bg-blue-50"
+                    )}
+                    onClick={selectRow}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        selectRow();
+                      }
+                    }}
+                    tabIndex={0}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="border-b border-line px-3 py-3 align-middle text-slate-700">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
+          No local scored claims match the current filters. Clear the search or category filter to
+          return to the full local evidence set.
+        </p>
+      )}
     </section>
   );
 }
@@ -905,100 +912,107 @@ function EvidenceCards({
     <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
       <h2 className="text-base font-semibold text-ink">Evidence Cards</h2>
       <div className="mt-4 grid gap-3">
-        {visibleClaims.map((claim) => {
-          const intervention = interventionsById.get(claim.interventionId);
-          const claimReferences = claim.keyReferenceIds
-            .map((referenceId) => referencesById.get(referenceId))
-            .filter((reference): reference is Reference => Boolean(reference));
-          const sourcePacket = buildClaimSourcePacket({
-            claim,
-            referencesById,
-            studies
-          });
+        {visibleClaims.length > 0 ? (
+          visibleClaims.map((claim) => {
+            const intervention = interventionsById.get(claim.interventionId);
+            const claimReferences = claim.keyReferenceIds
+              .map((referenceId) => referencesById.get(referenceId))
+              .filter((reference): reference is Reference => Boolean(reference));
+            const sourcePacket = buildClaimSourcePacket({
+              claim,
+              referencesById,
+              studies
+            });
 
-          return (
-            <article
-              key={claim.id}
-              className={cn(
-                "rounded-lg border border-line bg-white p-3 transition",
-                activeClaimId === claim.id && "border-signal ring-2 ring-signal/20"
-              )}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm font-semibold text-ink">
-                    <button
-                      type="button"
-                      onClick={() => onSelectClaim(claim.id)}
-                      className="rounded-md text-left outline-none transition hover:text-signal focus:ring-4 focus:ring-signal/20"
-                    >
-                      {intervention?.name} - {shortOutcome(claim.outcome)}
-                    </button>
-                  </h3>
-                  <p className="mt-1 text-sm leading-6 text-slate-700">{claim.claimText}</p>
-                </div>
-                <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", labelTone(claim.finalLabel))}>
-                  {claim.finalLabel}
-                </span>
-              </div>
-              <p className="mt-3 text-sm leading-6 text-slate-600">{claim.clinicalRelevance}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
-                  {claim.reviewStatus}
-                </span>
-                <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", sourcePacketCompletenessTone(sourcePacket.completeness.status))}>
-                  Source packet: {sourcePacket.completeness.label}
-                </span>
-                <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs text-slate-600">
-                  Confidence: {claim.confidenceLevel}
-                </span>
-                {claimReferences.map((reference) => (
-                  <span
-                    key={reference.id}
-                    className="rounded-md border border-line bg-mist px-2 py-1 text-xs text-slate-600"
-                  >
-                    {reference.source}
-                    {reference.identifier ? ` - ${reference.identifier}` : ""}
-                  </span>
-                ))}
-              </div>
-              <details className="mt-3 rounded-md border border-line bg-mist p-3">
-                <summary className="cursor-pointer text-xs font-semibold text-signal">
-                  Research detail
-                </summary>
-                <dl className="mt-3 grid gap-2 text-xs md:grid-cols-2">
-                  <MiniStat label="Evidence grade" value={claim.evidenceGrade} />
-                  <MiniStat label="Effect" value={claim.effectSize} />
-                  <MiniStat label="Population" value={claim.populationStudied} />
-                  <MiniStat label="Comparator" value={claim.comparator} />
-                  <MiniStat label="Duration" value={claim.durationStudied} />
-                  <MiniStat label="Applicability" value={claim.applicabilityNotes} />
-                  <MiniStat label="Score mover" value={claim.whatWouldChangeScore} />
-                  <MiniStat label="Last reviewed" value={claim.lastUpdated} />
-                </dl>
-                <div className="mt-3 grid gap-2">
-                  {claimReferences.length > 0 ? (
-                    claimReferences.map((reference) => (
-                      <a
-                        key={reference.id}
-                        href={reference.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex w-fit max-w-full items-center gap-1 break-words text-xs font-semibold text-signal hover:underline"
+            return (
+              <article
+                key={claim.id}
+                className={cn(
+                  "rounded-lg border border-line bg-white p-3 transition",
+                  activeClaimId === claim.id && "border-signal ring-2 ring-signal/20"
+                )}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-semibold text-ink">
+                      <button
+                        type="button"
+                        onClick={() => onSelectClaim(claim.id)}
+                        className="rounded-md text-left outline-none transition hover:text-signal focus:ring-4 focus:ring-signal/20"
                       >
-                        {reference.source}
-                        {reference.identifier ? ` - ${reference.identifier}` : ""}
-                        <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-                      </a>
-                    ))
-                  ) : (
-                    <p className="text-xs text-slate-600">No references linked yet.</p>
-                  )}
+                        {intervention?.name} - {shortOutcome(claim.outcome)}
+                      </button>
+                    </h3>
+                    <p className="mt-1 text-sm leading-6 text-slate-700">{claim.claimText}</p>
+                  </div>
+                  <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", labelTone(claim.finalLabel))}>
+                    {claim.finalLabel}
+                  </span>
                 </div>
-              </details>
-            </article>
-          );
-        })}
+                <p className="mt-3 text-sm leading-6 text-slate-600">{claim.clinicalRelevance}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
+                    {claim.reviewStatus}
+                  </span>
+                  <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", sourcePacketCompletenessTone(sourcePacket.completeness.status))}>
+                    Source packet: {sourcePacket.completeness.label}
+                  </span>
+                  <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs text-slate-600">
+                    Confidence: {claim.confidenceLevel}
+                  </span>
+                  {claimReferences.map((reference) => (
+                    <span
+                      key={reference.id}
+                      className="rounded-md border border-line bg-mist px-2 py-1 text-xs text-slate-600"
+                    >
+                      {reference.source}
+                      {reference.identifier ? ` - ${reference.identifier}` : ""}
+                    </span>
+                  ))}
+                </div>
+                <details className="mt-3 rounded-md border border-line bg-mist p-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-signal">
+                    Research detail
+                  </summary>
+                  <dl className="mt-3 grid gap-2 text-xs md:grid-cols-2">
+                    <MiniStat label="Evidence grade" value={claim.evidenceGrade} />
+                    <MiniStat label="Effect" value={claim.effectSize} />
+                    <MiniStat label="Population" value={claim.populationStudied} />
+                    <MiniStat label="Comparator" value={claim.comparator} />
+                    <MiniStat label="Duration" value={claim.durationStudied} />
+                    <MiniStat label="Applicability" value={claim.applicabilityNotes} />
+                    <MiniStat label="Score mover" value={claim.whatWouldChangeScore} />
+                    <MiniStat label="Last reviewed" value={claim.lastUpdated} />
+                  </dl>
+                  <div className="mt-3 grid gap-2">
+                    {claimReferences.length > 0 ? (
+                      claimReferences.map((reference) => (
+                        <a
+                          key={reference.id}
+                          href={reference.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex w-fit max-w-full items-center gap-1 break-words text-xs font-semibold text-signal hover:underline"
+                        >
+                          {reference.source}
+                          {reference.identifier ? ` - ${reference.identifier}` : ""}
+                          <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                        </a>
+                      ))
+                    ) : (
+                      <p className="text-xs text-slate-600">No references linked yet.</p>
+                    )}
+                  </div>
+                </details>
+              </article>
+            );
+          })
+        ) : (
+          <p className="rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
+            No evidence cards match the current filters. Clear the search or category filter to
+            review the full local evidence set.
+          </p>
+        )}
       </div>
     </section>
   );
