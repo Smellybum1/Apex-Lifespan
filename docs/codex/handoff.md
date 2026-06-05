@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after seed-backed dashboard render coverage. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after dashboard fallback-banner coverage. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,7 +11,7 @@ Refreshed on 2026-06-05 after seed-backed dashboard render coverage. Verify loca
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `0e67339 Cover seed-backed dashboard render`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `e2dbcfd Cover dashboard fallback banner`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Public dashboard seed fallback now preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Public PubMed and ClinicalTrials.gov search routes now return stable public `502` messages for upstream/runtime failures instead of exposing raw integration exception text; request validation errors remain specific.
@@ -26,6 +26,7 @@ Refreshed on 2026-06-05 after seed-backed dashboard render coverage. Verify loca
 - Dashboard active-claim selection now handles an empty local claim set without dereferencing a missing fallback claim; list/map/card components receive an empty active id until claims exist.
 - Vitest now discovers `.test.tsx` files and uses OXC automatic JSX transform, with a server-render regression covering cautious dashboard empty states when no local claims are available.
 - Dashboard component regression coverage now also server-renders the seed-backed public dashboard and checks the active claim, source-packet, and suggested-search cues.
+- Dashboard component regression coverage now verifies sanitized seed fallback reasons render in the public header beside the Seed fallback state.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
 - Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover static, dynamic, and CommonJS `source-candidate*` route imports.
@@ -54,6 +55,16 @@ Refreshed on 2026-06-05 after seed-backed dashboard render coverage. Verify loca
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `e2dbcfd`:
+- `npm run ingest:sources -- --db-status` (read-only preflight; PostgreSQL still unavailable at `localhost:5432`)
+- `npm run test -- src/components/evidence-dashboard.test.tsx`
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 
 Latest code validation for `0e67339`:
 - `npm run test -- src/components/evidence-dashboard.test.tsx`
@@ -205,7 +216,7 @@ Latest code validation for `e90aae9`:
 - `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 
 Current environment note:
-- Docker Compose config validates, but Docker daemon is not running; source-candidate DB review cannot continue until local PostgreSQL is started.
+- Latest read-only `npm run ingest:sources -- --db-status` still cannot reach PostgreSQL at `localhost:5432`; source-candidate DB review cannot continue until local PostgreSQL is started.
 
 Latest code validation for `ac893f1`:
 - `npm run test -- src/lib/data/source-candidates.test.ts`
