@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after disabling browser caching for dashboard live previews. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after simplifying the TGA approval-negation guardrail. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,7 +11,7 @@ Refreshed on 2026-06-05 after disabling browser caching for dashboard live previ
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `2a88cf6 Disable live preview browser caching`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `7e0adac Simplify TGA approval negation guardrail`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Public dashboard seed fallback now preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Public PubMed and ClinicalTrials.gov search routes now return stable public `502` messages for upstream/runtime failures instead of exposing raw integration exception text; request validation errors remain specific.
@@ -34,6 +34,7 @@ Refreshed on 2026-06-05 after disabling browser caching for dashboard live previ
 - Dashboard component regression coverage now also server-renders the seed-backed public dashboard and checks the active claim, source-packet, and suggested-search cues.
 - Dashboard component regression coverage now verifies sanitized seed fallback reasons render in the public header beside the Seed fallback state.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
+- Label-risk TGA approval overclaim detection now uses one Unicode-aware negation guardrail for `isn't` / `isn\u2019t` / `isnt` forms instead of duplicated apostrophe handling.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
 - Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover static, dynamic, and CommonJS `source-candidate*` route imports.
 - Source-candidate acceptance/rejection, claim linking, and study extraction stay explicit human-reviewed local writes. Accepted candidates still need curated references, claim links, and structured study extraction before public use.
@@ -61,6 +62,15 @@ Refreshed on 2026-06-05 after disabling browser caching for dashboard live previ
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `7e0adac`:
+- `npm run test -- src/lib/scoring.test.ts`
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 
 Latest code validation for `2a88cf6`:
 - `npm run test -- src/components/evidence-dashboard-live-preview-boundary.test.ts`
