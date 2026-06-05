@@ -48,18 +48,19 @@ export async function searchPubMed(term: string, retmax = 10): Promise<PubMedSea
 
   const data = (await response.json()) as {
     esearchresult?: {
-      count?: string;
-      idlist?: string[];
+      count?: unknown;
+      idlist?: unknown;
     };
   };
+  const searchResult = isPubMedSearchResultRecord(data.esearchresult) ? data.esearchresult : {};
 
-  const ids = (data.esearchresult?.idlist ?? []).slice(0, safeRetmax);
+  const ids = readStringArray(searchResult.idlist).slice(0, safeRetmax);
   const summaryById = await fetchPubMedSummaries(ids, term);
 
   return {
     query: term,
     ids,
-    count: Number(data.esearchresult?.count ?? 0),
+    count: readNonNegativeInteger(searchResult.count),
     source: PUBMED_SOURCE,
     articles: ids.map((id) => summaryById.get(id) ?? createPubMedArticleFallback(id))
   };
@@ -185,6 +186,17 @@ function readStringArray(value: unknown): string[] {
   }
 
   return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function readNonNegativeInteger(value: unknown) {
+  const numericValue =
+    typeof value === "number" || typeof value === "string" ? Number(value) : 0;
+
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return 0;
+  }
+
+  return Math.trunc(numericValue);
 }
 
 function readDoi(articleIds: unknown, elocationId: unknown): string | null {
@@ -313,6 +325,10 @@ function normaliseRetmax(retmax: number) {
   }
 
   return Math.min(Math.max(Math.trunc(retmax), 1), 20);
+}
+
+function isPubMedSearchResultRecord(value: unknown): value is PubMedSummaryRecord {
+  return Boolean(value) && !Array.isArray(value) && typeof value === "object";
 }
 
 function isPubMedSummaryRecord(

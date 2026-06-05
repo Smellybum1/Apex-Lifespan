@@ -105,10 +105,10 @@ export async function searchClinicalTrials(
   }
 
   const data = (await response.json()) as {
-    studies?: ClinicalTrialsApiStudy[];
+    studies?: unknown;
   };
 
-  const studies = (data.studies ?? [])
+  const studies = readClinicalTrialStudies(data.studies)
     .slice(0, safePageSize)
     .map((study) => mapClinicalTrialStudy(study, term));
 
@@ -126,13 +126,11 @@ function mapClinicalTrialStudy(
   const protocol = study.protocolSection;
   const nctId = protocol?.identificationModule?.nctId ?? "Unknown NCT";
   const conditions = stringArray(protocol?.conditionsModule?.conditions);
-  const interventions = stringArray(
-    protocol?.armsInterventionsModule?.interventions?.map((intervention) =>
-      [intervention.type, intervention.name].filter(Boolean).join(": ")
-    )
+  const interventions = clinicalTrialInterventionLabels(
+    protocol?.armsInterventionsModule?.interventions
   );
-  const primaryOutcomes = stringArray(
-    protocol?.outcomesModule?.primaryOutcomes?.map((outcome) => outcome.measure)
+  const primaryOutcomes = clinicalTrialOutcomeLabels(
+    protocol?.outcomesModule?.primaryOutcomes
   );
   const phases = stringArray(protocol?.designModule?.phases);
   const enrollmentCount = readNumber(protocol?.designModule?.enrollmentInfo?.count);
@@ -296,4 +294,50 @@ function stringArray(values: unknown) {
   }
 
   return values.filter((value): value is string => typeof value === "string" && value.length > 0);
+}
+
+function readClinicalTrialStudies(values: unknown): ClinicalTrialsApiStudy[] {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values.filter(isClinicalTrialsApiStudy);
+}
+
+function clinicalTrialInterventionLabels(values: unknown) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values.flatMap((value) => {
+    if (!isRecord(value)) {
+      return [];
+    }
+
+    const label = [firstText(value.type), firstText(value.name)].filter(Boolean).join(": ");
+    return label ? [label] : [];
+  });
+}
+
+function clinicalTrialOutcomeLabels(values: unknown) {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values.flatMap((value) => {
+    if (!isRecord(value)) {
+      return [];
+    }
+
+    const measure = firstText(value.measure);
+    return measure ? [measure] : [];
+  });
+}
+
+function isClinicalTrialsApiStudy(value: unknown): value is ClinicalTrialsApiStudy {
+  return isRecord(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && !Array.isArray(value) && typeof value === "object";
 }

@@ -106,6 +106,60 @@ describe("searchClinicalTrials", () => {
     });
   });
 
+  it("treats non-array ClinicalTrials.gov study lists as empty public previews", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        studies: {
+          protocolSection: {
+            identificationModule: { nctId: "NCTSHOULDNOTMAP" }
+          }
+        }
+      })
+    );
+
+    const result = await searchClinicalTrials("creatine");
+
+    expect(result.studies).toEqual([]);
+  });
+
+  it("skips malformed study entries and nested arrays without crashing", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        studies: [
+          null,
+          "not a study",
+          {
+            protocolSection: {
+              identificationModule: {
+                nctId: "NCTSAFE",
+                briefTitle: "Creatine malformed nested arrays"
+              },
+              armsInterventionsModule: {
+                interventions: { type: "DRUG", name: "Creatine" }
+              },
+              outcomesModule: {
+                primaryOutcomes: "Strength"
+              },
+              designModule: {
+                phases: "PHASE2"
+              }
+            }
+          }
+        ]
+      })
+    );
+
+    const result = await searchClinicalTrials("creatine");
+
+    expect(result.studies).toHaveLength(1);
+    expect(result.studies[0]).toMatchObject({
+      nctId: "NCTSAFE",
+      interventions: [],
+      phase: "Not provided",
+      primaryOutcomes: []
+    });
+  });
+
   it("does not cache live ClinicalTrials.gov fetches", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")

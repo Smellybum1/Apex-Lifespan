@@ -140,6 +140,59 @@ describe("searchPubMed", () => {
     ]);
   });
 
+  it("ignores malformed PubMed ids and sanitizes malformed counts", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse({
+          esearchresult: {
+            count: "not-a-number",
+            idlist: ["123", 456, ""]
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          result: {
+            uids: ["123"],
+            "123": {
+              title: "Creatine trial",
+              authors: []
+            }
+          }
+        })
+      );
+
+    const result = await searchPubMed("creatine");
+
+    expect(result).toMatchObject({
+      ids: ["123"],
+      count: 0
+    });
+    expect(result.articles.map((article) => article.pmid)).toEqual(["123"]);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats non-array PubMed id lists as empty public previews", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        esearchresult: {
+          count: "7",
+          idlist: "123,456"
+        }
+      })
+    );
+
+    const result = await searchPubMed("creatine");
+
+    expect(result).toMatchObject({
+      ids: [],
+      count: 7,
+      articles: []
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("does not cache live search or summary fetches", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
