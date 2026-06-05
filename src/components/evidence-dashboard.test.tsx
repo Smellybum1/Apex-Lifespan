@@ -62,6 +62,18 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("Suggested searches");
   });
 
+  it("keeps source-packet extraction separate from human review status", () => {
+    const html = renderToStaticMarkup(<EvidenceDashboard data={seedDashboardData()} />);
+
+    expect(html).toContain("Human-reviewed");
+    expect(html).toContain("7 drafts awaiting review");
+    expect(html).toContain("Source packets");
+    expect(html).toContain("7/7");
+    expect(html).toContain("8/8 linked refs extracted");
+    expect(html).toContain("Unreviewed AI draft");
+    expect(html).toContain("Extraction complete");
+  });
+
   it("renders sanitized seed fallback reasons in the public header", () => {
     const html = renderToStaticMarkup(
       <EvidenceDashboard
