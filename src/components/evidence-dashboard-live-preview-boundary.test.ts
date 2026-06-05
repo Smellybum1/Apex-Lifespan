@@ -35,4 +35,19 @@ describe("EvidenceDashboard live preview boundary", () => {
     expect(DASHBOARD_SOURCE.match(/const nextTerm = normaliseLiveSourceSearchTerm\(term\);/g))
       .toHaveLength(2);
   });
+
+  it("normalises raw live preview API link terms", () => {
+    expect(DASHBOARD_SOURCE).toContain(
+      "const pubMedApiTerm = normaliseLiveSourceSearchTerm(submittedPubMedSearch?.term ?? pubMedTerm);"
+    );
+    expect(DASHBOARD_SOURCE).toContain(
+      "const trialApiTerm = normaliseLiveSourceSearchTerm(submittedTrialSearch?.term ?? trialTerm);"
+    );
+    expect(DASHBOARD_SOURCE).toContain(
+      "`/api/pubmed/search?term=${encodeURIComponent(pubMedApiTerm)}&retmax=5`"
+    );
+    expect(DASHBOARD_SOURCE).toContain(
+      "`/api/trials/search?term=${encodeURIComponent(trialApiTerm)}&pageSize=5`"
+    );
+  });
 });

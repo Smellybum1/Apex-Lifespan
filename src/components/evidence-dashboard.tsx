@@ -1472,13 +1472,13 @@ function SourceAndStudyPanel({
     };
   }, [submittedTrialSearch]);
 
-  const pubMedRawTerm = submittedPubMedSearch?.term ?? pubMedTerm.trim();
-  const trialRawTerm = submittedTrialSearch?.term ?? trialTerm.trim();
-  const pubMedApiHref = pubMedRawTerm
-    ? `/api/pubmed/search?term=${encodeURIComponent(pubMedRawTerm)}&retmax=5`
+  const pubMedApiTerm = normaliseLiveSourceSearchTerm(submittedPubMedSearch?.term ?? pubMedTerm);
+  const trialApiTerm = normaliseLiveSourceSearchTerm(submittedTrialSearch?.term ?? trialTerm);
+  const pubMedApiHref = pubMedApiTerm
+    ? `/api/pubmed/search?term=${encodeURIComponent(pubMedApiTerm)}&retmax=5`
     : "#pubmed-term";
-  const trialApiHref = trialRawTerm
-    ? `/api/trials/search?term=${encodeURIComponent(trialRawTerm)}&pageSize=5`
+  const trialApiHref = trialApiTerm
+    ? `/api/trials/search?term=${encodeURIComponent(trialApiTerm)}&pageSize=5`
     : "#trial-term";
   const submitPubMedSearch = (term: string) => {
     const nextTerm = normaliseLiveSourceSearchTerm(term);
