@@ -30,10 +30,25 @@ describe("EvidenceDashboard live preview boundary", () => {
 
   it("normalises submitted live preview terms before storing request state", () => {
     expect(DASHBOARD_SOURCE).toContain(
-      'import { normaliseLiveSourceSearchTerm } from "@/lib/live-source-request";'
+      "normaliseLiveSourceSearchTerm"
     );
     expect(DASHBOARD_SOURCE.match(/const nextTerm = normaliseLiveSourceSearchTerm\(term\);/g))
       .toHaveLength(2);
+  });
+
+  it("uses public display fallback text for live preview errors", () => {
+    expect(DASHBOARD_SOURCE).toContain(
+      'setPubMedError(publicLiveSourceDisplayError("PubMed", error));'
+    );
+    expect(DASHBOARD_SOURCE).toContain(
+      'setTrialError(publicLiveSourceDisplayError("ClinicalTrials.gov", error));'
+    );
+    expect(DASHBOARD_SOURCE).not.toContain(
+      'setPubMedError(error instanceof Error ? error.message : "PubMed search failed.");'
+    );
+    expect(DASHBOARD_SOURCE).not.toContain(
+      'error instanceof Error ? error.message : "ClinicalTrials.gov search failed."'
+    );
   });
 
   it("normalises raw live preview API link terms", () => {

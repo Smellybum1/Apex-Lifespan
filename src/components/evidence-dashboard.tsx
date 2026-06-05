@@ -39,7 +39,10 @@ import type {
   PubMedArticleSummary,
   PubMedSearchResult
 } from "@/lib/integrations/pubmed";
-import { normaliseLiveSourceSearchTerm } from "@/lib/live-source-request";
+import {
+  normaliseLiveSourceSearchTerm,
+  publicLiveSourceDisplayError
+} from "@/lib/live-source-request";
 import {
   australiaRegulatoryKindDescription,
   australiaRegulatoryTone,
@@ -1409,7 +1412,7 @@ function SourceAndStudyPanel({
         }
       } catch (error) {
         if (!controller.signal.aborted) {
-          setPubMedError(error instanceof Error ? error.message : "PubMed search failed.");
+          setPubMedError(publicLiveSourceDisplayError("PubMed", error));
           setPubMedStatus("error");
         }
       }
@@ -1457,9 +1460,7 @@ function SourceAndStudyPanel({
         }
       } catch (error) {
         if (!controller.signal.aborted) {
-          setTrialError(
-            error instanceof Error ? error.message : "ClinicalTrials.gov search failed."
-          );
+          setTrialError(publicLiveSourceDisplayError("ClinicalTrials.gov", error));
           setTrialStatus("error");
         }
       }

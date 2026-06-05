@@ -72,6 +72,15 @@ export function publicLiveSourceError(sourceName: string) {
   return `${sourceName} search is temporarily unavailable.`;
 }
 
+export function publicLiveSourceDisplayError(sourceName: string, error: unknown) {
+  const message =
+    error instanceof Error ? error.message : typeof error === "string" ? error : "";
+
+  return isPublicLiveSourceErrorMessage(sourceName, message)
+    ? message
+    : publicLiveSourceError(sourceName);
+}
+
 export function normaliseLiveSourceSearchTerm(value: string) {
   return normaliseSourceTerm(
     value
@@ -82,6 +91,15 @@ export function normaliseLiveSourceSearchTerm(value: string) {
 
 function normaliseSourceTerm(value: string) {
   return value.replace(HIDDEN_LIVE_SOURCE_CONTROL_PATTERN, " ").replace(/\s+/g, " ").trim();
+}
+
+function isPublicLiveSourceErrorMessage(sourceName: string, message: string) {
+  return [
+    "Missing term query parameter.",
+    `Term query parameter must be ${MAX_LIVE_SOURCE_TERM_LENGTH} characters or fewer.`,
+    "Term query parameter must include citation-oriented search terms.",
+    publicLiveSourceError(sourceName)
+  ].includes(message);
 }
 
 function normaliseSourceLimit(value: string | null, defaultLimit: number) {
