@@ -1,5 +1,9 @@
 import { searchClinicalTrials } from "@/lib/integrations/clinical-trials";
-import { parseLiveSourceSearchRequest, publicLiveSourceError } from "@/lib/live-source-request";
+import {
+  LIVE_SOURCE_RESPONSE_HEADERS,
+  parseLiveSourceSearchRequest,
+  publicLiveSourceError
+} from "@/lib/live-source-request";
 
 export const dynamic = "force-dynamic";
 
@@ -10,18 +14,21 @@ export async function GET(request: Request) {
   });
 
   if (!searchRequest.ok) {
-    return Response.json({ error: searchRequest.error }, { status: searchRequest.status });
+    return Response.json(
+      { error: searchRequest.error },
+      { headers: LIVE_SOURCE_RESPONSE_HEADERS, status: searchRequest.status }
+    );
   }
 
   try {
     const result = await searchClinicalTrials(searchRequest.term, searchRequest.limit);
-    return Response.json(result);
+    return Response.json(result, { headers: LIVE_SOURCE_RESPONSE_HEADERS });
   } catch {
     return Response.json(
       {
         error: publicLiveSourceError("ClinicalTrials.gov")
       },
-      { status: 502 }
+      { headers: LIVE_SOURCE_RESPONSE_HEADERS, status: 502 }
     );
   }
 }
