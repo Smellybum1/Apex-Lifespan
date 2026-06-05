@@ -29,6 +29,8 @@ describe("seed integrity", () => {
     expect(issues).toEqual([
       {
         name: "Intervention",
+        duplicateActualIds: [],
+        duplicateExpectedIds: [],
         missingIds: ["vitamin-d"],
         staleSeedOwnedIds: []
       }
@@ -52,21 +54,65 @@ describe("seed integrity", () => {
     expect(issues).toEqual([
       {
         name: "AustraliaRegulatoryStatus",
+        duplicateActualIds: [],
+        duplicateExpectedIds: [],
         missingIds: [],
         staleSeedOwnedIds: ["au-reg-retired-seed-row"]
       }
     ]);
   });
 
+  it("reports duplicate expected and actual IDs", () => {
+    const issues = findSeedIntegrityIssues([
+      {
+        name: "Reference",
+        expectedIds: ["tga-artg", "tga-artg", "ods-vitamin-d"],
+        actualIds: ["tga-artg", "ods-vitamin-d", "ods-vitamin-d"]
+      }
+    ]);
+
+    expect(issues).toEqual([
+      {
+        name: "Reference",
+        duplicateActualIds: ["ods-vitamin-d"],
+        duplicateExpectedIds: ["tga-artg"],
+        missingIds: [],
+        staleSeedOwnedIds: []
+      }
+    ]);
+  });
+
+  it("allows expected or actual duplicate IDs for relationship checks when requested", () => {
+    const issues = findSeedIntegrityIssues([
+      {
+        name: "Claim key references",
+        expectedIds: ["ods-vitamin-d", "ods-vitamin-d"],
+        actualIds: ["ods-vitamin-d", "ods-vitamin-d"],
+        allowDuplicateActualIds: true,
+        allowDuplicateExpectedIds: true
+      }
+    ]);
+
+    expect(issues).toEqual([]);
+  });
+
   it("formats a seed failure message for the seed script", () => {
     const issue = {
       name: "Product",
+      duplicateActualIds: ["seed-duplicate-product"],
+      duplicateExpectedIds: ["seed-creatine-product"],
       missingIds: ["seed-creatine-product"],
       staleSeedOwnedIds: ["seed-retired-product"]
     };
 
     expect(formatSeedIntegrityIssues([issue])).toContain(
       "Product missing expected IDs: seed-creatine-product"
+    );
+    expect(formatSeedIntegrityIssues([issue])).toContain(
+      "Product has duplicate expected IDs: seed-creatine-product"
+    );
+    expect(formatSeedIntegrityIssues([issue])).toContain(
+      "Product has duplicate actual IDs: seed-duplicate-product"
     );
     expect(() => assertSeedIntegrity([{ name: "Product", expectedIds: ["a"], actualIds: [] }]))
       .toThrowErrorMatchingInlineSnapshot(`
@@ -83,19 +129,22 @@ describe("seed integrity", () => {
         {
           name: "Claim key references",
           expectedIds: claims.flatMap((claim) => claim.keyReferenceIds),
-          actualIds: referenceIds
+          actualIds: referenceIds,
+          allowDuplicateExpectedIds: true
         },
         {
           name: "Study references",
           expectedIds: studies.map((study) => study.referenceId),
-          actualIds: referenceIds
+          actualIds: referenceIds,
+          allowDuplicateExpectedIds: true
         },
         {
           name: "AustraliaRegulatoryStatus references",
           expectedIds: australiaRegulatoryStatuses.flatMap((status) =>
             status.referenceId ? [status.referenceId] : []
           ),
-          actualIds: referenceIds
+          actualIds: referenceIds,
+          allowDuplicateExpectedIds: true
         }
       ])
     ).toEqual([]);
@@ -135,17 +184,20 @@ describe("seed integrity", () => {
         {
           name: "Claim interventions",
           expectedIds: claims.map((claim) => claim.interventionId),
-          actualIds: interventionIds
+          actualIds: interventionIds,
+          allowDuplicateExpectedIds: true
         },
         {
           name: "Safety alert interventions",
           expectedIds: safetyAlerts.map((alert) => alert.interventionId),
-          actualIds: interventionIds
+          actualIds: interventionIds,
+          allowDuplicateExpectedIds: true
         },
         {
           name: "Trial watch interventions",
           expectedIds: trialWatchItems.map((trial) => trial.interventionId),
-          actualIds: interventionIds
+          actualIds: interventionIds,
+          allowDuplicateExpectedIds: true
         },
         {
           name: "AustraliaRegulatoryStatus interventions",
