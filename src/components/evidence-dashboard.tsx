@@ -425,6 +425,15 @@ function EvidenceMap({
     [visibleClaims]
   );
 
+  if (visibleClaims.length === 0) {
+    return (
+      <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
+        No local scored claims match the current filters. Clear the search or category filter to
+        rebuild the evidence map.
+      </p>
+    );
+  }
+
   return (
     <div className="mt-4 overflow-x-auto">
       <div
