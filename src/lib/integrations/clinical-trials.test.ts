@@ -106,6 +106,24 @@ describe("searchClinicalTrials", () => {
     });
   });
 
+  it("does not cache live ClinicalTrials.gov fetches", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ studies: [] }));
+
+    await searchClinicalTrials("omega-3");
+
+    expect(fetchSpy.mock.calls[0]?.[1]).toMatchObject({
+      cache: "no-store",
+      headers: {
+        accept: "application/json"
+      }
+    });
+    expect(
+      (fetchSpy.mock.calls[0]?.[1] as RequestInit & { next?: unknown }).next
+    ).toBeUndefined();
+  });
+
   it("caps pageSize to keep public searches bounded", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       jsonResponse({ studies: [] })

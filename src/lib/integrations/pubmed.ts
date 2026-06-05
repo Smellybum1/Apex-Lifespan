@@ -25,6 +25,12 @@ type PubMedSummaryRecord = Record<string, unknown>;
 
 const PUBMED_EUTILS_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 const PUBMED_SOURCE = "NCBI E-utilities";
+const LIVE_SOURCE_FETCH_INIT = {
+  headers: {
+    accept: "application/json"
+  },
+  cache: "no-store"
+} satisfies RequestInit;
 
 export async function searchPubMed(term: string, retmax = 10): Promise<PubMedSearchResult> {
   const url = new URL(`${PUBMED_EUTILS_BASE_URL}/esearch.fcgi`);
@@ -34,14 +40,7 @@ export async function searchPubMed(term: string, retmax = 10): Promise<PubMedSea
   url.searchParams.set("retmax", String(safeRetmax));
   url.searchParams.set("term", term);
 
-  const response = await fetch(url, {
-    headers: {
-      accept: "application/json"
-    },
-    next: {
-      revalidate: 60 * 60
-    }
-  });
+  const response = await fetch(url, LIVE_SOURCE_FETCH_INIT);
 
   if (!response.ok) {
     throw new Error(`PubMed search failed with ${response.status}`);
@@ -80,14 +79,7 @@ async function fetchPubMedSummaries(
   url.searchParams.set("id", ids.join(","));
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        accept: "application/json"
-      },
-      next: {
-        revalidate: 60 * 60
-      }
-    });
+    const response = await fetch(url, LIVE_SOURCE_FETCH_INIT);
 
     if (!response.ok) {
       return new Map();

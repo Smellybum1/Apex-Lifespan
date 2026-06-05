@@ -140,6 +140,43 @@ describe("searchPubMed", () => {
     ]);
   });
 
+  it("does not cache live search or summary fetches", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse({
+          esearchresult: {
+            count: "1",
+            idlist: ["123"]
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          result: {
+            uids: ["123"],
+            "123": {
+              title: "Creatine trial",
+              authors: []
+            }
+          }
+        })
+      );
+
+    await searchPubMed("creatine");
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    for (const [, init] of fetchSpy.mock.calls) {
+      expect(init).toMatchObject({
+        cache: "no-store",
+        headers: {
+          accept: "application/json"
+        }
+      });
+      expect((init as RequestInit & { next?: unknown }).next).toBeUndefined();
+    }
+  });
+
   it("caps retmax to keep public searches bounded", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       jsonResponse({

@@ -26,6 +26,13 @@ export interface ClinicalTrialSearchResult {
   source: string;
 }
 
+const LIVE_SOURCE_FETCH_INIT = {
+  headers: {
+    accept: "application/json"
+  },
+  cache: "no-store"
+} satisfies RequestInit;
+
 interface ClinicalTrialsApiStudy {
   protocolSection?: {
     identificationModule?: {
@@ -91,14 +98,7 @@ export async function searchClinicalTrials(
   url.searchParams.set("query.term", term);
   url.searchParams.set("pageSize", String(safePageSize));
 
-  const response = await fetch(url, {
-    headers: {
-      accept: "application/json"
-    },
-    next: {
-      revalidate: 60 * 60
-    }
-  });
+  const response = await fetch(url, LIVE_SOURCE_FETCH_INIT);
 
   if (!response.ok) {
     throw new Error(`ClinicalTrials.gov search failed with ${response.status}`);
