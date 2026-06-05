@@ -153,6 +153,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     () => claims.filter((claim) => visibleInterventionIds.has(claim.interventionId)),
     [claims, visibleInterventionIds]
   );
+  const hasFilteredClaims = filteredClaims.length > 0;
 
   useEffect(() => {
     if (filteredClaims.length === 0) {
@@ -295,11 +296,18 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             />
           </div>
 
-          <ScorePanel
-            australiaStatus={activeAustraliaStatus}
-            claim={activeClaim}
-            intervention={activeIntervention}
-          />
+          {hasFilteredClaims ? (
+            <ScorePanel
+              australiaStatus={activeAustraliaStatus}
+              claim={activeClaim}
+              intervention={activeIntervention}
+            />
+          ) : (
+            <FilteredClaimDetailEmptyState
+              title="Active Evidence Card"
+              detail="No active evidence card is selected because the current filters do not match local scored claims."
+            />
+          )}
         </section>
 
         <section className="grid items-start gap-4 xl:grid-cols-[1fr_0.8fr]">
@@ -330,16 +338,40 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             interventionsById={interventionsById}
             trialWatchItems={trialWatchItems}
           />
-          <SourceAndStudyPanel
-            key={activeClaim.id}
-            activeClaim={activeClaim}
-            activeIntervention={activeIntervention}
-            referencesById={referencesById}
-            studies={studies}
-          />
+          {hasFilteredClaims ? (
+            <SourceAndStudyPanel
+              key={activeClaim.id}
+              activeClaim={activeClaim}
+              activeIntervention={activeIntervention}
+              referencesById={referencesById}
+              studies={studies}
+            />
+          ) : (
+            <FilteredClaimDetailEmptyState
+              title="Sources and Review Queue"
+              detail="Source packets and live search suggestions appear after the current filters match a local scored claim."
+            />
+          )}
         </section>
       </div>
     </main>
+  );
+}
+
+function FilteredClaimDetailEmptyState({
+  detail,
+  title
+}: {
+  detail: string;
+  title: string;
+}) {
+  return (
+    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+      <h2 className="text-base font-semibold text-ink">{title}</h2>
+      <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
+        {detail} Clear the search or category filter to return to the full local evidence set.
+      </p>
+    </section>
   );
 }
 
