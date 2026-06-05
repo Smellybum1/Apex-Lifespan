@@ -52,6 +52,17 @@ describe("live source search API routes", () => {
     expect(searchPubMedMock).toHaveBeenCalledWith("creatine monohydrate", 5);
   });
 
+  it("removes hidden control characters from accepted PubMed terms", async () => {
+    const term = encodeURIComponent("creatine\u0000monohydrate\u202E trial");
+    const response = await searchPubMedRoute(
+      new Request(`http://localhost/api/pubmed/search?term=${term}&retmax=5`)
+    );
+
+    expect(response.status).toBe(200);
+    expectLiveSourceHeaders(response);
+    expect(searchPubMedMock).toHaveBeenCalledWith("creatine monohydrate trial", 5);
+  });
+
   it("normalises accepted ClinicalTrials.gov terms and passes the requested limit", async () => {
     const response = await searchTrialsRoute(
       new Request("http://localhost/api/trials/search?term=omega-3%09lipids&pageSize=5")
@@ -132,6 +143,18 @@ describe("live source search API routes", () => {
     expectLiveSourceHeaders(response);
     expect(await response.json()).toEqual({ error: "Missing term query parameter." });
     expect(searchPubMedMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects ClinicalTrials.gov terms that contain only hidden control characters", async () => {
+    const term = encodeURIComponent("\u0000\u202E\u2066");
+    const response = await searchTrialsRoute(
+      new Request(`http://localhost/api/trials/search?term=${term}`)
+    );
+
+    expect(response.status).toBe(400);
+    expectLiveSourceHeaders(response);
+    expect(await response.json()).toEqual({ error: "Missing term query parameter." });
+    expect(searchClinicalTrialsMock).not.toHaveBeenCalled();
   });
 
   it("rejects PubMed terms that contain only unsafe self-use words", async () => {

@@ -8,6 +8,8 @@ const UNSAFE_LIVE_SOURCE_TERM_PATTERN =
   /\b(?:buy|inject|injectable|injected|injecting|injection|injections|needle|needles|purchase|reconstitute|reconstituted|reconstitution|supplier|suppliers|sourcing|vendor|vendors|vial|vials)\b/gi;
 const UNSAFE_LIVE_SOURCE_PHRASE_PATTERN =
   /\b(?:bac(?:teriostatic)?|sterile)[-\s]+water\b|\bself[-\s]+(?:administer(?:ed|ing)?|administration|use)\b/gi;
+const HIDDEN_LIVE_SOURCE_CONTROL_PATTERN =
+  /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g;
 
 interface LiveSourceSearchRequestOptions {
   defaultLimit: number;
@@ -79,7 +81,7 @@ export function normaliseLiveSourceSearchTerm(value: string) {
 }
 
 function normaliseSourceTerm(value: string) {
-  return value.replace(/\s+/g, " ").trim();
+  return value.replace(HIDDEN_LIVE_SOURCE_CONTROL_PATTERN, " ").replace(/\s+/g, " ").trim();
 }
 
 function normaliseSourceLimit(value: string | null, defaultLimit: number) {
