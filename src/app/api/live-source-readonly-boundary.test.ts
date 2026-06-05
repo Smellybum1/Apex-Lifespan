@@ -9,6 +9,8 @@ const SOURCE_CANDIDATE_MODULE_IMPORT_PATTERN =
   /\b(?:from|import\s*\(|require\s*\()\s*["'][^"']*source-candidate(?:s|-[^"']*)?["']/;
 const MUTATING_ROUTE_METHOD_PATTERN =
   /\bexport\s+(?:async\s+)?function\s+(?:POST|PUT|PATCH|DELETE)\b|\bexport\s+const\s+(?:POST|PUT|PATCH|DELETE)\b|\bexport\s*\{[\s\S]*?\bas\s+(?:POST|PUT|PATCH|DELETE)\b[\s\S]*?\}/;
+const PRISMA_WRITE_PATTERN =
+  /\bprisma\.[A-Za-z]\w*\.(?:create|createMany|update|updateMany|upsert|delete|deleteMany)\s*\(|\bprisma\.\$(?:executeRaw|executeRawUnsafe)\s*(?:`|\()/;
 
 const DISALLOWED_ROUTE_PATTERNS = [
   {
@@ -26,6 +28,10 @@ const DISALLOWED_ROUTE_PATTERNS = [
   {
     label: "source-candidate persistence helper",
     pattern: /\b(upsertSourceCandidate|queueSourceCandidate|recordSourceCandidateDecision)\b/
+  },
+  {
+    label: "Prisma write from public route handler",
+    pattern: PRISMA_WRITE_PATTERN
   }
 ];
 
@@ -64,6 +70,15 @@ describe("live source API read-only boundary", () => {
       .toBe(true);
     expect(MUTATING_ROUTE_METHOD_PATTERN.test("export async function GET(request: Request) {}"))
       .toBe(false);
+  });
+
+  it("detects Prisma write calls while allowing read calls", () => {
+    expect(PRISMA_WRITE_PATTERN.test("await prisma.reference.create({ data });")).toBe(true);
+    expect(PRISMA_WRITE_PATTERN.test("await prisma.claim.updateMany({ data });")).toBe(true);
+    expect(PRISMA_WRITE_PATTERN.test("await prisma.study.delete({ where });")).toBe(true);
+    expect(PRISMA_WRITE_PATTERN.test("await prisma.$executeRaw`DELETE FROM Claim`;")).toBe(true);
+    expect(PRISMA_WRITE_PATTERN.test("await prisma.reference.findMany({});")).toBe(false);
+    expect(PRISMA_WRITE_PATTERN.test("await prisma.$queryRaw`SELECT 1`;")).toBe(false);
   });
 
   it("does not expose source-candidate persistence from public route handlers", () => {
