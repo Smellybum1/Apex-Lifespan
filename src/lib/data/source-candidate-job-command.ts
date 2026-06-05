@@ -721,9 +721,38 @@ export async function runSourceCandidateJobCommand(
     stdout(commandUsage());
     return 0;
   } catch (error) {
-    stderr(error instanceof Error ? error.message : String(error));
+    stderr(formatSourceCandidateCommandError(error));
     return 1;
   }
+}
+
+function formatSourceCandidateCommandError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const databaseTarget = unreachableDatabaseTarget(message);
+
+  if (!databaseTarget) {
+    return message;
+  }
+
+  return [
+    `Source-candidate database unavailable: can't reach PostgreSQL at ${databaseTarget}.`,
+    "Start the local PostgreSQL service and confirm DATABASE_URL, then retry.",
+    "Setup: docs/codex/reference/local-operations.md"
+  ].join("\n");
+}
+
+function unreachableDatabaseTarget(message: string) {
+  const target = message.match(/Can't reach database server at `([^`]+)`/);
+
+  if (target) {
+    return target[1];
+  }
+
+  if (message.includes("P1001") || message.includes("Can't reach database server")) {
+    return "the configured DATABASE_URL";
+  }
+
+  return null;
 }
 
 export function parseSourceCandidateJobCommandArgs(

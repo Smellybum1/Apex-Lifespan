@@ -5461,6 +5461,47 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("prints local database guidance when source-candidate reads cannot connect", async () => {
+    const stdout = vi.fn();
+    const stderr = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--summary"],
+        { stdout, stderr },
+        {
+          listReviewOverview: vi.fn().mockResolvedValue({
+            candidateCount: 0,
+            totalGroups: 0,
+            groups: []
+          }),
+          summarizeBacklog: vi.fn().mockResolvedValue({
+            total: 0,
+            groups: []
+          }),
+          summarizeCurationHandoff: vi.fn().mockResolvedValue({
+            total: 0,
+            groups: []
+          }),
+          summarizeJobs: vi
+            .fn()
+            .mockRejectedValue(
+              new Error("Can't reach database server at `localhost:5432`")
+            )
+        }
+      )
+    ).resolves.toBe(1);
+
+    expect(stdout).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(
+      [
+        "Source-candidate database unavailable: can't reach PostgreSQL at localhost:5432.",
+        "Start the local PostgreSQL service and confirm DATABASE_URL, then retry.",
+        "Setup: docs/codex/reference/local-operations.md"
+      ].join("\n")
+    );
+  });
+
   it("prints parse errors to stderr with usage", async () => {
     const stderr = vi.fn();
 
