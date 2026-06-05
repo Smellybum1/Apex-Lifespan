@@ -4,6 +4,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const API_DIR = path.join(process.cwd(), "src", "app", "api");
+const PUBLIC_RUNTIME_PATHS = [
+  path.join(process.cwd(), "src", "app"),
+  path.join(process.cwd(), "src", "components"),
+  path.join(process.cwd(), "src", "lib", "data", "dashboard.ts")
+];
 
 const SOURCE_CANDIDATE_MODULE_IMPORT_PATTERN =
   /\b(?:from|import\s*\(|require\s*\()\s*["'][^"']*source-candidate(?:s|-[^"']*)?["']/;
@@ -34,6 +39,7 @@ const DISALLOWED_ROUTE_PATTERNS = [
     pattern: PRISMA_WRITE_PATTERN
   }
 ];
+const DISALLOWED_PUBLIC_SURFACE_PATTERNS = DISALLOWED_ROUTE_PATTERNS;
 
 describe("live source API read-only boundary", () => {
   it("detects static, dynamic, and CommonJS source-candidate module imports", () => {
@@ -98,6 +104,24 @@ describe("live source API read-only boundary", () => {
       ).toEqual([]);
     }
   });
+
+  it("does not expose source-candidate workflows from the public dashboard surface", () => {
+    const publicFiles = listPublicRuntimeFiles(PUBLIC_RUNTIME_PATHS);
+
+    expect(publicFiles.length).toBeGreaterThan(0);
+
+    for (const filePath of publicFiles) {
+      const source = readFileSync(filePath, "utf8");
+      const violations = DISALLOWED_PUBLIC_SURFACE_PATTERNS
+        .filter(({ pattern }) => pattern.test(source))
+        .map(({ label }) => label);
+
+      expect(
+        violations,
+        `${relativeProjectPath(filePath)} must not expose local source-candidate workflows publicly`
+      ).toEqual([]);
+    }
+  });
 });
 
 function listRouteFiles(directory: string): string[] {
@@ -114,6 +138,30 @@ function listRouteFiles(directory: string): string[] {
     .sort();
 }
 
+function listPublicRuntimeFiles(entries: string[]): string[] {
+  return entries.flatMap((entryPath) => listPublicRuntimeEntry(entryPath)).sort();
+}
+
+function listPublicRuntimeEntry(entryPath: string): string[] {
+  const stat = statSync(entryPath);
+
+  if (stat.isDirectory()) {
+    return readdirSync(entryPath).flatMap((entry) => {
+      return listPublicRuntimeEntry(path.join(entryPath, entry));
+    });
+  }
+
+  if (!/\.(?:ts|tsx)$/.test(entryPath) || /\.test\.(?:ts|tsx)$/.test(entryPath)) {
+    return [];
+  }
+
+  return [entryPath];
+}
+
 function relativeRoutePath(filePath: string) {
+  return relativeProjectPath(filePath);
+}
+
+function relativeProjectPath(filePath: string) {
   return path.relative(process.cwd(), filePath).replace(/\\/g, "/");
 }
