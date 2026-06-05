@@ -154,8 +154,23 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     [claims, visibleInterventionIds]
   );
 
+  useEffect(() => {
+    if (filteredClaims.length === 0) {
+      return;
+    }
+
+    if (filteredClaims.some((claim) => claim.id === activeClaimId)) {
+      return;
+    }
+
+    setActiveClaimId(filteredClaims[0].id);
+  }, [activeClaimId, filteredClaims]);
+
   const activeClaim =
-    claims.find((claim) => claim.id === activeClaimId) ?? filteredClaims[0] ?? claims[0];
+    filteredClaims.find((claim) => claim.id === activeClaimId) ??
+    filteredClaims[0] ??
+    claims.find((claim) => claim.id === activeClaimId) ??
+    claims[0];
   const activeIntervention = interventionsById.get(activeClaim.interventionId);
   const activeAustraliaStatus = activeIntervention
     ? getPrimaryAustraliaStatus(data.australiaRegulatoryStatuses, activeIntervention.id)
