@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after adding the local Codex review sidecar. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 during closeout after adding the local Codex review sidecar. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,7 +11,7 @@ Refreshed on 2026-06-05 after adding the local Codex review sidecar. Verify loca
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `4f195a8 Add local Codex review sidecar`.
+- Branch: `codex/queue-claim-sources`; latest commit before this closeout refresh is `45d265b Refresh Codex sidecar handoff`; latest code commit is `4f195a8 Add local Codex review sidecar`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Public dashboard seed fallback preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
@@ -69,26 +69,8 @@ Latest code validation for `4f195a8`:
 - `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 - `git diff --cached --check`
 
-Previous code validation for `5e16ef1`:
-- Startup/workflow docs and current state re-read.
-- `npm run test -- src/components/evidence-dashboard.test.tsx src/app/api/live-source-readonly-boundary.test.ts`
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `npm run build`
-- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
-- `git diff --cached --check`
-
-Earlier code validation for `c871c38`:
-- Startup/workflow docs and current state re-read.
-- `npm run ingest:sources -- --db-status` (read-only preflight; PostgreSQL still unavailable at `localhost:5432`)
-- `npm run test -- src/lib/live-source-request.test.ts src/components/evidence-dashboard-live-preview-boundary.test.ts src/app/api/source-search-routes.test.ts src/components/evidence-dashboard.test.tsx`
-- `npm run test`
-- `npm run lint`
-- `npm run dev:stop`
-- `npm run typecheck`
-- `npm run build`
+Closeout docs validation:
+- Startup/workflow docs and tracked workflow config reviewed for obvious bloat or stale state.
 - `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 - `git diff --cached --check`
 
