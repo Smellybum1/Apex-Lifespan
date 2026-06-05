@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after adding seed duplicate-ID integrity checks. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after tightening public route Prisma write guards. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,7 +11,7 @@ Refreshed on 2026-06-05 after adding seed duplicate-ID integrity checks. Verify 
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `a383046 Detect duplicate seed integrity IDs`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `2bda36e Guard public routes against Prisma writes`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Public dashboard seed fallback now preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Public PubMed and ClinicalTrials.gov search routes now return stable public `502` messages for upstream/runtime failures instead of exposing raw integration exception text; request validation errors remain specific.
@@ -22,6 +22,7 @@ Refreshed on 2026-06-05 after adding seed duplicate-ID integrity checks. Verify 
 - Dashboard PubMed and ClinicalTrials.gov live-preview fetches now also use `cache: "no-store"` in the browser, with a component boundary test guarding both preview calls.
 - Public live-source route tests now cover low `retmax`/`pageSize` values clamping to 1 before PubMed or ClinicalTrials.gov integrations are called.
 - Public route boundary tests now fail if any `src/app/api/**/route.ts` file exports `POST`, `PUT`, `PATCH`, or `DELETE`, keeping public API handlers GET-only/read-only.
+- Public route boundary tests now also fail on generic Prisma create/update/upsert/delete calls and raw execute calls from route handlers, while allowing read-only Prisma calls.
 - Dashboard live-source inputs and previews now reset to the active evidence card's suggested terms when the active claim changes, preventing stale live PubMed/ClinicalTrials.gov preview results from lingering beside a new curated source packet.
 - Safety Center now renders a cautious empty state when no local safety alerts are captured; the wording tells users to check current regulator and clinical sources before treating anything as low risk.
 - Trial Watcher now renders a cautious empty state when no local trial-watch records are captured; the wording directs users to current ClinicalTrials.gov checks and avoids implying no relevant trials exist.
@@ -66,6 +67,16 @@ Refreshed on 2026-06-05 after adding seed duplicate-ID integrity checks. Verify 
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `2bda36e`:
+- `npm run test -- src/app/api/live-source-readonly-boundary.test.ts`
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
+- `git diff --cached --check`
 
 Latest code validation for `a383046`:
 - `npm run test -- src/lib/seed-integrity.test.ts`
