@@ -1,4 +1,5 @@
 export const MAX_LIVE_SOURCE_TERM_LENGTH = 240;
+export const MAX_LIVE_SOURCE_RESULT_LIMIT = 20;
 
 interface LiveSourceSearchRequestOptions {
   defaultLimit: number;
@@ -43,7 +44,7 @@ export function parseLiveSourceSearchRequest(
   return {
     ok: true,
     term,
-    limit: Number(url.searchParams.get(options.limitParam) ?? options.defaultLimit)
+    limit: normaliseSourceLimit(url.searchParams.get(options.limitParam), options.defaultLimit)
   };
 }
 
@@ -53,4 +54,12 @@ export function publicLiveSourceError(sourceName: string) {
 
 function normaliseSourceTerm(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function normaliseSourceLimit(value: string | null, defaultLimit: number) {
+  const parsedLimit = value && value.trim() ? Number(value) : defaultLimit;
+  const fallbackLimit = Number.isFinite(defaultLimit) ? defaultLimit : 10;
+  const limit = Number.isFinite(parsedLimit) ? parsedLimit : fallbackLimit;
+
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_LIVE_SOURCE_RESULT_LIMIT);
 }

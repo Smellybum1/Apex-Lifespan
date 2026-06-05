@@ -4,7 +4,10 @@ import { GET as searchPubMedRoute } from "@/app/api/pubmed/search/route";
 import { GET as searchTrialsRoute } from "@/app/api/trials/search/route";
 import { searchClinicalTrials } from "@/lib/integrations/clinical-trials";
 import { searchPubMed } from "@/lib/integrations/pubmed";
-import { MAX_LIVE_SOURCE_TERM_LENGTH } from "@/lib/live-source-request";
+import {
+  MAX_LIVE_SOURCE_RESULT_LIMIT,
+  MAX_LIVE_SOURCE_TERM_LENGTH
+} from "@/lib/live-source-request";
 
 vi.mock("@/lib/integrations/clinical-trials", () => ({
   searchClinicalTrials: vi.fn()
@@ -50,6 +53,24 @@ describe("live source search API routes", () => {
 
     expect(response.status).toBe(200);
     expect(searchClinicalTrialsMock).toHaveBeenCalledWith("omega-3 lipids", 5);
+  });
+
+  it("bounds PubMed limits before calling the integration", async () => {
+    const response = await searchPubMedRoute(
+      new Request("http://localhost/api/pubmed/search?term=creatine&retmax=99.9")
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchPubMedMock).toHaveBeenCalledWith("creatine", MAX_LIVE_SOURCE_RESULT_LIMIT);
+  });
+
+  it("defaults invalid ClinicalTrials.gov limits before calling the integration", async () => {
+    const response = await searchTrialsRoute(
+      new Request("http://localhost/api/trials/search?term=omega-3&pageSize=not-a-number")
+    );
+
+    expect(response.status).toBe(200);
+    expect(searchClinicalTrialsMock).toHaveBeenCalledWith("omega-3", 10);
   });
 
   it("rejects missing PubMed terms before calling the integration", async () => {
