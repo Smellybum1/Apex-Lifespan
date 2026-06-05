@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after Trial Watcher empty-state guardrail. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after filtered-claim empty states. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,7 +11,7 @@ Refreshed on 2026-06-05 after Trial Watcher empty-state guardrail. Verify local 
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `0068b26 Add trial watcher empty state`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `6d94551 Add filtered claim empty states`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Public dashboard seed fallback now preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Public PubMed and ClinicalTrials.gov search routes now return stable public `502` messages for upstream/runtime failures instead of exposing raw integration exception text; request validation errors remain specific.
@@ -19,6 +19,7 @@ Refreshed on 2026-06-05 after Trial Watcher empty-state guardrail. Verify local 
 - Dashboard live-source inputs and previews now reset to the active evidence card's suggested terms when the active claim changes, preventing stale live PubMed/ClinicalTrials.gov preview results from lingering beside a new curated source packet.
 - Safety Center now renders a cautious empty state when no local safety alerts are captured; the wording tells users to check current regulator and clinical sources before treating anything as low risk.
 - Trial Watcher now renders a cautious empty state when no local trial-watch records are captured; the wording directs users to current ClinicalTrials.gov checks and avoids implying no relevant trials exist.
+- Claim Scores and Evidence Cards now render no-match empty states when the current search/category filters hide all local scored claims, with copy that points users back to clearing filters rather than implying no evidence exists.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
 - Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover static, dynamic, and CommonJS `source-candidate*` route imports.
@@ -47,6 +48,14 @@ Refreshed on 2026-06-05 after Trial Watcher empty-state guardrail. Verify local 
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `6d94551`:
+- `npm run dev:stop`
+- `npm run lint`
+- `npm run test`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 
 Latest code validation for `0068b26`:
 - `npm run dev:stop`
