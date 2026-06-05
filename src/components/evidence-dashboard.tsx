@@ -1391,7 +1391,10 @@ function SourceAndStudyPanel({
       try {
         const response = await fetch(
           `/api/pubmed/search?term=${encodeURIComponent(submittedTerm)}&retmax=5`,
-          { signal: controller.signal }
+          {
+            signal: controller.signal,
+            cache: "no-store"
+          }
         );
         const body = (await response.json()) as PubMedSearchResult | { error?: string };
 
@@ -1434,7 +1437,10 @@ function SourceAndStudyPanel({
       try {
         const response = await fetch(
           `/api/trials/search?term=${encodeURIComponent(submittedTerm)}&pageSize=5`,
-          { signal: controller.signal }
+          {
+            signal: controller.signal,
+            cache: "no-store"
+          }
         );
         const body = (await response.json()) as ClinicalTrialSearchResult | { error?: string };
 
