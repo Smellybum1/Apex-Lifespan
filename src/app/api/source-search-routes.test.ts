@@ -149,6 +149,22 @@ describe("live source search API routes", () => {
     expect(searchPubMedMock).not.toHaveBeenCalled();
   });
 
+  it("rejects overlong PubMed raw terms before unsafe-term scrubbing", async () => {
+    const overlongRawTerm = `creatine ${"injection ".repeat(40)}`;
+    const response = await searchPubMedRoute(
+      new Request(
+        `http://localhost/api/pubmed/search?term=${encodeURIComponent(overlongRawTerm)}`
+      )
+    );
+
+    expect(response.status).toBe(400);
+    expectLiveSourceHeaders(response);
+    expect(await response.json()).toEqual({
+      error: `Term query parameter must be ${MAX_LIVE_SOURCE_TERM_LENGTH} characters or fewer.`
+    });
+    expect(searchPubMedMock).not.toHaveBeenCalled();
+  });
+
   it("rejects overlong ClinicalTrials.gov terms before calling the integration", async () => {
     const overlongTerm = "a".repeat(MAX_LIVE_SOURCE_TERM_LENGTH + 1);
     const response = await searchTrialsRoute(

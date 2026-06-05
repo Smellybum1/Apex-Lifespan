@@ -32,7 +32,6 @@ export function parseLiveSourceSearchRequest(
 ): LiveSourceSearchRequest {
   const url = new URL(requestUrl);
   const rawTerm = normaliseSourceTerm(url.searchParams.get("term") ?? "");
-  const term = normaliseLiveSourceSearchTerm(rawTerm);
 
   if (!rawTerm) {
     return {
@@ -42,19 +41,21 @@ export function parseLiveSourceSearchRequest(
     };
   }
 
+  if (rawTerm.length > MAX_LIVE_SOURCE_TERM_LENGTH) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Term query parameter must be ${MAX_LIVE_SOURCE_TERM_LENGTH} characters or fewer.`
+    };
+  }
+
+  const term = normaliseLiveSourceSearchTerm(rawTerm);
+
   if (!term) {
     return {
       ok: false,
       status: 400,
       error: "Term query parameter must include citation-oriented search terms."
-    };
-  }
-
-  if (term.length > MAX_LIVE_SOURCE_TERM_LENGTH) {
-    return {
-      ok: false,
-      status: 400,
-      error: `Term query parameter must be ${MAX_LIVE_SOURCE_TERM_LENGTH} characters or fewer.`
     };
   }
 
