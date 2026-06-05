@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after guarding the public surface from source-candidate workflows. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after scrubbing unsafe live source terms. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,10 +11,11 @@ Refreshed on 2026-06-05 after guarding the public surface from source-candidate 
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `cd1ae92 Guard public surface from source candidates`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `72be953 Scrub unsafe live source terms`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Public dashboard seed fallback now preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Public PubMed and ClinicalTrials.gov search routes now return stable public `502` messages for upstream/runtime failures instead of exposing raw integration exception text; request validation errors remain specific.
+- Public PubMed and ClinicalTrials.gov search requests now scrub route/preparation/sourcing terms such as injection, reconstitution, vials, sterile/bacteriostatic water, self-administration, suppliers, and purchase language before upstream calls; terms made only of those words are rejected as non-citation-oriented.
 - Public live-source route parsing now normalizes `retmax`/`pageSize` before calling integrations: invalid or empty values use the route default, decimals are truncated, and results are clamped to 1-20.
 - Public live-source route responses now send `Cache-Control: no-store` on successful previews, validation errors, and sanitized upstream failures so unreviewed live leads do not get cached as durable evidence.
 - Public live-source route responses now also send `X-Robots-Tag: noindex`, keeping unreviewed preview JSON out of search indexing.
@@ -23,6 +24,7 @@ Refreshed on 2026-06-05 after guarding the public surface from source-candidate 
 - PubMed and ClinicalTrials.gov live-source integrations now defensively parse malformed-but-successful upstream payloads: non-array result lists become empty previews, bad PubMed counts become `0`, malformed IDs are ignored, and malformed trial/nested records are skipped or mapped with safe fallbacks.
 - PubMed and ClinicalTrials.gov live-source integrations now trim upstream string arrays, identifiers, statuses, dates, and labels before mapping public preview links/chips; blank NCT IDs use the ClinicalTrials.gov root URL instead of a malformed study URL.
 - Dashboard PubMed and ClinicalTrials.gov live-preview fetches now also use `cache: "no-store"` in the browser, with a component boundary test guarding both preview calls.
+- Dashboard PubMed and ClinicalTrials.gov live-preview submissions use the same live-source term scrubber before storing request state, so unsafe user-entered prep/sourcing terms are not echoed in preview request state.
 - Dashboard PubMed and ClinicalTrials.gov live-preview `/100` chips now say `Review priority`, and the preview panels state that scores rank review priority rather than evidence quality.
 - Public live-source route tests now cover low `retmax`/`pageSize` values clamping to 1 before PubMed or ClinicalTrials.gov integrations are called.
 - Public route boundary tests now fail if any `src/app/api/**/route.ts` file exports `POST`, `PUT`, `PATCH`, or `DELETE`, keeping public API handlers GET-only/read-only.
@@ -74,6 +76,19 @@ Refreshed on 2026-06-05 after guarding the public surface from source-candidate 
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `72be953`:
+- `npm run ingest:sources -- --db-status` (read-only preflight; PostgreSQL still unavailable at `localhost:5432`)
+- `npm run test -- src/app/api/source-search-routes.test.ts src/components/evidence-dashboard-live-preview-boundary.test.ts`
+- `npm run test -- src/components/evidence-dashboard.test.tsx`
+- `npm run test -- src/app/api/source-search-routes.test.ts src/components/evidence-dashboard-live-preview-boundary.test.ts src/components/evidence-dashboard.test.tsx`
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
+- `git diff --cached --check`
 
 Latest code validation for `cd1ae92`:
 - `npm run ingest:sources -- --db-status` (read-only preflight; PostgreSQL still unavailable at `localhost:5432`)
