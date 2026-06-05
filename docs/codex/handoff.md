@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after source-candidate DB config error handling. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after public dashboard DB fallback hardening. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,8 +11,9 @@ Refreshed on 2026-06-05 after source-candidate DB config error handling. Verify 
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `a1b322c Sanitize source-candidate DB config errors`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `c796a62 Sanitize dashboard DB fallback errors`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
+- Public dashboard seed fallback now preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
 - Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover static, dynamic, and CommonJS `source-candidate*` route imports.
@@ -41,6 +42,14 @@ Refreshed on 2026-06-05 after source-candidate DB config error handling. Verify 
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `c796a62`:
+- `npm run test -- src/lib/data/dashboard.test.ts`
+- `npm run dev:stop`
+- `npm run lint`
+- `npm run test`
+- `npm run typecheck`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 
 Latest code validation for `a1b322c`:
 - `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
