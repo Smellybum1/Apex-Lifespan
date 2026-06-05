@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after empty dashboard claim hardening. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after dashboard empty-state regression coverage. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,7 +11,7 @@ Refreshed on 2026-06-05 after empty dashboard claim hardening. Verify local stat
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `deeebfc Handle empty dashboard claims`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `4bb1dde Add dashboard empty state regression test`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Public dashboard seed fallback now preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Public PubMed and ClinicalTrials.gov search routes now return stable public `502` messages for upstream/runtime failures instead of exposing raw integration exception text; request validation errors remain specific.
@@ -24,6 +24,7 @@ Refreshed on 2026-06-05 after empty dashboard claim hardening. Verify local stat
 - Active evidence-card panels now align with the visible filtered claim set when filters have matches, so ScorePanel and source-packet details do not keep showing a claim hidden by the current filters.
 - ScorePanel and source/review queue areas now render filter-empty placeholders when the current filters match no local scored claims, instead of showing fallback hidden-claim details.
 - Dashboard active-claim selection now handles an empty local claim set without dereferencing a missing fallback claim; list/map/card components receive an empty active id until claims exist.
+- Vitest now discovers `.test.tsx` files and uses OXC automatic JSX transform, with a server-render regression covering cautious dashboard empty states when no local claims are available.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
 - Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover static, dynamic, and CommonJS `source-candidate*` route imports.
@@ -52,6 +53,15 @@ Refreshed on 2026-06-05 after empty dashboard claim hardening. Verify local stat
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `4bb1dde`:
+- `npm run test -- src/components/evidence-dashboard.test.tsx`
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 
 Latest code validation for `deeebfc`:
 - `npm run dev:stop`
