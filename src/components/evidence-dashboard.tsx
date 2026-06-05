@@ -415,6 +415,7 @@ function Header({ data }: { data: EvidenceDashboardData }) {
           <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-slate-700">
             {data.dataSource === "database" ? "Database-backed" : "Seed fallback"}
           </span>
+          <CodexReviewPacketButton data={data} />
         </div>
         {data.fallbackReason ? (
           <p className="mt-3 max-w-4xl rounded-md border border-amberline/25 bg-amber-50 px-3 py-2 text-xs leading-5 text-amberline">
@@ -423,6 +424,81 @@ function Header({ data }: { data: EvidenceDashboardData }) {
         ) : null}
       </div>
     </header>
+  );
+}
+
+function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
+  const [isApproving, setIsApproving] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "error">("idle");
+  const packet = useMemo(() => buildCodexReviewPacket(data), [data]);
+
+  const copyPacket = async () => {
+    try {
+      await navigator.clipboard.writeText(packet);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("error");
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => {
+          setIsApproving((current) => !current);
+          setCopyStatus("idle");
+        }}
+        className="inline-flex h-7 items-center gap-1 rounded-md border border-signal/25 bg-blue-50 px-2 text-xs font-semibold text-signal hover:border-signal"
+      >
+        <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
+        Ask Codex
+      </button>
+      {isApproving ? (
+        <div className="absolute right-0 z-20 mt-2 w-[min(88vw,440px)] rounded-lg border border-line bg-white p-3 text-left shadow-panel">
+          <p className="text-xs font-semibold text-ink">Approve Codex review packet</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Creates a read-only dashboard packet for this Codex thread. Source-candidate decisions
+            and public evidence promotion stay human-owned.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={copyPacket}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-signal/30 bg-blue-50 px-2 text-xs font-semibold text-signal hover:border-signal"
+            >
+              <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
+              Approve and copy
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsApproving(false);
+                setCopyStatus("idle");
+              }}
+              className="inline-flex h-8 items-center rounded-md border border-line bg-mist px-2 text-xs font-semibold text-slate-700 hover:border-signal"
+            >
+              Cancel
+            </button>
+          </div>
+          {copyStatus === "copied" ? (
+            <p className="mt-2 rounded-md border border-spruce/25 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
+              Packet copied for Codex.
+            </p>
+          ) : null}
+          {copyStatus === "error" ? (
+            <p className="mt-2 rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+              Clipboard unavailable. Select and copy the packet below.
+            </p>
+          ) : null}
+          <textarea
+            readOnly
+            value={packet}
+            className="mt-2 h-32 w-full resize-none rounded-md border border-line bg-mist p-2 font-mono text-[11px] leading-4 text-slate-700"
+          />
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -466,6 +542,65 @@ function sourcePacketSummaryDetail(summary: ClaimSourcePacketSummary) {
   }
 
   return `${needsWork} need source work: ${summary.extractionPendingClaims} pending, ${summary.missingSourceClaims} missing, ${summary.unlinkedClaims} unlinked`;
+}
+
+export function buildCodexReviewPacket(data: EvidenceDashboardData) {
+  const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
+  const interventionsById = new Map(
+    data.interventions.map((intervention) => [intervention.id, intervention])
+  );
+  const reviewSummary = summarizeReviewStatus(data.claims);
+  const sourcePacketSummary = summarizeClaimSourcePackets({
+    claims: data.claims,
+    referencesById,
+    studies: data.studies
+  });
+  const sourceWorkClaims = data.claims
+    .map((claim) => ({
+      claim,
+      intervention: interventionsById.get(claim.interventionId),
+      packet: buildClaimSourcePacket({ claim, referencesById, studies: data.studies })
+    }))
+    .filter(({ packet }) => packet.completeness.status !== "complete")
+    .slice(0, 5);
+
+  const sourceWorkLines =
+    sourceWorkClaims.length > 0
+      ? sourceWorkClaims.map(({ claim, intervention, packet }) => {
+          return `- ${claim.id} (${intervention?.name ?? "Unknown intervention"} / ${claim.outcome}): ${packet.completeness.label}; ${packet.completeness.nextStep}`;
+        })
+      : ["- No incomplete local source packets in the current dashboard data."];
+
+  return [
+    "Analyze this Apex Lifespan dashboard state.",
+    "",
+    "Guardrails:",
+    "- Keep source-candidate workflows local, read-only by default, and human-owned.",
+    "- Do not accept/reject candidates, link claims, extract studies, or promote public evidence without explicit human review.",
+    "- Public routes stay read-only; avoid medical advice, dosing, sourcing, reconstitution, injection, cycling, or self-administration guidance.",
+    "- Use Australia/TGA as the default lens and do not infer ARTG/AUST status without product-level evidence.",
+    "",
+    "Dashboard snapshot:",
+    `- Data source: ${data.dataSource}${data.fallbackReason ? ` (${data.fallbackReason})` : ""}`,
+    `- Interventions: ${data.interventions.length}`,
+    `- Claims: ${data.claims.length}`,
+    `- Human-reviewed claims: ${reviewSummary.humanReviewed}`,
+    `- Unreviewed draft claims: ${reviewSummary.unreviewedDrafts}`,
+    `- References: ${data.references.length}`,
+    `- Extracted studies: ${data.studies.length}`,
+    `- Trial-watch records: ${data.trialWatchItems.length}`,
+    `- Safety alerts: ${data.safetyAlerts.length}`,
+    `- Source packets: ${sourcePacketSummary.completeClaims}/${sourcePacketSummary.totalClaims} complete; ${sourcePacketSummary.extractedReferences}/${sourcePacketSummary.totalReferences} linked refs extracted`,
+    "",
+    "Top local source-packet gaps:",
+    ...sourceWorkLines,
+    "",
+    "Requested Codex output:",
+    "- Find dashboard and evidence-source deficiencies.",
+    "- Suggest source-ingestion or curation improvements as human-reviewed tasks.",
+    "- Write Codex-ready implementation tasks with targeted tests.",
+    "- Do not perform writes or make source-candidate decisions unless I explicitly approve them in this thread."
+  ].join("\n");
 }
 
 function EvidenceMap({

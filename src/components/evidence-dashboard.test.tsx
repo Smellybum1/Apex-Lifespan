@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { EvidenceDashboard } from "@/components/evidence-dashboard";
+import { buildCodexReviewPacket, EvidenceDashboard } from "@/components/evidence-dashboard";
 import {
   australiaRegulatoryStatuses,
   claims,
@@ -87,5 +87,27 @@ describe("EvidenceDashboard", () => {
 
     expect(html).toContain("Seed fallback");
     expect(html).toContain("Database query failed, using seed data.");
+  });
+
+  it("renders a Codex packet approval entry point without running operator actions", () => {
+    const html = renderToStaticMarkup(<EvidenceDashboard data={seedDashboardData()} />);
+
+    expect(html).toContain("Ask Codex");
+    expect(html).not.toContain("Approve and copy");
+  });
+
+  it("builds a read-only Codex review packet with source-candidate guardrails", () => {
+    const data = seedDashboardData();
+    const packet = buildCodexReviewPacket(data);
+
+    expect(packet).toContain("Analyze this Apex Lifespan dashboard state.");
+    expect(packet).toContain("Keep source-candidate workflows local, read-only by default");
+    expect(packet).toContain("Do not accept/reject candidates");
+    expect(packet).toContain("Public routes stay read-only");
+    expect(packet).toContain("Use Australia/TGA as the default lens");
+    expect(packet).toContain(`- Interventions: ${data.interventions.length}`);
+    expect(packet).toContain(`- Claims: ${data.claims.length}`);
+    expect(packet).toContain("- Source packets: 7/7 complete");
+    expect(packet).toContain("Do not perform writes or make source-candidate decisions");
   });
 });
