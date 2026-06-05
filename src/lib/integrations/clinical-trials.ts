@@ -108,7 +108,9 @@ export async function searchClinicalTrials(
     studies?: ClinicalTrialsApiStudy[];
   };
 
-  const studies = (data.studies ?? []).map((study) => mapClinicalTrialStudy(study, term));
+  const studies = (data.studies ?? [])
+    .slice(0, safePageSize)
+    .map((study) => mapClinicalTrialStudy(study, term));
 
   return {
     query: term,

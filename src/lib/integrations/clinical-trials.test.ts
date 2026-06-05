@@ -134,7 +134,34 @@ describe("searchClinicalTrials", () => {
     const url = new URL(String(fetchSpy.mock.calls[0]?.[0]));
     expect(url.searchParams.get("pageSize")).toBe("20");
   });
+
+  it("caps returned studies when ClinicalTrials.gov over-returns despite the requested pageSize", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        studies: [
+          clinicalTrialFixture("NCT001", "Creatine first trial"),
+          clinicalTrialFixture("NCT002", "Creatine second trial"),
+          clinicalTrialFixture("NCT003", "Creatine extra trial")
+        ]
+      })
+    );
+
+    const result = await searchClinicalTrials("creatine", 2);
+
+    expect(result.studies.map((study) => study.nctId)).toEqual(["NCT001", "NCT002"]);
+  });
 });
+
+function clinicalTrialFixture(nctId: string, briefTitle: string) {
+  return {
+    protocolSection: {
+      identificationModule: {
+        nctId,
+        briefTitle
+      }
+    }
+  };
+}
 
 function jsonResponse(body: unknown) {
   return {

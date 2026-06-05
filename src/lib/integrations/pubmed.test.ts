@@ -192,6 +192,41 @@ describe("searchPubMed", () => {
     const url = new URL(String(fetchSpy.mock.calls[0]?.[0]));
     expect(url.searchParams.get("retmax")).toBe("20");
   });
+
+  it("caps returned ids when PubMed over-returns despite the requested retmax", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse({
+          esearchresult: {
+            count: "3",
+            idlist: ["111", "222", "333"]
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          result: {
+            uids: ["111", "222"],
+            "111": {
+              title: "Creatine trial",
+              authors: []
+            },
+            "222": {
+              title: "Creatine review",
+              authors: []
+            }
+          }
+        })
+      );
+
+    const result = await searchPubMed("creatine", 2);
+
+    expect(result.ids).toEqual(["111", "222"]);
+    expect(result.articles.map((article) => article.pmid)).toEqual(["111", "222"]);
+    const summaryUrl = new URL(String(fetchSpy.mock.calls[1]?.[0]));
+    expect(summaryUrl.searchParams.get("id")).toBe("111,222");
+  });
 });
 
 function jsonResponse(body: unknown) {

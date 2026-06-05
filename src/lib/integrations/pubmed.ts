@@ -53,7 +53,7 @@ export async function searchPubMed(term: string, retmax = 10): Promise<PubMedSea
     };
   };
 
-  const ids = data.esearchresult?.idlist ?? [];
+  const ids = (data.esearchresult?.idlist ?? []).slice(0, safeRetmax);
   const summaryById = await fetchPubMedSummaries(ids, term);
 
   return {
