@@ -20,6 +20,11 @@ vi.mock("@/lib/integrations/pubmed", () => ({
 const searchClinicalTrialsMock = vi.mocked(searchClinicalTrials);
 const searchPubMedMock = vi.mocked(searchPubMed);
 
+function expectLiveSourceHeaders(response: Response) {
+  expect(response.headers.get("Cache-Control")).toBe("no-store");
+  expect(response.headers.get("X-Robots-Tag")).toBe("noindex");
+}
+
 describe("live source search API routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -43,7 +48,7 @@ describe("live source search API routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expectLiveSourceHeaders(response);
     expect(searchPubMedMock).toHaveBeenCalledWith("creatine monohydrate", 5);
   });
 
@@ -53,7 +58,7 @@ describe("live source search API routes", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expectLiveSourceHeaders(response);
     expect(searchClinicalTrialsMock).toHaveBeenCalledWith("omega-3 lipids", 5);
   });
 
@@ -97,7 +102,7 @@ describe("live source search API routes", () => {
     const response = await searchPubMedRoute(new Request("http://localhost/api/pubmed/search"));
 
     expect(response.status).toBe(400);
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expectLiveSourceHeaders(response);
     expect(await response.json()).toEqual({ error: "Missing term query parameter." });
     expect(searchPubMedMock).not.toHaveBeenCalled();
   });
@@ -125,7 +130,7 @@ describe("live source search API routes", () => {
     );
 
     expect(response.status).toBe(502);
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expectLiveSourceHeaders(response);
     expect(await response.json()).toEqual({
       error: "PubMed search is temporarily unavailable."
     });
@@ -141,7 +146,7 @@ describe("live source search API routes", () => {
     );
 
     expect(response.status).toBe(502);
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expectLiveSourceHeaders(response);
     expect(await response.json()).toEqual({
       error: "ClinicalTrials.gov search is temporarily unavailable."
     });

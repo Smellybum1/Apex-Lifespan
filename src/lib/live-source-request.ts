@@ -1,7 +1,8 @@
 export const MAX_LIVE_SOURCE_TERM_LENGTH = 240;
 export const MAX_LIVE_SOURCE_RESULT_LIMIT = 20;
 export const LIVE_SOURCE_RESPONSE_HEADERS = {
-  "Cache-Control": "no-store"
+  "Cache-Control": "no-store",
+  "X-Robots-Tag": "noindex"
 } satisfies HeadersInit;
 
 interface LiveSourceSearchRequestOptions {
