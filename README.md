@@ -40,6 +40,12 @@ Use the built-in help for the current flag list:
 npm run ingest:sources -- --help
 ```
 
+Before reviewing or queueing candidates, check local PostgreSQL connectivity:
+
+```bash
+npm run ingest:sources -- --db-status
+```
+
 For queueing, review, curation, and safety rules, see `docs/codex/source-candidate-workflow.md`. For the full command catalog, see `docs/codex/reference/source-candidate-command-reference.md`.
 
 ## Australia Regulatory Lens
