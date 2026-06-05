@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after bounding raw live source search terms. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after stripping hidden live source term controls. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,13 +11,13 @@ Refreshed on 2026-06-05 after bounding raw live source search terms. Verify loca
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `6cdd9ae Bound raw live source search terms`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `baeeeeb Strip hidden live source term controls`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Public dashboard seed fallback preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Public live PubMed and ClinicalTrials.gov previews are unreviewed leads, not curated evidence. Route responses use `Cache-Control: no-store` and `X-Robots-Tag: noindex`; browser fetches also use `cache: "no-store"`.
 - Public live-source routes sanitize upstream errors, normalize/bound result limits, defensively parse malformed upstream payloads, trim upstream strings, and cap returned items to normalized requested limits.
-- Public PubMed and ClinicalTrials.gov search requests bound raw normalized query length before unsafe-term scrubbing, then scrub route/preparation/sourcing terms such as injection, reconstitution, vials, sterile/bacteriostatic water, self-administration, suppliers, and purchase language before upstream calls; terms made only of those words are rejected as non-citation-oriented.
+- Public PubMed and ClinicalTrials.gov search requests strip hidden control/bidi characters, bound raw normalized query length before unsafe-term scrubbing, then scrub route/preparation/sourcing terms such as injection, reconstitution, vials, sterile/bacteriostatic water, self-administration, suppliers, and purchase language before upstream calls; terms made only of those words are rejected as non-citation-oriented.
 - Dashboard live-preview submissions use the same live-source term scrubber before storing request state, and live-preview `/100` chips say `Review priority` with copy that scores rank review priority rather than evidence quality.
 - Dashboard live-source inputs and previews reset to the active evidence card's suggested terms when the active claim changes, preventing stale live preview results from lingering beside a new curated source packet.
 - Public source-query suggestions filter unsafe claim-derived self-use/preparation tokens such as injection, dosing, cycling, sourcing, reconstitution, and vials while preserving ordinary clinical context such as water retention.
@@ -53,7 +53,7 @@ Refreshed on 2026-06-05 after bounding raw live source search terms. Verify loca
 
 ## Latest Local Validation
 
-Latest code validation for `6cdd9ae`:
+Latest code validation for `baeeeeb`:
 - Startup/workflow docs and current state re-read.
 - `npm run ingest:sources -- --db-status` (read-only preflight; PostgreSQL still unavailable at `localhost:5432`)
 - `npm run test -- src/app/api/source-search-routes.test.ts`
@@ -65,7 +65,18 @@ Latest code validation for `6cdd9ae`:
 - `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 - `git diff --cached --check`
 
-Previous code validation for `72be953`:
+Previous code validation for `6cdd9ae`:
+- `npm run ingest:sources -- --db-status` (read-only preflight; PostgreSQL still unavailable at `localhost:5432`)
+- `npm run test -- src/app/api/source-search-routes.test.ts`
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
+- `git diff --cached --check`
+
+Earlier code validation for `72be953`:
 - `npm run ingest:sources -- --db-status` (read-only preflight; PostgreSQL still unavailable at `localhost:5432`)
 - `npm run test -- src/app/api/source-search-routes.test.ts src/components/evidence-dashboard-live-preview-boundary.test.ts`
 - `npm run test -- src/components/evidence-dashboard.test.tsx`
