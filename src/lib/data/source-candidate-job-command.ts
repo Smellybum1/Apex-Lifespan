@@ -17,6 +17,7 @@ import {
   type SourceCandidateIngestionJobRunResult,
   type SourceCandidateIngestionJobSummary
 } from "@/lib/data/source-candidate-jobs";
+import { prisma } from "@/lib/db/prisma";
 import {
   extractAcceptedSourceCandidateStudy,
   getSourceCandidateCurationDraft,
@@ -104,6 +105,7 @@ export interface SourceCandidateJobCommandOptions
   claimId?: string;
   claimLinkNote?: string;
   claimLinkRelevance?: number;
+  dbStatus?: boolean;
   extractCandidateStudyDedupeKey?: string;
   help: boolean;
   interventionId?: string;
@@ -148,6 +150,7 @@ export interface SourceCandidateJobCommandIo {
 }
 
 export interface SourceCandidateJobCommandRunners {
+  checkDatabase?: () => Promise<SourceCandidateDatabaseStatus>;
   getCurationDraft?: (
     dedupeKey: string
   ) => Promise<SourceCandidateCurationDraft | null>;
@@ -221,6 +224,11 @@ export interface SourceCandidateJobCommandRunners {
   summarizeJobs?: () => Promise<SourceCandidateIngestionJobSummary>;
 }
 
+interface SourceCandidateDatabaseStatus {
+  target: string;
+  latencyMs: number;
+}
+
 interface SourceCandidateReviewPacket {
   candidate: SourceCandidate;
   referenceMatches: SourceCandidateAcceptedReferenceMatches;
@@ -285,6 +293,8 @@ export async function runSourceCandidateJobCommand(
 ) {
   const stdout = io.stdout ?? console.log;
   const stderr = io.stderr ?? console.error;
+  const checkDatabase =
+    runners.checkDatabase ?? checkSourceCandidateDatabaseStatus;
   const extractCandidateStudy =
     runners.extractCandidateStudy ?? extractAcceptedSourceCandidateStudy;
   const getCurationDraft =
@@ -333,6 +343,11 @@ export async function runSourceCandidateJobCommand(
   }
 
   try {
+    if (options.dbStatus) {
+      stdout(formatSourceCandidateDatabaseStatus(await checkDatabase()));
+      return 0;
+    }
+
     if (options.candidateCurationHandoff) {
       const statuses = await listCurationHandoff({
         claimId: options.candidateClaimId,
@@ -755,6 +770,44 @@ function unreachableDatabaseTarget(message: string) {
   return null;
 }
 
+async function checkSourceCandidateDatabaseStatus(): Promise<SourceCandidateDatabaseStatus> {
+  const startedAt = Date.now();
+
+  await prisma.$queryRaw`SELECT 1`;
+
+  return {
+    target: configuredDatabaseTarget(process.env.DATABASE_URL),
+    latencyMs: Date.now() - startedAt
+  };
+}
+
+function configuredDatabaseTarget(databaseUrl: string | undefined) {
+  if (!databaseUrl) {
+    return "configured DATABASE_URL";
+  }
+
+  try {
+    const url = new URL(databaseUrl);
+    const host = url.port ? `${url.hostname}:${url.port}` : url.hostname;
+    const database = url.pathname.replace(/^\//, "");
+
+    return database ? `${host}/${database}` : host;
+  } catch {
+    return "configured DATABASE_URL";
+  }
+}
+
+function formatSourceCandidateDatabaseStatus(status: SourceCandidateDatabaseStatus) {
+  return [
+    "Source-candidate database status",
+    "reachable=true",
+    `target=${quote(status.target)}`,
+    `latencyMs=${Math.max(0, Math.round(status.latencyMs))}`,
+    "safeReadOnly=true",
+    'summary="--summary"'
+  ].join("\n");
+}
+
 export function parseSourceCandidateJobCommandArgs(
   args: readonly string[]
 ): SourceCandidateJobCommandOptions {
@@ -812,6 +865,11 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--summary") {
       options.summary = true;
+      continue;
+    }
+
+    if (arg === "--db-status") {
+      options.dbStatus = true;
       continue;
     }
 
@@ -2558,6 +2616,31 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (
+    options.dbStatus &&
+    (options.summary ||
+      Boolean(options.jobId) ||
+      Boolean(options.runNextJobs) ||
+      options.candidateCurationHandoff ||
+      Boolean(options.candidateCurationDraftDedupeKey) ||
+      Boolean(options.candidateCurationStatusDedupeKey) ||
+      Boolean(options.candidateDetailDedupeKey) ||
+      Boolean(options.candidateReferenceMatchesDedupeKey) ||
+      Boolean(options.candidateReviewPacketDedupeKey) ||
+      Boolean(options.candidateSiblingsDedupeKey) ||
+      options.candidateReviewFlags ||
+      options.candidateReviewOverview ||
+      options.candidates ||
+      options.jobs ||
+      Boolean(options.reviewDecision) ||
+      Boolean(options.linkCandidateClaimDedupeKey) ||
+      Boolean(options.extractCandidateStudyDedupeKey) ||
+      hasQueueOption(options) ||
+      runOptionProvided)
+  ) {
+    throw new Error("--db-status cannot be combined with other options.");
+  }
+
   if (args.length === 0) {
     options.summary = true;
   }
@@ -2573,6 +2656,7 @@ export function commandUsage() {
     "  --job-id <id>                     Run one specific ingestion job.",
     "  --run-next                        Run queued PubMed/ClinicalTrials.gov jobs.",
     "  --limit <count>                   With --run-next, run up to count queued jobs (default 1, max 25).",
+    "  --db-status                       Check local PostgreSQL connectivity without reading review data.",
     "  --candidate-detail <dedupe-key>   Print one source-candidate detail record with review/curation hints.",
     "  --candidate-curation-draft <dedupe-key> Print read-only claim-link/study draft fields with command hints.",
     "  --candidate-curation-status <dedupe-key> Print curation handoff status, next action, and command hints.",

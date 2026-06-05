@@ -21,6 +21,7 @@ Queue options create a missing job or report the existing job for the same sourc
 ## Read-Only Views
 
 ```bash
+npm run ingest:sources -- --db-status
 npm run ingest:sources -- --summary
 npm run ingest:sources -- --jobs
 npm run ingest:sources -- --jobs --jobs-status queued
@@ -49,6 +50,7 @@ npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-hand
 ```
 
 Read-only output rules:
+- `--db-status` checks local PostgreSQL connectivity and prints the sanitized target plus latency without reading candidate or curation rows.
 - `--summary` groups ingestion job status counts, backlog counts, accepted-candidate curation handoff counts, curation bucket `nextAction`, `nextWrite`/`writeReady`, optional blockers, and status-filtered handoff hints, bounded review flag focus counts with duplicate hints plus `duplicateCaution` when a flagged top PMID/NCT identity repeats, list/packet/reference-match/sibling/curation/flag-wide `flags` and scoped `flagFocus` drill-ins, and read-only next-command hints for overview, review flags, duplicates, queued jobs, and curation handoff.
 - `--jobs` prints recent ingestion jobs plus read-only candidate-list, context-jobs, and status-jobs hints.
 - Queue/run result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.

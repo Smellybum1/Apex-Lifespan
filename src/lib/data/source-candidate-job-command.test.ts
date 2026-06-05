@@ -105,6 +105,9 @@ describe("commandUsage", () => {
     expect(commandUsage()).toContain(
       "--limit <count>                   With --run-next, run up to count queued jobs (default 1, max 25)."
     );
+    expect(commandUsage()).toContain(
+      "--db-status                       Check local PostgreSQL connectivity without reading review data."
+    );
   });
 });
 
@@ -164,6 +167,15 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       help: false,
       limit: 1,
       summary: true
+    });
+  });
+
+  it("parses read-only database status mode", () => {
+    expect(parseSourceCandidateJobCommandArgs(["--db-status"])).toEqual({
+      dbStatus: true,
+      help: false,
+      limit: 1,
+      summary: false
     });
   });
 
@@ -1966,6 +1978,25 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     ).toThrow("--candidate-review-flags cannot be combined with review options.");
   });
 
+  it("does not combine database status mode with other command modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--db-status", "--summary"])
+    ).toThrow("--db-status cannot be combined with other options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--db-status", "--jobs"])
+    ).toThrow("--db-status cannot be combined with other options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--db-status", "--run-next"])
+    ).toThrow("--db-status cannot be combined with other options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--db-status",
+        "--queue-pubmed",
+        "creatine"
+      ])
+    ).toThrow("--db-status cannot be combined with other options.");
+  });
+
   it("does not combine queue mode with other command modes", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs([
@@ -2061,6 +2092,36 @@ describe("runSourceCandidateJobCommand", () => {
 
     expect(stdout).toHaveBeenCalledWith(commandUsage());
     expect(runNextJob).not.toHaveBeenCalled();
+  });
+
+  it("prints read-only database status without reading review data", async () => {
+    const stdout = vi.fn();
+    const summarizeJobs = vi.fn();
+    const checkDatabase = vi.fn().mockResolvedValue({
+      target: "localhost:5432/apex_lifespan",
+      latencyMs: 7.4
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--db-status"],
+        { stdout },
+        { checkDatabase, summarizeJobs }
+      )
+    ).resolves.toBe(0);
+
+    expect(checkDatabase).toHaveBeenCalledTimes(1);
+    expect(summarizeJobs).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        "Source-candidate database status",
+        "reachable=true",
+        'target="localhost:5432/apex_lifespan"',
+        "latencyMs=7",
+        "safeReadOnly=true",
+        'summary="--summary"'
+      ].join("\n")
+    );
   });
 
   it("prints read-only backlog summary without running jobs", async () => {
