@@ -848,32 +848,39 @@ function SafetyPanel({
     <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
       <h2 className="text-base font-semibold text-ink">Safety Center</h2>
       <div className="mt-4 grid gap-3">
-        {safetyAlerts.map((alert) => (
-          <article key={alert.id} className="rounded-lg border border-line bg-white p-3">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-semibold text-ink">
-                  {interventionsById.get(alert.interventionId)?.name}
-                </h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  {alert.source} - {alert.region} - {alert.date}
-                </p>
+        {safetyAlerts.length > 0 ? (
+          safetyAlerts.map((alert) => (
+            <article key={alert.id} className="rounded-lg border border-line bg-white p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-ink">
+                    {interventionsById.get(alert.interventionId)?.name}
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {alert.source} - {alert.region} - {alert.date}
+                  </p>
+                </div>
+                <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", severityTone(alert.severity))}>
+                  {alert.severity}
+                </span>
               </div>
-              <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", severityTone(alert.severity))}>
-                {alert.severity}
-              </span>
-            </div>
-            <p className="mt-3 text-sm leading-6 text-slate-700">{alert.summary}</p>
-            <a
-              href={alert.url}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
-            >
-              Source <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-            </a>
-          </article>
-        ))}
+              <p className="mt-3 text-sm leading-6 text-slate-700">{alert.summary}</p>
+              <a
+                href={alert.url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
+              >
+                Source <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+              </a>
+            </article>
+          ))
+        ) : (
+          <p className="rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
+            No local safety alerts were captured for this dataset. Check current regulator and
+            clinical sources before treating any intervention or product as low risk.
+          </p>
+        )}
       </div>
     </section>
   );
