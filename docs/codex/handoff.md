@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after bounding live-source response items. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after hardening live-source payload parsing. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,7 +11,7 @@ Refreshed on 2026-06-05 after bounding live-source response items. Verify local 
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `4b10f1f Bound live source response items`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `a768327 Harden live source payload parsing`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Public dashboard seed fallback now preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Public PubMed and ClinicalTrials.gov search routes now return stable public `502` messages for upstream/runtime failures instead of exposing raw integration exception text; request validation errors remain specific.
@@ -20,6 +20,7 @@ Refreshed on 2026-06-05 after bounding live-source response items. Verify local 
 - Public live-source route responses now also send `X-Robots-Tag: noindex`, keeping unreviewed preview JSON out of search indexing.
 - PubMed and ClinicalTrials.gov live-source integrations now use `cache: "no-store"` for upstream fetches and do not set `next.revalidate`, keeping unreviewed live leads transient below the route response layer.
 - PubMed and ClinicalTrials.gov live-source integrations now cap mapped response items to the normalized requested limit, so upstream over-returning cannot expand public preview packets.
+- PubMed and ClinicalTrials.gov live-source integrations now defensively parse malformed-but-successful upstream payloads: non-array result lists become empty previews, bad PubMed counts become `0`, malformed IDs are ignored, and malformed trial/nested records are skipped or mapped with safe fallbacks.
 - Dashboard PubMed and ClinicalTrials.gov live-preview fetches now also use `cache: "no-store"` in the browser, with a component boundary test guarding both preview calls.
 - Public live-source route tests now cover low `retmax`/`pageSize` values clamping to 1 before PubMed or ClinicalTrials.gov integrations are called.
 - Public route boundary tests now fail if any `src/app/api/**/route.ts` file exports `POST`, `PUT`, `PATCH`, or `DELETE`, keeping public API handlers GET-only/read-only.
@@ -68,6 +69,17 @@ Refreshed on 2026-06-05 after bounding live-source response items. Verify local 
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `a768327`:
+- `npm run test -- src/lib/integrations/pubmed.test.ts src/lib/integrations/clinical-trials.test.ts`
+- `npm run test -- src/app/api/source-search-routes.test.ts src/lib/integrations/pubmed.test.ts src/lib/integrations/clinical-trials.test.ts`
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
+- `git diff --cached --check`
 
 Latest code validation for `4b10f1f`:
 - `npm run test -- src/lib/integrations/pubmed.test.ts src/lib/integrations/clinical-trials.test.ts`
