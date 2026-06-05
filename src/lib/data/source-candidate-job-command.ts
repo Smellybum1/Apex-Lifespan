@@ -736,12 +736,19 @@ export async function runSourceCandidateJobCommand(
     stdout(commandUsage());
     return 0;
   } catch (error) {
-    stderr(formatSourceCandidateCommandError(error));
+    stderr(
+      formatSourceCandidateCommandError(error, {
+        includePreflightHint: !options.dbStatus
+      })
+    );
     return 1;
   }
 }
 
-function formatSourceCandidateCommandError(error: unknown) {
+function formatSourceCandidateCommandError(
+  error: unknown,
+  options: { includePreflightHint?: boolean } = {}
+) {
   const message = error instanceof Error ? error.message : String(error);
   const databaseTarget = unreachableDatabaseTarget(message);
 
@@ -752,6 +759,9 @@ function formatSourceCandidateCommandError(error: unknown) {
   return [
     `Source-candidate database unavailable: can't reach PostgreSQL at ${databaseTarget}.`,
     "Start the local PostgreSQL service and confirm DATABASE_URL, then retry.",
+    ...(options.includePreflightHint
+      ? ["Preflight: npm run ingest:sources -- --db-status"]
+      : []),
     "Setup: docs/codex/reference/local-operations.md"
   ].join("\n");
 }
@@ -5107,6 +5117,7 @@ function sourceCandidateReviewFlagSummaryGroups(
 function formatSourceCandidateWorkflowSummaryCommandHints() {
   return [
     "Source-candidate read-only next commands",
+    `dbStatus=${quote("--db-status")}`,
     `reviewOverview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`,
     `reviewFlags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
     `duplicates=${quote("--candidates --candidate-duplicates")}`,

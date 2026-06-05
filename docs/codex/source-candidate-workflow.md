@@ -43,7 +43,7 @@ npm run ingest:sources -- --candidate-curation-handoff
 
 No-arg command output matches `--summary` and stays read-only.
 `--db-status` checks local PostgreSQL connectivity without reading review data.
-Summary output prints read-only next-command hints for overview, review flags, duplicate scan, queued jobs, and curation handoff; non-empty curation bucket rows include `nextAction`, `nextWrite`/`writeReady`, optional blockers, and status-filtered handoff hints, and a bounded review flag focus block highlights flagged top review groups with caution text, duplicate hints plus `duplicateCaution` when the top PMID/NCT identity repeats, and list/packet/reference-match/sibling/curation/flag-wide `flags` plus scoped `flagFocus` drill-ins.
+Summary output prints read-only next-command hints for DB status, overview, review flags, duplicate scan, queued jobs, and curation handoff; non-empty curation bucket rows include `nextAction`, `nextWrite`/`writeReady`, optional blockers, and status-filtered handoff hints, and a bounded review flag focus block highlights flagged top review groups with caution text, duplicate hints plus `duplicateCaution` when the top PMID/NCT identity repeats, and list/packet/reference-match/sibling/curation/flag-wide `flags` plus scoped `flagFocus` drill-ins.
 Job rows print read-only candidate-list, context-jobs, and status-jobs hints.
 Queue and explicit `--run-next` result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
 Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on Windows anywhere `<dedupe-key>` is accepted.

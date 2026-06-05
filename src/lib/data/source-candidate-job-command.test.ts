@@ -2124,6 +2124,33 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("prints database setup guidance without preflight recursion when db-status cannot connect", async () => {
+    const stdout = vi.fn();
+    const stderr = vi.fn();
+    const checkDatabase = vi
+      .fn()
+      .mockRejectedValue(
+        new Error("Can't reach database server at `localhost:5432`")
+      );
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--db-status"],
+        { stdout, stderr },
+        { checkDatabase }
+      )
+    ).resolves.toBe(1);
+
+    expect(stdout).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(
+      [
+        "Source-candidate database unavailable: can't reach PostgreSQL at localhost:5432.",
+        "Start the local PostgreSQL service and confirm DATABASE_URL, then retry.",
+        "Setup: docs/codex/reference/local-operations.md"
+      ].join("\n")
+    );
+  });
+
   it("prints read-only backlog summary without running jobs", async () => {
     const stdout = vi.fn();
     const runNextJob = vi.fn();
@@ -2298,6 +2325,7 @@ describe("runSourceCandidateJobCommand", () => {
         `- flag="broad-safety-query" topGroups=1 pendingInTopGroups=10 topGroup="vitamin-d-deficiency vitamin-d ClinicalTrials.gov AU" caution="${BROAD_SAFETY_CAUTION}" topIdentityCandidates=2 duplicates="--candidates --candidate-duplicates --candidate-source clinical-trials --candidate-external-id NCT00715676 --candidates-limit 2" duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}" duplicateIdentityMixedDecision=true duplicateIdentityNextAction="Review duplicate identity rows together before changing any candidate decision." list="--candidates --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidates-limit 10" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" siblings="--candidate-siblings ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" curationStatus="--candidate-curation-status ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("clinicaltrials.gov|au|vitamin-d-safety|nct00715676|vitamin-d|vitamin-d-deficiency")}" flags="--candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10" flagFocus="--candidate-review-flags --candidate-review-flag broad-safety-query --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidate-review-flags-limit 10" overview="--candidate-review-overview --candidate-review-overview-limit 10"`,
         `- flag="low-title-query-overlap" topGroups=1 pendingInTopGroups=1 topGroup="creatine-lifespan creatine ClinicalTrials.gov AU" caution="${LOW_TITLE_OVERLAP_CAUTION}" list="--candidates --candidate-claim-id creatine-lifespan --candidate-intervention-id creatine --candidate-region AU --candidate-source clinical-trials --candidates-limit 1" packet="--candidate-review-packet ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" referenceMatches="--candidate-reference-matches ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" siblings="--candidate-siblings ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" curationStatus="--candidate-curation-status ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" curationDraft="--candidate-curation-draft ${safeCandidateKey("clinicaltrials.gov|au|creatine-lifespan|nct07451496|creatine|creatine-lifespan")}" flags="--candidate-review-flags --candidate-review-flag low-title-query-overlap --candidate-review-flags-limit 10" flagFocus="--candidate-review-flags --candidate-review-flag low-title-query-overlap --candidate-claim-id creatine-lifespan --candidate-intervention-id creatine --candidate-region AU --candidate-source clinical-trials --candidate-review-flags-limit 10" overview="--candidate-review-overview --candidate-review-overview-limit 10"`,
         "Source-candidate read-only next commands",
+        'dbStatus="--db-status"',
         'reviewOverview="--candidate-review-overview --candidate-review-overview-limit 10"',
         'reviewFlags="--candidate-review-flags --candidate-review-flags-limit 10"',
         'duplicates="--candidates --candidate-duplicates"',
@@ -5413,6 +5441,7 @@ describe("runSourceCandidateJobCommand", () => {
         "Source-candidate curation handoff: total=0",
         "Source-candidate review flag focus: totalGroups=0 candidateCount=0 flaggedTopGroups=0",
         "Source-candidate read-only next commands",
+        'dbStatus="--db-status"',
         'reviewOverview="--candidate-review-overview --candidate-review-overview-limit 10"',
         'reviewFlags="--candidate-review-flags --candidate-review-flags-limit 10"',
         'duplicates="--candidates --candidate-duplicates"',
@@ -5558,6 +5587,7 @@ describe("runSourceCandidateJobCommand", () => {
       [
         "Source-candidate database unavailable: can't reach PostgreSQL at localhost:5432.",
         "Start the local PostgreSQL service and confirm DATABASE_URL, then retry.",
+        "Preflight: npm run ingest:sources -- --db-status",
         "Setup: docs/codex/reference/local-operations.md"
       ].join("\n")
     );
