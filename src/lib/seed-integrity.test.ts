@@ -5,6 +5,7 @@ import {
   findSeedIntegrityIssues,
   formatSeedIntegrityIssues
 } from "@/lib/seed-integrity";
+import { australiaRegulatoryStatuses, claims, references, studies } from "@/lib/seed-data";
 
 describe("seed integrity", () => {
   it("reports missing expected IDs", () => {
@@ -63,5 +64,57 @@ describe("seed integrity", () => {
       [Error: Seed integrity check failed.
       Product missing expected IDs: a]
     `);
+  });
+
+  it("keeps seeded claim, study, and AU/TGA reference links resolvable", () => {
+    const referenceIds = references.map((reference) => reference.id);
+
+    expect(
+      findSeedIntegrityIssues([
+        {
+          name: "Claim key references",
+          expectedIds: claims.flatMap((claim) => claim.keyReferenceIds),
+          actualIds: referenceIds
+        },
+        {
+          name: "Study references",
+          expectedIds: studies.map((study) => study.referenceId),
+          actualIds: referenceIds
+        },
+        {
+          name: "AustraliaRegulatoryStatus references",
+          expectedIds: australiaRegulatoryStatuses.flatMap((status) =>
+            status.referenceId ? [status.referenceId] : []
+          ),
+          actualIds: referenceIds
+        }
+      ])
+    ).toEqual([]);
+  });
+
+  it("keeps seeded AU/TGA source URLs aligned with their curated references", () => {
+    const referencesById = new Map(references.map((reference) => [reference.id, reference]));
+    const mismatches = australiaRegulatoryStatuses.flatMap((status) => {
+      if (!status.referenceId) {
+        return [];
+      }
+
+      const reference = referencesById.get(status.referenceId);
+
+      if (!reference || reference.url === status.sourceUrl) {
+        return [];
+      }
+
+      return [
+        {
+          referenceId: status.referenceId,
+          referenceUrl: reference.url,
+          sourceUrl: status.sourceUrl,
+          statusId: status.id
+        }
+      ];
+    });
+
+    expect(mismatches).toEqual([]);
   });
 });
