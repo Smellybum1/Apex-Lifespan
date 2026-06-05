@@ -62,6 +62,33 @@ describe("live source search API routes", () => {
     expect(searchClinicalTrialsMock).toHaveBeenCalledWith("omega-3 lipids", 5);
   });
 
+  it("strips self-use PubMed terms before calling the integration", async () => {
+    const response = await searchPubMedRoute(
+      new Request(
+        "http://localhost/api/pubmed/search?term=BPC-157%20injection%20reconstitution%20vial%20sourcing&retmax=5"
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expectLiveSourceHeaders(response);
+    expect(searchPubMedMock).toHaveBeenCalledWith("BPC-157", 5);
+  });
+
+  it("preserves ordinary ClinicalTrials.gov clinical terms while stripping preparation phrases", async () => {
+    const response = await searchTrialsRoute(
+      new Request(
+        "http://localhost/api/trials/search?term=creatine%20water%20retention%20sterile%20water%20dose%20response&pageSize=5"
+      )
+    );
+
+    expect(response.status).toBe(200);
+    expectLiveSourceHeaders(response);
+    expect(searchClinicalTrialsMock).toHaveBeenCalledWith(
+      "creatine water retention dose response",
+      5
+    );
+  });
+
   it("bounds PubMed limits before calling the integration", async () => {
     const response = await searchPubMedRoute(
       new Request("http://localhost/api/pubmed/search?term=creatine&retmax=99.9")
@@ -104,6 +131,21 @@ describe("live source search API routes", () => {
     expect(response.status).toBe(400);
     expectLiveSourceHeaders(response);
     expect(await response.json()).toEqual({ error: "Missing term query parameter." });
+    expect(searchPubMedMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects PubMed terms that contain only unsafe self-use words", async () => {
+    const response = await searchPubMedRoute(
+      new Request(
+        "http://localhost/api/pubmed/search?term=injection%20reconstitution%20vials%20sourcing"
+      )
+    );
+
+    expect(response.status).toBe(400);
+    expectLiveSourceHeaders(response);
+    expect(await response.json()).toEqual({
+      error: "Term query parameter must include citation-oriented search terms."
+    });
     expect(searchPubMedMock).not.toHaveBeenCalled();
   });
 

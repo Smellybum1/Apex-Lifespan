@@ -27,4 +27,12 @@ describe("EvidenceDashboard live preview boundary", () => {
     expect(DASHBOARD_SOURCE).not.toContain("Triage {article.relevanceScore}/100");
     expect(DASHBOARD_SOURCE).not.toContain("Triage {study.triageScore}/100");
   });
+
+  it("normalises submitted live preview terms before storing request state", () => {
+    expect(DASHBOARD_SOURCE).toContain(
+      'import { normaliseLiveSourceSearchTerm } from "@/lib/live-source-request";'
+    );
+    expect(DASHBOARD_SOURCE.match(/const nextTerm = normaliseLiveSourceSearchTerm\(term\);/g))
+      .toHaveLength(2);
+  });
 });

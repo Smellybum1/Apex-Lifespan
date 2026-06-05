@@ -4,6 +4,10 @@ export const LIVE_SOURCE_RESPONSE_HEADERS = {
   "Cache-Control": "no-store",
   "X-Robots-Tag": "noindex"
 } satisfies HeadersInit;
+const UNSAFE_LIVE_SOURCE_TERM_PATTERN =
+  /\b(?:buy|inject|injectable|injected|injecting|injection|injections|needle|needles|purchase|reconstitute|reconstituted|reconstitution|supplier|suppliers|sourcing|vendor|vendors|vial|vials)\b/gi;
+const UNSAFE_LIVE_SOURCE_PHRASE_PATTERN =
+  /\b(?:bac(?:teriostatic)?|sterile)[-\s]+water\b|\bself[-\s]+(?:administer(?:ed|ing)?|administration|use)\b/gi;
 
 interface LiveSourceSearchRequestOptions {
   defaultLimit: number;
@@ -27,13 +31,22 @@ export function parseLiveSourceSearchRequest(
   options: LiveSourceSearchRequestOptions
 ): LiveSourceSearchRequest {
   const url = new URL(requestUrl);
-  const term = normaliseSourceTerm(url.searchParams.get("term") ?? "");
+  const rawTerm = normaliseSourceTerm(url.searchParams.get("term") ?? "");
+  const term = normaliseLiveSourceSearchTerm(rawTerm);
+
+  if (!rawTerm) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Missing term query parameter."
+    };
+  }
 
   if (!term) {
     return {
       ok: false,
       status: 400,
-      error: "Missing term query parameter."
+      error: "Term query parameter must include citation-oriented search terms."
     };
   }
 
@@ -54,6 +67,14 @@ export function parseLiveSourceSearchRequest(
 
 export function publicLiveSourceError(sourceName: string) {
   return `${sourceName} search is temporarily unavailable.`;
+}
+
+export function normaliseLiveSourceSearchTerm(value: string) {
+  return normaliseSourceTerm(
+    value
+      .replace(UNSAFE_LIVE_SOURCE_PHRASE_PATTERN, " ")
+      .replace(UNSAFE_LIVE_SOURCE_TERM_PATTERN, " ")
+  );
 }
 
 function normaliseSourceTerm(value: string) {

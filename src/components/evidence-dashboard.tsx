@@ -39,6 +39,7 @@ import type {
   PubMedArticleSummary,
   PubMedSearchResult
 } from "@/lib/integrations/pubmed";
+import { normaliseLiveSourceSearchTerm } from "@/lib/live-source-request";
 import {
   australiaRegulatoryKindDescription,
   australiaRegulatoryTone,
@@ -1480,7 +1481,7 @@ function SourceAndStudyPanel({
     ? `/api/trials/search?term=${encodeURIComponent(trialRawTerm)}&pageSize=5`
     : "#trial-term";
   const submitPubMedSearch = (term: string) => {
-    const nextTerm = term.trim();
+    const nextTerm = normaliseLiveSourceSearchTerm(term);
 
     if (!nextTerm) {
       return;
@@ -1493,7 +1494,7 @@ function SourceAndStudyPanel({
     }));
   };
   const submitTrialSearch = (term: string) => {
-    const nextTerm = term.trim();
+    const nextTerm = normaliseLiveSourceSearchTerm(term);
 
     if (!nextTerm) {
       return;
