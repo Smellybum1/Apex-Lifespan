@@ -316,6 +316,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             trialWatchItems={trialWatchItems}
           />
           <SourceAndStudyPanel
+            key={activeClaim.id}
             activeClaim={activeClaim}
             activeIntervention={activeIntervention}
             referencesById={referencesById}
@@ -1266,6 +1267,20 @@ function SourceAndStudyPanel({
   const [trialResult, setTrialResult] = useState<ClinicalTrialSearchResult | null>(null);
   const [trialStatus, setTrialStatus] = useState<LivePreviewStatus>("idle");
   const [trialError, setTrialError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPubMedTerm(activeSourceQueries.pubMedTerm);
+    setSubmittedPubMedSearch(null);
+    setPubMedResult(null);
+    setPubMedStatus("idle");
+    setPubMedError(null);
+
+    setTrialTerm(activeSourceQueries.trialTerm);
+    setSubmittedTrialSearch(null);
+    setTrialResult(null);
+    setTrialStatus("idle");
+    setTrialError(null);
+  }, [activeSourceQueries.pubMedTerm, activeSourceQueries.trialTerm]);
 
   useEffect(() => {
     if (!submittedPubMedSearch) {
