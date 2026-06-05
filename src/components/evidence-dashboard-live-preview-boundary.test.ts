@@ -20,4 +20,11 @@ describe("EvidenceDashboard live preview boundary", () => {
       /fetch\(\s*`\/api\/trials\/search[\s\S]*?`\s*,\s*\{\s*signal: controller\.signal,\s*cache: "no-store"\s*\}/
     );
   });
+
+  it("labels live preview score chips as review priority", () => {
+    expect(DASHBOARD_SOURCE).toContain("Review priority {article.relevanceScore}/100");
+    expect(DASHBOARD_SOURCE).toContain("Review priority {study.triageScore}/100");
+    expect(DASHBOARD_SOURCE).not.toContain("Triage {article.relevanceScore}/100");
+    expect(DASHBOARD_SOURCE).not.toContain("Triage {study.triageScore}/100");
+  });
 });

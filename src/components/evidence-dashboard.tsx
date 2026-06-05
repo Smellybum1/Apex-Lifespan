@@ -1928,7 +1928,8 @@ function PubMedTriagePreview({
           <h3 className="text-sm font-semibold text-ink">PubMed triage</h3>
           <p className="mt-1 text-xs text-slate-500">{resultSummary}</p>
           <p className="mt-1 text-xs text-slate-500">
-            Live PubMed results are unreviewed citation leads, not curated evidence.
+            Live PubMed results are unreviewed citation leads; scores rank review priority, not
+            evidence quality.
           </p>
         </div>
         <span className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
@@ -1991,7 +1992,7 @@ function PubMedTriageArticle({ article }: { article: PubMedArticleSummary }) {
           <p className="mt-1 text-xs text-slate-500">{meta.join(" - ") || "Metadata pending"}</p>
         </div>
         <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
-          Triage {article.relevanceScore}/100
+          Review priority {article.relevanceScore}/100
         </span>
       </div>
 
@@ -2051,7 +2052,8 @@ function ClinicalTrialsPreview({
           <h3 className="text-sm font-semibold text-ink">ClinicalTrials.gov preview</h3>
           <p className="mt-1 text-xs text-slate-500">{resultSummary}</p>
           <p className="mt-1 text-xs text-slate-500">
-            Registry records are research leads, not proof of benefit.
+            Registry records are research leads, not proof of benefit; scores rank review priority,
+            not evidence quality.
           </p>
         </div>
         <span className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
@@ -2105,7 +2107,7 @@ function ClinicalTrialsPreviewCard({ study }: { study: ClinicalTrialSearchItem }
           </p>
         </div>
         <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
-          Triage {study.triageScore}/100
+          Review priority {study.triageScore}/100
         </span>
       </div>
 

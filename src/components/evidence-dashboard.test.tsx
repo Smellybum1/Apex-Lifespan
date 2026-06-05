@@ -60,6 +60,7 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("Active card source packet");
     expect(html).toContain("Extraction complete");
     expect(html).toContain("Suggested searches");
+    expect(html).toContain("scores rank review priority, not evidence quality");
   });
 
   it("keeps source-packet extraction separate from human review status", () => {
