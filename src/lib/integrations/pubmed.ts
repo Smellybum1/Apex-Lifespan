@@ -185,7 +185,10 @@ function readStringArray(value: unknown): string[] {
     return [];
   }
 
-  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+  return value.flatMap((item) => {
+    const text = firstText(item);
+    return text ? [text] : [];
+  });
 }
 
 function readNonNegativeInteger(value: unknown) {

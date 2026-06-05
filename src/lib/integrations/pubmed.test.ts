@@ -147,7 +147,7 @@ describe("searchPubMed", () => {
         jsonResponse({
           esearchresult: {
             count: "not-a-number",
-            idlist: ["123", 456, ""]
+            idlist: [" 123 ", 456, "   "]
           }
         })
       )
@@ -171,6 +171,8 @@ describe("searchPubMed", () => {
     });
     expect(result.articles.map((article) => article.pmid)).toEqual(["123"]);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const summaryUrl = new URL(String(fetchSpy.mock.calls[1]?.[0]));
+    expect(summaryUrl.searchParams.get("id")).toBe("123");
   });
 
   it("treats non-array PubMed id lists as empty public previews", async () => {
@@ -191,6 +193,34 @@ describe("searchPubMed", () => {
       articles: []
     });
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("trims PubMed summary string arrays before public preview mapping", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        esearchresult: {
+          count: "1",
+          idlist: ["123"]
+        }
+      })
+    );
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        result: {
+          uids: ["123"],
+          "123": {
+            title: "Creatine review",
+            pubtype: [" Review ", "   ", "Journal Article"],
+            authors: []
+          }
+        }
+      })
+    );
+
+    const result = await searchPubMed("creatine");
+
+    expect(result.articles[0]?.publicationTypes).toEqual(["Review", "Journal Article"]);
   });
 
   it("does not cache live search or summary fetches", async () => {

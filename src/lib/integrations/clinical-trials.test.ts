@@ -106,6 +106,87 @@ describe("searchClinicalTrials", () => {
     });
   });
 
+  it("trims ClinicalTrials.gov identifiers and labels before public preview mapping", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        studies: [
+          {
+            protocolSection: {
+              identificationModule: {
+                nctId: " NCTTRIM ",
+                briefTitle: " Trimmed creatine trial "
+              },
+              statusModule: {
+                overallStatus: " COMPLETED ",
+                startDateStruct: { date: " 2025-01 " },
+                primaryCompletionDateStruct: { date: " 2025-02 " },
+                lastUpdatePostDateStruct: { date: " 2025-03-01 " },
+                resultsFirstPostDateStruct: { date: " 2025-04-01 " }
+              },
+              designModule: {
+                studyType: " INTERVENTIONAL ",
+                phases: [" PHASE2 ", "   "],
+                enrollmentInfo: { count: "120", type: " ACTUAL " }
+              },
+              conditionsModule: {
+                conditions: [" Creatine response ", "   "]
+              },
+              armsInterventionsModule: {
+                interventions: [{ type: " DRUG ", name: " Creatine monohydrate " }]
+              },
+              outcomesModule: {
+                primaryOutcomes: [{ measure: " Strength change " }]
+              }
+            }
+          }
+        ]
+      })
+    );
+
+    const result = await searchClinicalTrials("creatine");
+
+    expect(result.studies[0]).toMatchObject({
+      nctId: "NCTTRIM",
+      title: "Trimmed creatine trial",
+      status: "Completed",
+      phase: "Phase 2",
+      studyType: "Interventional",
+      enrollment: "120 actual",
+      conditions: ["Creatine response"],
+      interventions: ["DRUG: Creatine monohydrate"],
+      primaryOutcomes: ["Strength change"],
+      lastUpdateDate: "2025-03-01",
+      startDate: "2025-01",
+      completionDate: "2025-02",
+      resultsFirstPostDate: "2025-04-01",
+      url: "https://clinicaltrials.gov/study/NCTTRIM"
+    });
+  });
+
+  it("uses the ClinicalTrials.gov root URL when NCT IDs are blank", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        studies: [
+          {
+            protocolSection: {
+              identificationModule: {
+                nctId: "   ",
+                briefTitle: "Creatine trial without usable NCT ID"
+              }
+            }
+          }
+        ]
+      })
+    );
+
+    const result = await searchClinicalTrials("creatine");
+
+    expect(result.studies[0]).toMatchObject({
+      nctId: "Unknown NCT",
+      url: "https://clinicaltrials.gov/"
+    });
+  });
+
   it("treats non-array ClinicalTrials.gov study lists as empty public previews", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       jsonResponse({
