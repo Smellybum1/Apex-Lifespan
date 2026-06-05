@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after live source route error sanitization. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after live source route limit normalization. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,10 +11,11 @@ Refreshed on 2026-06-05 after live source route error sanitization. Verify local
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `c8b3971 Sanitize live source route errors`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `c006445 Normalize live source route limits`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Public dashboard seed fallback now preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Public PubMed and ClinicalTrials.gov search routes now return stable public `502` messages for upstream/runtime failures instead of exposing raw integration exception text; request validation errors remain specific.
+- Public live-source route parsing now normalizes `retmax`/`pageSize` before calling integrations: invalid or empty values use the route default, decimals are truncated, and results are clamped to 1-20.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Source-candidate ingestion/review remains local operator-only under `npm run ingest:sources`.
 - Public routes stay read-only and must not import source-candidate modules/persistence or promote source candidates; boundary tests cover static, dynamic, and CommonJS `source-candidate*` route imports.
@@ -43,6 +44,15 @@ Refreshed on 2026-06-05 after live source route error sanitization. Verify local
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `c006445`:
+- `npm run test -- src/app/api/source-search-routes.test.ts`
+- `npm run test -- src/app/api/live-source-readonly-boundary.test.ts`
+- `npm run dev:stop`
+- `npm run lint`
+- `npm run test`
+- `npm run typecheck`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 
 Latest code validation for `c8b3971`:
 - `npm run test -- src/app/api/source-search-routes.test.ts`
