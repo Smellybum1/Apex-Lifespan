@@ -61,4 +61,18 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("Extraction complete");
     expect(html).toContain("Suggested searches");
   });
+
+  it("renders sanitized seed fallback reasons in the public header", () => {
+    const html = renderToStaticMarkup(
+      <EvidenceDashboard
+        data={{
+          ...seedDashboardData(),
+          fallbackReason: "Database query failed, using seed data."
+        }}
+      />
+    );
+
+    expect(html).toContain("Seed fallback");
+    expect(html).toContain("Database query failed, using seed data.");
+  });
 });
