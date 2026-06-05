@@ -48,6 +48,50 @@ const claimContextStopwords = new Set([
   "with",
   "without"
 ]);
+const claimContextBlockedTokens = new Set([
+  "administer",
+  "administered",
+  "administering",
+  "administration",
+  "bac",
+  "bacteriostatic",
+  "buy",
+  "compound",
+  "compounded",
+  "compounding",
+  "cycle",
+  "cycles",
+  "cycling",
+  "dosage",
+  "dose",
+  "dosed",
+  "doses",
+  "dosing",
+  "inject",
+  "injectable",
+  "injected",
+  "injecting",
+  "injection",
+  "injections",
+  "lyophilised",
+  "lyophilized",
+  "needle",
+  "needles",
+  "purchase",
+  "reconstitute",
+  "reconstituted",
+  "reconstitution",
+  "self",
+  "source",
+  "sourced",
+  "sources",
+  "sourcing",
+  "sterile",
+  "vial",
+  "vials"
+]);
+const claimContextBlockedPhrasePattern =
+  /\b(?:bac(?:teriostatic)?|sterile)[-\s]+water\b|\bself[-\s]+(?:administer(?:ed|ing)?|administration|use)\b/gi;
 
 export function buildSourceSearchQueries({
   claim,
@@ -75,12 +119,18 @@ function claimContextSearchTerm(value: string) {
   const seen = new Set<string>();
 
   return value
+    .replace(claimContextBlockedPhrasePattern, " ")
     .replace(/['"]/g, "")
     .replace(/[^a-zA-Z0-9/+-]+/g, " ")
     .split(" ")
     .map((token) => token.trim().toLowerCase())
     .filter((token) => {
-      if (token.length < 3 || claimContextStopwords.has(token) || seen.has(token)) {
+      if (
+        token.length < 3 ||
+        claimContextStopwords.has(token) ||
+        claimContextBlockedTokens.has(token) ||
+        seen.has(token)
+      ) {
         return false;
       }
 
