@@ -1,5 +1,5 @@
 import { searchPubMed } from "@/lib/integrations/pubmed";
-import { parseLiveSourceSearchRequest } from "@/lib/live-source-request";
+import { parseLiveSourceSearchRequest, publicLiveSourceError } from "@/lib/live-source-request";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +16,10 @@ export async function GET(request: Request) {
   try {
     const result = await searchPubMed(searchRequest.term, searchRequest.limit);
     return Response.json(result);
-  } catch (error) {
+  } catch {
     return Response.json(
       {
-        error: error instanceof Error ? error.message : "PubMed search failed."
+        error: publicLiveSourceError("PubMed")
       },
       { status: 502 }
     );

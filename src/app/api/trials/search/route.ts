@@ -1,5 +1,5 @@
 import { searchClinicalTrials } from "@/lib/integrations/clinical-trials";
-import { parseLiveSourceSearchRequest } from "@/lib/live-source-request";
+import { parseLiveSourceSearchRequest, publicLiveSourceError } from "@/lib/live-source-request";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +16,10 @@ export async function GET(request: Request) {
   try {
     const result = await searchClinicalTrials(searchRequest.term, searchRequest.limit);
     return Response.json(result);
-  } catch (error) {
+  } catch {
     return Response.json(
       {
-        error: error instanceof Error ? error.message : "ClinicalTrials.gov search failed."
+        error: publicLiveSourceError("ClinicalTrials.gov")
       },
       { status: 502 }
     );

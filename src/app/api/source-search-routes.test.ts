@@ -72,4 +72,34 @@ describe("live source search API routes", () => {
     });
     expect(searchClinicalTrialsMock).not.toHaveBeenCalled();
   });
+
+  it("does not expose raw PubMed integration errors", async () => {
+    searchPubMedMock.mockRejectedValue(
+      new Error("fetch failed for https://eutils.ncbi.nlm.nih.gov/?api_key=secret")
+    );
+
+    const response = await searchPubMedRoute(
+      new Request("http://localhost/api/pubmed/search?term=creatine")
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: "PubMed search is temporarily unavailable."
+    });
+  });
+
+  it("does not expose raw ClinicalTrials.gov integration errors", async () => {
+    searchClinicalTrialsMock.mockRejectedValue(
+      new Error("upstream request failed for https://clinicaltrials.gov/api/v2/studies?token=secret")
+    );
+
+    const response = await searchTrialsRoute(
+      new Request("http://localhost/api/trials/search?term=omega-3")
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: "ClinicalTrials.gov search is temporarily unavailable."
+    });
+  });
 });

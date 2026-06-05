@@ -47,6 +47,10 @@ export function parseLiveSourceSearchRequest(
   };
 }
 
+export function publicLiveSourceError(sourceName: string) {
+  return `${sourceName} search is temporarily unavailable.`;
+}
+
 function normaliseSourceTerm(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
