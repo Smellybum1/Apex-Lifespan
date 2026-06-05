@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 after filtering unsafe source query context. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-05 after clarifying live preview score labels. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,7 +11,7 @@ Refreshed on 2026-06-05 after filtering unsafe source query context. Verify loca
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `8714697 Filter unsafe source query context`.
+- Branch: `codex/queue-claim-sources`; current code commit before this handoff refresh is `840c9e9 Clarify live preview score labels`.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Public dashboard seed fallback now preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
 - Public PubMed and ClinicalTrials.gov search routes now return stable public `502` messages for upstream/runtime failures instead of exposing raw integration exception text; request validation errors remain specific.
@@ -23,6 +23,7 @@ Refreshed on 2026-06-05 after filtering unsafe source query context. Verify loca
 - PubMed and ClinicalTrials.gov live-source integrations now defensively parse malformed-but-successful upstream payloads: non-array result lists become empty previews, bad PubMed counts become `0`, malformed IDs are ignored, and malformed trial/nested records are skipped or mapped with safe fallbacks.
 - PubMed and ClinicalTrials.gov live-source integrations now trim upstream string arrays, identifiers, statuses, dates, and labels before mapping public preview links/chips; blank NCT IDs use the ClinicalTrials.gov root URL instead of a malformed study URL.
 - Dashboard PubMed and ClinicalTrials.gov live-preview fetches now also use `cache: "no-store"` in the browser, with a component boundary test guarding both preview calls.
+- Dashboard PubMed and ClinicalTrials.gov live-preview `/100` chips now say `Review priority`, and the preview panels state that scores rank review priority rather than evidence quality.
 - Public live-source route tests now cover low `retmax`/`pageSize` values clamping to 1 before PubMed or ClinicalTrials.gov integrations are called.
 - Public route boundary tests now fail if any `src/app/api/**/route.ts` file exports `POST`, `PUT`, `PATCH`, or `DELETE`, keeping public API handlers GET-only/read-only.
 - Public route boundary tests now also fail on generic Prisma create/update/upsert/delete calls and raw execute calls from route handlers, while allowing read-only Prisma calls.
@@ -72,6 +73,17 @@ Refreshed on 2026-06-05 after filtering unsafe source query context. Verify loca
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
 
 ## Latest Local Validation
+
+Latest code validation for `840c9e9`:
+- `npm run ingest:sources -- --db-status` (read-only preflight; PostgreSQL still unavailable at `localhost:5432`)
+- `npm run test -- src/components/evidence-dashboard.test.tsx src/components/evidence-dashboard-live-preview-boundary.test.ts`
+- `npm run test`
+- `npm run lint`
+- `npm run dev:stop`
+- `npm run typecheck`
+- `npm run build`
+- `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
+- `git diff --cached --check`
 
 Latest code validation for `8714697`:
 - `npm run ingest:sources -- --db-status` (read-only preflight; PostgreSQL still unavailable at `localhost:5432`)
