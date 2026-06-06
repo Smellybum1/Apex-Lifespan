@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-05 during closeout after adding the local Codex review sidecar. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-06 during local-only closeout after GitHub push limits blocked further pushes. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup Scope
 
@@ -11,7 +11,8 @@ Refreshed on 2026-06-05 during closeout after adding the local Codex review side
 
 ## Current Checkpoint
 
-- Branch: `codex/queue-claim-sources`; latest commit before this closeout refresh is `45d265b Refresh Codex sidecar handoff`; latest code commit is `4f195a8 Add local Codex review sidecar`.
+- Branch: `codex/queue-claim-sources`; latest pre-refresh commit is `95190e4 Trim closeout handoff state`; latest code commit is `4f195a8 Add local Codex review sidecar`.
+- GitHub push limit is active as of 2026-06-06. Do not push to GitHub; make local commits only until the user lifts this constraint.
 - App shape: public read-only Next.js evidence dashboard with Prisma/PostgreSQL and seed fallback.
 - Default lens: Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
 - Public dashboard seed fallback preflights missing, invalid, and unreachable `DATABASE_URL` states and uses sanitized public fallback reasons for Prisma query failures; strict `APEX_DATA_SOURCE=database` still fails instead of silently falling back.
@@ -52,7 +53,7 @@ Refreshed on 2026-06-05 during closeout after adding the local Codex review side
 - Treat `vitamin-d-deficiency` results as broad-query leads; review title, population, outcomes, source identity, siblings, and reference matches carefully before any accept/reject decision.
 - Notable current groups: `creatine-lifespan` has one ClinicalTrials.gov lead (`NCT07451496`); `omega-3-triglycerides` has ClinicalTrials.gov leads; `omega-3-cv-events` has PubMed and ClinicalTrials.gov leads.
 - All current seeded claim-scoped source jobs have been queued and run. `psyllium` is seeded as an intervention but has no seeded claim.
-- Current environment note: read-only `npm run ingest:sources -- --db-status` still cannot reach PostgreSQL at `localhost:5432`; source-candidate DB review cannot continue until local PostgreSQL is started.
+- Current environment note: Docker Compose PostgreSQL is running and healthy at `localhost:5432`; read-only `npm run ingest:sources -- --db-status` reports `reachable=true`.
 
 ## Latest Local Validation
 
@@ -73,6 +74,12 @@ Closeout docs validation:
 - Startup/workflow docs and tracked workflow config reviewed for obvious bloat or stale state.
 - `git diff --check` (only LF-to-CRLF warnings for modified files before commit)
 - `git diff --cached --check`
+
+Latest local-only handoff validation for 2026-06-06:
+- Startup docs and repo-local workflow skill re-read.
+- `docker compose ps`
+- `npm run ingest:sources -- --db-status`
+- `npm run ingest:sources -- --summary`
 
 Older per-surface validation details live in git history and tests; do not replay old check matrices unless touching those surfaces.
 
