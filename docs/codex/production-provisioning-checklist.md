@@ -25,6 +25,20 @@ Use this checklist when moving from the seed-backed public demo to managed datab
 6. Do not add local Codex sidecar variables to Vercel.
 7. Keep `APEX_OPERATOR_WRITES_ENABLED=false` and `APEX_SCHEDULED_INGESTION_WRITES_ENABLED=false` until the relevant non-production QA and approval evidence exists.
 
+## Staging-First Dashboard Sequence
+
+Use this order after the GitHub-imported Vercel project is confirmed and the seed-backed public demo is working:
+
+1. Keep the public Production environment in seed mode while provisioning.
+2. In the Vercel project dashboard, confirm the connected repository, production branch, and production domain; record `APEX_VERCEL_PROJECT_CONFIGURED_AT` only after those are reviewed.
+3. Create the non-production Neon target first and add only Preview/staging `DATABASE_URL` plus `APEX_DATA_SOURCE=database`.
+4. Add Preview/staging Auth.js and GitHub OAuth variables for operator QA; keep write gates disabled.
+5. Run `npm run production:readiness` and `npm run production:migration-rehearsal` with the non-production managed database environment available locally or through the approved secret manager.
+6. Rerun `npm run production:migration-rehearsal -- --apply` only after confirming `APEX_MIGRATION_REHEARSAL_TARGET=non-production` and the URL is not local or production.
+7. Record `APEX_MIGRATION_REHEARSAL_PASSED_AT` only after reviewing the rehearsal output.
+8. Configure the Production Neon target and Production `DATABASE_URL`, then keep `APEX_DATA_SOURCE=seed` until backups, restore rehearsal, rollback drill, and database-mode public QA are ready.
+9. Switch Production `APEX_DATA_SOURCE=database` only for the reviewed fully-live cutover, then redeploy and run public smoke immediately.
+
 ## Vercel Environment Packet
 
 Use this copy-safe packet while entering Vercel project variables. Store real values only in Vercel or Neon; keep this file value-free.
