@@ -104,6 +104,20 @@ export interface SourceCandidatePromotionReadinessReport {
   worksheet: SourceCandidatePromotionReadinessWorksheet;
 }
 
+export interface SourceCandidatePromotionReadinessSummary {
+  blocked: SourceCandidatePromotionReadinessWorksheetItem[];
+  counts: {
+    blocked: number;
+    ready: number;
+    total: number;
+  };
+  generatedAt: string;
+  humanOwned: true;
+  nextAction: string;
+  readOnly: true;
+  ready: SourceCandidatePromotionReadinessWorksheetItem[];
+}
+
 export interface SourceCandidatePromotionReadinessReportOptions {
   generatedAt?: Date;
   limit?: number;
@@ -206,6 +220,24 @@ export async function buildSourceCandidatePromotionReadinessReport({
   };
 }
 
+export function summarizeSourceCandidatePromotionReadinessReport(
+  report: SourceCandidatePromotionReadinessReport
+): SourceCandidatePromotionReadinessSummary {
+  return {
+    blocked: report.worksheet.blocked,
+    counts: {
+      blocked: report.snapshot.blockedCount,
+      ready: report.snapshot.readyCount,
+      total: report.snapshot.total
+    },
+    generatedAt: report.generatedAt,
+    humanOwned: true,
+    nextAction: report.worksheet.nextHumanAction,
+    readOnly: true,
+    ready: report.worksheet.ready
+  };
+}
+
 function sourceCandidatePromotionReadinessRow(
   status: SourceCandidateCurationStatus
 ): SourceCandidatePromotionReadinessRow {
@@ -260,6 +292,14 @@ function sourceCandidatePromotionReadinessCopySafeCommands(): SourceCandidatePro
       label: "Refresh promotion readiness",
       mode: "read-only",
       purpose: "Summarize accepted source-candidate promotion blockers without writing public evidence."
+    },
+    {
+      command: "npm run promotion:readiness -- --summary",
+      id: "promotion-readiness-summary",
+      label: "Refresh compact promotion summary",
+      mode: "read-only",
+      purpose:
+        "Print accepted-candidate promotion counts, blockers, ready rows, and next action without dumping the full snapshot."
     },
     {
       command: "npm run promotion:dry-run -- --pmid <pmid>",

@@ -1,33 +1,57 @@
-import { buildSourceCandidatePromotionReadinessReport } from "@/lib/operator/curation-promotion";
+import {
+  buildSourceCandidatePromotionReadinessReport,
+  summarizeSourceCandidatePromotionReadinessReport
+} from "@/lib/operator/curation-promotion";
 
 async function main() {
-  const limit = readLimit(process.argv.slice(2));
-  const report = await buildSourceCandidatePromotionReadinessReport({ limit });
+  const args = readPromotionReadinessArgs(process.argv.slice(2));
+  const report = await buildSourceCandidatePromotionReadinessReport({
+    limit: args.limit
+  });
 
-  console.log(JSON.stringify(report, null, 2));
+  console.log(
+    JSON.stringify(
+      args.summary ? summarizeSourceCandidatePromotionReadinessReport(report) : report,
+      null,
+      2
+    )
+  );
 }
 
-function readLimit(args: string[]) {
-  let limit = 5;
+interface PromotionReadinessCliArgs {
+  limit: number;
+  summary: boolean;
+}
+
+function readPromotionReadinessArgs(args: string[]): PromotionReadinessCliArgs {
+  const parsed: PromotionReadinessCliArgs = {
+    limit: 5,
+    summary: false
+  };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
 
+    if (arg === "--summary") {
+      parsed.summary = true;
+      continue;
+    }
+
     if (arg === "--limit") {
-      limit = parseLimit(args[index + 1]);
+      parsed.limit = parseLimit(args[index + 1]);
       index += 1;
       continue;
     }
 
     if (arg.startsWith("--limit=")) {
-      limit = parseLimit(arg.slice("--limit=".length));
+      parsed.limit = parseLimit(arg.slice("--limit=".length));
       continue;
     }
 
     throw new Error(`Unknown promotion readiness argument: ${arg}`);
   }
 
-  return limit;
+  return parsed;
 }
 
 function parseLimit(value: string | undefined) {

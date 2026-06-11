@@ -7,7 +7,8 @@ import {
 import {
   assessSourceCandidatePublicPromotion,
   buildSourceCandidatePromotionReadinessReport,
-  getSourceCandidatePromotionReadinessSnapshot
+  getSourceCandidatePromotionReadinessSnapshot,
+  summarizeSourceCandidatePromotionReadinessReport
 } from "@/lib/operator/curation-promotion";
 import type { Reference, SourceCandidate } from "@/lib/types";
 
@@ -391,6 +392,14 @@ describe("source candidate promotion readiness snapshot", () => {
               "Summarize accepted source-candidate promotion blockers without writing public evidence."
           },
           {
+            command: "npm run promotion:readiness -- --summary",
+            id: "promotion-readiness-summary",
+            label: "Refresh compact promotion summary",
+            mode: "read-only",
+            purpose:
+              "Print accepted-candidate promotion counts, blockers, ready rows, and next action without dumping the full snapshot."
+          },
+          {
             command: "npm run promotion:dry-run -- --pmid <pmid>",
             id: "promotion-dry-run",
             label: "Dry-run one accepted PMID",
@@ -428,6 +437,43 @@ describe("source candidate promotion readiness snapshot", () => {
       }
     });
     expect(listSourceCandidateCurationHandoffMock).toHaveBeenCalledWith({ limit: 1 });
+  });
+
+  it("summarizes promotion readiness without full snapshot or command payloads", async () => {
+    listSourceCandidateCurationHandoffMock.mockResolvedValue([
+      {
+        acceptedReference,
+        acceptedReferenceId: acceptedReference.id,
+        candidate,
+        claimLinks: [],
+        nextAction: "Link accepted reference to candidate claim.",
+        publicSourcePacketReady: false,
+        status: "Claim link missing",
+        studies: []
+      }
+    ]);
+
+    const report = await buildSourceCandidatePromotionReadinessReport({
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      limit: 1
+    });
+    const summary = summarizeSourceCandidatePromotionReadinessReport(report);
+
+    expect(summary).toEqual({
+      blocked: report.worksheet.blocked,
+      counts: {
+        blocked: 1,
+        ready: 0,
+        total: 1
+      },
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      humanOwned: true,
+      nextAction: "Accepted reference must be linked to the candidate claim.",
+      readOnly: true,
+      ready: []
+    });
+    expect(JSON.stringify(summary)).not.toContain("copySafeCommands");
+    expect(JSON.stringify(summary)).not.toContain('"snapshot"');
   });
 });
 
