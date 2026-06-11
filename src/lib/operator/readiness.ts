@@ -42,6 +42,19 @@ export interface OperatorReadinessReport {
   worksheet: OperatorReadinessWorksheet;
 }
 
+export interface OperatorReadinessSummary {
+  blockedChecks: OperatorReadinessWorksheetItem[];
+  counts: Record<OperatorReadinessStatus, number>;
+  generatedAt: string;
+  humanOwned: true;
+  nextAction: string;
+  overall: "ready" | "blocked";
+  readOnly: true;
+  readyEvidence: OperatorReadinessWorksheetItem[];
+  readyLocalArtifacts: OperatorReadinessWorksheetItem[];
+  warningChecks: OperatorReadinessWorksheetItem[];
+}
+
 export type OperatorReadinessCheckReviewStatus =
   | OperatorReadinessStatus
   | "not-found";
@@ -257,6 +270,23 @@ export function summarizeOperatorReadinessCheck(
         (command) => command.id === "operator-readiness"
       ) ?? null,
     status: check.status
+  };
+}
+
+export function summarizeOperatorReadinessReport(
+  report: OperatorReadinessReport
+): OperatorReadinessSummary {
+  return {
+    blockedChecks: report.worksheet.blocked,
+    counts: report.counts,
+    generatedAt: report.generatedAt,
+    humanOwned: true,
+    nextAction: report.worksheet.nextOperatorAction,
+    overall: report.overall,
+    readOnly: true,
+    readyEvidence: report.worksheet.readyEvidence,
+    readyLocalArtifacts: report.worksheet.readyLocalArtifacts,
+    warningChecks: report.worksheet.warnings
   };
 }
 
@@ -489,6 +519,14 @@ function operatorReadinessCopySafeCommands(): OperatorReadinessCommand[] {
       label: "Refresh operator readiness",
       mode: "read-only",
       purpose: "Recheck operator auth, local artifacts, and manual QA evidence without printing secret values."
+    },
+    {
+      command: "npm run operator:readiness -- --summary",
+      id: "operator-readiness-summary",
+      label: "Refresh compact operator summary",
+      mode: "read-only",
+      purpose:
+        "Print compact operator readiness counts, blockers, warnings, and the next action without dumping all checks."
     },
     {
       command: "npm run operator:readiness -- --check <check-id>",

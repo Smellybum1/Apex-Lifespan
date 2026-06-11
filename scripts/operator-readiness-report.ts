@@ -1,16 +1,17 @@
 import {
   buildOperatorReadinessReport,
-  summarizeOperatorReadinessCheck
+  summarizeOperatorReadinessCheck,
+  summarizeOperatorReadinessReport
 } from "@/lib/operator/readiness";
 
 function main() {
-  const checkId = readCheckId(process.argv.slice(2));
+  const args = readOperatorReadinessArgs(process.argv.slice(2));
   const context = {
     env: process.env
   };
 
-  if (checkId) {
-    const packet = summarizeOperatorReadinessCheck(context, checkId);
+  if (args.checkId) {
+    const packet = summarizeOperatorReadinessCheck(context, args.checkId);
 
     if (!packet.found) {
       process.exitCode = 1;
@@ -24,12 +25,28 @@ function main() {
     env: process.env
   });
 
-  console.log(JSON.stringify(report, null, 2));
+  console.log(
+    JSON.stringify(args.summary ? summarizeOperatorReadinessReport(report) : report, null, 2)
+  );
 }
 
-function readCheckId(args: string[]) {
+interface OperatorReadinessCliArgs {
+  checkId?: string;
+  summary: boolean;
+}
+
+function readOperatorReadinessArgs(args: string[]): OperatorReadinessCliArgs {
+  const parsed: OperatorReadinessCliArgs = {
+    summary: false
+  };
+
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+
+    if (arg === "--summary") {
+      parsed.summary = true;
+      continue;
+    }
 
     if (arg === "--check") {
       const value = args[index + 1]?.trim();
@@ -38,7 +55,9 @@ function readCheckId(args: string[]) {
         throw new Error("--check requires an operator readiness check id.");
       }
 
-      return value;
+      parsed.checkId = value;
+      index += 1;
+      continue;
     }
 
     if (arg.startsWith("--check=")) {
@@ -48,13 +67,18 @@ function readCheckId(args: string[]) {
         throw new Error("--check requires an operator readiness check id.");
       }
 
-      return value;
+      parsed.checkId = value;
+      continue;
     }
 
     throw new Error(`Unknown operator readiness argument: ${arg}`);
   }
 
-  return undefined;
+  if (parsed.summary && parsed.checkId) {
+    throw new Error("--summary cannot be combined with --check.");
+  }
+
+  return parsed;
 }
 
 try {

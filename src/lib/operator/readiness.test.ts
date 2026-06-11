@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildOperatorReadinessReport,
-  summarizeOperatorReadinessCheck
+  summarizeOperatorReadinessCheck,
+  summarizeOperatorReadinessReport
 } from "@/lib/operator/readiness";
 
 const localFilesReady = {
@@ -57,6 +58,14 @@ describe("operator readiness report", () => {
         mode: "read-only",
         purpose:
           "Recheck operator auth, local artifacts, and manual QA evidence without printing secret values."
+      },
+      {
+        command: "npm run operator:readiness -- --summary",
+        id: "operator-readiness-summary",
+        label: "Refresh compact operator summary",
+        mode: "read-only",
+        purpose:
+          "Print compact operator readiness counts, blockers, warnings, and the next action without dumping all checks."
       },
       {
         command: "npm run operator:readiness -- --check <check-id>",
@@ -201,6 +210,35 @@ describe("operator readiness report", () => {
       },
       status: "blocked"
     });
+  });
+
+  it("summarizes operator readiness without full check or command payloads", () => {
+    const report = buildOperatorReadinessReport({
+      env: {},
+      files: localFilesReady,
+      generatedAt: new Date("2026-06-11T00:00:00.000Z")
+    });
+    const summary = summarizeOperatorReadinessReport(report);
+
+    expect(summary).toEqual({
+      blockedChecks: report.worksheet.blocked,
+      counts: {
+        blocked: 5,
+        ready: 12,
+        warning: 0
+      },
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      humanOwned: true,
+      nextAction:
+        "Configure database-backed GitHub OAuth in a non-production environment, or record APEX_VERCEL_DATABASE_CONFIGURED_AT and APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT after dashboard review, before manual operator-flow QA.",
+      overall: "blocked",
+      readOnly: true,
+      readyEvidence: report.worksheet.readyEvidence,
+      readyLocalArtifacts: report.worksheet.readyLocalArtifacts,
+      warningChecks: []
+    });
+    expect(JSON.stringify(summary)).not.toContain("copySafeCommands");
+    expect(JSON.stringify(summary)).not.toContain('"checks"');
   });
 
   it("reports missing focused operator readiness checks without writes", () => {
