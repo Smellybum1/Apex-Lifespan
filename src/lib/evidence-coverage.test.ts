@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeEvidenceCoverage } from "@/lib/evidence-coverage";
+import {
+  summarizeEvidenceCoverage,
+  summarizeEvidenceCoverageClaimReview
+} from "@/lib/evidence-coverage";
 import {
   claims,
   interventions,
@@ -297,6 +300,14 @@ describe("evidence coverage summary", () => {
               "Recheck source-packet coverage, review backlog, sampled review batch, and intervention gaps without changing review status."
           },
           {
+            command: "npm run coverage:review -- --claim <claim-id>",
+            id: "coverage-claim-review",
+            label: "Focus one claim review packet",
+            mode: "read-only",
+            purpose:
+              "Print one claim's source-packet boundary, checklist, references, and structured study IDs for human review."
+          },
+          {
             command: "npm run regulatory:review",
             id: "regulatory-review",
             label: "Refresh AU/TGA review",
@@ -414,7 +425,7 @@ describe("evidence coverage summary", () => {
       "--apply"
     ];
 
-    expect(summary.worksheet.copySafeCommands).toHaveLength(6);
+    expect(summary.worksheet.copySafeCommands).toHaveLength(7);
     expect(summary.worksheet.copySafeCommands.every((item) => item.mode === "read-only")).toBe(
       true
     );
@@ -423,5 +434,81 @@ describe("evidence coverage summary", () => {
         blockedWriteTokens.some((token) => item.command.includes(token))
       )
     ).toBe(false);
+  });
+
+  it("builds a focused read-only human review packet for one claim", () => {
+    expect(
+      summarizeEvidenceCoverageClaimReview(seedDashboardData, "creatine-strength")
+    ).toEqual({
+      claimId: "creatine-strength",
+      found: true,
+      humanOwned: true,
+      nextAction:
+        "Human review this claim packet; do not update review status until cited references and structured extraction are checked.",
+      readOnly: true,
+      reviewBacklogItem: {
+        claimId: "creatine-strength",
+        confidenceLevel: "High",
+        extractedReferences: 1,
+        finalLabel: "Core Evidence-Based",
+        interventionId: "creatine",
+        nextAction: "Human review the complete source packet before upgrading review status.",
+        outcome: "Muscle/strength",
+        packetStatus: "complete",
+        priority: 160,
+        priorityReasons: [
+          "Unreviewed draft claim",
+          "Complete source packet ready for human review",
+          "High confidence draft"
+        ],
+        referenceCount: 1,
+        reviewStatus: "Unreviewed AI draft"
+      },
+      reviewContext: {
+        claimBoundary: {
+          confidenceLevel: "High",
+          doseFormStudied: "Creatine monohydrate; dose details must be checked per study.",
+          durationStudied: "Varies by trial and review.",
+          finalLabel: "Core Evidence-Based",
+          populationStudied: "Adults in exercise and sport nutrition literature.",
+          reviewStatus: "Unreviewed AI draft"
+        },
+        claimId: "creatine-strength",
+        interventionId: "creatine",
+        nextAction:
+          "Review the linked references and structured study extraction before changing this claim's review status.",
+        outcome: "Muscle/strength",
+        priority: 160,
+        priorityReasons: [
+          "Unreviewed draft claim",
+          "Complete source packet ready for human review",
+          "High confidence draft"
+        ],
+        referenceIds: ["issn-creatine-2017"],
+        reviewChecklist: [
+          "Confirm the cited references and structured studies match this claim's population, outcome, comparator, and uncertainty label.",
+          "Check population, dose/form, duration, safety notes, and applicability notes before changing review status.",
+          "Verify source packet status is still complete and every linked reference has traceable extraction.",
+          "Leave review status unchanged until a human reviewer records the evidence decision."
+        ],
+        sourcePacketStatus: "complete",
+        studyIds: ["study-creatine-issn"]
+      },
+      status: "ready-for-human-review"
+    });
+  });
+
+  it("reports missing focused claim review packets without writes", () => {
+    expect(summarizeEvidenceCoverageClaimReview(seedDashboardData, "missing-claim")).toEqual({
+      claimId: "missing-claim",
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No claim found for missing-claim; rerun npm run coverage:review to inspect valid claim IDs.",
+      readOnly: true,
+      reviewBacklogItem: null,
+      reviewContext: null,
+      status: "not-found"
+    });
   });
 });
