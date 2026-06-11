@@ -32,6 +32,7 @@ Use this checklist in a non-production environment before exposing browser write
 Perform these only in non-production with throwaway or reviewed source-candidate data.
 
 - Start with `APEX_OPERATOR_WRITES_ENABLED=false` and verify all operator writes fail closed.
+- Verify browser accept/reject, claim-link, and extraction controls stay hidden until write QA evidence, manual flow QA evidence, browser-control approval evidence, and `APEX_OPERATOR_WRITES_ENABLED=true` are all present.
 - Temporarily set `APEX_OPERATOR_WRITES_ENABLED=true` only for the QA session.
 - Verify candidate accept/reject requires an active operator with the right role and appends an audit event.
 - Verify claim-link writes require admin+ permission and append an audit event.

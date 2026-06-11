@@ -1,14 +1,27 @@
 import { OperatorStatus } from "@prisma/client";
 import { LogIn, LogOut, ShieldCheck, ShieldX } from "lucide-react";
+import { revalidatePath } from "next/cache";
 
 import { signIn, signOut } from "@/auth";
 import { canOperatorAccess, operatorWritesEnabled } from "@/lib/operator/authorization";
+import {
+  extractCandidateStudyFromBrowserForm,
+  linkCandidateClaimFromBrowserForm,
+  reviewCandidateFromBrowserForm
+} from "@/lib/operator/browser-write-actions";
+import {
+  getOperatorBrowserWriteControlState,
+  type OperatorBrowserWriteControlState
+} from "@/lib/operator/browser-write-controls";
 import { operatorAuthConfigured } from "@/lib/operator/config";
 import {
   getSourceCandidatePromotionReadinessSnapshot,
   type SourceCandidatePromotionReadinessSnapshot
 } from "@/lib/operator/curation-promotion";
-import { getOperatorReviewQueueSnapshot } from "@/lib/operator/review-queue";
+import {
+  getOperatorReviewQueueSnapshot,
+  type OperatorReviewQueueRow
+} from "@/lib/operator/review-queue";
 import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +36,45 @@ async function signOutOperator() {
   "use server";
 
   await signOut({ redirectTo: "/operator" });
+}
+
+async function reviewCandidateFromForm(formData: FormData) {
+  "use server";
+
+  const principal = await getCurrentOperatorPrincipal();
+
+  if (!principal) {
+    throw new Error("Operator authentication required.");
+  }
+
+  await reviewCandidateFromBrowserForm(principal, formData);
+  revalidatePath("/operator");
+}
+
+async function linkCandidateClaimFromForm(formData: FormData) {
+  "use server";
+
+  const principal = await getCurrentOperatorPrincipal();
+
+  if (!principal) {
+    throw new Error("Operator authentication required.");
+  }
+
+  await linkCandidateClaimFromBrowserForm(principal, formData);
+  revalidatePath("/operator");
+}
+
+async function extractCandidateStudyFromForm(formData: FormData) {
+  "use server";
+
+  const principal = await getCurrentOperatorPrincipal();
+
+  if (!principal) {
+    throw new Error("Operator authentication required.");
+  }
+
+  await extractCandidateStudyFromBrowserForm(principal, formData);
+  revalidatePath("/operator");
 }
 
 export default async function OperatorPage() {
@@ -66,6 +118,17 @@ export default async function OperatorPage() {
   const canReviewCandidates = canOperatorAccess(principal.role, "candidate:review");
   const canReviewPromotion = canOperatorAccess(principal.role, "evidence:promote");
   const canManageOperators = canOperatorAccess(principal.role, "operator:manage");
+  const candidateReviewControl = getOperatorBrowserWriteControlState(
+    principal,
+    "candidate-review"
+  );
+  const claimLinkControl = getOperatorBrowserWriteControlState(principal, "claim-link");
+  const studyExtractionControl = getOperatorBrowserWriteControlState(
+    principal,
+    "study-extraction"
+  );
+  const browserControlsEnabled =
+    candidateReviewControl.enabled || claimLinkControl.enabled || studyExtractionControl.enabled;
   const reviewQueue = canReviewCandidates
     ? await getOperatorReviewQueueSnapshot(5)
     : { pendingCount: 0, rows: [] };
@@ -97,6 +160,10 @@ export default async function OperatorPage() {
             label="Promotion review"
             value={canReviewPromotion ? "Ready" : "No"}
           />
+          <OperatorStatusTile
+            label="Browser controls"
+            value={browserControlsEnabled ? "Enabled" : "Locked"}
+          />
           {canManageOperators ? (
             <OperatorStatusTile label="Operator admin" value="Ready" />
           ) : null}
@@ -111,7 +178,7 @@ export default async function OperatorPage() {
               </p>
             </div>
             <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
-              Read-only
+              {candidateReviewControl.enabled ? "Write-gated" : "Read-only"}
             </span>
           </div>
           <div className="divide-y divide-slate-100">
@@ -132,6 +199,9 @@ export default async function OperatorPage() {
                   {candidate.curationStatus ? (
                     <p className="mt-3 text-sm text-slate-700">{candidate.curationStatus}</p>
                   ) : null}
+                  {candidateReviewControl.enabled ? (
+                    <CandidateReviewControls candidate={candidate} />
+                  ) : null}
                 </article>
               ))
             ) : (
@@ -143,7 +213,11 @@ export default async function OperatorPage() {
         </section>
 
         {canReviewPromotion ? (
-          <PromotionReadinessPanel snapshot={promotionReadiness} />
+          <PromotionReadinessPanel
+            claimLinkControl={claimLinkControl}
+            snapshot={promotionReadiness}
+            studyExtractionControl={studyExtractionControl}
+          />
         ) : null}
       </section>
     </main>
@@ -216,9 +290,13 @@ function OperatorStatusTile({ label, value }: { label: string; value: string }) 
 }
 
 function PromotionReadinessPanel({
-  snapshot
+  claimLinkControl,
+  snapshot,
+  studyExtractionControl
 }: {
+  claimLinkControl: OperatorBrowserWriteControlState;
   snapshot: SourceCandidatePromotionReadinessSnapshot;
+  studyExtractionControl: OperatorBrowserWriteControlState;
 }) {
   return (
     <section className="rounded-md border border-slate-200 bg-white shadow-sm">
@@ -230,7 +308,7 @@ function PromotionReadinessPanel({
           </p>
         </div>
         <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
-          Read-only
+          {claimLinkControl.enabled || studyExtractionControl.enabled ? "Write-gated" : "Read-only"}
         </span>
       </div>
       <div className="divide-y divide-slate-100">
@@ -264,6 +342,13 @@ function PromotionReadinessPanel({
                   ))}
                 </ul>
               ) : null}
+              {claimLinkControl.enabled || studyExtractionControl.enabled ? (
+                <PromotionCurationControls
+                  claimLinkControl={claimLinkControl}
+                  row={row}
+                  studyExtractionControl={studyExtractionControl}
+                />
+              ) : null}
             </article>
           ))
         ) : (
@@ -273,5 +358,140 @@ function PromotionReadinessPanel({
         )}
       </div>
     </section>
+  );
+}
+
+function CandidateReviewControls({ candidate }: { candidate: OperatorReviewQueueRow }) {
+  return (
+    <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 lg:grid-cols-2">
+      <form action={reviewCandidateFromForm} className="space-y-3">
+        <input name="dedupeKey" type="hidden" value={candidate.dedupeKey} />
+        <label className="block text-sm font-semibold text-slate-700">
+          Reference ID
+          <input
+            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            name="acceptedReferenceId"
+            placeholder="ref-pubmed-..."
+            required
+          />
+        </label>
+        <label className="block text-sm font-semibold text-slate-700">
+          Review note
+          <textarea
+            className="mt-1 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            name="reviewNote"
+            required
+          />
+        </label>
+        <button
+          className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800"
+          name="decision"
+          type="submit"
+          value="Accepted"
+        >
+          Accept
+        </button>
+      </form>
+      <form action={reviewCandidateFromForm} className="space-y-3">
+        <input name="dedupeKey" type="hidden" value={candidate.dedupeKey} />
+        <label className="block text-sm font-semibold text-slate-700">
+          Rejection note
+          <textarea
+            className="mt-1 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            name="reviewNote"
+            required
+          />
+        </label>
+        <button
+          className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-800"
+          name="decision"
+          type="submit"
+          value="Rejected"
+        >
+          Reject
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function PromotionCurationControls({
+  claimLinkControl,
+  row,
+  studyExtractionControl
+}: {
+  claimLinkControl: OperatorBrowserWriteControlState;
+  row: SourceCandidatePromotionReadinessSnapshot["rows"][number];
+  studyExtractionControl: OperatorBrowserWriteControlState;
+}) {
+  return (
+    <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 lg:grid-cols-2">
+      {claimLinkControl.enabled ? (
+        <form action={linkCandidateClaimFromForm} className="space-y-3">
+          <input name="dedupeKey" type="hidden" value={row.candidate.dedupeKey} />
+          <label className="block text-sm font-semibold text-slate-700">
+            Claim-link note
+            <textarea
+              className="mt-1 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              name="note"
+            />
+          </label>
+          <label className="block text-sm font-semibold text-slate-700">
+            Relevance
+            <input
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              defaultValue="5"
+              max="5"
+              min="1"
+              name="relevance"
+              type="number"
+            />
+          </label>
+          <button
+            className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800"
+            type="submit"
+          >
+            Link Claim
+          </button>
+        </form>
+      ) : null}
+
+      {studyExtractionControl.enabled ? (
+        <details className="rounded-md border border-slate-200 p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-800">
+            Extract Study
+          </summary>
+          <form action={extractCandidateStudyFromForm} className="mt-3 space-y-3">
+            <input name="dedupeKey" type="hidden" value={row.candidate.dedupeKey} />
+            <ExtractionInput label="Population" name="population" />
+            <ExtractionInput label="Intervention" name="interventionName" />
+            <ExtractionInput label="Sample size" name="sampleSize" />
+            <ExtractionInput label="Outcomes" name="outcomes" />
+            <ExtractionInput label="Adverse events" name="adverseEvents" />
+            <ExtractionInput label="Funding/conflicts" name="fundingConflicts" />
+            <ExtractionInput label="Risk of bias" name="riskOfBias" />
+            <button
+              className="rounded-md border border-violet-300 bg-violet-50 px-3 py-2 text-sm font-semibold text-violet-800"
+              type="submit"
+            >
+              Save Extraction
+            </button>
+          </form>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
+function ExtractionInput({ label, name }: { label: string; name: string }) {
+  return (
+    <label className="block text-sm font-semibold text-slate-700">
+      {label}
+      <textarea
+        className="mt-1 min-h-16 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+        name={name}
+        required
+      />
+    </label>
   );
 }

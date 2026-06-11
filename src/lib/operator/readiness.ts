@@ -17,6 +17,8 @@ export interface OperatorReadinessCheck {
 export interface OperatorReadinessFiles {
   auditedActionWrappers: boolean;
   authRoute: boolean;
+  browserWriteActions: boolean;
+  browserWriteControls: boolean;
   bootstrapScript: boolean;
   manualQaChecklist: boolean;
   operatorPage: boolean;
@@ -57,6 +59,8 @@ export interface OperatorReadinessWorksheetItem {
 const FILE_PATHS: Record<keyof OperatorReadinessFiles, string> = {
   auditedActionWrappers: "src/lib/operator/source-candidate-actions.ts",
   authRoute: "src/app/api/auth/[...nextauth]/route.ts",
+  browserWriteActions: "src/lib/operator/browser-write-actions.ts",
+  browserWriteControls: "src/lib/operator/browser-write-controls.ts",
   bootstrapScript: "scripts/operator-bootstrap.ts",
   manualQaChecklist: "docs/codex/operator-manual-qa-checklist.md",
   operatorPage: "src/app/operator/page.tsx",
@@ -95,6 +99,18 @@ export function buildOperatorReadinessReport(
       label: "Audited action wrappers",
       pathLabel: FILE_PATHS.auditedActionWrappers,
       present: files.auditedActionWrappers
+    }),
+    localFileCheck({
+      id: "browser-write-control-gate",
+      label: "Browser write control gate",
+      pathLabel: FILE_PATHS.browserWriteControls,
+      present: files.browserWriteControls
+    }),
+    localFileCheck({
+      id: "browser-write-action-handlers",
+      label: "Browser write action handlers",
+      pathLabel: FILE_PATHS.browserWriteActions,
+      present: files.browserWriteActions
     }),
     localFileCheck({
       id: "promotion-readiness",
@@ -164,6 +180,8 @@ export function readOperatorReadinessFiles(cwd = process.cwd()): OperatorReadine
   return {
     auditedActionWrappers: existsSync(path.join(cwd, FILE_PATHS.auditedActionWrappers)),
     authRoute: existsSync(path.join(cwd, FILE_PATHS.authRoute)),
+    browserWriteActions: existsSync(path.join(cwd, FILE_PATHS.browserWriteActions)),
+    browserWriteControls: existsSync(path.join(cwd, FILE_PATHS.browserWriteControls)),
     bootstrapScript: existsSync(path.join(cwd, FILE_PATHS.bootstrapScript)),
     manualQaChecklist: existsSync(path.join(cwd, FILE_PATHS.manualQaChecklist)),
     operatorPage: existsSync(path.join(cwd, FILE_PATHS.operatorPage)),
@@ -322,6 +340,8 @@ function operatorReadinessWorksheet(
     "auth-route",
     "review-queue",
     "audited-action-wrappers",
+    "browser-write-control-gate",
+    "browser-write-action-handlers",
     "promotion-readiness",
     "operator-bootstrap",
     "manual-qa-checklist"

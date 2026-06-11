@@ -18,8 +18,12 @@ describe("operator auth controls", () => {
     expect(OPERATOR_PAGE_SOURCE).toContain('await signOut({ redirectTo: "/operator" });');
   });
 
-  it("does not expose source-candidate write controls in the browser surface", () => {
+  it("keeps source-candidate persistence behind the browser write gate", () => {
     expect(OPERATOR_PAGE_SOURCE).toContain("Promotion readiness");
+    expect(OPERATOR_PAGE_SOURCE).toContain("getOperatorBrowserWriteControlState");
+    expect(OPERATOR_PAGE_SOURCE).toContain("candidateReviewControl.enabled");
+    expect(OPERATOR_PAGE_SOURCE).toContain("claimLinkControl.enabled");
+    expect(OPERATOR_PAGE_SOURCE).toContain("studyExtractionControl.enabled");
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/recordSourceCandidateDecision/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/linkSourceCandidateClaim/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/extractSourceCandidateStudy/);
