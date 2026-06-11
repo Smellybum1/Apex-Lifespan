@@ -122,11 +122,20 @@ export interface ScheduledIngestionDedupeReviewItem {
 
 export interface ScheduledIngestionWorksheet {
   blocked: ScheduledIngestionWorksheetItem[];
+  copySafeCommands: ScheduledIngestionCommand[];
   humanOwned: true;
   nextOperatorAction: string;
   queuedWork: ScheduledIngestionWorksheetItem[];
   ready: ScheduledIngestionWorksheetItem[];
   warnings: ScheduledIngestionWorksheetItem[];
+}
+
+export interface ScheduledIngestionCommand {
+  command: string;
+  id: string;
+  label: string;
+  mode: "read-only" | "dry-run";
+  purpose: string;
 }
 
 export interface ScheduledIngestionWorksheetItem {
@@ -650,6 +659,7 @@ function scheduledIngestionWorksheet({
 
   return {
     blocked,
+    copySafeCommands: scheduledIngestionCopySafeCommands(),
     humanOwned: true,
     nextOperatorAction:
       blocked[0]?.nextAction ??
@@ -660,6 +670,61 @@ function scheduledIngestionWorksheet({
     ready,
     warnings
   };
+}
+
+function scheduledIngestionCopySafeCommands(): ScheduledIngestionCommand[] {
+  return [
+    {
+      command: "npm run ingest:scheduled-dry-run",
+      id: "scheduled-ingestion-dry-run",
+      label: "Refresh scheduled ingestion dry run",
+      mode: "dry-run",
+      purpose:
+        "Recheck queue state, hosted-cron evidence, retry policy, dedupe review, and no-auto-promotion controls without running writes."
+    },
+    {
+      command: "npm run ingest:sources -- --db-status",
+      id: "source-candidate-db-status",
+      label: "Check source-candidate database",
+      mode: "read-only",
+      purpose: "Confirm local source-candidate storage connectivity without reading review data."
+    },
+    {
+      command: "npm run ingest:sources -- --jobs --jobs-status queued",
+      id: "queued-ingestion-jobs",
+      label: "Review queued ingestion jobs",
+      mode: "read-only",
+      purpose: "Inspect queued source-candidate jobs before any scheduled batch is enabled."
+    },
+    {
+      command: "npm run ingest:sources -- --jobs --jobs-status failed",
+      id: "failed-ingestion-jobs",
+      label: "Review failed ingestion jobs",
+      mode: "read-only",
+      purpose: "Inspect failed source-candidate jobs before any manual retry decision."
+    },
+    {
+      command: "npm run ingest:sources -- --candidates --candidate-duplicates",
+      id: "duplicate-source-candidates",
+      label: "Review duplicate source identities",
+      mode: "read-only",
+      purpose: "Inspect duplicate source/external-id groups before unattended scheduled ingestion."
+    },
+    {
+      command: "npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10",
+      id: "candidate-review-overview",
+      label: "Review pending candidate overview",
+      mode: "read-only",
+      purpose: "Inspect the next human review groups without changing candidate decisions."
+    },
+    {
+      command: "npm run launch:readiness",
+      id: "launch-readiness",
+      label: "Refresh aggregate launch readiness",
+      mode: "read-only",
+      purpose: "Recheck fully-live launch gates after scheduled-ingestion evidence changes."
+    }
+  ];
 }
 
 function scheduledIngestionHostedCronReview(

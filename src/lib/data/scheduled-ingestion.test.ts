@@ -122,6 +122,59 @@ describe("scheduled source ingestion dry run", () => {
               "Review docs/codex/scheduled-ingestion-retry-policy.md, then record APEX_INGESTION_RETRY_POLICY_APPROVED_AT."
           }
         ],
+        copySafeCommands: [
+          {
+            command: "npm run ingest:scheduled-dry-run",
+            id: "scheduled-ingestion-dry-run",
+            label: "Refresh scheduled ingestion dry run",
+            mode: "dry-run",
+            purpose:
+              "Recheck queue state, hosted-cron evidence, retry policy, dedupe review, and no-auto-promotion controls without running writes."
+          },
+          {
+            command: "npm run ingest:sources -- --db-status",
+            id: "source-candidate-db-status",
+            label: "Check source-candidate database",
+            mode: "read-only",
+            purpose: "Confirm local source-candidate storage connectivity without reading review data."
+          },
+          {
+            command: "npm run ingest:sources -- --jobs --jobs-status queued",
+            id: "queued-ingestion-jobs",
+            label: "Review queued ingestion jobs",
+            mode: "read-only",
+            purpose: "Inspect queued source-candidate jobs before any scheduled batch is enabled."
+          },
+          {
+            command: "npm run ingest:sources -- --jobs --jobs-status failed",
+            id: "failed-ingestion-jobs",
+            label: "Review failed ingestion jobs",
+            mode: "read-only",
+            purpose: "Inspect failed source-candidate jobs before any manual retry decision."
+          },
+          {
+            command: "npm run ingest:sources -- --candidates --candidate-duplicates",
+            id: "duplicate-source-candidates",
+            label: "Review duplicate source identities",
+            mode: "read-only",
+            purpose: "Inspect duplicate source/external-id groups before unattended scheduled ingestion."
+          },
+          {
+            command:
+              "npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10",
+            id: "candidate-review-overview",
+            label: "Review pending candidate overview",
+            mode: "read-only",
+            purpose: "Inspect the next human review groups without changing candidate decisions."
+          },
+          {
+            command: "npm run launch:readiness",
+            id: "launch-readiness",
+            label: "Refresh aggregate launch readiness",
+            mode: "read-only",
+            purpose: "Recheck fully-live launch gates after scheduled-ingestion evidence changes."
+          }
+        ],
         humanOwned: true,
         nextOperatorAction:
           "Review docs/codex/scheduled-ingestion-retry-policy.md, then record APEX_INGESTION_RETRY_POLICY_APPROVED_AT.",
@@ -189,6 +242,30 @@ describe("scheduled source ingestion dry run", () => {
     expect(listDuplicateIdentityGroupsMock).toHaveBeenCalledWith({
       limit: 5
     });
+  });
+
+  it("emits only dry-run and read-only commands for scheduler handoff", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [],
+      total: 0
+    });
+    listJobsMock.mockResolvedValue([]);
+
+    const plan = await planScheduledSourceIngestionDryRun();
+
+    expect(plan.worksheet.copySafeCommands).toHaveLength(7);
+    expect(plan.worksheet.copySafeCommands.map((item) => item.mode)).toEqual([
+      "dry-run",
+      "read-only",
+      "read-only",
+      "read-only",
+      "read-only",
+      "read-only",
+      "read-only"
+    ]);
+    expect(plan.worksheet.copySafeCommands.some((item) => item.command.includes("--apply"))).toBe(
+      false
+    );
   });
 
   it("does not plan new work while jobs are running", async () => {
