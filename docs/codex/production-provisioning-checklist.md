@@ -24,6 +24,26 @@ Use this checklist when moving from the seed-backed public demo to managed datab
 5. Do not add local Codex sidecar variables to Vercel.
 6. Keep `APEX_OPERATOR_WRITES_ENABLED=false` and `APEX_SCHEDULED_INGESTION_WRITES_ENABLED=false` until the relevant non-production QA and approval evidence exists.
 
+## Vercel Environment Packet
+
+Use this copy-safe packet while entering Vercel project variables. Store real values only in Vercel or Neon; keep this file value-free.
+
+| Key | Preview / staging | Production | Notes |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | Non-production Neon URL | Production Neon URL | Use managed non-local PostgreSQL only; do not paste local Docker URLs. |
+| `APEX_DATA_SOURCE` | `database` | `database` only after rehearsal and smoke checks pass | Fully-live mode should fail closed instead of silently masking database failures with seed fallback. |
+| `AUTH_SECRET` | Non-production Auth.js secret | Production Auth.js secret | Generate separately per environment. |
+| `AUTH_GITHUB_ID` | Non-production GitHub OAuth app/client ID | Production GitHub OAuth app/client ID | Use operator-owned OAuth credentials. |
+| `AUTH_GITHUB_SECRET` | Non-production GitHub OAuth secret | Production GitHub OAuth secret | Do not reuse in local docs or screenshots. |
+| `NCBI_TOOL` | `apex-lifespan` | `apex-lifespan` | Required before unattended PubMed ingestion. |
+| `NCBI_EMAIL` | Operator contact email | Operator contact email | Required before unattended PubMed ingestion. |
+| `APEX_OPERATOR_WRITES_ENABLED` | `false` until QA session | `false` by default | Enable only during controlled, reviewed operator workflows. |
+| `APEX_SCHEDULED_INGESTION_WRITES_ENABLED` | `false` until approval | `false` until approval | Hosted ingestion must stay human-owned with no auto-promotion. |
+
+Do not add these local-only Codex sidecar variables to Vercel: `APEX_CODEX_THREAD_ID`, `APEX_CODEX_REVIEW_TOKEN`, `APEX_CODEX_REVIEW_PORT`, `APEX_CODEX_REVIEW_ORIGINS`, `APEX_CODEX_REVIEW_TIMEOUT_MS`, or `APEX_CODEX_MODEL`.
+
+Do not record evidence variables such as `APEX_MIGRATION_REHEARSAL_PASSED_AT`, `APEX_OPERATOR_NONPROD_WRITE_QA_AT`, or `APEX_FULLY_LIVE_LAUNCH_APPROVED_AT` until the matching checklist item has actually been completed and reviewed.
+
 ## Local Verification
 
 Run these from the local checkout after environment setup is available:
