@@ -60,6 +60,9 @@ const LOCAL_ONLY_ENV_KEYS = [
   "APEX_CODEX_REVIEW_PORT",
   "APEX_CODEX_REVIEW_ORIGINS"
 ];
+const VERCEL_DATABASE_CONFIGURED_KEY = "APEX_VERCEL_DATABASE_CONFIGURED_AT";
+const VERCEL_DATABASE_MODE_CONFIGURED_KEY = "APEX_VERCEL_DATABASE_MODE_CONFIGURED_AT";
+const VERCEL_OPERATOR_AUTH_CONFIGURED_KEY = "APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT";
 const VERCEL_PROJECT_CONFIGURED_KEY = "APEX_VERCEL_PROJECT_CONFIGURED_AT";
 
 export function buildProductionReadinessReport(
@@ -72,8 +75,15 @@ export function buildProductionReadinessReport(
     .sort()
     .at(-1);
   const checks: ProductionReadinessCheck[] = [
-    databaseUrlCheck(databaseUrl, parsedDatabase),
-    dataSourceCheck(readEnv(context.env, "APEX_DATA_SOURCE")),
+    databaseUrlCheck(
+      databaseUrl,
+      parsedDatabase,
+      readEnv(context.env, VERCEL_DATABASE_CONFIGURED_KEY)
+    ),
+    dataSourceCheck(
+      readEnv(context.env, "APEX_DATA_SOURCE"),
+      readEnv(context.env, VERCEL_DATABASE_MODE_CONFIGURED_KEY)
+    ),
     migrationCheck(latestMigration),
     productionProvisioningChecklistCheck(context.productionProvisioningChecklistExists),
     migrationRehearsalCheck(readEnv(context.env, "APEX_MIGRATION_REHEARSAL_PASSED_AT")),
@@ -82,7 +92,7 @@ export function buildProductionReadinessReport(
       readEnv(context.env, VERCEL_PROJECT_CONFIGURED_KEY)
     ),
     vercelCliCheck(context.vercelCliAvailable),
-    operatorAuthCheck(context.env),
+    operatorAuthCheck(context.env, readEnv(context.env, VERCEL_OPERATOR_AUTH_CONFIGURED_KEY)),
     localOnlySecretCheck(context.env),
     trackedEnvFileCheck(context.trackedEnvFiles),
     operatorWriteFlagCheck(readEnv(context.env, "APEX_OPERATOR_WRITES_ENABLED")),
@@ -103,15 +113,28 @@ export function buildProductionReadinessReport(
 
 function databaseUrlCheck(
   rawValue: string | undefined,
-  parsed: ReturnType<typeof parseDatabaseUrl>
+  parsed: ReturnType<typeof parseDatabaseUrl>,
+  vercelDatabaseConfiguredAt: string | undefined
 ): ProductionReadinessCheck {
   if (!rawValue) {
+    if (vercelDatabaseConfiguredAt) {
+      return {
+        evidenceKeys: [VERCEL_DATABASE_CONFIGURED_KEY],
+        id: "database-url",
+        label: "Managed database URL",
+        status: "ready",
+        detail:
+          "Vercel managed database evidence is recorded; DATABASE_URL value remains secret."
+      };
+    }
+
     return {
       id: "database-url",
       label: "Managed database URL",
       status: "blocked",
       detail: "DATABASE_URL is not configured.",
-      nextAction: "Configure a Neon/Vercel managed PostgreSQL DATABASE_URL in the target environment."
+      nextAction:
+        "Configure a Neon/Vercel managed PostgreSQL DATABASE_URL in the target environment, or record APEX_VERCEL_DATABASE_CONFIGURED_AT after dashboard review."
     };
   }
 
@@ -143,7 +166,10 @@ function databaseUrlCheck(
   };
 }
 
-function dataSourceCheck(value: string | undefined): ProductionReadinessCheck {
+function dataSourceCheck(
+  value: string | undefined,
+  vercelDatabaseModeConfiguredAt: string | undefined
+): ProductionReadinessCheck {
   if (value === "database") {
     return {
       id: "apex-data-source",
@@ -153,13 +179,24 @@ function dataSourceCheck(value: string | undefined): ProductionReadinessCheck {
     };
   }
 
+  if (!value && vercelDatabaseModeConfiguredAt) {
+    return {
+      evidenceKeys: [VERCEL_DATABASE_MODE_CONFIGURED_KEY],
+      id: "apex-data-source",
+      label: "Production data mode",
+      status: "ready",
+      detail:
+        "Vercel APEX_DATA_SOURCE=database evidence is recorded; local environment value remains unset."
+    };
+  }
+
   return {
     id: "apex-data-source",
     label: "Production data mode",
     status: "blocked",
     detail: `APEX_DATA_SOURCE is ${value ? JSON.stringify(value) : "not configured"}.`,
     nextAction:
-      "Set APEX_DATA_SOURCE=database for fully-live production after managed PostgreSQL is provisioned."
+      "Set APEX_DATA_SOURCE=database for fully-live production after managed PostgreSQL is provisioned, or record APEX_VERCEL_DATABASE_MODE_CONFIGURED_AT after dashboard review."
   };
 }
 
@@ -280,7 +317,10 @@ function vercelCliCheck(vercelCliAvailable: boolean): ProductionReadinessCheck {
       };
 }
 
-function operatorAuthCheck(env: Record<string, string | undefined>): ProductionReadinessCheck {
+function operatorAuthCheck(
+  env: Record<string, string | undefined>,
+  vercelOperatorAuthConfiguredAt: string | undefined
+): ProductionReadinessCheck {
   const missing = ["AUTH_SECRET", "AUTH_GITHUB_ID", "AUTH_GITHUB_SECRET"].filter(
     (key) => !readEnv(env, key)
   );
@@ -294,13 +334,24 @@ function operatorAuthCheck(env: Record<string, string | undefined>): ProductionR
     };
   }
 
+  if (vercelOperatorAuthConfiguredAt) {
+    return {
+      evidenceKeys: [VERCEL_OPERATOR_AUTH_CONFIGURED_KEY],
+      id: "operator-auth-secrets",
+      label: "Operator auth secrets",
+      status: "ready",
+      detail:
+        "Vercel operator auth evidence is recorded; Auth.js and GitHub OAuth secret values remain secret."
+    };
+  }
+
   return {
     id: "operator-auth-secrets",
     label: "Operator auth secrets",
     status: "blocked",
     detail: `Missing required operator auth variables: ${missing.join(", ")}.`,
     nextAction:
-      "Configure GitHub OAuth and Auth.js secrets only in the managed hosting environment or local non-production QA environment."
+      "Configure GitHub OAuth and Auth.js secrets only in the managed hosting environment or local non-production QA environment, or record APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT after dashboard review."
   };
 }
 

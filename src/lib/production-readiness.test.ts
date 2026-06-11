@@ -182,6 +182,49 @@ describe("production readiness report", () => {
     expect(report.worksheet.warnings.map((item) => item.id)).toEqual(["vercel-cli"]);
   });
 
+  it("accepts dashboard-managed Vercel database and auth evidence without local secret values", () => {
+    const report = buildProductionReadinessReport({
+      env: {
+        APEX_MIGRATION_REHEARSAL_PASSED_AT: "2026-06-11T00:00:00Z",
+        APEX_VERCEL_DATABASE_CONFIGURED_AT: "2026-06-11T02:00:00Z",
+        APEX_VERCEL_DATABASE_MODE_CONFIGURED_AT: "2026-06-11T02:05:00Z",
+        APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT: "2026-06-11T02:10:00Z",
+        APEX_VERCEL_PROJECT_CONFIGURED_AT: "2026-06-11T01:00:00Z",
+        NCBI_EMAIL: "operator@example.com",
+        NCBI_TOOL: "apex-lifespan"
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      migrationDirectories: ["20260602032000_init", "20260611131000_operator_auth_foundation"],
+      productionProvisioningChecklistExists: true,
+      trackedEnvFiles: [],
+      vercelCliAvailable: false,
+      vercelProjectLinked: false
+    });
+
+    expect(report.overall).toBe("ready");
+    expect(report.counts.warning).toBe(1);
+    expect(report.sanitizedDatabaseTarget).toBeUndefined();
+    expect(report.worksheet.ready).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidenceKeys: ["APEX_VERCEL_DATABASE_CONFIGURED_AT"],
+          id: "database-url"
+        }),
+        expect.objectContaining({
+          evidenceKeys: ["APEX_VERCEL_DATABASE_MODE_CONFIGURED_AT"],
+          id: "apex-data-source"
+        }),
+        expect.objectContaining({
+          evidenceKeys: ["APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT"],
+          id: "operator-auth-secrets"
+        })
+      ])
+    );
+    expect(JSON.stringify(report)).not.toContain("dbpass");
+    expect(JSON.stringify(report)).not.toContain("github-oauth-value");
+    expect(JSON.stringify(report)).not.toContain("session-value");
+  });
+
   it("blocks local-only sidecar variables and tracked private env files", () => {
     const report = buildProductionReadinessReport({
       env: {

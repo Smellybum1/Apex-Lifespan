@@ -2,22 +2,19 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import { getEvidenceDashboardData } from "@/lib/data/dashboard";
-import { planScheduledSourceIngestionDryRun } from "@/lib/data/scheduled-ingestion";
-import { summarizeEvidenceCoverage } from "@/lib/evidence-coverage";
 import {
   buildLaunchReadinessReport,
   FULLY_LIVE_LAUNCH_CHECKLIST_PATH,
   POST_LAUNCH_REVIEW_TEMPLATE_PATH
 } from "@/lib/launch-readiness";
 import { buildOperationsReadinessReport } from "@/lib/operations-readiness";
-import { getSourceCandidatePromotionReadinessSnapshot } from "@/lib/operator/curation-promotion";
 import { buildOperatorReadinessReport } from "@/lib/operator/readiness";
 import { buildProductionReadinessReport } from "@/lib/production-readiness";
 
 const PRIVATE_ENV_FILES = [".env", ".env.local", ".env.production", ".env.production.local"];
 
 async function main() {
+  const initialEnv = { ...process.env };
   const [scheduledIngestion, promotion, evidenceCoverage] = await Promise.all([
     readScheduledIngestionEvidence(),
     readPromotionEvidence(),
@@ -25,13 +22,13 @@ async function main() {
   ]);
 
   const report = buildLaunchReadinessReport({
-    env: process.env,
+    env: initialEnv,
     evidenceCoverage,
     files: readLaunchReadinessFiles(),
-    operations: buildOperationsReadinessReport({ env: process.env }),
-    operator: buildOperatorReadinessReport({ env: process.env }),
+    operations: buildOperationsReadinessReport({ env: initialEnv }),
+    operator: buildOperatorReadinessReport({ env: initialEnv }),
     production: buildProductionReadinessReport({
-      env: process.env,
+      env: initialEnv,
       migrationDirectories: readMigrationDirectories(),
       productionProvisioningChecklistExists: existsSync(
         path.join(process.cwd(), "docs", "codex", "production-provisioning-checklist.md")
@@ -58,6 +55,9 @@ function readLaunchReadinessFiles() {
 
 async function readScheduledIngestionEvidence() {
   try {
+    const { planScheduledSourceIngestionDryRun } = await import(
+      "@/lib/data/scheduled-ingestion"
+    );
     const plan = await planScheduledSourceIngestionDryRun();
 
     return {
@@ -78,6 +78,10 @@ async function readScheduledIngestionEvidence() {
 
 async function readPromotionEvidence() {
   try {
+    const { getSourceCandidatePromotionReadinessSnapshot } = await import(
+      "@/lib/operator/curation-promotion"
+    );
+
     return {
       snapshot: await getSourceCandidatePromotionReadinessSnapshot(10)
     };
@@ -90,6 +94,8 @@ async function readPromotionEvidence() {
 
 async function readEvidenceCoverage() {
   try {
+    const { getEvidenceDashboardData } = await import("@/lib/data/dashboard");
+    const { summarizeEvidenceCoverage } = await import("@/lib/evidence-coverage");
     const data = await getEvidenceDashboardData();
 
     return {
