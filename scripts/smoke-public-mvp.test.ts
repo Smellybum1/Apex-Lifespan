@@ -25,6 +25,26 @@ describe("public MVP smoke", () => {
     await expect(runPublicMvpSmoke(baseUrl, quietLogger)).resolves.toBeUndefined();
   });
 
+  it("passes against a seed-backed public demo unless database mode is explicitly required", async () => {
+    const baseUrl = await listenWithPages({
+      homeDataSourceBadge: "Seed fallback",
+      operatorHtml: "Operator access required"
+    });
+
+    await expect(runPublicMvpSmoke(baseUrl, quietLogger)).resolves.toBeUndefined();
+  });
+
+  it("requires the database-backed badge for fully-live smoke", async () => {
+    const baseUrl = await listenWithPages({
+      homeDataSourceBadge: "Seed fallback",
+      operatorHtml: "Operator access required"
+    });
+
+    await expect(
+      runPublicMvpSmoke(baseUrl, quietLogger, { requireDatabase: true })
+    ).rejects.toThrow("Homepage must show Database-backed data source for fully-live smoke.");
+  });
+
   it("fails when anonymous users can see authenticated operator content", async () => {
     const baseUrl = await listenWithPages({
       homeDataSourceBadge: "Seed fallback",

@@ -1,6 +1,6 @@
 # Fully Live Launch Checklist
 
-Last updated: 2026-06-11
+Last updated: 2026-06-12
 
 Use this checklist only for the fully live production launch. The seed-backed public demo can remain live while these gates are incomplete.
 
@@ -64,7 +64,7 @@ Use this checklist only for the fully live production launch. The seed-backed pu
 - Run `npm run typecheck`.
 - Run `npm run build`.
 - Run `npm audit`.
-- Run public smoke against the fully live production URL and record `APEX_PUBLIC_SMOKE_PASSED_AT`.
+- Run `npm run smoke:public-mvp -- <fully-live-url> --require-database` against the fully live production URL and record `APEX_PUBLIC_SMOKE_PASSED_AT`.
 - Smoke the authenticated operator flow in production and record `APEX_ADMIN_FLOW_SMOKE_PASSED_AT`.
 - Run desktop and mobile browser QA in production database mode.
 - Run accessibility and performance checks in production database mode.

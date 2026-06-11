@@ -149,12 +149,12 @@ describe("launch readiness report", () => {
           "Inspect promotion blockers for an accepted PubMed candidate before any explicit human promotion decision."
       },
       {
-        command: "npm run smoke:public-mvp -- <fully-live-url>",
+        command: "npm run smoke:public-mvp -- <fully-live-url> --require-database",
         id: "public-smoke",
         label: "Smoke fully-live public routes",
         mode: "read-only",
         purpose:
-          "Verify the public URL, legal pages, security headers, health endpoint, and live-source preview guards."
+          "Verify the public URL, database-backed dashboard mode, legal pages, security headers, health endpoint, and live-source preview guards."
       },
       {
         command: "npm run operator:smoke -- <fully-live-url>",
