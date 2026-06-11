@@ -1,11 +1,12 @@
-# Public MVP Launch Handoff Draft
+# Public MVP Launch Handoff
 
-Status: draft until a public URL exists and final smoke passes.
+Status: complete for the public seed-backed MVP/demo as of 2026-06-11.
 
 ## Public URL
 
-- URL: pending Vercel deployment from GitHub.
-- Deployed from branch: pending GitHub production branch selection.
+- URL: `https://apex-lifespan.vercel.app`.
+- Deployed from branch: `main`.
+- Production fix commit: `d3110c8 Generate Prisma client during build`.
 - GitHub push status: restored on 2026-06-11.
 
 ## Selected Mode
@@ -30,17 +31,16 @@ npm audit
 
 ## Final Public Smoke
 
-Run after the public URL exists:
+Run after public deployment or rollback:
 
 ```bash
-npm run smoke:public-mvp -- <public-url>
+npm run smoke:public-mvp -- https://apex-lifespan.vercel.app
 ```
 
-Record result here before launch handoff is considered complete:
-
-- Smoke result: pending.
-- Smoke date/time: pending.
-- Public URL checked: pending.
+- Smoke result: passed.
+- Smoke date/time: 2026-06-11 12:54 +10:00.
+- Public URL checked: `https://apex-lifespan.vercel.app`.
+- Checks passed: homepage caveats, PubMed live preview, ClinicalTrials.gov live preview, PubMed invalid-term guard, ClinicalTrials.gov invalid-term guard.
 
 ## Known Limitations
 

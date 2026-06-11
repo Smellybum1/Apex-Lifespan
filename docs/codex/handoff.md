@@ -14,8 +14,10 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 - Branch: `codex/queue-claim-sources`; latest pre-trim commit was `6889e65 Record local-only handoff state`.
 - GitHub push limit was lifted on 2026-06-11. Push to GitHub when useful.
 - Docker Compose PostgreSQL is running and healthy as of 2026-06-11; `npm run ingest:sources -- --db-status` reports `reachable=true`.
-- Current roadmap: `docs/codex/roadmap.md` targets the public live MVP/demo and includes the automatic rollover rule for the fully live end-product roadmap.
-- Latest Vercel production build from `main` failed on 2026-06-11 because the clean build did not generate Prisma Client before Next type checking; fix is to run `scripts/generate-prisma-client.ts` before `next build` and `next typegen`.
+- Public MVP/demo is live at `https://apex-lifespan.vercel.app` in seed mode.
+- Current roadmap: `docs/codex/roadmap.md` targets the fully live end product.
+- Completed public-MVP roadmap archive: `docs/codex/archive/roadmap/2026-06-11-public-live-mvp.md`.
+- A Vercel clean-build failure on `main` was fixed on 2026-06-11 by running `scripts/generate-prisma-client.ts` before `next build` and `next typegen`.
 
 ## Keep
 
@@ -59,7 +61,7 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 - Roadmap step 8 completed: `.env.example` and README document public-demo `APEX_DATA_SOURCE=seed`; public deploy should omit `DATABASE_URL` and all local Codex sidecar variables.
 - Roadmap step 9 completed for the current local build: `npm run test`, `npm run lint`, `npm run dev:stop`, `npm run typecheck`, `npm run build`, and `npm audit` passed.
 - Roadmap step 10 completed for the current seed-mode production build: desktop/mobile screenshots and PubMed/ClinicalTrials.gov live-preview smokes passed, then `npm run dev:stop` stopped the production server.
-- Roadmap steps 11-13 are blocked until Vercel deployment produces a public URL, launch handoff details, and final public smoke evidence. Use `npm run smoke:public-mvp -- <url>` for final public smoke once a URL exists; it passed against `http://127.0.0.1:3000` on a seed-mode production server. Launch handoff draft is `docs/codex/public-mvp-launch-handoff.md`.
+- Public MVP roadmap steps 11-13 completed: `npm run smoke:public-mvp -- https://apex-lifespan.vercel.app` passed homepage caveats, PubMed live preview, ClinicalTrials.gov live preview, and invalid-term guards; launch handoff is `docs/codex/public-mvp-launch-handoff.md`; successor roadmap is `docs/codex/roadmap.md`.
 - Vercel clean-build fix validation: with `DATABASE_URL` removed and a missing dotenv path, `npx tsx scripts/generate-prisma-client.ts` generated Prisma Client successfully using the build-time placeholder URL. `npm run lint`, `npm run typecheck`, and `npm run build` passed afterward.
 
 Historical source-candidate progress lives in `docs/codex/archive/handoff/2026-06-04-source-candidate-progress.md`; search it only for targeted evidence.
