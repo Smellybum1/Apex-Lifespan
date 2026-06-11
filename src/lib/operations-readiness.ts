@@ -29,6 +29,22 @@ export interface OperationsReadinessReport {
   counts: Record<OperationsReadinessStatus, number>;
   generatedAt: string;
   overall: "ready" | "blocked";
+  worksheet: OperationsReadinessWorksheet;
+}
+
+export interface OperationsReadinessWorksheet {
+  humanOwned: true;
+  missingExternalEvidence: OperationsEvidenceWorksheetItem[];
+  nextEvidenceAction: string;
+  readyExternalEvidence: OperationsEvidenceWorksheetItem[];
+  readyLocalArtifacts: OperationsEvidenceWorksheetItem[];
+}
+
+export interface OperationsEvidenceWorksheetItem {
+  evidenceKeys?: string[];
+  id: string;
+  label: string;
+  nextAction?: string;
 }
 
 const DEFAULT_FILE_PATHS: Record<keyof OperationsReadinessFiles, string> = {
@@ -125,7 +141,8 @@ export function buildOperationsReadinessReport(
     checks,
     counts,
     generatedAt: (context.generatedAt ?? new Date()).toISOString(),
-    overall: counts.blocked > 0 ? "blocked" : "ready"
+    overall: counts.blocked > 0 ? "blocked" : "ready",
+    worksheet: operationsReadinessWorksheet(checks)
   };
 }
 
@@ -290,6 +307,43 @@ function missingEvidenceCheck({
     detail: `Missing operations evidence variable: ${key}.`,
     evidenceKeys: [key],
     nextAction
+  };
+}
+
+function operationsReadinessWorksheet(
+  checks: OperationsReadinessCheck[]
+): OperationsReadinessWorksheet {
+  const localArtifactIds = new Set(["privacy-page", "terms-page", "operations-runbook"]);
+  const readyLocalArtifacts = checks
+    .filter((check) => check.status === "ready" && localArtifactIds.has(check.id))
+    .map(operationsEvidenceWorksheetItem);
+  const externalEvidenceChecks = checks.filter((check) => !localArtifactIds.has(check.id));
+  const missingExternalEvidence = externalEvidenceChecks
+    .filter((check) => check.status === "blocked")
+    .map(operationsEvidenceWorksheetItem);
+  const readyExternalEvidence = externalEvidenceChecks
+    .filter((check) => check.status === "ready")
+    .map(operationsEvidenceWorksheetItem);
+
+  return {
+    humanOwned: true,
+    missingExternalEvidence,
+    nextEvidenceAction:
+      missingExternalEvidence[0]?.nextAction ??
+      "All external operations evidence is recorded; review the launch readiness report.",
+    readyExternalEvidence,
+    readyLocalArtifacts
+  };
+}
+
+function operationsEvidenceWorksheetItem(
+  check: OperationsReadinessCheck
+): OperationsEvidenceWorksheetItem {
+  return {
+    evidenceKeys: check.evidenceKeys,
+    id: check.id,
+    label: check.label,
+    nextAction: check.nextAction
   };
 }
 

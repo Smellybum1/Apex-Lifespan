@@ -18,6 +18,21 @@ describe("operations readiness report", () => {
 
     expect(report.overall).toBe("blocked");
     expect(report.counts.ready).toBe(3);
+    expect(report.worksheet.readyLocalArtifacts.map((item) => item.id)).toEqual([
+      "privacy-page",
+      "terms-page",
+      "operations-runbook"
+    ]);
+    expect(report.worksheet.missingExternalEvidence).toHaveLength(8);
+    expect(report.worksheet.missingExternalEvidence[0]).toEqual({
+      evidenceKeys: ["APEX_UPTIME_MONITORING_URL"],
+      id: "uptime-monitoring",
+      label: "Uptime monitoring",
+      nextAction: "Configure uptime monitoring for / and record its URL in APEX_UPTIME_MONITORING_URL."
+    });
+    expect(report.worksheet.nextEvidenceAction).toBe(
+      "Configure uptime monitoring for / and record its URL in APEX_UPTIME_MONITORING_URL."
+    );
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -62,6 +77,20 @@ describe("operations readiness report", () => {
 
     expect(report.overall).toBe("ready");
     expect(report.counts.blocked).toBe(0);
+    expect(report.worksheet.missingExternalEvidence).toEqual([]);
+    expect(report.worksheet.readyExternalEvidence.map((item) => item.id)).toEqual([
+      "uptime-monitoring",
+      "error-monitoring",
+      "deployment-alerts",
+      "scheduled-ingestion-alerts",
+      "database-backups",
+      "backup-restore-rehearsal",
+      "rollback-drill",
+      "alert-test"
+    ]);
+    expect(report.worksheet.nextEvidenceAction).toBe(
+      "All external operations evidence is recorded; review the launch readiness report."
+    );
     expect(serialized).toContain("https://uptime.example.com/checks/apex-lifespan");
     expect(serialized).not.toContain("private-token");
     expect(serialized).not.toContain("private-sentry-project-key");
