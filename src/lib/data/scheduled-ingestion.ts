@@ -20,6 +20,7 @@ export interface ScheduledIngestionDryRunOptions {
 
 export interface ScheduledIngestionBatchOptions extends ScheduledIngestionDryRunOptions {
   apply?: boolean;
+  requireHostedRunReadiness?: boolean;
   runNextJob?: ScheduledIngestionJobRunner;
 }
 
@@ -267,7 +268,9 @@ export async function runScheduledSourceIngestionBatch(
     return dryRunResult;
   }
 
-  const blocker = scheduledIngestionApplyBlocker(plan, env);
+  const blocker = scheduledIngestionApplyBlocker(plan, env, {
+    requireHostedRunReadiness: options.requireHostedRunReadiness
+  });
 
   if (blocker) {
     return {
@@ -767,7 +770,10 @@ function sourceCandidateSourceCommandValue(source: SourceCandidateIdentityGroup[
 
 function scheduledIngestionApplyBlocker(
   plan: ScheduledIngestionDryRun,
-  env: Record<string, string | undefined>
+  env: Record<string, string | undefined>,
+  options: {
+    requireHostedRunReadiness?: boolean;
+  } = {}
 ) {
   if (env[SCHEDULED_INGESTION_WRITES_ENV] !== "true") {
     return `${SCHEDULED_INGESTION_WRITES_ENV}=true is required when --apply is used.`;
@@ -779,6 +785,16 @@ function scheduledIngestionApplyBlocker(
 
   if (plan.runningJobs > 0) {
     return plan.nextAction;
+  }
+
+  if (options.requireHostedRunReadiness && !plan.policy.hostedCronReady) {
+    return `Hosted scheduled ingestion readiness is required when hosted-run mode is used: ${plan.policy.hostedCron.missingEnv.join(", ")}.`;
+  }
+
+  if (options.requireHostedRunReadiness && !plan.failureReview.retryAutomationReady) {
+    return plan.failureReview.failedJobsReviewed > 0
+      ? plan.failureReview.nextAction
+      : `Scheduled ingestion retry policy must be ready when hosted-run mode is used: ${plan.failureReview.retryPolicy.missingEnv.join(", ")}.`;
   }
 
   return undefined;

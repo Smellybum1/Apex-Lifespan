@@ -690,6 +690,50 @@ describe("scheduled source ingestion batch runner", () => {
     expect(runNextJobMock).not.toHaveBeenCalled();
   });
 
+  it("blocks hosted-run apply mode until hosted cron evidence is ready", async () => {
+    mockQueuedSchedulerState(1);
+
+    const result = await runScheduledSourceIngestionBatch({
+      apply: true,
+      env: {
+        APEX_SCHEDULED_INGESTION_WRITES_ENABLED: "true",
+        NCBI_EMAIL: "operator@example.com",
+        NCBI_TOOL: "apex-lifespan"
+      },
+      requireHostedRunReadiness: true
+    });
+
+    expect(result).toMatchObject({
+      applied: false,
+      blocked: true,
+      dryRun: true,
+      executedJobs: [],
+      nextAction:
+        "Hosted scheduled ingestion readiness is required when hosted-run mode is used: DATABASE_URL, APEX_DATA_SOURCE=database, APEX_INGESTION_ALERTS_CONFIGURED=true, APEX_SCHEDULED_INGESTION_CRON_APPROVED=true."
+    });
+    expect(runNextJobMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks hosted-run apply mode until retry policy is ready", async () => {
+    mockQueuedSchedulerState(1);
+
+    const result = await runScheduledSourceIngestionBatch({
+      apply: true,
+      env: readySchedulerEnv(),
+      requireHostedRunReadiness: true
+    });
+
+    expect(result).toMatchObject({
+      applied: false,
+      blocked: true,
+      dryRun: true,
+      executedJobs: [],
+      nextAction:
+        "Scheduled ingestion retry policy must be ready when hosted-run mode is used: APEX_INGESTION_RETRY_POLICY_APPROVED_AT."
+    });
+    expect(runNextJobMock).not.toHaveBeenCalled();
+  });
+
   it("runs a bounded batch with source caps and no automatic promotion", async () => {
     mockQueuedSchedulerState(3);
     runNextJobMock
@@ -716,6 +760,27 @@ describe("scheduled source ingestion batch runner", () => {
       clinicalTrialPageSize: 20,
       pubMedRetmax: 20
     });
+  });
+
+  it("runs hosted-ready batches only after hosted cron and retry evidence are ready", async () => {
+    mockQueuedSchedulerState(1);
+    runNextJobMock.mockResolvedValueOnce(runResult("job-1"));
+
+    await expect(
+      runScheduledSourceIngestionBatch({
+        apply: true,
+        env: approvedRetrySchedulerEnv(),
+        requireHostedRunReadiness: true
+      })
+    ).resolves.toMatchObject({
+      applied: true,
+      blocked: false,
+      dryRun: false,
+      executedJobs: [{ jobId: "job-1" }],
+      nextAction: "Scheduled run processed 1 queued job(s).",
+      noAutoPromotion: true
+    });
+    expect(runNextJobMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not apply while another scheduled job is running", async () => {

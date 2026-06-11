@@ -75,4 +75,6 @@ The runner uses the same source caps as the policy review, does not retry failed
 
 After production database, secrets, monitoring, and alerts are configured, attach the scheduler to a hosted cron. The cron target should run with `APEX_DATA_SOURCE=database`, database credentials, NCBI metadata, and write access only to ingestion-job/source-candidate tables.
 
+The scheduler library now has an opt-in hosted-run readiness gate for a future cron route. Hosted-run mode must require hosted cron evidence plus retry-policy readiness before processing queued jobs. The local CLI runner remains unchanged and still fails closed unless `APEX_SCHEDULED_INGESTION_WRITES_ENABLED=true`, NCBI metadata is configured, and no ingestion job is already running.
+
 The current implementation does not expose a hosted HTTP write endpoint. Add one only after the readiness report is clean and operator approval is recorded.
