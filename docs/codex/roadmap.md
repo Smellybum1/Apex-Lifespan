@@ -64,6 +64,7 @@ The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel
 7. [ ] Implement human-reviewed curation promotion.
    Done when: accepted candidates can become public evidence packets only after claim link, structured extraction, citation traceability, and human review are complete.
    Validate with: candidate-to-public promotion tests, source-packet tests, and a dry-run promotion of `PMID 42141930` before any public promotion.
+   In progress 2026-06-11: added `docs/codex/plans/2026-06-11-curation-promotion.md`, read-only promotion assessment, and `npm run promotion:dry-run -- --pmid <id>`. Unit tests prove promotion is blocked until accepted candidates are human-reviewed, claim-linked, structurally extracted, citation-traceable, and `publicSourcePacketReady=true`. Dry run for `PMID 42141930` passed as a blocked assessment: accepted/human-reviewed candidate found, but claim link, structured extraction, and public packet readiness are still missing. Validation passed: promotion tests, source-packet tests, public-boundary tests, `npm run typecheck`, `npm run build`, `npm run lint`, and `npm audit`.
 
 8. [ ] Add scheduled source ingestion.
    Done when: PubMed and ClinicalTrials.gov ingestion jobs run on a schedule with rate limits, retries, dedupe, failure reporting, dry-run support, and no automatic public promotion.
