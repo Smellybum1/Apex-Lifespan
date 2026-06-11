@@ -35,6 +35,15 @@ npm run ingest:scheduled-dry-run
 
 The dry run reads ingestion-job status and prints the scheduler plan without queueing, running, or promoting anything.
 
+The dry run also reports a structured policy review:
+
+- PubMed `retmax` cap: 20.
+- ClinicalTrials.gov `pageSize` cap: 20.
+- Scheduler default/max batch: 1 queued job by default, 5 maximum.
+- Automatic retries: disabled until failed job classes are reviewed.
+- Automatic public promotion: disabled.
+- NCBI metadata: reports whether `NCBI_TOOL` and `NCBI_EMAIL` are configured by variable name only.
+
 ## Future Production Schedule
 
 After production database, secrets, monitoring, and alerts are configured, attach the scheduler to a hosted cron. The cron target should run with `APEX_DATA_SOURCE=database`, database credentials, NCBI metadata, and write access only to ingestion-job/source-candidate tables.

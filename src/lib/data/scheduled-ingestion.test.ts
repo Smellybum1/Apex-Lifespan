@@ -37,11 +37,31 @@ describe("scheduled source ingestion dry run", () => {
       ])
       .mockResolvedValueOnce([]);
 
-    await expect(planScheduledSourceIngestionDryRun({ maxJobsPerRun: 2 })).resolves.toEqual({
+    await expect(
+      planScheduledSourceIngestionDryRun({
+        env: {
+          NCBI_EMAIL: "operator@example.com",
+          NCBI_TOOL: "apex-lifespan"
+        },
+        maxJobsPerRun: 2
+      })
+    ).resolves.toEqual({
       dryRun: true,
       maxJobsPerRun: 2,
       nextAction: "Scheduled run would process 2 queued job(s).",
       noAutoPromotion: true,
+      policy: {
+        automaticRetries: false,
+        clinicalTrialsPageSizeCap: 20,
+        hostedCronReady: true,
+        missingMetadata: [],
+        ncbiMetadataConfigured: true,
+        noAutoPromotion: true,
+        pubMedRetmaxCap: 20,
+        schedulerDefaultJobsPerRun: 1,
+        schedulerMaxJobsPerRun: 5,
+        sourcePolicy: "review-before-enable"
+      },
       queuedJobs: 3,
       recentFailures: 0,
       runningJobs: 0,
@@ -69,6 +89,38 @@ describe("scheduled source ingestion dry run", () => {
     await expect(planScheduledSourceIngestionDryRun()).resolves.toMatchObject({
       nextAction: "Wait for running ingestion jobs before starting another scheduled batch.",
       runningJobs: 1,
+      wouldRunJobs: 0
+    });
+  });
+
+  it("reports source policy and missing metadata without running jobs", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [],
+      total: 0
+    });
+    listJobsMock.mockResolvedValue([]);
+
+    await expect(
+      planScheduledSourceIngestionDryRun({
+        env: {},
+        maxJobsPerRun: 200
+      })
+    ).resolves.toMatchObject({
+      dryRun: true,
+      maxJobsPerRun: 5,
+      noAutoPromotion: true,
+      policy: {
+        automaticRetries: false,
+        clinicalTrialsPageSizeCap: 20,
+        hostedCronReady: false,
+        missingMetadata: ["NCBI_TOOL", "NCBI_EMAIL"],
+        ncbiMetadataConfigured: false,
+        noAutoPromotion: true,
+        pubMedRetmaxCap: 20,
+        schedulerDefaultJobsPerRun: 1,
+        schedulerMaxJobsPerRun: 5,
+        sourcePolicy: "review-before-enable"
+      },
       wouldRunJobs: 0
     });
   });

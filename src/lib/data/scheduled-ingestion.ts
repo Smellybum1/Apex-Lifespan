@@ -6,6 +6,7 @@ import {
 } from "@/lib/data/source-candidate-jobs";
 
 export interface ScheduledIngestionDryRunOptions {
+  env?: Record<string, string | undefined>;
   maxJobsPerRun?: number;
 }
 
@@ -14,14 +15,30 @@ export interface ScheduledIngestionDryRun {
   maxJobsPerRun: number;
   nextAction: string;
   noAutoPromotion: true;
+  policy: ScheduledIngestionPolicyReview;
   queuedJobs: number;
   recentFailures: number;
   runningJobs: number;
   wouldRunJobs: number;
 }
 
+export interface ScheduledIngestionPolicyReview {
+  automaticRetries: false;
+  clinicalTrialsPageSizeCap: number;
+  hostedCronReady: boolean;
+  missingMetadata: string[];
+  ncbiMetadataConfigured: boolean;
+  noAutoPromotion: true;
+  pubMedRetmaxCap: number;
+  schedulerDefaultJobsPerRun: number;
+  schedulerMaxJobsPerRun: number;
+  sourcePolicy: "review-before-enable";
+}
+
 const DEFAULT_MAX_JOBS_PER_RUN = 1;
 const MAX_SCHEDULER_JOBS_PER_RUN = 5;
+const SOURCE_RESULT_CAP = 20;
+const REQUIRED_NCBI_METADATA_ENV = ["NCBI_TOOL", "NCBI_EMAIL"] as const;
 
 export async function planScheduledSourceIngestionDryRun(
   options: ScheduledIngestionDryRunOptions = {}
@@ -63,10 +80,31 @@ export async function planScheduledSourceIngestionDryRun(
       wouldRunJobs
     }),
     noAutoPromotion: true,
+    policy: scheduledIngestionPolicyReview(options.env),
     queuedJobs: queuedCount,
     recentFailures: failedJobs.length,
     runningJobs: runningCount,
     wouldRunJobs
+  };
+}
+
+function scheduledIngestionPolicyReview(
+  env: Record<string, string | undefined> = process.env
+): ScheduledIngestionPolicyReview {
+  const missingMetadata = REQUIRED_NCBI_METADATA_ENV.filter((key) => !env[key]?.trim());
+  const ncbiMetadataConfigured = missingMetadata.length === 0;
+
+  return {
+    automaticRetries: false,
+    clinicalTrialsPageSizeCap: SOURCE_RESULT_CAP,
+    hostedCronReady: ncbiMetadataConfigured,
+    missingMetadata,
+    ncbiMetadataConfigured,
+    noAutoPromotion: true,
+    pubMedRetmaxCap: SOURCE_RESULT_CAP,
+    schedulerDefaultJobsPerRun: DEFAULT_MAX_JOBS_PER_RUN,
+    schedulerMaxJobsPerRun: MAX_SCHEDULER_JOBS_PER_RUN,
+    sourcePolicy: "review-before-enable"
   };
 }
 
