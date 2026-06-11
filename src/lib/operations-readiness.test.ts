@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildOperationsReadinessReport,
-  summarizeOperationsEvidenceReview
+  summarizeOperationsEvidenceReview,
+  summarizeOperationsReadinessReport
 } from "@/lib/operations-readiness";
 
 const localFilesReady = {
@@ -31,6 +32,14 @@ describe("operations readiness report", () => {
         mode: "read-only",
         purpose:
           "Recheck local operations artifacts and external evidence variables without printing secret values."
+      },
+      {
+        command: "npm run operations:readiness -- --summary",
+        id: "operations-readiness-summary",
+        label: "Refresh compact operations summary",
+        mode: "read-only",
+        purpose:
+          "Print operations readiness counts, ready artifacts, missing evidence, and next action without dumping all checks."
       },
       {
         command: "npm run operations:readiness -- --evidence <evidence-id>",
@@ -113,6 +122,71 @@ describe("operations readiness report", () => {
     );
   });
 
+  it("builds a compact operations readiness summary without full check detail", () => {
+    const report = buildOperationsReadinessReport({
+      env: {},
+      files: localFilesReady,
+      generatedAt: new Date("2026-06-11T00:00:00.000Z")
+    });
+
+    const summary = summarizeOperationsReadinessReport(report);
+
+    expect(summary).toEqual({
+      counts: {
+        blocked: 8,
+        ready: 5
+      },
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      humanOwned: true,
+      missingExternalEvidence: expect.arrayContaining([
+        {
+          evidenceKeys: ["APEX_UPTIME_MONITORING_URL"],
+          id: "uptime-monitoring",
+          label: "Uptime monitoring",
+          nextAction:
+            "Configure uptime monitoring for /api/health and record its URL in APEX_UPTIME_MONITORING_URL."
+        },
+        {
+          evidenceKeys: ["APEX_ALERT_TESTED_AT"],
+          id: "alert-test",
+          label: "Alert test",
+          nextAction:
+            "Send or trigger a launch alert test and record the timestamp in APEX_ALERT_TESTED_AT."
+        }
+      ]),
+      nextAction:
+        "Configure uptime monitoring for /api/health and record its URL in APEX_UPTIME_MONITORING_URL.",
+      overall: "blocked",
+      readOnly: true,
+      readyExternalEvidence: [],
+      readyLocalArtifacts: [
+        {
+          id: "privacy-page",
+          label: "Privacy page"
+        },
+        {
+          id: "terms-page",
+          label: "Terms page"
+        },
+        {
+          id: "operations-runbook",
+          label: "Operations runbook"
+        },
+        {
+          id: "operations-drill-checklist",
+          label: "Operations drill checklist"
+        },
+        {
+          id: "health-endpoint",
+          label: "Public health endpoint"
+        }
+      ]
+    });
+    expect(summary.missingExternalEvidence).toHaveLength(8);
+    expect(JSON.stringify(summary)).not.toContain("copySafeCommands");
+    expect(JSON.stringify(summary)).not.toContain('"checks"');
+  });
+
   it("emits only read-only commands for operations handoff", () => {
     const report = buildOperationsReadinessReport({
       env: {},
@@ -129,7 +203,7 @@ describe("operations readiness report", () => {
       "--extract-candidate-study"
     ];
 
-    expect(report.worksheet.copySafeCommands).toHaveLength(6);
+    expect(report.worksheet.copySafeCommands).toHaveLength(7);
     expect(report.worksheet.copySafeCommands.every((item) => item.mode === "read-only")).toBe(
       true
     );

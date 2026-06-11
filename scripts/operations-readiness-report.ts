@@ -1,17 +1,18 @@
 import {
   buildOperationsReadinessReport,
-  summarizeOperationsEvidenceReview
+  summarizeOperationsEvidenceReview,
+  summarizeOperationsReadinessReport
 } from "@/lib/operations-readiness";
 
 function main() {
-  const evidenceId = readEvidenceId(process.argv.slice(2));
+  const args = readOperationsReadinessArgs(process.argv.slice(2));
 
-  if (evidenceId) {
+  if (args.evidenceId) {
     const packet = summarizeOperationsEvidenceReview(
       {
         env: process.env
       },
-      evidenceId
+      args.evidenceId
     );
 
     if (!packet.found) {
@@ -26,12 +27,28 @@ function main() {
     env: process.env
   });
 
-  console.log(JSON.stringify(report, null, 2));
+  console.log(
+    JSON.stringify(args.summary ? summarizeOperationsReadinessReport(report) : report, null, 2)
+  );
 }
 
-function readEvidenceId(args: string[]) {
+interface OperationsReadinessCliArgs {
+  evidenceId?: string;
+  summary: boolean;
+}
+
+function readOperationsReadinessArgs(args: string[]): OperationsReadinessCliArgs {
+  const parsed: OperationsReadinessCliArgs = {
+    summary: false
+  };
+
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+
+    if (arg === "--summary") {
+      parsed.summary = true;
+      continue;
+    }
 
     if (arg === "--evidence") {
       const value = args[index + 1]?.trim();
@@ -40,7 +57,9 @@ function readEvidenceId(args: string[]) {
         throw new Error("--evidence requires an evidence id.");
       }
 
-      return value;
+      parsed.evidenceId = value;
+      index += 1;
+      continue;
     }
 
     if (arg.startsWith("--evidence=")) {
@@ -50,13 +69,18 @@ function readEvidenceId(args: string[]) {
         throw new Error("--evidence requires an evidence id.");
       }
 
-      return value;
+      parsed.evidenceId = value;
+      continue;
     }
 
     throw new Error(`Unknown operations readiness argument: ${arg}`);
   }
 
-  return undefined;
+  if (parsed.summary && parsed.evidenceId) {
+    throw new Error("--summary cannot be combined with --evidence.");
+  }
+
+  return parsed;
 }
 
 try {

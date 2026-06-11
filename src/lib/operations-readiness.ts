@@ -34,6 +34,18 @@ export interface OperationsReadinessReport {
   worksheet: OperationsReadinessWorksheet;
 }
 
+export interface OperationsReadinessSummary {
+  counts: Record<OperationsReadinessStatus, number>;
+  generatedAt: string;
+  humanOwned: true;
+  missingExternalEvidence: OperationsEvidenceWorksheetItem[];
+  nextAction: string;
+  overall: "ready" | "blocked";
+  readOnly: true;
+  readyExternalEvidence: OperationsEvidenceWorksheetItem[];
+  readyLocalArtifacts: OperationsEvidenceWorksheetItem[];
+}
+
 export type OperationsEvidenceReviewStatus = "blocked" | "not-found" | "ready";
 
 export interface OperationsEvidenceReviewPacket {
@@ -233,6 +245,22 @@ export function summarizeOperationsEvidenceReview(
         (command) => command.id === "operations-readiness"
       ) ?? null,
     status: check.status
+  };
+}
+
+export function summarizeOperationsReadinessReport(
+  report: OperationsReadinessReport
+): OperationsReadinessSummary {
+  return {
+    counts: report.counts,
+    generatedAt: report.generatedAt,
+    humanOwned: true,
+    missingExternalEvidence: report.worksheet.missingExternalEvidence,
+    nextAction: report.worksheet.nextEvidenceAction,
+    overall: report.overall,
+    readOnly: true,
+    readyExternalEvidence: report.worksheet.readyExternalEvidence,
+    readyLocalArtifacts: report.worksheet.readyLocalArtifacts
   };
 }
 
@@ -461,6 +489,14 @@ function operationsReadinessCopySafeCommands(): OperationsReadinessCommand[] {
       mode: "read-only",
       purpose:
         "Recheck local operations artifacts and external evidence variables without printing secret values."
+    },
+    {
+      command: "npm run operations:readiness -- --summary",
+      id: "operations-readiness-summary",
+      label: "Refresh compact operations summary",
+      mode: "read-only",
+      purpose:
+        "Print operations readiness counts, ready artifacts, missing evidence, and next action without dumping all checks."
     },
     {
       command: "npm run operations:readiness -- --evidence <evidence-id>",
