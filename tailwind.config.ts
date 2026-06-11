@@ -10,7 +10,7 @@ const config: Config = {
         line: "#d9e1ec",
         spruce: "#0f766e",
         signal: "#1d4ed8",
-        amberline: "#b7791f",
+        amberline: "#8a5a0a",
         danger: "#b91c1c"
       },
       boxShadow: {

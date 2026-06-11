@@ -288,7 +288,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
                 <label className="relative">
                   <Search
                     aria-hidden="true"
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
                   />
                   <span className="sr-only">Search interventions</span>
                   <input
@@ -301,7 +301,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
                 <label className="relative">
                   <Filter
                     aria-hidden="true"
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
                   />
                   <span className="sr-only">Filter category</span>
                   <select
@@ -789,7 +789,7 @@ function EvidenceMap({
           gridTemplateColumns: `220px repeat(${outcomes.length}, minmax(112px, 1fr))`
         }}
       >
-        <div className="rounded-md border border-transparent px-2 py-2 text-xs font-semibold text-slate-500">
+        <div className="rounded-md border border-transparent px-2 py-2 text-xs font-semibold text-slate-600">
           Intervention
         </div>
         {outcomes.map((outcome) => (
@@ -912,17 +912,17 @@ function ScorePanel({
   }, []);
 
   return (
-    <aside className="rounded-lg border border-line bg-white p-4 shadow-panel">
+    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
             Active evidence card
           </p>
           <h2 className="mt-1 text-lg font-semibold text-ink">{intervention?.name}</h2>
           <p className="mt-1 text-sm text-slate-600">{claim.claimText}</p>
         </div>
         <div className="rounded-md border border-line bg-mist px-3 py-2 text-right">
-          <p className="text-xs text-slate-500">Composite</p>
+          <p className="text-xs text-slate-600">Composite</p>
           <p className="text-2xl font-semibold text-ink">{composite.toFixed(1)}</p>
         </div>
       </div>
@@ -993,7 +993,7 @@ function ScorePanel({
         <DetailRow label="Safety" value={claim.safetyNotes} />
         <DetailRow label="Score mover" value={claim.whatWouldChangeScore} />
       </dl>
-    </aside>
+    </section>
   );
 }
 
@@ -1013,7 +1013,7 @@ function AustraliaRegulatoryDetail({
 
   return (
     <div className="grid gap-2 rounded-md border border-line bg-mist p-3 sm:grid-cols-[120px_1fr]">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">AU/TGA</dt>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-600">AU/TGA</dt>
       <dd className="text-sm text-slate-700">
         <span
           className={cn(
@@ -1050,7 +1050,7 @@ function AustraliaRegulatoryDetail({
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid gap-1 rounded-md border border-line bg-mist p-3 sm:grid-cols-[120px_1fr]">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-600">{label}</dt>
       <dd className="text-sm text-slate-700">{value}</dd>
     </div>
   );
@@ -1219,7 +1219,7 @@ function SafetyPanel({
                   <h3 className="text-sm font-semibold text-ink">
                     {interventionsById.get(alert.interventionId)?.name}
                   </h3>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-slate-600">
                     {alert.source} - {alert.region} - {alert.date}
                   </p>
                 </div>
@@ -1330,7 +1330,7 @@ function EvidenceCards({
                   <summary className="cursor-pointer text-xs font-semibold text-signal">
                     Research detail
                   </summary>
-                  <dl className="mt-3 grid gap-2 text-xs md:grid-cols-2">
+                  <div className="mt-3 grid gap-2 text-xs md:grid-cols-2">
                     <MiniStat label="Evidence grade" value={claim.evidenceGrade} />
                     <MiniStat label="Effect" value={claim.effectSize} />
                     <MiniStat label="Population" value={claim.populationStudied} />
@@ -1339,7 +1339,7 @@ function EvidenceCards({
                     <MiniStat label="Applicability" value={claim.applicabilityNotes} />
                     <MiniStat label="Score mover" value={claim.whatWouldChangeScore} />
                     <MiniStat label="Last reviewed" value={claim.lastUpdated} />
-                  </dl>
+                  </div>
                   <div className="mt-3 grid gap-2">
                     {claimReferences.length > 0 ? (
                       claimReferences.map((reference) => (
@@ -1447,7 +1447,7 @@ function LabelAnalyzer({
         {productSignals.map((product) => (
           <div key={product.id} className="rounded-lg border border-line bg-mist p-3">
             <h3 className="text-sm font-semibold text-ink">{product.name}</h3>
-            <p className="mt-1 text-xs text-slate-500">{product.brand}</p>
+            <p className="mt-1 text-xs text-slate-600">{product.brand}</p>
             <div className="mt-2 flex flex-wrap gap-2 text-xs">
               <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-700">
                 Market context: {formatProductRegionLabel(product.region)}
@@ -1535,35 +1535,35 @@ function ProductAustraliaRegulatoryChip({
         <summary className="cursor-pointer font-semibold text-ink">AU/TGA detail</summary>
         <dl className="mt-2 grid gap-2">
           <div>
-            <dt className="font-semibold text-slate-500">Verification state</dt>
+            <dt className="font-semibold text-slate-600">Verification state</dt>
             <dd className="mt-0.5 leading-5">{verification.stateLabel}</dd>
           </div>
           <div>
-            <dt className="font-semibold text-slate-500">Confidence</dt>
+            <dt className="font-semibold text-slate-600">Confidence</dt>
             <dd className="mt-0.5 leading-5">{verification.confidence}</dd>
           </div>
           <div>
-            <dt className="font-semibold text-slate-500">Supply status</dt>
+            <dt className="font-semibold text-slate-600">Supply status</dt>
             <dd className="mt-0.5 leading-5">{status.supplySummary}</dd>
           </div>
           <div>
-            <dt className="font-semibold text-slate-500">Evidence needed</dt>
+            <dt className="font-semibold text-slate-600">Evidence needed</dt>
             <dd className="mt-0.5 leading-5">{verification.nextAction}</dd>
           </div>
           {status.austNumber ? (
             <div>
-              <dt className="font-semibold text-slate-500">AUST number</dt>
+              <dt className="font-semibold text-slate-600">AUST number</dt>
               <dd className="mt-0.5 leading-5">{status.austNumber}</dd>
             </div>
           ) : null}
           {status.sponsor ? (
             <div>
-              <dt className="font-semibold text-slate-500">Sponsor</dt>
+              <dt className="font-semibold text-slate-600">Sponsor</dt>
               <dd className="mt-0.5 leading-5">{status.sponsor}</dd>
             </div>
           ) : null}
           <div>
-            <dt className="font-semibold text-slate-500">Checked</dt>
+            <dt className="font-semibold text-slate-600">Checked</dt>
             <dd className="mt-0.5 leading-5">{status.checkedAt}</dd>
           </div>
         </dl>
@@ -1611,7 +1611,7 @@ function TrialWatcher({
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h3 className="text-sm font-semibold text-ink">{item.title}</h3>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-slate-600">
                     {interventionsById.get(item.interventionId)?.name} - {item.lastUpdateDate}
                   </p>
                 </div>
@@ -1619,11 +1619,11 @@ function TrialWatcher({
                   {item.evidenceImpact}
                 </span>
               </div>
-              <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+              <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
                 <MiniStat label="Status" value={item.status} />
                 <MiniStat label="Phase" value={item.phase} />
                 <MiniStat label="Scope" value={item.enrollment} />
-              </dl>
+              </div>
               <a
                 href={item.url}
                 target="_blank"
@@ -1934,7 +1934,7 @@ function SourceAndStudyPanel({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-ink">Suggested searches</h3>
-            <p className="mt-1 truncate text-xs text-slate-500">{activeSourceQueries.label}</p>
+            <p className="mt-1 truncate text-xs text-slate-600">{activeSourceQueries.label}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <button
@@ -2088,7 +2088,7 @@ function ActiveSourcePacketPanel({
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
                 <h4 className="text-sm font-semibold leading-6 text-ink">{reference.title}</h4>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-slate-600">
                   {reference.source}
                   {reference.year ? ` - ${reference.year}` : ""}
                 </p>
@@ -2140,7 +2140,7 @@ function CuratedStudyCard({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold leading-6 text-ink">{study.title}</h3>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-600">
             {study.source} - {study.year}
           </p>
         </div>
@@ -2160,14 +2160,14 @@ function CuratedStudyCard({
         <summary className="cursor-pointer text-xs font-semibold text-signal">
           Extraction detail
         </summary>
-        <dl className="mt-2 grid gap-2 text-xs md:grid-cols-2">
+        <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
           <MiniStat label="Sample" value={study.sampleSize} />
           <MiniStat label="Population" value={study.population} />
           <MiniStat label="Intervention" value={study.intervention} />
           <MiniStat label="Risk of bias" value={study.riskOfBias} />
           <MiniStat label="Adverse events" value={study.adverseEvents} />
           <MiniStat label="Funding/conflicts" value={study.fundingConflicts} />
-        </dl>
+        </div>
       </details>
       {reference ? (
         <a
@@ -2258,8 +2258,8 @@ function PubMedTriagePreview({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-ink">PubMed triage</h3>
-          <p className="mt-1 text-xs text-slate-500">{resultSummary}</p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-600">{resultSummary}</p>
+          <p className="mt-1 text-xs text-slate-600">
             Live PubMed results are unreviewed citation leads; scores rank review priority, not
             evidence quality.
           </p>
@@ -2321,7 +2321,7 @@ function PubMedTriageArticle({ article }: { article: PubMedArticleSummary }) {
           <h4 className="text-sm font-semibold leading-6 text-ink">
             {article.title ?? `PubMed PMID ${article.pmid}`}
           </h4>
-          <p className="mt-1 text-xs text-slate-500">{meta.join(" - ") || "Metadata pending"}</p>
+          <p className="mt-1 text-xs text-slate-600">{meta.join(" - ") || "Metadata pending"}</p>
         </div>
         <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
           Review priority {article.relevanceScore}/100
@@ -2339,11 +2339,11 @@ function PubMedTriageArticle({ article }: { article: PubMedArticleSummary }) {
         ))}
       </div>
 
-      <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+      <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
         <MiniStat label="Authors" value={authors || "Not listed"} />
         <MiniStat label="Abstract" value={abstractStatus} />
         <MiniStat label="DOI" value={article.doi ?? "Not listed"} />
-      </dl>
+      </div>
 
       <a
         href={article.url}
@@ -2382,8 +2382,8 @@ function ClinicalTrialsPreview({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-ink">ClinicalTrials.gov preview</h3>
-          <p className="mt-1 text-xs text-slate-500">{resultSummary}</p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-600">{resultSummary}</p>
+          <p className="mt-1 text-xs text-slate-600">
             Registry records are research leads, not proof of benefit; scores rank review priority,
             not evidence quality.
           </p>
@@ -2434,7 +2434,7 @@ function ClinicalTrialsPreviewCard({ study }: { study: ClinicalTrialSearchItem }
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h4 className="text-sm font-semibold leading-6 text-ink">{study.title}</h4>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-slate-600">
             {study.status} - {study.phase} - {study.lastUpdateDate}
           </p>
         </div>
@@ -2454,11 +2454,11 @@ function ClinicalTrialsPreviewCard({ study }: { study: ClinicalTrialSearchItem }
         ))}
       </div>
 
-      <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+      <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
         <MiniStat label="Enrollment" value={study.enrollment} />
         <MiniStat label="Study type" value={study.studyType} />
         <MiniStat label="Results" value={study.hasResults ? "Posted" : "Not posted"} />
-      </dl>
+      </div>
 
       <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
         <MiniStat label="Conditions" value={shortList(study.conditions)} />
@@ -2481,8 +2481,8 @@ function ClinicalTrialsPreviewCard({ study }: { study: ClinicalTrialSearchItem }
 function MiniStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-line bg-mist p-2">
-      <dt className="font-semibold text-slate-500">{label}</dt>
-      <dd className="mt-1 break-words text-slate-700">{value}</dd>
+      <p className="font-semibold text-slate-600">{label}</p>
+      <p className="mt-1 break-words text-slate-700">{value}</p>
     </div>
   );
 }
