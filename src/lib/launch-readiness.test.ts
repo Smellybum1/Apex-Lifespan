@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildLaunchReadinessReport,
+  summarizeLaunchReadinessReport,
   type LaunchReadinessContext
 } from "@/lib/launch-readiness";
 import type { EvidenceCoverageSummary } from "@/lib/evidence-coverage";
@@ -90,6 +91,14 @@ describe("launch readiness report", () => {
         mode: "read-only",
         purpose:
           "Recheck production, operator, operations, ingestion, promotion, coverage, smoke, and launch evidence gates."
+      },
+      {
+        command: "npm run launch:readiness -- --summary",
+        id: "launch-readiness-summary",
+        label: "Refresh compact launch summary",
+        mode: "read-only",
+        purpose:
+          "Print a compact launch status with counts, blocked gates, ready gates, and the next action."
       },
       {
         command: "npm run production:readiness",
@@ -224,7 +233,7 @@ describe("launch readiness report", () => {
       "--extract-candidate-study"
     ];
 
-    expect(report.worksheet.copySafeCommands).toHaveLength(9);
+    expect(report.worksheet.copySafeCommands).toHaveLength(10);
     expect(report.worksheet.copySafeCommands.every((item) => item.mode === "read-only")).toBe(
       true
     );
@@ -233,6 +242,58 @@ describe("launch readiness report", () => {
         blockedWriteTokens.some((token) => item.command.includes(token))
       )
     ).toBe(false);
+  });
+
+  it("summarizes launch readiness without full nested report payloads", () => {
+    const report = buildLaunchReadinessReport({
+      env: {},
+      evidenceCoverage: {
+        dataSource: "seed",
+        report: coverageSummary({
+          claimReviewBacklog: 7,
+          humanReviewedClaims: 0,
+          interventionGaps: 1
+        })
+      },
+      files: {
+        launchChecklist: true,
+        postLaunchReviewTemplate: true
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      operations: readinessReport(["uptime-monitoring"]) as OperationsReadinessReport,
+      operator: readinessReport(["operator-auth-config"]) as OperatorReadinessReport,
+      production: readinessReport(["database-url"]) as ProductionReadinessReport,
+      promotion: {
+        snapshot: promotionSnapshot({ blockedCount: 1, readyCount: 0, total: 1 })
+      },
+      scheduledIngestion: {
+        hostedCronReady: false,
+        hostedRunGateReady: true,
+        missingEnv: ["DATABASE_URL", "APEX_DATA_SOURCE=database"],
+        noAutoPromotion: true,
+        retryAutomationReady: false
+      }
+    });
+
+    expect(summarizeLaunchReadinessReport(report)).toEqual({
+      blockedGates: report.worksheet.blockedGates,
+      counts: {
+        blocked: 10,
+        ready: 2,
+        warning: 0
+      },
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      humanOwned: true,
+      nextAction: "database-url blocked.",
+      overall: "blocked",
+      readOnly: true,
+      readyGates: report.worksheet.readyGates,
+      warningGates: []
+    });
+    expect(JSON.stringify(summarizeLaunchReadinessReport(report))).not.toContain("checks");
+    expect(JSON.stringify(summarizeLaunchReadinessReport(report))).not.toContain(
+      "copySafeCommands"
+    );
   });
 
   it("blocks scheduled ingestion when the hosted-run gate is not verified", () => {

@@ -62,6 +62,18 @@ export interface LaunchReadinessReport {
   worksheet: LaunchReadinessWorksheet;
 }
 
+export interface LaunchReadinessSummary {
+  blockedGates: LaunchReadinessWorksheetItem[];
+  counts: Record<LaunchReadinessStatus, number>;
+  generatedAt: string;
+  humanOwned: true;
+  nextAction: string;
+  overall: "ready" | "blocked";
+  readOnly: true;
+  readyGates: LaunchReadinessWorksheetItem[];
+  warningGates: LaunchReadinessWorksheetItem[];
+}
+
 export interface LaunchReadinessWorksheet {
   blockedGates: LaunchReadinessWorksheetItem[];
   copySafeCommands: LaunchReadinessCommand[];
@@ -176,6 +188,22 @@ export function buildLaunchReadinessReport(
     nextAction,
     overall: counts.blocked > 0 ? "blocked" : "ready",
     worksheet: launchReadinessWorksheet(checks, nextAction)
+  };
+}
+
+export function summarizeLaunchReadinessReport(
+  report: LaunchReadinessReport
+): LaunchReadinessSummary {
+  return {
+    blockedGates: report.worksheet.blockedGates,
+    counts: report.counts,
+    generatedAt: report.generatedAt,
+    humanOwned: true,
+    nextAction: report.nextAction,
+    overall: report.overall,
+    readOnly: true,
+    readyGates: report.worksheet.readyGates,
+    warningGates: report.worksheet.warningGates
   };
 }
 
@@ -456,6 +484,14 @@ function launchReadinessCopySafeCommands(): LaunchReadinessCommand[] {
       mode: "read-only",
       purpose:
         "Recheck production, operator, operations, ingestion, promotion, coverage, smoke, and launch evidence gates."
+    },
+    {
+      command: "npm run launch:readiness -- --summary",
+      id: "launch-readiness-summary",
+      label: "Refresh compact launch summary",
+      mode: "read-only",
+      purpose:
+        "Print a compact launch status with counts, blocked gates, ready gates, and the next action."
     },
     {
       command: "npm run production:readiness",

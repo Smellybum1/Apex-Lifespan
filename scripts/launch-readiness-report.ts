@@ -5,7 +5,8 @@ import path from "node:path";
 import {
   buildLaunchReadinessReport,
   FULLY_LIVE_LAUNCH_CHECKLIST_PATH,
-  POST_LAUNCH_REVIEW_TEMPLATE_PATH
+  POST_LAUNCH_REVIEW_TEMPLATE_PATH,
+  summarizeLaunchReadinessReport
 } from "@/lib/launch-readiness";
 import { buildOperationsReadinessReport } from "@/lib/operations-readiness";
 import { buildOperatorReadinessReport } from "@/lib/operator/readiness";
@@ -14,6 +15,7 @@ import { buildProductionReadinessReport } from "@/lib/production-readiness";
 const PRIVATE_ENV_FILES = [".env", ".env.local", ".env.production", ".env.production.local"];
 
 async function main() {
+  const mode = readLaunchReadinessMode(process.argv.slice(2));
   const initialEnv = { ...process.env };
   const [scheduledIngestion, promotion, evidenceCoverage] = await Promise.all([
     readScheduledIngestionEvidence(),
@@ -41,7 +43,21 @@ async function main() {
     scheduledIngestion
   });
 
-  console.log(JSON.stringify(report, null, 2));
+  console.log(
+    JSON.stringify(mode === "summary" ? summarizeLaunchReadinessReport(report) : report, null, 2)
+  );
+}
+
+function readLaunchReadinessMode(args: string[]) {
+  for (const arg of args) {
+    if (arg === "--summary") {
+      return "summary" as const;
+    }
+
+    throw new Error(`Unknown launch readiness argument: ${arg}`);
+  }
+
+  return "full" as const;
 }
 
 function readLaunchReadinessFiles() {
