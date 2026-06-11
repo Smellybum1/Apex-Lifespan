@@ -367,6 +367,7 @@ function coverageSummary({
     unreviewedClaims: Math.max(0, 7 - humanReviewedClaims),
     worksheet: {
       coverageGaps: [],
+      copySafeCommands: [],
       humanOwned: true,
       nextHumanAction: "No complete unreviewed source packets are ready for sampling.",
       readyReviewBatch: [],

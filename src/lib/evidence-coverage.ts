@@ -71,11 +71,20 @@ export interface EvidenceCoverageReviewSamplingPlan {
 
 export interface EvidenceCoverageWorksheet {
   coverageGaps: EvidenceCoverageInterventionGap[];
+  copySafeCommands: EvidenceCoverageCommand[];
   humanOwned: true;
   nextHumanAction: string;
   readyReviewBatch: EvidenceCoverageReviewSampleItem[];
   readySourcePackets: EvidenceCoverageWorksheetClaimItem[];
   remainingBacklog: EvidenceCoverageWorksheetClaimItem[];
+}
+
+export interface EvidenceCoverageCommand {
+  command: string;
+  id: string;
+  label: string;
+  mode: "read-only";
+  purpose: string;
 }
 
 export interface EvidenceCoverageWorksheetClaimItem {
@@ -207,6 +216,7 @@ function evidenceCoverageWorksheet({
 
   return {
     coverageGaps: interventionGaps,
+    copySafeCommands: evidenceCoverageCopySafeCommands(),
     humanOwned: true,
     nextHumanAction:
       reviewSamplingPlan.items.length > 0
@@ -218,6 +228,58 @@ function evidenceCoverageWorksheet({
     readySourcePackets,
     remainingBacklog
   };
+}
+
+function evidenceCoverageCopySafeCommands(): EvidenceCoverageCommand[] {
+  return [
+    {
+      command: "npm run coverage:review",
+      id: "coverage-review",
+      label: "Refresh coverage review",
+      mode: "read-only",
+      purpose:
+        "Recheck source-packet coverage, review backlog, sampled review batch, and intervention gaps without changing review status."
+    },
+    {
+      command: "npm run regulatory:review",
+      id: "regulatory-review",
+      label: "Refresh AU/TGA review",
+      mode: "read-only",
+      purpose:
+        "Recheck product-level AU/TGA unknown/stale states before updating coverage decisions."
+    },
+    {
+      command: "npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10",
+      id: "candidate-review-overview",
+      label: "Review pending source candidates",
+      mode: "read-only",
+      purpose:
+        "Inspect pending source-candidate groups that may support future curated coverage expansion."
+    },
+    {
+      command: "npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10",
+      id: "candidate-review-flags",
+      label: "Review flagged source candidates",
+      mode: "read-only",
+      purpose:
+        "Inspect broad safety or low-overlap candidate groups before any human curation decision."
+    },
+    {
+      command: "npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-limit 10",
+      id: "candidate-curation-handoff",
+      label: "Review accepted candidate curation",
+      mode: "read-only",
+      purpose:
+        "Inspect accepted source candidates that still need claim linking or structured extraction before public source-packet use."
+    },
+    {
+      command: "npm run launch:readiness",
+      id: "launch-readiness",
+      label: "Refresh aggregate launch readiness",
+      mode: "read-only",
+      purpose: "Recheck fully-live launch gates after evidence coverage review changes."
+    }
+  ];
 }
 
 function evidenceCoverageWorksheetClaimItem(

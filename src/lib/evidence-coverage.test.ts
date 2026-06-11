@@ -287,6 +287,58 @@ describe("evidence coverage summary", () => {
               "Add at least one scoped claim with curated source links before treating this intervention as covered."
           }
         ],
+        copySafeCommands: [
+          {
+            command: "npm run coverage:review",
+            id: "coverage-review",
+            label: "Refresh coverage review",
+            mode: "read-only",
+            purpose:
+              "Recheck source-packet coverage, review backlog, sampled review batch, and intervention gaps without changing review status."
+          },
+          {
+            command: "npm run regulatory:review",
+            id: "regulatory-review",
+            label: "Refresh AU/TGA review",
+            mode: "read-only",
+            purpose:
+              "Recheck product-level AU/TGA unknown/stale states before updating coverage decisions."
+          },
+          {
+            command:
+              "npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10",
+            id: "candidate-review-overview",
+            label: "Review pending source candidates",
+            mode: "read-only",
+            purpose:
+              "Inspect pending source-candidate groups that may support future curated coverage expansion."
+          },
+          {
+            command:
+              "npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10",
+            id: "candidate-review-flags",
+            label: "Review flagged source candidates",
+            mode: "read-only",
+            purpose:
+              "Inspect broad safety or low-overlap candidate groups before any human curation decision."
+          },
+          {
+            command:
+              "npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-limit 10",
+            id: "candidate-curation-handoff",
+            label: "Review accepted candidate curation",
+            mode: "read-only",
+            purpose:
+              "Inspect accepted source candidates that still need claim linking or structured extraction before public source-packet use."
+          },
+          {
+            command: "npm run launch:readiness",
+            id: "launch-readiness",
+            label: "Refresh aggregate launch readiness",
+            mode: "read-only",
+            purpose: "Recheck fully-live launch gates after evidence coverage review changes."
+          }
+        ],
         humanOwned: true,
         nextHumanAction:
           "Human review this sampled batch first; do not update review status until the cited packet and extraction are checked.",
@@ -348,5 +400,28 @@ describe("evidence coverage summary", () => {
         remainingBacklog: []
       }
     });
+  });
+
+  it("emits only read-only commands for human coverage review", () => {
+    const summary = summarizeEvidenceCoverage(seedDashboardData);
+    const blockedWriteTokens = [
+      "--accept-candidate",
+      "--reject-candidate",
+      "--link-candidate-claim",
+      "--extract-candidate-study",
+      "--queue-",
+      "--run-next",
+      "--apply"
+    ];
+
+    expect(summary.worksheet.copySafeCommands).toHaveLength(6);
+    expect(summary.worksheet.copySafeCommands.every((item) => item.mode === "read-only")).toBe(
+      true
+    );
+    expect(
+      summary.worksheet.copySafeCommands.some((item) =>
+        blockedWriteTokens.some((token) => item.command.includes(token))
+      )
+    ).toBe(false);
   });
 });
