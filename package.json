@@ -15,6 +15,7 @@
     "ingest:scheduled-dry-run": "tsx scripts/scheduled-source-ingestion.ts",
     "coverage:review": "tsx scripts/evidence-coverage-report.ts",
     "regulatory:review": "tsx scripts/australia-regulatory-report.ts",
+    "production:readiness": "tsx scripts/production-readiness-report.ts",
     "codex:review-sidecar": "tsx scripts/codex-review-sidecar.ts",
     "ingest:sources": "tsx scripts/run-source-candidate-jobs.ts",
     "db:validate": "prisma validate",
