@@ -34,6 +34,20 @@ export interface OperationsReadinessReport {
   worksheet: OperationsReadinessWorksheet;
 }
 
+export type OperationsEvidenceReviewStatus = "blocked" | "not-found" | "ready";
+
+export interface OperationsEvidenceReviewPacket {
+  availableEvidenceIds: string[];
+  check: OperationsReadinessCheck | null;
+  evidenceId: string;
+  found: boolean;
+  humanOwned: true;
+  nextAction: string;
+  readOnly: true;
+  relatedCommand: OperationsReadinessCommand | null;
+  status: OperationsEvidenceReviewStatus;
+}
+
 export interface OperationsReadinessWorksheet {
   copySafeCommands: OperationsReadinessCommand[];
   humanOwned: true;
@@ -178,6 +192,47 @@ export function buildOperationsReadinessReport(
     generatedAt: (context.generatedAt ?? new Date()).toISOString(),
     overall: counts.blocked > 0 ? "blocked" : "ready",
     worksheet: operationsReadinessWorksheet(checks)
+  };
+}
+
+export function summarizeOperationsEvidenceReview(
+  context: OperationsReadinessContext,
+  evidenceId: string
+): OperationsEvidenceReviewPacket {
+  const report = buildOperationsReadinessReport(context);
+  const check = report.checks.find((item) => item.id === evidenceId) ?? null;
+  const availableEvidenceIds = report.checks.map((item) => item.id);
+
+  if (!check) {
+    return {
+      availableEvidenceIds,
+      check: null,
+      evidenceId,
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No operations evidence item matched this id; rerun npm run operations:readiness to inspect valid evidence ids.",
+      readOnly: true,
+      relatedCommand: null,
+      status: "not-found"
+    };
+  }
+
+  return {
+    availableEvidenceIds,
+    check,
+    evidenceId,
+    found: true,
+    humanOwned: true,
+    nextAction:
+      check.nextAction ??
+      "This operations evidence item is ready; rerun aggregate launch readiness before changing scope.",
+    readOnly: true,
+    relatedCommand:
+      report.worksheet.copySafeCommands.find(
+        (command) => command.id === "operations-readiness"
+      ) ?? null,
+    status: check.status
   };
 }
 
@@ -406,6 +461,14 @@ function operationsReadinessCopySafeCommands(): OperationsReadinessCommand[] {
       mode: "read-only",
       purpose:
         "Recheck local operations artifacts and external evidence variables without printing secret values."
+    },
+    {
+      command: "npm run operations:readiness -- --evidence <evidence-id>",
+      id: "operations-evidence-review",
+      label: "Focus one operations evidence item",
+      mode: "read-only",
+      purpose:
+        "Print one operations evidence check with its required key and next action for human setup."
     },
     {
       command: "npm run smoke:public-mvp -- <base-url>",
