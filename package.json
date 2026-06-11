@@ -19,6 +19,7 @@
     "operations:readiness": "tsx scripts/operations-readiness-report.ts",
     "operator:readiness": "tsx scripts/operator-readiness-report.ts",
     "production:readiness": "tsx scripts/production-readiness-report.ts",
+    "launch:readiness": "tsx scripts/launch-readiness-report.ts",
     "operator:bootstrap": "tsx scripts/operator-bootstrap.ts",
     "codex:review-sidecar": "tsx scripts/codex-review-sidecar.ts",
     "ingest:sources": "tsx scripts/run-source-candidate-jobs.ts",
