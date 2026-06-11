@@ -93,6 +93,8 @@ The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel
 12. [ ] Run full product QA and hardening.
     Done when: accessibility, mobile/desktop layout, performance, security headers, dependency audit, and regression suites pass for production data mode.
     Validate with: `npm run test`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm audit`, public smoke, browser QA, and accessibility/performance checks.
+    In progress 2026-06-11: added `docs/codex/plans/2026-06-11-public-security-headers.md`, conservative global security headers in `next.config.mjs`, and `src/app/security-headers-config.test.ts`. Headers cover limited CSP directives, referrer policy, HSTS, MIME sniffing, DNS prefetch, frame blocking, and unused device/browser APIs while avoiding strict script/style CSP and cross-origin isolation until browser QA. Validation passed: header config/public-boundary tests, full `npm run test` (31 files, 361 tests), `npm run typecheck`, `npm run build`, `npm run lint`, `npm audit`, and `git diff --check`.
+    Remaining blocker 2026-06-11: full step completion still requires production database mode, public smoke against the production URL after deploy, mobile/desktop browser QA, accessibility/performance checks, and any external security-header scanner or monitoring evidence chosen for launch.
 
 13. [ ] Launch the fully live product and monitor post-launch.
     Done when: production database mode is live, authenticated workflows are operational, scheduled ingestion is monitored, public smoke passes, rollback is rehearsed, and post-launch issues are tracked.
