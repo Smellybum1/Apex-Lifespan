@@ -196,48 +196,12 @@ export default async function OperatorPage() {
           ) : null}
         </div>
 
-        <section className="rounded-md border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-            <div>
-              <h2 className="text-lg font-semibold tracking-normal">Candidate review queue</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                {reviewQueue.pendingCount} pending candidates loaded
-              </p>
-            </div>
-            <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
-              {candidateReviewControl.enabled ? "Write-gated" : "Read-only"}
-            </span>
-          </div>
-          <div className="divide-y divide-slate-100">
-            {reviewQueue.rows.length > 0 ? (
-              reviewQueue.rows.map((candidate) => (
-                <article className="px-4 py-4" key={candidate.dedupeKey}>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-slate-500">{candidate.source}</p>
-                      <h3 className="mt-1 max-w-3xl text-base font-semibold text-slate-950">
-                        {candidate.title}
-                      </h3>
-                    </div>
-                    <span className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">
-                      {candidate.triageScore}/100
-                    </span>
-                  </div>
-                  {candidate.curationStatus ? (
-                    <p className="mt-3 text-sm text-slate-700">{candidate.curationStatus}</p>
-                  ) : null}
-                  {candidateReviewControl.enabled ? (
-                    <CandidateReviewControls candidate={candidate} />
-                  ) : null}
-                </article>
-              ))
-            ) : (
-              <p className="px-4 py-6 text-sm text-slate-600">
-                No pending candidates are visible for this operator role.
-              </p>
-            )}
-          </div>
-        </section>
+        {canReviewCandidates ? (
+          <CandidateReviewQueuePanel
+            candidateReviewControl={candidateReviewControl}
+            reviewQueue={reviewQueue}
+          />
+        ) : null}
 
         {canReviewPromotion ? (
           <PromotionReadinessPanel
@@ -390,6 +354,62 @@ function PromotionReadinessPanel({
         ) : (
           <p className="px-4 py-6 text-sm text-slate-600">
             No accepted candidates are visible for promotion review.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function CandidateReviewQueuePanel({
+  candidateReviewControl,
+  reviewQueue
+}: {
+  candidateReviewControl: OperatorBrowserWriteControlState;
+  reviewQueue: {
+    pendingCount: number;
+    rows: OperatorReviewQueueRow[];
+  };
+}) {
+  return (
+    <section className="rounded-md border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-normal">Candidate review queue</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            {reviewQueue.pendingCount} pending candidates loaded
+          </p>
+        </div>
+        <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+          {candidateReviewControl.enabled ? "Write-gated" : "Read-only"}
+        </span>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {reviewQueue.rows.length > 0 ? (
+          reviewQueue.rows.map((candidate) => (
+            <article className="px-4 py-4" key={candidate.dedupeKey}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-500">{candidate.source}</p>
+                  <h3 className="mt-1 max-w-3xl text-base font-semibold text-slate-950">
+                    {candidate.title}
+                  </h3>
+                </div>
+                <span className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">
+                  {candidate.triageScore}/100
+                </span>
+              </div>
+              {candidate.curationStatus ? (
+                <p className="mt-3 text-sm text-slate-700">{candidate.curationStatus}</p>
+              ) : null}
+              {candidateReviewControl.enabled ? (
+                <CandidateReviewControls candidate={candidate} />
+              ) : null}
+            </article>
+          ))
+        ) : (
+          <p className="px-4 py-6 text-sm text-slate-600">
+            No pending candidates are visible for this operator role.
           </p>
         )}
       </div>
