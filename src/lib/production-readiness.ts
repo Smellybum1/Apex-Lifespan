@@ -29,6 +29,22 @@ export interface ProductionReadinessReport {
   worksheet: ProductionProvisioningWorksheet;
 }
 
+export type ProductionReadinessCheckReviewStatus =
+  | ProductionReadinessStatus
+  | "not-found";
+
+export interface ProductionReadinessCheckReviewPacket {
+  availableCheckIds: string[];
+  check: ProductionReadinessCheck | null;
+  checkId: string;
+  found: boolean;
+  humanOwned: true;
+  nextAction: string;
+  readOnly: true;
+  relatedCommand: ProductionProvisioningCommand | null;
+  status: ProductionReadinessCheckReviewStatus;
+}
+
 export interface ProductionProvisioningWorksheet {
   blocked: ProductionProvisioningWorksheetItem[];
   copySafeCommands: ProductionProvisioningCommand[];
@@ -108,6 +124,47 @@ export function buildProductionReadinessReport(
     overall: counts.blocked > 0 ? "blocked" : "ready",
     sanitizedDatabaseTarget: parsedDatabase.ok ? parsedDatabase.target : undefined,
     worksheet: productionProvisioningWorksheet(checks)
+  };
+}
+
+export function summarizeProductionReadinessCheck(
+  context: ProductionReadinessContext,
+  checkId: string
+): ProductionReadinessCheckReviewPacket {
+  const report = buildProductionReadinessReport(context);
+  const check = report.checks.find((item) => item.id === checkId) ?? null;
+  const availableCheckIds = report.checks.map((item) => item.id);
+
+  if (!check) {
+    return {
+      availableCheckIds,
+      check: null,
+      checkId,
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No production readiness check matched this id; rerun npm run production:readiness to inspect valid check ids.",
+      readOnly: true,
+      relatedCommand: null,
+      status: "not-found"
+    };
+  }
+
+  return {
+    availableCheckIds,
+    check,
+    checkId,
+    found: true,
+    humanOwned: true,
+    nextAction:
+      check.nextAction ??
+      "This production readiness check is ready; rerun aggregate launch readiness before changing scope.",
+    readOnly: true,
+    relatedCommand:
+      report.worksheet.copySafeCommands.find(
+        (command) => command.id === "production-readiness"
+      ) ?? null,
+    status: check.status
   };
 }
 
@@ -469,6 +526,14 @@ function productionProvisioningCopySafeCommands(): ProductionProvisioningCommand
       label: "Refresh production readiness",
       mode: "read-only",
       purpose: "Recheck production database, secrets, and evidence gates without printing secret values."
+    },
+    {
+      command: "npm run production:readiness -- --check <check-id>",
+      id: "production-readiness-check",
+      label: "Focus one production readiness check",
+      mode: "read-only",
+      purpose:
+        "Print one production readiness check with its evidence keys and next action for dashboard setup."
     },
     {
       command: "npm run production:migration-rehearsal",

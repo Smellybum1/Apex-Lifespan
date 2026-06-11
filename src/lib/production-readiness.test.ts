@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildProductionReadinessReport } from "@/lib/production-readiness";
+import {
+  buildProductionReadinessReport,
+  summarizeProductionReadinessCheck
+} from "@/lib/production-readiness";
 
 describe("production readiness report", () => {
   it("reports ready when managed database and required production secrets are configured", () => {
@@ -89,6 +92,14 @@ describe("production readiness report", () => {
           "Recheck production database, secrets, and evidence gates without printing secret values."
       },
       {
+        command: "npm run production:readiness -- --check <check-id>",
+        id: "production-readiness-check",
+        label: "Focus one production readiness check",
+        mode: "read-only",
+        purpose:
+          "Print one production readiness check with its evidence keys and next action for dashboard setup."
+      },
+      {
         command: "npm run production:migration-rehearsal",
         id: "migration-rehearsal-plan",
         label: "Plan non-production migration rehearsal",
@@ -146,6 +157,103 @@ describe("production readiness report", () => {
         })
       ])
     );
+  });
+
+  it("builds a focused read-only packet for one production readiness check", () => {
+    expect(
+      summarizeProductionReadinessCheck(
+        {
+          env: {
+            APEX_DATA_SOURCE: "seed",
+            DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/apex_lifespan"
+          },
+          generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+          migrationDirectories: ["20260602032000_init"],
+          productionProvisioningChecklistExists: true,
+          trackedEnvFiles: [],
+          vercelCliAvailable: false,
+          vercelProjectLinked: false
+        },
+        "database-url"
+      )
+    ).toEqual({
+      availableCheckIds: [
+        "database-url",
+        "apex-data-source",
+        "prisma-migrations",
+        "production-provisioning-checklist",
+        "migration-rehearsal",
+        "vercel-project",
+        "vercel-cli",
+        "operator-auth-secrets",
+        "local-only-sidecar-secrets",
+        "tracked-env-files",
+        "operator-write-flag",
+        "ncbi-metadata"
+      ],
+      check: {
+        detail: "DATABASE_URL points at local target postgresql://localhost:5432/apex_lifespan.",
+        id: "database-url",
+        label: "Managed database URL",
+        nextAction: "Use a managed non-local PostgreSQL target before production migration rehearsal.",
+        status: "blocked"
+      },
+      checkId: "database-url",
+      found: true,
+      humanOwned: true,
+      nextAction: "Use a managed non-local PostgreSQL target before production migration rehearsal.",
+      readOnly: true,
+      relatedCommand: {
+        command: "npm run production:readiness",
+        id: "production-readiness",
+        label: "Refresh production readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck production database, secrets, and evidence gates without printing secret values."
+      },
+      status: "blocked"
+    });
+  });
+
+  it("reports missing focused production readiness checks without writes", () => {
+    expect(
+      summarizeProductionReadinessCheck(
+        {
+          env: {},
+          generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+          migrationDirectories: ["20260602032000_init"],
+          productionProvisioningChecklistExists: true,
+          trackedEnvFiles: [],
+          vercelCliAvailable: false,
+          vercelProjectLinked: false
+        },
+        "missing-check"
+      )
+    ).toEqual({
+      availableCheckIds: [
+        "database-url",
+        "apex-data-source",
+        "prisma-migrations",
+        "production-provisioning-checklist",
+        "migration-rehearsal",
+        "vercel-project",
+        "vercel-cli",
+        "operator-auth-secrets",
+        "local-only-sidecar-secrets",
+        "tracked-env-files",
+        "operator-write-flag",
+        "ncbi-metadata"
+      ],
+      check: null,
+      checkId: "missing-check",
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No production readiness check matched this id; rerun npm run production:readiness to inspect valid check ids.",
+      readOnly: true,
+      relatedCommand: null,
+      status: "not-found"
+    });
   });
 
   it("accepts GitHub-imported Vercel project evidence without a local Vercel link", () => {
