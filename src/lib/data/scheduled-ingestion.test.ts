@@ -71,8 +71,18 @@ describe("scheduled source ingestion dry run", () => {
         automaticRetries: false,
         failedJobsReviewed: 0,
         items: [],
-        nextAction: "No recent failed ingestion jobs need retry review.",
-        retryAutomationReady: false
+        nextAction:
+          "Review docs/codex/scheduled-ingestion-retry-policy.md, then record APEX_INGESTION_RETRY_POLICY_APPROVED_AT.",
+        retryAutomationReady: false,
+        retryPolicy: {
+          approved: false,
+          evidenceKeys: ["APEX_INGESTION_RETRY_POLICY_APPROVED_AT"],
+          missingEnv: ["APEX_INGESTION_RETRY_POLICY_APPROVED_AT"],
+          nextAction:
+            "Review docs/codex/scheduled-ingestion-retry-policy.md, then record APEX_INGESTION_RETRY_POLICY_APPROVED_AT.",
+          ready: false,
+          retryMode: "manual-reviewed-retry"
+        }
       },
       maxJobsPerRun: 2,
       nextAction: "Scheduled run would process 2 queued job(s).",
@@ -104,16 +114,17 @@ describe("scheduled source ingestion dry run", () => {
       worksheet: {
         blocked: [
           {
-            detail: "Automatic retry policy is not approved; failed jobs remain manual-review only.",
+            detail: "Retry policy approval is not recorded; failed jobs remain manual-review only.",
+            evidenceKeys: ["APEX_INGESTION_RETRY_POLICY_APPROVED_AT"],
             id: "retry-policy",
             label: "Retry automation review",
             nextAction:
-              "Review failure categories and define an explicit retry policy before enabling retry automation."
+              "Review docs/codex/scheduled-ingestion-retry-policy.md, then record APEX_INGESTION_RETRY_POLICY_APPROVED_AT."
           }
         ],
         humanOwned: true,
         nextOperatorAction:
-          "Review failure categories and define an explicit retry policy before enabling retry automation.",
+          "Review docs/codex/scheduled-ingestion-retry-policy.md, then record APEX_INGESTION_RETRY_POLICY_APPROVED_AT.",
         queuedWork: [
           {
             detail: "3 queued job(s); dry run would process 2.",
@@ -367,7 +378,13 @@ describe("scheduled source ingestion dry run", () => {
         ],
         nextAction:
           "Review failed ingestion jobs and their categories before enabling any retry automation.",
-        retryAutomationReady: false
+        retryAutomationReady: false,
+        retryPolicy: {
+          approved: false,
+          missingEnv: ["APEX_INGESTION_RETRY_POLICY_APPROVED_AT"],
+          ready: false,
+          retryMode: "manual-reviewed-retry"
+        }
       },
       nextAction: "Review failed ingestion jobs before queueing more scheduled work.",
       recentFailures: 2,
@@ -385,6 +402,92 @@ describe("scheduled source ingestion dry run", () => {
     });
     expect(JSON.stringify(review.failureReview)).not.toContain("secret-123");
     expect(JSON.stringify(review.failureReview)).not.toContain("private@example.com");
+  });
+
+  it("marks retry policy ready only after approval and no recent failures", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [],
+      total: 0
+    });
+    listJobsMock.mockResolvedValue([]);
+
+    await expect(
+      planScheduledSourceIngestionDryRun({
+        env: approvedRetrySchedulerEnv()
+      })
+    ).resolves.toMatchObject({
+      failureReview: {
+        failedJobsReviewed: 0,
+        nextAction:
+          "Retry policy evidence is approved; keep automatic retries disabled until launch approval.",
+        retryAutomationReady: true,
+        retryPolicy: {
+          approved: true,
+          missingEnv: [],
+          ready: true,
+          retryMode: "manual-reviewed-retry"
+        }
+      },
+      worksheet: {
+        blocked: [],
+        ready: expect.arrayContaining([
+          {
+            detail:
+              "Retry policy approval is recorded and there are no recent failed jobs awaiting manual review.",
+            evidenceKeys: ["APEX_INGESTION_RETRY_POLICY_APPROVED_AT"],
+            id: "retry-policy",
+            label: "Retry policy evidence"
+          }
+        ])
+      }
+    });
+  });
+
+  it("keeps retry policy blocked when recent failures need review even after approval", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [
+        {
+          count: 1,
+          region: "AU",
+          source: SourceKind.PUBMED,
+          status: IngestionStatus.FAILED
+        }
+      ],
+      total: 1
+    });
+    listJobsMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([failedJob("failed-upstream", "NCBI unavailable")]);
+
+    await expect(
+      planScheduledSourceIngestionDryRun({
+        env: approvedRetrySchedulerEnv()
+      })
+    ).resolves.toMatchObject({
+      failureReview: {
+        failedJobsReviewed: 1,
+        retryAutomationReady: false,
+        retryPolicy: {
+          approved: true,
+          ready: true
+        }
+      },
+      worksheet: {
+        blocked: expect.arrayContaining([
+          expect.objectContaining({
+            detail: "Recent failed jobs must be manually reviewed before retry automation is launch-ready.",
+            evidenceKeys: [],
+            id: "retry-policy"
+          })
+        ]),
+        warnings: expect.arrayContaining([
+          expect.objectContaining({
+            id: "recent-failures"
+          })
+        ])
+      }
+    });
   });
 
   it("summarizes duplicate source identities for human dedupe review", async () => {
@@ -599,6 +702,13 @@ function readySchedulerEnv() {
     DATABASE_URL: "postgresql://user:password@db.example.com/apex",
     NCBI_EMAIL: "operator@example.com",
     NCBI_TOOL: "apex-lifespan"
+  };
+}
+
+function approvedRetrySchedulerEnv() {
+  return {
+    ...readySchedulerEnv(),
+    APEX_INGESTION_RETRY_POLICY_APPROVED_AT: "2026-06-11T15:00:00Z"
   };
 }
 

@@ -42,6 +42,7 @@ Use this checklist only for the fully live production launch. The seed-backed pu
 - Configure scheduled ingestion alerts and record `APEX_INGESTION_ALERTS_CONFIGURED=true`.
 - Keep `APEX_SCHEDULED_INGESTION_WRITES_ENABLED=false` until operator approval.
 - Run `npm run ingest:scheduled-dry-run` and confirm rate limits, retry policy, and `noAutoPromotion=true`.
+- Review `docs/codex/scheduled-ingestion-retry-policy.md` and record `APEX_INGESTION_RETRY_POLICY_APPROVED_AT` only after failed-job handling is understood.
 - Set `APEX_SCHEDULED_INGESTION_CRON_APPROVED=true` only after hosted cron and alert evidence are reviewed.
 
 ## Operations Evidence

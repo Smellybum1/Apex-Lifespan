@@ -80,7 +80,17 @@ export interface ScheduledIngestionFailureReview {
   failedJobsReviewed: number;
   items: ScheduledIngestionFailureReviewItem[];
   nextAction: string;
-  retryAutomationReady: false;
+  retryAutomationReady: boolean;
+  retryPolicy: ScheduledIngestionRetryPolicyReview;
+}
+
+export interface ScheduledIngestionRetryPolicyReview {
+  approved: boolean;
+  evidenceKeys: string[];
+  missingEnv: string[];
+  nextAction: string;
+  ready: boolean;
+  retryMode: "manual-reviewed-retry";
 }
 
 export interface ScheduledIngestionFailureReviewItem {
@@ -152,6 +162,7 @@ const REQUIRED_NCBI_METADATA_ENV = ["NCBI_TOOL", "NCBI_EMAIL"] as const;
 const SCHEDULED_INGESTION_WRITES_ENV = "APEX_SCHEDULED_INGESTION_WRITES_ENABLED";
 const SCHEDULED_INGESTION_CRON_APPROVAL_ENV = "APEX_SCHEDULED_INGESTION_CRON_APPROVED";
 const INGESTION_ALERTS_ENV = "APEX_INGESTION_ALERTS_CONFIGURED";
+const RETRY_POLICY_APPROVAL_ENV = "APEX_INGESTION_RETRY_POLICY_APPROVED_AT";
 const LOCAL_DATABASE_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 
 export async function planScheduledSourceIngestionDryRun(
@@ -186,7 +197,8 @@ export async function planScheduledSourceIngestionDryRun(
     .filter((group) => group.status === IngestionStatus.FAILED)
     .reduce((total, group) => total + group.count, 0);
   const wouldRunJobs = runningJobs.length > 0 ? 0 : Math.min(maxJobsPerRun, queuedJobs.length);
-  const failureReview = scheduledIngestionFailureReview(failedJobs);
+  const retryPolicy = scheduledIngestionRetryPolicyReview(options.env);
+  const failureReview = scheduledIngestionFailureReview(failedJobs, retryPolicy);
   const dedupeReview = scheduledIngestionDedupeReview(duplicateIdentityGroups);
   const nextAction = scheduledIngestionNextAction({
     failedCount,
@@ -290,19 +302,40 @@ export async function runScheduledSourceIngestionBatch(
 }
 
 function scheduledIngestionFailureReview(
-  failedJobs: SourceCandidateIngestionJobListItem[]
+  failedJobs: SourceCandidateIngestionJobListItem[],
+  retryPolicy: ScheduledIngestionRetryPolicyReview
 ): ScheduledIngestionFailureReview {
   const items = failedJobs.map((job) => scheduledIngestionFailureReviewItem(job));
+  const retryAutomationReady = retryPolicy.ready && items.length === 0;
 
   return {
     automaticRetries: false,
     failedJobsReviewed: items.length,
     items,
-    nextAction:
-      items.length > 0
+    nextAction: retryAutomationReady
+      ? "Retry policy evidence is approved; keep automatic retries disabled until launch approval."
+      : items.length > 0
         ? "Review failed ingestion jobs and their categories before enabling any retry automation."
-        : "No recent failed ingestion jobs need retry review.",
-    retryAutomationReady: false
+        : retryPolicy.nextAction,
+    retryAutomationReady,
+    retryPolicy
+  };
+}
+
+function scheduledIngestionRetryPolicyReview(
+  env: Record<string, string | undefined> = process.env
+): ScheduledIngestionRetryPolicyReview {
+  const approved = Boolean(readEnv(env, RETRY_POLICY_APPROVAL_ENV));
+
+  return {
+    approved,
+    evidenceKeys: [RETRY_POLICY_APPROVAL_ENV],
+    missingEnv: approved ? [] : [RETRY_POLICY_APPROVAL_ENV],
+    nextAction: approved
+      ? "Retry policy approval is recorded; review recent failed jobs before enabling unattended ingestion."
+      : "Review docs/codex/scheduled-ingestion-retry-policy.md, then record APEX_INGESTION_RETRY_POLICY_APPROVED_AT.",
+    ready: approved,
+    retryMode: "manual-reviewed-retry"
   };
 }
 
@@ -553,11 +586,23 @@ function scheduledIngestionWorksheet({
 
   if (!failureReview.retryAutomationReady) {
     blocked.push({
+      evidenceKeys: failureReview.retryPolicy.missingEnv,
       id: "retry-policy",
       label: "Retry automation review",
-      detail: "Automatic retry policy is not approved; failed jobs remain manual-review only.",
-      nextAction:
-        "Review failure categories and define an explicit retry policy before enabling retry automation."
+      detail: failureReview.retryPolicy.ready
+        ? "Recent failed jobs must be manually reviewed before retry automation is launch-ready."
+        : "Retry policy approval is not recorded; failed jobs remain manual-review only.",
+      nextAction: failureReview.retryPolicy.ready
+        ? failureReview.nextAction
+        : failureReview.retryPolicy.nextAction
+    });
+  } else {
+    ready.push({
+      evidenceKeys: failureReview.retryPolicy.evidenceKeys,
+      id: "retry-policy",
+      label: "Retry policy evidence",
+      detail:
+        "Retry policy approval is recorded and there are no recent failed jobs awaiting manual review."
     });
   }
 

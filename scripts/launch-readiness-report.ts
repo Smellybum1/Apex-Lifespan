@@ -59,7 +59,10 @@ async function readScheduledIngestionEvidence() {
 
     return {
       hostedCronReady: plan.policy.hostedCronReady,
-      missingEnv: plan.policy.hostedCron.missingEnv,
+      missingEnv: [
+        ...plan.policy.hostedCron.missingEnv,
+        ...plan.failureReview.retryPolicy.missingEnv
+      ],
       noAutoPromotion: plan.noAutoPromotion,
       retryAutomationReady: plan.failureReview.retryAutomationReady
     };

@@ -51,6 +51,7 @@ The dry run also reports a structured policy review:
   - `APEX_SCHEDULED_INGESTION_CRON_APPROVED=true`
   - `NCBI_TOOL` and `NCBI_EMAIL`
 - Failure review: reports recent failed-job categories and retry dispositions without echoing raw error text. Automatic retry readiness remains false until failure classes are reviewed and an explicit retry policy is approved.
+- Retry policy evidence: remains blocked until `docs/codex/scheduled-ingestion-retry-policy.md` has been reviewed and `APEX_INGESTION_RETRY_POLICY_APPROVED_AT` is recorded. This does not enable automatic public promotion or retry failed jobs by itself.
 - Dedupe review: reports bounded duplicate PMID/NCT source identities, decision counts, mixed-decision state, and a read-only duplicate-inspection command without merging, accepting, rejecting, retrying, or promoting candidates.
 
 ## Guarded Run
