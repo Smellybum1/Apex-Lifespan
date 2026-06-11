@@ -2,6 +2,7 @@ export type ProductionReadinessStatus = "ready" | "blocked" | "warning" | "info"
 
 export interface ProductionReadinessCheck {
   detail: string;
+  evidenceKeys?: string[];
   id: string;
   label: string;
   nextAction?: string;
@@ -47,6 +48,7 @@ export function buildProductionReadinessReport(
     databaseUrlCheck(databaseUrl, parsedDatabase),
     dataSourceCheck(readEnv(context.env, "APEX_DATA_SOURCE")),
     migrationCheck(latestMigration),
+    migrationRehearsalCheck(readEnv(context.env, "APEX_MIGRATION_REHEARSAL_PASSED_AT")),
     vercelProjectCheck(context.vercelProjectLinked),
     vercelCliCheck(context.vercelCliAvailable),
     operatorAuthCheck(context.env),
@@ -145,6 +147,30 @@ function migrationCheck(latestMigration: string | undefined): ProductionReadines
     status: "blocked",
     detail: "No committed Prisma migration directories were found.",
     nextAction: "Create and review committed Prisma migrations before deploy-style migration rehearsal."
+  };
+}
+
+function migrationRehearsalCheck(value: string | undefined): ProductionReadinessCheck {
+  const key = "APEX_MIGRATION_REHEARSAL_PASSED_AT";
+
+  if (value) {
+    return {
+      evidenceKeys: [key],
+      id: "migration-rehearsal",
+      label: "Non-production migration rehearsal",
+      status: "ready",
+      detail: `${key} is recorded.`
+    };
+  }
+
+  return {
+    evidenceKeys: [key],
+    id: "migration-rehearsal",
+    label: "Non-production migration rehearsal",
+    status: "blocked",
+    detail: `Missing production evidence variable: ${key}.`,
+    nextAction:
+      "Run npm run production:migration-rehearsal against a non-production managed database and record APEX_MIGRATION_REHEARSAL_PASSED_AT after review."
   };
 }
 

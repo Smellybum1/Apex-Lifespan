@@ -7,6 +7,7 @@ describe("production readiness report", () => {
     const report = buildProductionReadinessReport({
       env: {
         APEX_DATA_SOURCE: "database",
+        APEX_MIGRATION_REHEARSAL_PASSED_AT: "2026-06-11T00:00:00Z",
         AUTH_GITHUB_ID: "github-id",
         AUTH_GITHUB_SECRET: "github-oauth-value",
         AUTH_SECRET: "session-value",
@@ -56,6 +57,10 @@ describe("production readiness report", () => {
         }),
         expect.objectContaining({
           id: "vercel-project-link",
+          status: "blocked"
+        }),
+        expect.objectContaining({
+          id: "migration-rehearsal",
           status: "blocked"
         }),
         expect.objectContaining({
