@@ -37,6 +37,7 @@ export interface LaunchReadinessScheduledIngestion {
 
 export interface LaunchReadinessFiles {
   launchChecklist: boolean;
+  postLaunchReviewTemplate: boolean;
 }
 
 export interface LaunchReadinessContext {
@@ -82,6 +83,8 @@ const LAUNCH_APPROVAL_KEY = "APEX_FULLY_LIVE_LAUNCH_APPROVED_AT";
 const POST_LAUNCH_REVIEW_KEY = "APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT";
 export const FULLY_LIVE_LAUNCH_CHECKLIST_PATH =
   "docs/codex/fully-live-launch-checklist.md";
+export const POST_LAUNCH_REVIEW_TEMPLATE_PATH =
+  "docs/codex/post-launch-review-template.md";
 
 export function buildLaunchReadinessReport(
   context: LaunchReadinessContext
@@ -92,6 +95,12 @@ export function buildLaunchReadinessReport(
       label: "Fully-live launch checklist",
       pathLabel: FULLY_LIVE_LAUNCH_CHECKLIST_PATH,
       present: context.files.launchChecklist
+    }),
+    localFileCheck({
+      id: "post-launch-review-template",
+      label: "Post-launch review template",
+      pathLabel: POST_LAUNCH_REVIEW_TEMPLATE_PATH,
+      present: context.files.postLaunchReviewTemplate
     }),
     nestedReadinessCheck({
       id: "production-readiness",

@@ -25,7 +25,8 @@ describe("launch readiness report", () => {
         })
       },
       files: {
-        launchChecklist: true
+        launchChecklist: true,
+        postLaunchReviewTemplate: true
       },
       generatedAt: new Date("2026-06-11T00:00:00.000Z"),
       operations: readinessReport(["uptime-monitoring"]) as OperationsReadinessReport,
@@ -82,6 +83,7 @@ describe("launch readiness report", () => {
     expect(report.worksheet.humanOwned).toBe(true);
     expect(report.worksheet.readyGates.map((gate) => gate.id)).toEqual([
       "fully-live-launch-checklist",
+      "post-launch-review-template",
       "public-smoke"
     ]);
     expect(report.worksheet.blockedGates.map((gate) => gate.id)).toEqual([
@@ -118,7 +120,8 @@ describe("launch readiness report", () => {
         })
       },
       files: {
-        launchChecklist: true
+        launchChecklist: true,
+        postLaunchReviewTemplate: true
       },
       generatedAt: new Date("2026-06-11T00:00:00.000Z"),
       operations: readinessReport([]) as OperationsReadinessReport,
@@ -141,7 +144,7 @@ describe("launch readiness report", () => {
       "All launch readiness gates are ready; proceed with the launch checklist."
     );
     expect(report.worksheet.blockedGates).toEqual([]);
-    expect(report.worksheet.readyGates).toHaveLength(11);
+    expect(report.worksheet.readyGates).toHaveLength(12);
     expect(report.worksheet.nextLaunchAction).toBe(
       "All launch readiness gates are ready; proceed with the launch checklist."
     );
@@ -167,7 +170,8 @@ describe("launch readiness report", () => {
         })
       },
       files: {
-        launchChecklist: false
+        launchChecklist: false,
+        postLaunchReviewTemplate: true
       },
       generatedAt: new Date("2026-06-11T00:00:00.000Z"),
       operations: readinessReport([]) as OperationsReadinessReport,
@@ -191,6 +195,54 @@ describe("launch readiness report", () => {
           id: "fully-live-launch-checklist",
           nextAction:
             "Create docs/codex/fully-live-launch-checklist.md before launch approval.",
+          status: "blocked"
+        })
+      ])
+    );
+  });
+
+  it("blocks launch approval when the post-launch review template is missing", () => {
+    const report = buildLaunchReadinessReport({
+      env: {
+        APEX_ADMIN_FLOW_SMOKE_PASSED_AT: "recorded",
+        APEX_FULLY_LIVE_LAUNCH_APPROVED_AT: "recorded",
+        APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT: "recorded",
+        APEX_PUBLIC_SMOKE_PASSED_AT: "recorded"
+      },
+      evidenceCoverage: {
+        dataSource: "database",
+        report: coverageSummary({
+          claimReviewBacklog: 0,
+          humanReviewedClaims: 7,
+          interventionGaps: 0
+        })
+      },
+      files: {
+        launchChecklist: true,
+        postLaunchReviewTemplate: false
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      operations: readinessReport([]) as OperationsReadinessReport,
+      operator: readinessReport([]) as OperatorReadinessReport,
+      production: readinessReport([]) as ProductionReadinessReport,
+      promotion: {
+        snapshot: promotionSnapshot({ blockedCount: 0, readyCount: 1, total: 1 })
+      },
+      scheduledIngestion: {
+        hostedCronReady: true,
+        missingEnv: [],
+        noAutoPromotion: true,
+        retryAutomationReady: true
+      }
+    } satisfies LaunchReadinessContext);
+
+    expect(report.overall).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "post-launch-review-template",
+          nextAction:
+            "Create docs/codex/post-launch-review-template.md before launch approval.",
           status: "blocked"
         })
       ])

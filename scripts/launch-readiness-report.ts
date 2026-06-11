@@ -7,7 +7,8 @@ import { planScheduledSourceIngestionDryRun } from "@/lib/data/scheduled-ingesti
 import { summarizeEvidenceCoverage } from "@/lib/evidence-coverage";
 import {
   buildLaunchReadinessReport,
-  FULLY_LIVE_LAUNCH_CHECKLIST_PATH
+  FULLY_LIVE_LAUNCH_CHECKLIST_PATH,
+  POST_LAUNCH_REVIEW_TEMPLATE_PATH
 } from "@/lib/launch-readiness";
 import { buildOperationsReadinessReport } from "@/lib/operations-readiness";
 import { getSourceCandidatePromotionReadinessSnapshot } from "@/lib/operator/curation-promotion";
@@ -45,7 +46,10 @@ async function main() {
 
 function readLaunchReadinessFiles() {
   return {
-    launchChecklist: existsSync(path.join(process.cwd(), FULLY_LIVE_LAUNCH_CHECKLIST_PATH))
+    launchChecklist: existsSync(path.join(process.cwd(), FULLY_LIVE_LAUNCH_CHECKLIST_PATH)),
+    postLaunchReviewTemplate: existsSync(
+      path.join(process.cwd(), POST_LAUNCH_REVIEW_TEMPLATE_PATH)
+    )
   };
 }
 

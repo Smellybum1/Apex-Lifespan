@@ -70,5 +70,6 @@ Use this checklist only for the fully live production launch. The seed-backed pu
 
 - Re-run `npm run launch:readiness`; it must report `overall=ready`.
 - Record `APEX_FULLY_LIVE_LAUNCH_APPROVED_AT` only after the ready report is reviewed.
+- Confirm `docs/codex/post-launch-review-template.md` is ready for the 24-48 hour review.
 - Schedule the 24-48 hour post-launch review and record `APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT`.
 - Track post-launch issues in the handoff or the next roadmap after rollover.
