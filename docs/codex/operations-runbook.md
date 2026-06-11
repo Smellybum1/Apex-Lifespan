@@ -14,6 +14,27 @@ This runbook covers the fully-live Apex Lifespan public product. It is intention
 - Public routes remain read-only.
 - Operator writes remain authenticated, explicit, audited, and disabled by default with `APEX_OPERATOR_WRITES_ENABLED=false`.
 
+## Local Readiness Report
+
+Run this before launch evidence review:
+
+```bash
+npm run operations:readiness
+```
+
+The report is read-only. It checks that the local privacy page, terms page, and this runbook exist, then reports whether external operations proof has been recorded through evidence variables. It prints variable names and sanitized URLs only; do not store monitoring tokens, API keys, or database credentials in the report.
+
+External proof variables:
+
+- `APEX_UPTIME_MONITORING_URL`
+- `APEX_ERROR_MONITORING_PROJECT`
+- `APEX_DEPLOYMENT_ALERTS_CONFIGURED=true`
+- `APEX_INGESTION_ALERTS_CONFIGURED=true`
+- `APEX_DATABASE_BACKUPS_CONFIGURED=true`
+- `APEX_BACKUP_RESTORE_REHEARSED_AT`
+- `APEX_ROLLBACK_DRILL_REHEARSED_AT`
+- `APEX_ALERT_TESTED_AT`
+
 ## Monitoring
 
 Required before fully-live launch:
@@ -98,4 +119,3 @@ Record these before fully-live launch:
 - Backup restore rehearsal result.
 - Operator auth smoke result.
 - Scheduled ingestion dry run or hosted cron smoke result.
-
