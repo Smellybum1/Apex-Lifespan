@@ -131,6 +131,41 @@ export interface EvidenceCoverageSummary {
   worksheet: EvidenceCoverageWorksheet;
 }
 
+export interface EvidenceCoverageReviewReportSummary {
+  counts: EvidenceCoverageReviewReportSummaryCounts;
+  coverageGaps: EvidenceCoverageInterventionGap[];
+  humanOwned: true;
+  nextAction: string;
+  readOnly: true;
+  readyReviewClaims: EvidenceCoverageWorksheetClaimItem[];
+  sampledReviewClaims: EvidenceCoverageReviewReportSampleItem[];
+}
+
+export interface EvidenceCoverageReviewReportSummaryCounts {
+  completeSourcePackets: number;
+  coverageGaps: number;
+  humanReviewedClaims: number;
+  incompleteClaims: number;
+  interventionsWithClaims: number;
+  interventionsWithoutClaims: number;
+  readyReviewBatch: number;
+  readySourcePackets: number;
+  totalClaims: number;
+  totalInterventions: number;
+  unreviewedClaims: number;
+}
+
+export interface EvidenceCoverageReviewReportSampleItem {
+  claimId: string;
+  interventionId: string;
+  outcome: Claim["outcome"];
+  priority: number;
+  priorityReasons: string[];
+  referenceIds: string[];
+  sourcePacketStatus: ClaimSourcePacketCompletenessStatus;
+  studyIds: string[];
+}
+
 export function summarizeEvidenceCoverage(data: EvidenceDashboardData): EvidenceCoverageSummary {
   const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
   const sourcePacketSummary = summarizeClaimSourcePackets({
@@ -206,6 +241,34 @@ export function summarizeEvidenceCoverage(data: EvidenceDashboardData): Evidence
       interventionGaps,
       reviewSamplingPlan
     })
+  };
+}
+
+export function summarizeEvidenceCoverageReviewReport(
+  summary: EvidenceCoverageSummary
+): EvidenceCoverageReviewReportSummary {
+  return {
+    counts: {
+      completeSourcePackets: summary.completeSourcePackets,
+      coverageGaps: summary.interventionGaps.length,
+      humanReviewedClaims: summary.humanReviewedClaims,
+      incompleteClaims: summary.incompleteClaims.length,
+      interventionsWithClaims: summary.interventionsWithClaims,
+      interventionsWithoutClaims: summary.interventionsWithoutClaims.length,
+      readyReviewBatch: summary.worksheet.readyReviewBatch.length,
+      readySourcePackets: summary.worksheet.readySourcePackets.length,
+      totalClaims: summary.totalClaims,
+      totalInterventions: summary.totalInterventions,
+      unreviewedClaims: summary.unreviewedClaims
+    },
+    coverageGaps: summary.worksheet.coverageGaps,
+    humanOwned: true,
+    nextAction: summary.worksheet.nextHumanAction,
+    readOnly: true,
+    readyReviewClaims: summary.worksheet.readySourcePackets,
+    sampledReviewClaims: summary.worksheet.readyReviewBatch.map(
+      evidenceCoverageReviewReportSampleItem
+    )
   };
 }
 
@@ -327,6 +390,14 @@ function evidenceCoverageCopySafeCommands(): EvidenceCoverageCommand[] {
         "Recheck source-packet coverage, review backlog, sampled review batch, and intervention gaps without changing review status."
     },
     {
+      command: "npm run coverage:review -- --summary",
+      id: "coverage-review-summary",
+      label: "Refresh compact coverage summary",
+      mode: "read-only",
+      purpose:
+        "Print coverage counts, sampled review claims, ready review claims, gaps, and next action without dumping the full review report."
+    },
+    {
       command: "npm run coverage:review -- --claim <claim-id>",
       id: "coverage-claim-review",
       label: "Focus one claim review packet",
@@ -374,6 +445,21 @@ function evidenceCoverageCopySafeCommands(): EvidenceCoverageCommand[] {
       purpose: "Recheck fully-live launch gates after evidence coverage review changes."
     }
   ];
+}
+
+function evidenceCoverageReviewReportSampleItem(
+  item: EvidenceCoverageReviewSampleItem
+): EvidenceCoverageReviewReportSampleItem {
+  return {
+    claimId: item.claimId,
+    interventionId: item.interventionId,
+    outcome: item.outcome,
+    priority: item.priority,
+    priorityReasons: item.priorityReasons,
+    referenceIds: item.referenceIds,
+    sourcePacketStatus: item.sourcePacketStatus,
+    studyIds: item.studyIds
+  };
 }
 
 function evidenceCoverageWorksheetClaimItem(

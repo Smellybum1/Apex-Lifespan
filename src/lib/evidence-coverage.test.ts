@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   summarizeEvidenceCoverage,
-  summarizeEvidenceCoverageClaimReview
+  summarizeEvidenceCoverageClaimReview,
+  summarizeEvidenceCoverageReviewReport
 } from "@/lib/evidence-coverage";
 import {
   claims,
@@ -300,6 +301,14 @@ describe("evidence coverage summary", () => {
               "Recheck source-packet coverage, review backlog, sampled review batch, and intervention gaps without changing review status."
           },
           {
+            command: "npm run coverage:review -- --summary",
+            id: "coverage-review-summary",
+            label: "Refresh compact coverage summary",
+            mode: "read-only",
+            purpose:
+              "Print coverage counts, sampled review claims, ready review claims, gaps, and next action without dumping the full review report."
+          },
+          {
             command: "npm run coverage:review -- --claim <claim-id>",
             id: "coverage-claim-review",
             label: "Focus one claim review packet",
@@ -413,6 +422,105 @@ describe("evidence coverage summary", () => {
     });
   });
 
+  it("builds a compact read-only coverage review summary", () => {
+    const summary = summarizeEvidenceCoverageReviewReport(
+      summarizeEvidenceCoverage(seedDashboardData)
+    );
+
+    expect(summary).toEqual({
+      counts: {
+        completeSourcePackets: 7,
+        coverageGaps: 1,
+        humanReviewedClaims: 0,
+        incompleteClaims: 7,
+        interventionsWithClaims: 4,
+        interventionsWithoutClaims: 1,
+        readyReviewBatch: 3,
+        readySourcePackets: 7,
+        totalClaims: 7,
+        totalInterventions: 5,
+        unreviewedClaims: 7
+      },
+      coverageGaps: [
+        {
+          interventionId: "psyllium",
+          interventionName: "Psyllium",
+          nextAction:
+            "Add at least one scoped claim with curated source links before treating this intervention as covered."
+        }
+      ],
+      humanOwned: true,
+      nextAction:
+        "Human review this sampled batch first; do not update review status until the cited packet and extraction are checked.",
+      readOnly: true,
+      readyReviewClaims: expect.arrayContaining([
+        expect.objectContaining({
+          claimId: "bpc-157-injury-healing",
+          packetStatus: "complete",
+          priority: 175
+        }),
+        expect.objectContaining({
+          claimId: "vitamin-d-deficiency",
+          packetStatus: "complete",
+          priority: 175
+        }),
+        expect.objectContaining({
+          claimId: "creatine-strength",
+          packetStatus: "complete",
+          priority: 160
+        })
+      ]),
+      sampledReviewClaims: [
+        {
+          claimId: "bpc-157-injury-healing",
+          interventionId: "bpc-157",
+          outcome: "Joint/tendon/skin",
+          priority: 175,
+          priorityReasons: [
+            "Unreviewed draft claim",
+            "Complete source packet ready for human review",
+            "Regulatory concern label"
+          ],
+          referenceIds: ["tga-safety-alerts", "fda-bpc-157-category-2"],
+          sourcePacketStatus: "complete",
+          studyIds: ["study-tga-unapproved-peptides", "study-fda-bpc-157"]
+        },
+        {
+          claimId: "vitamin-d-deficiency",
+          interventionId: "vitamin-d",
+          outcome: "Safety/adverse effects",
+          priority: 175,
+          priorityReasons: [
+            "Unreviewed draft claim",
+            "Complete source packet ready for human review",
+            "Safety outcome",
+            "High confidence draft"
+          ],
+          referenceIds: ["ods-vitamin-d"],
+          sourcePacketStatus: "complete",
+          studyIds: ["study-vitamin-d-ods"]
+        },
+        {
+          claimId: "creatine-strength",
+          interventionId: "creatine",
+          outcome: "Muscle/strength",
+          priority: 160,
+          priorityReasons: [
+            "Unreviewed draft claim",
+            "Complete source packet ready for human review",
+            "High confidence draft"
+          ],
+          referenceIds: ["issn-creatine-2017"],
+          sourcePacketStatus: "complete",
+          studyIds: ["study-creatine-issn"]
+        }
+      ]
+    });
+    expect(JSON.stringify(summary)).not.toContain("copySafeCommands");
+    expect(JSON.stringify(summary)).not.toContain("claimReviewBacklog");
+    expect(JSON.stringify(summary)).not.toContain("reviewChecklist");
+  });
+
   it("emits only read-only commands for human coverage review", () => {
     const summary = summarizeEvidenceCoverage(seedDashboardData);
     const blockedWriteTokens = [
@@ -425,7 +533,7 @@ describe("evidence coverage summary", () => {
       "--apply"
     ];
 
-    expect(summary.worksheet.copySafeCommands).toHaveLength(7);
+    expect(summary.worksheet.copySafeCommands).toHaveLength(8);
     expect(summary.worksheet.copySafeCommands.every((item) => item.mode === "read-only")).toBe(
       true
     );
