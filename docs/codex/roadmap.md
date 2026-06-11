@@ -54,6 +54,7 @@ The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel
 6. [ ] Build authenticated review/admin surfaces.
    Done when: source-candidate review, accept/reject, claim linking, extraction, and promotion controls are available only to authenticated operators and every write is explicit and auditable.
    Validate with: route authorization tests, write-boundary tests, and manual operator-flow QA.
+   In progress 2026-06-11: added `docs/codex/plans/2026-06-11-authenticated-operator-surfaces.md`, Auth.js-compatible Prisma models, operator role/status models, and append-only operator audit schema foundation. Local migration `20260611131000_operator_auth_foundation` applied successfully with `npm run db:migrate`; `npm run db:validate`, `npm run db:generate`, public read-only boundary tests, and `npm run typecheck` passed.
 
 7. [ ] Implement human-reviewed curation promotion.
    Done when: accepted candidates can become public evidence packets only after claim link, structured extraction, citation traceability, and human review are complete.

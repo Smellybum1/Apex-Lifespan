@@ -156,6 +156,18 @@ enum AustraliaRegulatoryKind {
   UNKNOWN
 }
 
+enum OperatorRole {
+  OWNER
+  ADMIN
+  REVIEWER
+  AUDITOR
+}
+
+enum OperatorStatus {
+  ACTIVE
+  DISABLED
+}
+
 model Intervention {
   id                        String               @id @default(cuid())
   slug                      String               @unique
@@ -470,21 +482,21 @@ model SourceCandidate {
 }
 
 model IngestionJob {
-  id               String            @id @default(cuid())
-  source           SourceKind
-  status           IngestionStatus   @default(QUEUED)
-  query            String
-  region           String            @default("AU")
-  interventionId   String?
-  claimId          String?
-  startedAt        DateTime?
-  completedAt      DateTime?
-  recordsFound     Int               @default(0)
-  recordsChanged   Int               @default(0)
-  error            String?
-  metadata         Json?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id             String          @id @default(cuid())
+  source         SourceKind
+  status         IngestionStatus @default(QUEUED)
+  query          String
+  region         String          @default("AU")
+  interventionId String?
+  claimId        String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  recordsFound   Int             @default(0)
+  recordsChanged Int             @default(0)
+  error          String?
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   intervention     Intervention?     @relation(fields: [interventionId], references: [id], onDelete: SetNull)
   claim            Claim?            @relation(fields: [claimId], references: [id], onDelete: SetNull)
@@ -495,4 +507,98 @@ model IngestionJob {
   @@index([region])
   @@index([interventionId])
   @@index([claimId])
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts            Account[]
+  sessions            Session[]
+  operatorProfile     OperatorProfile?
+  operatorAuditEvents OperatorAuditEvent[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model OperatorProfile {
+  id         String         @id @default(cuid())
+  userId     String         @unique
+  role       OperatorRole
+  status     OperatorStatus @default(ACTIVE)
+  note       String?
+  disabledAt DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([role])
+  @@index([status])
+}
+
+model OperatorAuditEvent {
+  id            String       @id @default(cuid())
+  actorUserId   String?
+  actorEmail    String
+  actorRole     OperatorRole
+  action        String
+  targetType    String
+  targetId      String?
+  requestId     String?
+  beforeSummary Json?
+  afterSummary  Json?
+  metadata      Json?
+  note          String?
+  createdAt     DateTime     @default(now())
+
+  actorUser User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([actorEmail])
+  @@index([action])
+  @@index([targetType, targetId])
+  @@index([createdAt])
 }
