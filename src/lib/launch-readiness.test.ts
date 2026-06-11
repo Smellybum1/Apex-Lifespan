@@ -272,7 +272,15 @@ function coverageSummary({
     },
     totalClaims: 7,
     totalInterventions: 5,
-    unreviewedClaims: Math.max(0, 7 - humanReviewedClaims)
+    unreviewedClaims: Math.max(0, 7 - humanReviewedClaims),
+    worksheet: {
+      coverageGaps: [],
+      humanOwned: true,
+      nextHumanAction: "No complete unreviewed source packets are ready for sampling.",
+      readyReviewBatch: [],
+      readySourcePackets: [],
+      remainingBacklog: []
+    }
   };
 }
 

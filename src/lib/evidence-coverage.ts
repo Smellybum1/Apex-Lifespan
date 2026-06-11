@@ -57,6 +57,27 @@ export interface EvidenceCoverageReviewSamplingPlan {
   readyClaims: number;
 }
 
+export interface EvidenceCoverageWorksheet {
+  coverageGaps: EvidenceCoverageInterventionGap[];
+  humanOwned: true;
+  nextHumanAction: string;
+  readyReviewBatch: EvidenceCoverageReviewSampleItem[];
+  readySourcePackets: EvidenceCoverageWorksheetClaimItem[];
+  remainingBacklog: EvidenceCoverageWorksheetClaimItem[];
+}
+
+export interface EvidenceCoverageWorksheetClaimItem {
+  claimId: string;
+  extractedReferences: number;
+  interventionId: string;
+  nextAction: string;
+  packetStatus: ClaimSourcePacketCompletenessStatus;
+  priority: number;
+  priorityReasons: string[];
+  referenceCount: number;
+  reviewStatus: string;
+}
+
 export interface EvidenceCoverageSummary {
   claimReviewBacklog: EvidenceCoverageReviewBacklogItem[];
   completeSourcePackets: number;
@@ -69,6 +90,7 @@ export interface EvidenceCoverageSummary {
   totalClaims: number;
   totalInterventions: number;
   unreviewedClaims: number;
+  worksheet: EvidenceCoverageWorksheet;
 }
 
 export function summarizeEvidenceCoverage(data: EvidenceDashboardData): EvidenceCoverageSummary {
@@ -140,7 +162,65 @@ export function summarizeEvidenceCoverage(data: EvidenceDashboardData): Evidence
     totalClaims: data.claims.length,
     totalInterventions: data.interventions.length,
     unreviewedClaims: data.claims.filter((claim) => claim.reviewStatus !== "Human reviewed")
-      .length
+      .length,
+    worksheet: evidenceCoverageWorksheet({
+      claimReviewBacklog,
+      interventionGaps,
+      reviewSamplingPlan
+    })
+  };
+}
+
+function evidenceCoverageWorksheet({
+  claimReviewBacklog,
+  interventionGaps,
+  reviewSamplingPlan
+}: {
+  claimReviewBacklog: EvidenceCoverageReviewBacklogItem[];
+  interventionGaps: EvidenceCoverageInterventionGap[];
+  reviewSamplingPlan: EvidenceCoverageReviewSamplingPlan;
+}): EvidenceCoverageWorksheet {
+  const readySourcePackets = claimReviewBacklog
+    .filter(
+      (item) =>
+        item.reviewStatus !== "Human reviewed" && item.packetStatus === "complete"
+    )
+    .map(evidenceCoverageWorksheetClaimItem);
+  const remainingBacklog = claimReviewBacklog
+    .filter(
+      (item) =>
+        item.reviewStatus === "Human reviewed" || item.packetStatus !== "complete"
+    )
+    .map(evidenceCoverageWorksheetClaimItem);
+
+  return {
+    coverageGaps: interventionGaps,
+    humanOwned: true,
+    nextHumanAction:
+      reviewSamplingPlan.items.length > 0
+        ? reviewSamplingPlan.nextAction
+        : interventionGaps[0]?.nextAction ??
+          claimReviewBacklog[0]?.nextAction ??
+          "Coverage review is complete; review launch readiness before expanding scope.",
+    readyReviewBatch: reviewSamplingPlan.items,
+    readySourcePackets,
+    remainingBacklog
+  };
+}
+
+function evidenceCoverageWorksheetClaimItem(
+  item: EvidenceCoverageReviewBacklogItem
+): EvidenceCoverageWorksheetClaimItem {
+  return {
+    claimId: item.claimId,
+    extractedReferences: item.extractedReferences,
+    interventionId: item.interventionId,
+    nextAction: item.nextAction,
+    packetStatus: item.packetStatus,
+    priority: item.priority,
+    priorityReasons: item.priorityReasons,
+    referenceCount: item.referenceCount,
+    reviewStatus: item.reviewStatus
   };
 }
 

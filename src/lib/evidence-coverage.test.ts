@@ -229,7 +229,55 @@ describe("evidence coverage summary", () => {
       },
       totalClaims: 7,
       totalInterventions: 5,
-      unreviewedClaims: 7
+      unreviewedClaims: 7,
+      worksheet: {
+        coverageGaps: [
+          {
+            interventionId: "psyllium",
+            interventionName: "Psyllium",
+            nextAction:
+              "Add at least one scoped claim with curated source links before treating this intervention as covered."
+          }
+        ],
+        humanOwned: true,
+        nextHumanAction:
+          "Human review this sampled batch first; do not update review status until the cited packet and extraction are checked.",
+        readyReviewBatch: expect.arrayContaining([
+          expect.objectContaining({
+            claimId: "bpc-157-injury-healing",
+            referenceIds: ["tga-safety-alerts", "fda-bpc-157-category-2"],
+            studyIds: ["study-tga-unapproved-peptides", "study-fda-bpc-157"]
+          }),
+          expect.objectContaining({
+            claimId: "vitamin-d-deficiency",
+            referenceIds: ["ods-vitamin-d"],
+            studyIds: ["study-vitamin-d-ods"]
+          }),
+          expect.objectContaining({
+            claimId: "creatine-strength",
+            referenceIds: ["issn-creatine-2017"],
+            studyIds: ["study-creatine-issn"]
+          })
+        ]),
+        readySourcePackets: expect.arrayContaining([
+          expect.objectContaining({
+            claimId: "bpc-157-injury-healing",
+            packetStatus: "complete",
+            priority: 175
+          }),
+          expect.objectContaining({
+            claimId: "vitamin-d-deficiency",
+            packetStatus: "complete",
+            priority: 175
+          }),
+          expect.objectContaining({
+            claimId: "creatine-strength",
+            packetStatus: "complete",
+            priority: 160
+          })
+        ]),
+        remainingBacklog: []
+      }
     });
   });
 });
