@@ -79,6 +79,7 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
 11. [ ] Deploy the public MVP/demo.
     Done when: a public HTTPS URL renders the dashboard and both live preview routes respond with safe public behavior.
     Validate with: public URL smoke test, `/api/pubmed/search?term=creatine`, `/api/trials/search?term=creatine`, invalid-term checks, and response header checks for live routes.
+    Prepared 2026-06-11: added `npm run smoke:public-mvp -- <url>` to verify the deployed homepage, live PubMed and ClinicalTrials.gov routes, invalid-term guards, no-store/noindex headers, and public demo caveats. The command passed against `http://127.0.0.1:3000` on a seed-mode production server.
     Blocked 2026-06-11: manual Vercel CLI deployment is selected, but this local session has no `.vercel` project config, no visible `VERCEL*` environment variables, and no public HTTPS URL to smoke test yet.
 
 12. [ ] Publish launch handoff.

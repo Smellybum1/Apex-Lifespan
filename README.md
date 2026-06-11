@@ -70,12 +70,10 @@ npm audit
 Production smoke target once deployed:
 
 ```bash
-/
-/api/pubmed/search?term=creatine
-/api/trials/search?term=creatine
+npm run smoke:public-mvp -- https://your-public-demo-url.example
 ```
 
-Also verify invalid live-source terms return cautious public errors, response headers keep live-source responses out of caches/indexing, and the dashboard still shows AU/TGA, citation, unreviewed-draft, and live-preview caveats.
+The smoke command verifies the homepage, PubMed and ClinicalTrials.gov live-preview routes, invalid live-source term guards, no-store/noindex response headers, and the AU/TGA, citation, unreviewed-draft, and live-preview caveats.
 
 Rollback path: use `vercel rollback <deployment-url>` or the Vercel dashboard to restore the previous production deployment, then smoke the dashboard and both live-source routes again.
 
