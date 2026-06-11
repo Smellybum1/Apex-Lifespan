@@ -39,14 +39,17 @@ The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel
 3. [ ] Provision production database and secrets.
    Done when: production/staging database URLs are configured in the hosting environment, secrets are not committed, Prisma can connect, and seed fallback is not accidentally masking production database failures.
    Validate with: `npm run db:validate`, `npm run db:migrate:deploy` against a non-production rehearsal database, and a production readiness checklist before any production migration.
+   Blocked 2026-06-11: requires operator access to Vercel/Neon console and secret entry. Local evidence: `.vercel` is not linked, Vercel CLI is not available on PATH, and `npm run db:validate` passed against the committed Prisma schema. Continue once Neon production/staging targets and Vercel environment variables can be configured.
 
 4. [ ] Migrate from seed-backed demo to database-backed public reads.
    Done when: public deployment intentionally uses `APEX_DATA_SOURCE=database`, the dashboard renders from managed data, and public failure modes stay safe if the database is unreachable.
    Validate with: `npm run test`, `npm run typecheck`, `npm run build`, public smoke, and a database-mode browser review.
+   Blocked 2026-06-11: depends on step 3 provisioning managed database URLs and setting `APEX_DATA_SOURCE=database` in the relevant Vercel environment.
 
-5. [ ] Design authenticated operator/admin workflow.
+5. [x] Design authenticated operator/admin workflow.
    Done when: auth provider, roles, protected routes, audit fields, local-vs-public write boundaries, and emergency disable/rollback behavior are agreed before implementation.
    Validate with: architecture note or plan plus tests proving public routes remain read-only.
+   Completed 2026-06-11: selected Auth.js with GitHub OAuth, Prisma-backed sessions, explicit operator roles, protected `/operator` or `/admin` surfaces, audited `/api/operator/*` writes, public route separation, `APEX_OPERATOR_WRITES_ENABLED` emergency disable, and Vercel/Neon rollback split. Design note: `docs/codex/operator-admin-auth-design.md`. Validation: `npm run test -- src/app/api/live-source-readonly-boundary.test.ts src/app/api/source-search-routes.test.ts src/components/evidence-dashboard-live-preview-boundary.test.ts`.
 
 6. [ ] Build authenticated review/admin surfaces.
    Done when: source-candidate review, accept/reject, claim linking, extraction, and promotion controls are available only to authenticated operators and every write is explicit and auditable.

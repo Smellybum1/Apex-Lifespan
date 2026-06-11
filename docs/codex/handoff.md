@@ -17,6 +17,7 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 - Public MVP/demo is live at `https://apex-lifespan.vercel.app` in seed mode.
 - Current roadmap: `docs/codex/roadmap.md` targets the fully live end product.
 - Production data architecture decision: use Neon Postgres through the Vercel Marketplace, initial region `aws-us-east-1`, Vercel-scoped `DATABASE_URL`, `APEX_DATA_SOURCE=database`, Prisma `migrate deploy`, and Neon restore/export backup rehearsal. Details: `docs/codex/production-data-architecture.md`.
+- Operator/admin auth design decision: use Auth.js with GitHub OAuth, Prisma-backed sessions, explicit operator roles, audited `/api/operator/*` writes, public route separation, and `APEX_OPERATOR_WRITES_ENABLED` emergency write disable. Details: `docs/codex/operator-admin-auth-design.md`.
 - Completed public-MVP roadmap archive: `docs/codex/archive/roadmap/2026-06-11-public-live-mvp.md`.
 - A Vercel clean-build failure on `main` was fixed on 2026-06-11 by running `scripts/generate-prisma-client.ts` before `next build` and `next typegen`.
 
@@ -66,5 +67,7 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 - Vercel clean-build fix validation: with `DATABASE_URL` removed and a missing dotenv path, `npx tsx scripts/generate-prisma-client.ts` generated Prisma Client successfully using the build-time placeholder URL. `npm run lint`, `npm run typecheck`, and `npm run build` passed afterward.
 - Fully-live roadmap step 1 completed: clean synced `codex/queue-claim-sources` branch, latest commits `30d6830`, `762f5cb`, `9632d8f`, and `npm run smoke:public-mvp -- https://apex-lifespan.vercel.app` passed.
 - Fully-live roadmap step 2 completed: production data architecture documented in `docs/codex/production-data-architecture.md`; docs diff review and `git diff --check` used for validation.
+- Fully-live roadmap steps 3-4 blocked: managed Neon database and Vercel secrets require operator console access; local `.vercel` link is absent, Vercel CLI is not available on PATH, and `npm run db:validate` passed.
+- Fully-live roadmap step 5 completed: `docs/codex/operator-admin-auth-design.md` documents auth provider, roles, protected routes, audit fields, boundaries, and emergency disable/rollback behavior; public read-only boundary tests are the validation gate.
 
 Historical source-candidate progress lives in `docs/codex/archive/handoff/2026-06-04-source-candidate-progress.md`; search it only for targeted evidence.
