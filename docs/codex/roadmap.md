@@ -18,9 +18,9 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
 
 ## Current Blockers
 
-- GitHub push limit is active; no GitHub pushes until the user lifts it or an alternate deployment path is selected.
-- Product/deployment confirmation is still needed for seed-backed public demo mode versus managed production PostgreSQL.
-- Latest source-candidate snapshot has 49 pending candidates and 1 accepted candidate that still needs claim-link curation.
+- GitHub push limit is active; no GitHub pushes until the user lifts it.
+- Manual Vercel CLI deployment is selected for the no-GitHub public MVP path, but this local session does not have a Vercel project/authenticated deploy target or public URL to smoke test.
+- Source-candidate curation is deferred from public MVP scope; latest snapshot still has 49 pending candidates and 1 accepted candidate that remains local claim-link curation backlog.
 
 ## Ordered Steps
 
@@ -34,37 +34,37 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
    Validate with: `docker compose ps`, `npm run db:migrate`, `npm run db:seed`, `npm run ingest:sources -- --db-status`.
    Completed 2026-06-11: launched Docker Desktop, `docker compose ps` reported `apexlifespan-postgres-1` healthy on `localhost:5432`; `npm run db:migrate` reported the schema already in sync; `npm run db:seed` reported `Seed integrity verified`; `npm run ingest:sources -- --db-status` reported `reachable=true`.
 
-3. [ ] Freeze the public MVP data mode.
+3. [x] Freeze the public MVP data mode.
    Done when: the team has chosen `APEX_DATA_SOURCE=seed` for the first public demo or has explicitly chosen a managed production PostgreSQL database.
    Recommended decision: use `APEX_DATA_SOURCE=seed` for the public demo, keep source-candidate review local, and graduate to database-backed public data after curation readiness improves.
    Validate with: README or handoff note naming the selected mode.
-   Blocked 2026-06-11: needs product/deployment confirmation to use the recommended seed-backed public demo mode or choose a managed production PostgreSQL database.
+   Completed 2026-06-11: README now names `APEX_DATA_SOURCE=seed` as the selected public MVP data mode, keeps source-candidate review local, and defers managed PostgreSQL for a later production-data milestone.
 
 4. [x] Audit demo content quality.
    Done when: first-screen claims, source packets, review-status labels, AU/TGA copy, and label-risk empty states are credible enough for a public demo and do not expose placeholder-looking copy in key paths.
    Validate with: targeted dashboard tests plus manual browser review.
    Completed 2026-06-11: seed-mode browser review covered desktop and mobile screenshots (`output/playwright/public-mvp-step4-desktop.png`, `output/playwright/public-mvp-step4-mobile.png`); the dashboard showed first-screen claims, source-packet status, review-status labels, AU/TGA product-level caveats, and cautious live-preview idle copy. Replaced public product-card brand copy from internal `Seed example` to `Demo profile`. `npm run db:seed` and `npm run test -- src/components/evidence-dashboard.test.tsx src/lib/source-packet.test.ts src/lib/seed-integrity.test.ts` passed.
 
-5. [ ] Resolve the accepted PMID 42141930 curation decision.
+5. [x] Resolve the accepted PMID 42141930 curation decision.
    Done when: either the accepted candidate is claim-linked and structurally extracted in local DB, or the public MVP explicitly defers source-candidate curation from the public demo scope.
    Validate with: `npm run ingest:sources -- --candidate-curation-handoff` when DB is available, or a short handoff note if deferred.
-   Blocked 2026-06-11: `npm run ingest:sources -- --candidate-curation-handoff` still reports `status="Claim link missing"`, `publicSourcePacketReady=false`, `nextWrite="claimLink"`, and `writeReady=true` for `PMID 42141930`. Claim-link and extraction writes are human-owned local curation actions, so this needs either human review to perform the claim-link/extraction or explicit confirmation to defer source-candidate curation from the public MVP.
+   Completed 2026-06-11 by explicit MVP deferral: `npm run ingest:sources -- --candidate-curation-handoff` still reports `status="Claim link missing"`, `publicSourcePacketReady=false`, `nextWrite="claimLink"`, and `writeReady=true` for `PMID 42141930`, so README keeps it as local curation backlog instead of promoting it into the public MVP.
 
 6. [x] Confirm public route boundaries.
    Done when: public API routes remain GET-only/read-only, source-candidate persistence stays out of public app/runtime surfaces, and live preview wording still frames results as unreviewed leads.
    Validate with: `npm run test -- src/app/api/live-source-readonly-boundary.test.ts src/app/api/source-search-routes.test.ts src/components/evidence-dashboard-live-preview-boundary.test.ts`.
    Completed 2026-06-11: boundary tests passed with 27 assertions across three files, covering GET-only/read-only route handlers, no source-candidate persistence imports or write surfaces in public runtime files, live preview request normalization, no-store/noindex response headers, public-safe upstream error text, and review-priority score labels.
 
-7. [ ] Choose the deployment path.
+7. [x] Choose the deployment path.
    Done when: hosting target, environment variables, build command, start command, and rollback path are documented.
    Required decision: if GitHub push remains blocked, choose a local-artifact/manual deploy path or wait for push access.
    Validate with: README or handoff note naming host, deployment mode, and rollback.
-   Blocked 2026-06-11: GitHub push limit remains active and no alternate public host/manual artifact deployment path has been selected. Needs a deployment decision before production environment configuration, release validation, browser QA, or deploy steps can be completed as release-ready work.
+   Completed 2026-06-11: README selects manual Vercel CLI deployment from the local checkout as the no-GitHub path, names `APEX_DATA_SOURCE=seed`, documents build and local production-smoke commands, public smoke targets, and `vercel rollback <deployment-url>` as the rollback path.
 
-8. [ ] Prepare production environment configuration.
+8. [x] Prepare production environment configuration.
    Done when: `.env.example` covers the public demo knobs, secrets are not committed, sidecar tokens remain local-only, and public deploy mode has a clear `APEX_DATA_SOURCE` value.
    Validate with: env diff review and `git diff --check`.
-   Partially prepared 2026-06-11: `.env.example` documents local `auto`, recommended public MVP/demo `seed`, and managed-production `database` values for `APEX_DATA_SOURCE`; sidecar variables remain commented and explicitly local-only. Blocked for completion until steps 3 and 7 select the public data mode and deployment path.
+   Completed 2026-06-11: `.env.example` documents local `auto`, public MVP/demo `seed`, and managed-production `database` values for `APEX_DATA_SOURCE`; README selects `seed` for public MVP, leaves `DATABASE_URL` out of the public demo path, and keeps Codex sidecar variables local-only.
 
 9. [x] Run full local release validation.
    Done when: core checks pass from a clean worktree after stopping the dev server.
@@ -79,7 +79,7 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
 11. [ ] Deploy the public MVP/demo.
     Done when: a public HTTPS URL renders the dashboard and both live preview routes respond with safe public behavior.
     Validate with: public URL smoke test, `/api/pubmed/search?term=creatine`, `/api/trials/search?term=creatine`, invalid-term checks, and response header checks for live routes.
-    Blocked 2026-06-11: no public deployment path is selected while GitHub push limit remains active, so there is no public HTTPS URL to smoke test yet.
+    Blocked 2026-06-11: manual Vercel CLI deployment is selected, but this local session does not have an authenticated Vercel project/deploy target or public HTTPS URL to smoke test yet.
 
 12. [ ] Publish launch handoff.
     Done when: README or handoff includes the public URL, selected data mode, known limitations, rollback path, and remaining fully-live gaps.
@@ -90,7 +90,7 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
     Done when: every step above is complete, this file is archived, and a new `docs/codex/roadmap.md` is created for the fully live end product.
     Archive path: `docs/codex/archive/roadmap/YYYY-MM-DD-public-live-mvp.md`.
     Required successor title: `# Roadmap: Fully Live End Product`.
-    Blocked 2026-06-11: public MVP roadmap cannot roll over until the blocked product/deployment/curation decisions are resolved and steps 3, 5, 7, 8, 11, and 12 are complete or explicitly deferred.
+    Blocked 2026-06-11: public MVP roadmap cannot roll over until the selected manual Vercel deployment produces a public URL and steps 11 and 12 are complete.
 
 ## Automatic Rollover Rule
 

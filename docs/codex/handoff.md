@@ -50,14 +50,14 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 - `npm run ingest:sources -- --db-status` failed because PostgreSQL was unreachable at `localhost:5432`.
 - Roadmap step 1 completed: `git status -sb` showed a clean branch ahead of origin by 3 commits, and `git log -3 --oneline` confirmed the latest local commits.
 - Roadmap step 2 completed after launching Docker Desktop: `docker compose ps`, `npm run db:migrate`, `npm run db:seed`, and `npm run ingest:sources -- --db-status` passed.
-- Roadmap step 3 is blocked pending product/deployment confirmation of seed-backed public demo mode versus managed production PostgreSQL.
+- Roadmap step 3 completed: README selects `APEX_DATA_SOURCE=seed` for the public MVP/demo and keeps managed PostgreSQL for a later production-data milestone.
 - Roadmap step 4 completed: seed-mode desktop/mobile browser review passed, public product-card brand copy changed from `Seed example` to `Demo profile`, `npm run db:seed` refreshed local data, and targeted dashboard/source-packet/seed-integrity tests passed.
-- Roadmap step 5 is blocked by human-owned curation: `npm run ingest:sources -- --candidate-curation-handoff` still reports accepted `PMID 42141930` as `Claim link missing` with `publicSourcePacketReady=false`.
+- Roadmap step 5 completed by explicit MVP deferral: `npm run ingest:sources -- --candidate-curation-handoff` still reports accepted `PMID 42141930` as `Claim link missing` with `publicSourcePacketReady=false`, so it stays local curation backlog and is not promoted into the public MVP.
 - Roadmap step 6 completed: public route/read-only boundary tests passed for live-source routes, dashboard live-preview fetches, public-safe errors, no-store/noindex headers, and source-candidate workflow separation.
-- Roadmap step 7 is blocked pending deployment-path choice while GitHub push limit remains active: wait for push access, choose a local-artifact/manual deploy path, or name a host with credentials.
-- Roadmap step 8 is partially prepared: `.env.example` now documents public-demo `APEX_DATA_SOURCE` choices and keeps Codex sidecar variables local-only, but completion depends on steps 3 and 7.
+- Roadmap step 7 completed: README selects manual Vercel CLI deployment from the local checkout as the no-GitHub path and documents env, build/local smoke commands, public smoke targets, and rollback.
+- Roadmap step 8 completed: `.env.example` and README document public-demo `APEX_DATA_SOURCE=seed`; public deploy should omit `DATABASE_URL` and all local Codex sidecar variables.
 - Roadmap step 9 completed for the current local build: `npm run test`, `npm run lint`, `npm run dev:stop`, `npm run typecheck`, `npm run build`, and `npm audit` passed.
 - Roadmap step 10 completed for the current seed-mode production build: desktop/mobile screenshots and PubMed/ClinicalTrials.gov live-preview smokes passed, then `npm run dev:stop` stopped the production server.
-- Roadmap steps 11-13 are blocked until deployment decisions produce a public URL, launch handoff details, and completion of or explicit deferral for the remaining public MVP blockers.
+- Roadmap steps 11-13 are blocked until an authenticated manual Vercel deployment produces a public URL, launch handoff details, and final public smoke evidence.
 
 Historical source-candidate progress lives in `docs/codex/archive/handoff/2026-06-04-source-candidate-progress.md`; search it only for targeted evidence.
