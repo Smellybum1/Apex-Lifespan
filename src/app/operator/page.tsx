@@ -1,12 +1,25 @@
 import { OperatorStatus } from "@prisma/client";
-import { ShieldCheck, ShieldX } from "lucide-react";
+import { LogIn, LogOut, ShieldCheck, ShieldX } from "lucide-react";
 
+import { signIn, signOut } from "@/auth";
 import { canOperatorAccess, operatorWritesEnabled } from "@/lib/operator/authorization";
 import { operatorAuthConfigured } from "@/lib/operator/config";
 import { getOperatorReviewQueueSnapshot } from "@/lib/operator/review-queue";
 import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
 
 export const dynamic = "force-dynamic";
+
+async function signInWithGitHub() {
+  "use server";
+
+  await signIn("github", { redirectTo: "/operator" });
+}
+
+async function signOutOperator() {
+  "use server";
+
+  await signOut({ redirectTo: "/operator" });
+}
 
 export default async function OperatorPage() {
   const principal = await getCurrentOperatorPrincipal();
@@ -27,6 +40,9 @@ export default async function OperatorPage() {
         tone="blocked"
         title="Operator access required"
         detail="Use an authorized operator account for review workflows."
+        action={
+          <OperatorAuthButton action={signInWithGitHub} icon="in" label="Sign in with GitHub" />
+        }
       />
     );
   }
@@ -37,6 +53,7 @@ export default async function OperatorPage() {
         tone="blocked"
         title="Operator access disabled"
         detail="This operator account is not active."
+        action={<OperatorAuthButton action={signOutOperator} icon="out" label="Sign out" />}
       />
     );
   }
@@ -62,6 +79,7 @@ export default async function OperatorPage() {
             <ShieldCheck className="h-4 w-4" aria-hidden="true" />
             {principal.role}
           </span>
+          <OperatorAuthButton action={signOutOperator} icon="out" label="Sign out" />
         </header>
 
         <div className="grid gap-3 md:grid-cols-3">
@@ -115,10 +133,12 @@ export default async function OperatorPage() {
 }
 
 function OperatorAccessState({
+  action,
   detail,
   title,
   tone
 }: {
+  action?: React.ReactNode;
   detail: string;
   title: string;
   tone: "blocked";
@@ -136,10 +156,35 @@ function OperatorAccessState({
           <div>
             <h1 className="text-2xl font-semibold tracking-normal">{title}</h1>
             <p className="mt-3 text-sm leading-6">{detail}</p>
+            {action ? <div className="mt-5">{action}</div> : null}
           </div>
         </div>
       </section>
     </main>
+  );
+}
+
+function OperatorAuthButton({
+  action,
+  icon,
+  label
+}: {
+  action: () => Promise<void>;
+  icon: "in" | "out";
+  label: string;
+}) {
+  const Icon = icon === "in" ? LogIn : LogOut;
+
+  return (
+    <form action={action}>
+      <button
+        className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-slate-400 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+        type="submit"
+      >
+        <Icon className="h-4 w-4" aria-hidden="true" />
+        {label}
+      </button>
+    </form>
   );
 }
 
