@@ -48,10 +48,13 @@ describe("source candidate promotion assessment", () => {
   it("blocks missing candidates", async () => {
     getSourceCandidateCurationStatusMock.mockResolvedValue(null);
 
-    await expect(assessSourceCandidatePublicPromotion(candidate.dedupeKey)).resolves.toMatchObject({
+    const assessment = await assessSourceCandidatePublicPromotion(candidate.dedupeKey);
+
+    expect(assessment).toMatchObject({
       blockers: ["Source candidate not found."],
       ready: false
     });
+    expect(assessment.worksheet).toBeUndefined();
   });
 
   it("blocks candidates before claim link and extraction are complete", async () => {
@@ -72,7 +75,34 @@ describe("source candidate promotion assessment", () => {
         "Accepted reference must have a structured study extraction.",
         "Curation status must report publicSourcePacketReady=true."
       ],
-      ready: false
+      ready: false,
+      worksheet: {
+        acceptedReferenceId: acceptedReference.id,
+        candidateClaimId: candidate.claimId,
+        claimLink: {
+          existingClaimIds: [],
+          nextAction:
+            "Human link the accepted reference to the candidate claim before promotion review.",
+          ready: false,
+          targetClaimId: candidate.claimId,
+          targetReferenceId: acceptedReference.id
+        },
+        curationStatus: "Claim link missing",
+        humanReviewRequired: true,
+        nextHumanActions: [
+          "Human link the accepted reference to the candidate claim before promotion review.",
+          "Human add structured study extraction for the accepted reference before promotion review.",
+          "Rerun promotion dry-run after claim link and extraction are complete."
+        ],
+        publicSourcePacketReady: false,
+        studyExtraction: {
+          existingStudyIds: [],
+          nextAction:
+            "Human add structured study extraction for the accepted reference before promotion review.",
+          ready: false,
+          targetReferenceId: acceptedReference.id
+        }
+      }
     });
   });
 
@@ -122,7 +152,28 @@ describe("source candidate promotion assessment", () => {
         referenceUrl: acceptedReference.url,
         studyIds: ["study-pubmed-42141930"]
       },
-      ready: true
+      ready: true,
+      worksheet: {
+        acceptedReferenceId: acceptedReference.id,
+        candidateClaimId: candidate.claimId,
+        claimLink: {
+          existingClaimIds: [candidate.claimId],
+          nextAction: "Accepted reference is linked to the candidate claim.",
+          ready: true,
+          targetClaimId: candidate.claimId,
+          targetReferenceId: acceptedReference.id
+        },
+        curationStatus: "Public source packet ready",
+        humanReviewRequired: true,
+        nextHumanActions: ["Human review the ready public packet before any explicit promotion."],
+        publicSourcePacketReady: true,
+        studyExtraction: {
+          existingStudyIds: ["study-pubmed-42141930"],
+          nextAction: "Structured study extraction is present for the accepted reference.",
+          ready: true,
+          targetReferenceId: acceptedReference.id
+        }
+      }
     });
   });
 });

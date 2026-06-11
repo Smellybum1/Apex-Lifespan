@@ -30,6 +30,29 @@ export interface SourceCandidatePromotionAssessment {
     studyIds: string[];
   };
   ready: boolean;
+  worksheet?: SourceCandidatePromotionWorksheet;
+}
+
+export interface SourceCandidatePromotionWorksheet {
+  acceptedReferenceId?: string;
+  candidateClaimId?: string;
+  claimLink: {
+    existingClaimIds: string[];
+    nextAction: string;
+    ready: boolean;
+    targetClaimId?: string;
+    targetReferenceId?: string;
+  };
+  curationStatus: SourceCandidateCurationStatus["status"];
+  humanReviewRequired: true;
+  nextHumanActions: string[];
+  publicSourcePacketReady: boolean;
+  studyExtraction: {
+    existingStudyIds: string[];
+    nextAction: string;
+    ready: boolean;
+    targetReferenceId?: string;
+  };
 }
 
 export interface SourceCandidatePromotionReadinessRow {
@@ -67,6 +90,7 @@ export async function assessSourceCandidatePublicPromotion(
   }
 
   const blockers = sourceCandidatePromotionBlockers(status);
+  const worksheet = sourceCandidatePromotionWorksheet(status);
   const candidate = {
     acceptedReferenceId: status.candidate.acceptedReferenceId,
     claimId: status.candidate.claimId,
@@ -79,7 +103,7 @@ export async function assessSourceCandidatePublicPromotion(
   };
 
   if (blockers.length > 0) {
-    return blockedPromotion(blockers, candidate);
+    return blockedPromotion(blockers, candidate, worksheet);
   }
 
   return {
@@ -93,7 +117,8 @@ export async function assessSourceCandidatePublicPromotion(
       referenceUrl: status.acceptedReference?.url as string,
       studyIds: status.studies.map((study) => study.id)
     },
-    ready: true
+    ready: true,
+    worksheet
   };
 }
 
@@ -179,15 +204,68 @@ function sourceCandidatePromotionBlockers(
   return blockers;
 }
 
+function sourceCandidatePromotionWorksheet(
+  status: SourceCandidateCurationStatus
+): SourceCandidatePromotionWorksheet {
+  const targetClaimId = status.candidate.claimId;
+  const targetReferenceId = status.acceptedReferenceId;
+  const existingClaimIds = status.claimLinks.map((link) => link.claimId);
+  const existingStudyIds = status.studies.map((study) => study.id);
+  const claimLinkReady = existingClaimIds.length > 0 || Boolean(status.candidateClaimLinked);
+  const studyExtractionReady = existingStudyIds.length > 0;
+
+  const claimLinkNextAction = claimLinkReady
+    ? "Accepted reference is linked to the candidate claim."
+    : "Human link the accepted reference to the candidate claim before promotion review.";
+  const studyExtractionNextAction = studyExtractionReady
+    ? "Structured study extraction is present for the accepted reference."
+    : "Human add structured study extraction for the accepted reference before promotion review.";
+  const nextHumanActions = [
+    ...(claimLinkReady ? [] : [claimLinkNextAction]),
+    ...(studyExtractionReady ? [] : [studyExtractionNextAction]),
+    ...(status.publicSourcePacketReady
+      ? []
+      : ["Rerun promotion dry-run after claim link and extraction are complete."])
+  ];
+
+  if (nextHumanActions.length === 0) {
+    nextHumanActions.push("Human review the ready public packet before any explicit promotion.");
+  }
+
+  return {
+    acceptedReferenceId: targetReferenceId,
+    candidateClaimId: targetClaimId,
+    claimLink: {
+      existingClaimIds,
+      nextAction: claimLinkNextAction,
+      ready: claimLinkReady,
+      targetClaimId,
+      targetReferenceId
+    },
+    curationStatus: status.status,
+    humanReviewRequired: true,
+    nextHumanActions,
+    publicSourcePacketReady: status.publicSourcePacketReady,
+    studyExtraction: {
+      existingStudyIds,
+      nextAction: studyExtractionNextAction,
+      ready: studyExtractionReady,
+      targetReferenceId
+    }
+  };
+}
+
 function blockedPromotion(
   blockers: string[],
-  candidate: SourceCandidatePromotionAssessment["candidate"]
+  candidate: SourceCandidatePromotionAssessment["candidate"],
+  worksheet?: SourceCandidatePromotionWorksheet
 ): SourceCandidatePromotionAssessment {
   return {
     blockers,
     candidate,
     dryRun: true,
     nextAction: blockers[0] ?? "Resolve promotion blockers.",
-    ready: false
+    ready: false,
+    worksheet
   };
 }
