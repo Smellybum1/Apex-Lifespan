@@ -49,10 +49,7 @@ describe("scheduled source ingestion dry run", () => {
 
     await expect(
       planScheduledSourceIngestionDryRun({
-        env: {
-          NCBI_EMAIL: "operator@example.com",
-          NCBI_TOOL: "apex-lifespan"
-        },
+        env: readySchedulerEnv(),
         maxJobsPerRun: 2
       })
     ).resolves.toEqual({
@@ -63,6 +60,15 @@ describe("scheduled source ingestion dry run", () => {
       policy: {
         automaticRetries: false,
         clinicalTrialsPageSizeCap: 20,
+        hostedCron: {
+          approvalConfigured: true,
+          databaseModeConfigured: true,
+          ingestionAlertsConfigured: true,
+          managedDatabaseUrlConfigured: true,
+          missingEnv: [],
+          ready: true,
+          scheduledWritesEnabled: true
+        },
         hostedCronReady: true,
         missingMetadata: [],
         ncbiMetadataConfigured: true,
@@ -122,6 +128,23 @@ describe("scheduled source ingestion dry run", () => {
       policy: {
         automaticRetries: false,
         clinicalTrialsPageSizeCap: 20,
+        hostedCron: {
+          approvalConfigured: false,
+          databaseModeConfigured: false,
+          ingestionAlertsConfigured: false,
+          managedDatabaseUrlConfigured: false,
+          missingEnv: [
+            "DATABASE_URL",
+            "APEX_DATA_SOURCE=database",
+            "APEX_SCHEDULED_INGESTION_WRITES_ENABLED=true",
+            "APEX_INGESTION_ALERTS_CONFIGURED=true",
+            "APEX_SCHEDULED_INGESTION_CRON_APPROVED=true",
+            "NCBI_TOOL",
+            "NCBI_EMAIL"
+          ],
+          ready: false,
+          scheduledWritesEnabled: false
+        },
         hostedCronReady: false,
         missingMetadata: ["NCBI_TOOL", "NCBI_EMAIL"],
         ncbiMetadataConfigured: false,
@@ -132,6 +155,44 @@ describe("scheduled source ingestion dry run", () => {
         sourcePolicy: "review-before-enable"
       },
       wouldRunJobs: 0
+    });
+  });
+
+  it("keeps hosted cron blocked for local database URLs and missing launch evidence", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [],
+      total: 0
+    });
+    listJobsMock.mockResolvedValue([]);
+
+    await expect(
+      planScheduledSourceIngestionDryRun({
+        env: {
+          APEX_DATA_SOURCE: "database",
+          APEX_SCHEDULED_INGESTION_WRITES_ENABLED: "true",
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/apex_lifespan",
+          NCBI_EMAIL: "operator@example.com",
+          NCBI_TOOL: "apex-lifespan"
+        }
+      })
+    ).resolves.toMatchObject({
+      policy: {
+        hostedCron: {
+          approvalConfigured: false,
+          databaseModeConfigured: true,
+          ingestionAlertsConfigured: false,
+          managedDatabaseUrlConfigured: false,
+          missingEnv: [
+            "DATABASE_URL",
+            "APEX_INGESTION_ALERTS_CONFIGURED=true",
+            "APEX_SCHEDULED_INGESTION_CRON_APPROVED=true"
+          ],
+          ready: false,
+          scheduledWritesEnabled: true
+        },
+        hostedCronReady: false,
+        ncbiMetadataConfigured: true
+      }
     });
   });
 });
@@ -277,7 +338,11 @@ function mockQueuedSchedulerState(queuedCount: number) {
 
 function readySchedulerEnv() {
   return {
+    APEX_DATA_SOURCE: "database",
+    APEX_INGESTION_ALERTS_CONFIGURED: "true",
+    APEX_SCHEDULED_INGESTION_CRON_APPROVED: "true",
     APEX_SCHEDULED_INGESTION_WRITES_ENABLED: "true",
+    DATABASE_URL: "postgresql://user:password@db.example.com/apex",
     NCBI_EMAIL: "operator@example.com",
     NCBI_TOOL: "apex-lifespan"
   };

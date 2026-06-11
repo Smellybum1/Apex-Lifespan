@@ -43,6 +43,13 @@ The dry run also reports a structured policy review:
 - Automatic retries: disabled until failed job classes are reviewed.
 - Automatic public promotion: disabled.
 - NCBI metadata: reports whether `NCBI_TOOL` and `NCBI_EMAIL` are configured by variable name only.
+- Hosted cron readiness: reports missing runtime evidence by variable name only and stays blocked until all of these are true:
+  - `APEX_DATA_SOURCE=database`
+  - managed non-local PostgreSQL `DATABASE_URL`
+  - `APEX_SCHEDULED_INGESTION_WRITES_ENABLED=true`
+  - `APEX_INGESTION_ALERTS_CONFIGURED=true`
+  - `APEX_SCHEDULED_INGESTION_CRON_APPROVED=true`
+  - `NCBI_TOOL` and `NCBI_EMAIL`
 
 ## Guarded Run
 
@@ -64,3 +71,5 @@ The runner uses the same source caps as the policy review, does not retry failed
 ## Future Production Schedule
 
 After production database, secrets, monitoring, and alerts are configured, attach the scheduler to a hosted cron. The cron target should run with `APEX_DATA_SOURCE=database`, database credentials, NCBI metadata, and write access only to ingestion-job/source-candidate tables.
+
+The current implementation does not expose a hosted HTTP write endpoint. Add one only after the readiness report is clean and operator approval is recorded.

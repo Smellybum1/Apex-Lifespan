@@ -46,6 +46,7 @@ export interface ScheduledIngestionBatchResult {
 export interface ScheduledIngestionPolicyReview {
   automaticRetries: false;
   clinicalTrialsPageSizeCap: number;
+  hostedCron: ScheduledIngestionHostedCronReview;
   hostedCronReady: boolean;
   missingMetadata: string[];
   ncbiMetadataConfigured: boolean;
@@ -54,6 +55,16 @@ export interface ScheduledIngestionPolicyReview {
   schedulerDefaultJobsPerRun: number;
   schedulerMaxJobsPerRun: number;
   sourcePolicy: "review-before-enable";
+}
+
+export interface ScheduledIngestionHostedCronReview {
+  approvalConfigured: boolean;
+  databaseModeConfigured: boolean;
+  ingestionAlertsConfigured: boolean;
+  managedDatabaseUrlConfigured: boolean;
+  missingEnv: string[];
+  ready: boolean;
+  scheduledWritesEnabled: boolean;
 }
 
 export type ScheduledIngestionJobRunner = (
@@ -65,6 +76,9 @@ const MAX_SCHEDULER_JOBS_PER_RUN = 5;
 const SOURCE_RESULT_CAP = 20;
 const REQUIRED_NCBI_METADATA_ENV = ["NCBI_TOOL", "NCBI_EMAIL"] as const;
 const SCHEDULED_INGESTION_WRITES_ENV = "APEX_SCHEDULED_INGESTION_WRITES_ENABLED";
+const SCHEDULED_INGESTION_CRON_APPROVAL_ENV = "APEX_SCHEDULED_INGESTION_CRON_APPROVED";
+const INGESTION_ALERTS_ENV = "APEX_INGESTION_ALERTS_CONFIGURED";
+const LOCAL_DATABASE_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 
 export async function planScheduledSourceIngestionDryRun(
   options: ScheduledIngestionDryRunOptions = {}
@@ -186,11 +200,13 @@ function scheduledIngestionPolicyReview(
 ): ScheduledIngestionPolicyReview {
   const missingMetadata = REQUIRED_NCBI_METADATA_ENV.filter((key) => !env[key]?.trim());
   const ncbiMetadataConfigured = missingMetadata.length === 0;
+  const hostedCron = scheduledIngestionHostedCronReview(env, missingMetadata);
 
   return {
     automaticRetries: false,
     clinicalTrialsPageSizeCap: SOURCE_RESULT_CAP,
-    hostedCronReady: ncbiMetadataConfigured,
+    hostedCron,
+    hostedCronReady: hostedCron.ready,
     missingMetadata,
     ncbiMetadataConfigured,
     noAutoPromotion: true,
@@ -198,6 +214,35 @@ function scheduledIngestionPolicyReview(
     schedulerDefaultJobsPerRun: DEFAULT_MAX_JOBS_PER_RUN,
     schedulerMaxJobsPerRun: MAX_SCHEDULER_JOBS_PER_RUN,
     sourcePolicy: "review-before-enable"
+  };
+}
+
+function scheduledIngestionHostedCronReview(
+  env: Record<string, string | undefined>,
+  missingMetadata: readonly string[]
+): ScheduledIngestionHostedCronReview {
+  const databaseModeConfigured = readEnv(env, "APEX_DATA_SOURCE") === "database";
+  const managedDatabaseUrlConfigured = isManagedPostgresUrl(readEnv(env, "DATABASE_URL"));
+  const scheduledWritesEnabled = readEnv(env, SCHEDULED_INGESTION_WRITES_ENV) === "true";
+  const ingestionAlertsConfigured = readEnv(env, INGESTION_ALERTS_ENV) === "true";
+  const approvalConfigured = readEnv(env, SCHEDULED_INGESTION_CRON_APPROVAL_ENV) === "true";
+  const missingEnv = [
+    ...(managedDatabaseUrlConfigured ? [] : ["DATABASE_URL"]),
+    ...(databaseModeConfigured ? [] : ["APEX_DATA_SOURCE=database"]),
+    ...(scheduledWritesEnabled ? [] : [`${SCHEDULED_INGESTION_WRITES_ENV}=true`]),
+    ...(ingestionAlertsConfigured ? [] : [`${INGESTION_ALERTS_ENV}=true`]),
+    ...(approvalConfigured ? [] : [`${SCHEDULED_INGESTION_CRON_APPROVAL_ENV}=true`]),
+    ...missingMetadata
+  ];
+
+  return {
+    approvalConfigured,
+    databaseModeConfigured,
+    ingestionAlertsConfigured,
+    managedDatabaseUrlConfigured,
+    missingEnv,
+    ready: missingEnv.length === 0,
+    scheduledWritesEnabled
   };
 }
 
@@ -231,6 +276,25 @@ function normaliseMaxJobsPerRun(value: number | undefined) {
   );
 }
 
+function isManagedPostgresUrl(value: string | undefined) {
+  if (!value) {
+    return false;
+  }
+
+  let url: URL;
+
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+
+  return (
+    ["postgres:", "postgresql:"].includes(url.protocol) &&
+    !LOCAL_DATABASE_HOSTS.has(url.hostname.toLowerCase())
+  );
+}
+
 function scheduledIngestionNextAction({
   failedCount,
   queuedCount,
@@ -259,4 +323,9 @@ function scheduledIngestionNextAction({
   }
 
   return "Review scheduler state before running ingestion.";
+}
+
+function readEnv(env: Record<string, string | undefined>, key: string) {
+  const value = env[key];
+  return value && value.trim() ? value.trim() : undefined;
 }

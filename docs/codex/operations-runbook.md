@@ -119,3 +119,4 @@ Record these before fully-live launch:
 - Backup restore rehearsal result.
 - Operator auth smoke result.
 - Scheduled ingestion dry run or hosted cron smoke result.
+- `APEX_SCHEDULED_INGESTION_CRON_APPROVED=true` evidence before enabling hosted cron.
