@@ -87,6 +87,8 @@ The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel
 11. [ ] Add observability, backups, privacy, and operations.
     Done when: uptime/error monitoring, deployment alerts, database backups/restore rehearsal, privacy/terms copy, and operator runbooks are in place.
     Validate with: alert test, backup restore rehearsal, docs review, and deployment rollback drill.
+    In progress 2026-06-11: added `docs/codex/plans/2026-06-11-operations-privacy-readiness.md`, public `/privacy` and `/terms` pages, dashboard header links to those pages, and `docs/codex/operations-runbook.md` covering monitoring, deployment alerts, database backup/restore rehearsal, rollback, privacy/terms alignment, and launch evidence. Validation passed: legal page/dashboard render tests, public read-only boundary tests, `npm run typecheck`, `npm run build`, `npm run lint`, `npm audit`, and `git diff --check`.
+    Remaining blocker 2026-06-11: completing this step requires operator setup and proof outside the local checkout: uptime/error monitoring, Vercel deployment alerts, Neon backup/restore rehearsal, alert test, and rollback drill evidence.
 
 12. [ ] Run full product QA and hardening.
     Done when: accessibility, mobile/desktop layout, performance, security headers, dependency audit, and regression suites pass for production data mode.

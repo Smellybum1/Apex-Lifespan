@@ -436,6 +436,18 @@ function Header({ data }: { data: EvidenceDashboardData }) {
           <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-slate-700">
             {data.dataSource === "database" ? "Database-backed" : "Seed fallback"}
           </span>
+          <a
+            href="/privacy"
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:border-signal hover:text-signal"
+          >
+            Privacy
+          </a>
+          <a
+            href="/terms"
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:border-signal hover:text-signal"
+          >
+            Terms
+          </a>
           <CodexReviewPacketButton data={data} />
         </div>
         {data.fallbackReason ? (
