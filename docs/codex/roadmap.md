@@ -48,19 +48,23 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
 5. [ ] Resolve the accepted PMID 42141930 curation decision.
    Done when: either the accepted candidate is claim-linked and structurally extracted in local DB, or the public MVP explicitly defers source-candidate curation from the public demo scope.
    Validate with: `npm run ingest:sources -- --candidate-curation-handoff` when DB is available, or a short handoff note if deferred.
+   Blocked 2026-06-11: `npm run ingest:sources -- --candidate-curation-handoff` still reports `status="Claim link missing"`, `publicSourcePacketReady=false`, `nextWrite="claimLink"`, and `writeReady=true` for `PMID 42141930`. Claim-link and extraction writes are human-owned local curation actions, so this needs either human review to perform the claim-link/extraction or explicit confirmation to defer source-candidate curation from the public MVP.
 
-6. [ ] Confirm public route boundaries.
+6. [x] Confirm public route boundaries.
    Done when: public API routes remain GET-only/read-only, source-candidate persistence stays out of public app/runtime surfaces, and live preview wording still frames results as unreviewed leads.
    Validate with: `npm run test -- src/app/api/live-source-readonly-boundary.test.ts src/app/api/source-search-routes.test.ts src/components/evidence-dashboard-live-preview-boundary.test.ts`.
+   Completed 2026-06-11: boundary tests passed with 27 assertions across three files, covering GET-only/read-only route handlers, no source-candidate persistence imports or write surfaces in public runtime files, live preview request normalization, no-store/noindex response headers, public-safe upstream error text, and review-priority score labels.
 
 7. [ ] Choose the deployment path.
    Done when: hosting target, environment variables, build command, start command, and rollback path are documented.
    Required decision: if GitHub push remains blocked, choose a local-artifact/manual deploy path or wait for push access.
    Validate with: README or handoff note naming host, deployment mode, and rollback.
+   Blocked 2026-06-11: GitHub push limit remains active and no alternate public host/manual artifact deployment path has been selected. Needs a deployment decision before production environment configuration, release validation, browser QA, or deploy steps can be completed as release-ready work.
 
 8. [ ] Prepare production environment configuration.
    Done when: `.env.example` covers the public demo knobs, secrets are not committed, sidecar tokens remain local-only, and public deploy mode has a clear `APEX_DATA_SOURCE` value.
    Validate with: env diff review and `git diff --check`.
+   Partially prepared 2026-06-11: `.env.example` documents local `auto`, recommended public MVP/demo `seed`, and managed-production `database` values for `APEX_DATA_SOURCE`; sidecar variables remain commented and explicitly local-only. Blocked for completion until steps 3 and 7 select the public data mode and deployment path.
 
 9. [ ] Run full local release validation.
    Done when: core checks pass from a clean worktree after stopping the dev server.

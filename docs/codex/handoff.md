@@ -52,5 +52,9 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 - Roadmap step 2 completed after launching Docker Desktop: `docker compose ps`, `npm run db:migrate`, `npm run db:seed`, and `npm run ingest:sources -- --db-status` passed.
 - Roadmap step 3 is blocked pending product/deployment confirmation of seed-backed public demo mode versus managed production PostgreSQL.
 - Roadmap step 4 completed: seed-mode desktop/mobile browser review passed, public product-card brand copy changed from `Seed example` to `Demo profile`, `npm run db:seed` refreshed local data, and targeted dashboard/source-packet/seed-integrity tests passed.
+- Roadmap step 5 is blocked by human-owned curation: `npm run ingest:sources -- --candidate-curation-handoff` still reports accepted `PMID 42141930` as `Claim link missing` with `publicSourcePacketReady=false`.
+- Roadmap step 6 completed: public route/read-only boundary tests passed for live-source routes, dashboard live-preview fetches, public-safe errors, no-store/noindex headers, and source-candidate workflow separation.
+- Roadmap step 7 is blocked pending deployment-path choice while GitHub push limit remains active: wait for push access, choose a local-artifact/manual deploy path, or name a host with credentials.
+- Roadmap step 8 is partially prepared: `.env.example` now documents public-demo `APEX_DATA_SOURCE` choices and keeps Codex sidecar variables local-only, but completion depends on steps 3 and 7.
 
 Historical source-candidate progress lives in `docs/codex/archive/handoff/2026-06-04-source-candidate-progress.md`; search it only for targeted evidence.
