@@ -29,6 +29,7 @@ export interface ScheduledIngestionDryRun {
   queuedJobs: number;
   recentFailures: number;
   runningJobs: number;
+  worksheet: ScheduledIngestionWorksheet;
   wouldRunJobs: number;
 }
 
@@ -86,6 +87,23 @@ export interface ScheduledIngestionFailureReviewItem {
   source: SourceCandidateIngestionJobListItem["source"];
 }
 
+export interface ScheduledIngestionWorksheet {
+  blocked: ScheduledIngestionWorksheetItem[];
+  humanOwned: true;
+  nextOperatorAction: string;
+  queuedWork: ScheduledIngestionWorksheetItem[];
+  ready: ScheduledIngestionWorksheetItem[];
+  warnings: ScheduledIngestionWorksheetItem[];
+}
+
+export interface ScheduledIngestionWorksheetItem {
+  detail: string;
+  evidenceKeys?: string[];
+  id: string;
+  label: string;
+  nextAction?: string;
+}
+
 export type ScheduledIngestionFailureCategory =
   | "missing-configuration"
   | "rate-limited"
@@ -141,22 +159,35 @@ export async function planScheduledSourceIngestionDryRun(
     .filter((group) => group.status === IngestionStatus.FAILED)
     .reduce((total, group) => total + group.count, 0);
   const wouldRunJobs = runningJobs.length > 0 ? 0 : Math.min(maxJobsPerRun, queuedJobs.length);
+  const failureReview = scheduledIngestionFailureReview(failedJobs);
+  const nextAction = scheduledIngestionNextAction({
+    failedCount,
+    queuedCount,
+    runningCount,
+    wouldRunJobs
+  });
+  const policy = scheduledIngestionPolicyReview(options.env);
 
   return {
     dryRun: true,
-    failureReview: scheduledIngestionFailureReview(failedJobs),
+    failureReview,
     maxJobsPerRun,
-    nextAction: scheduledIngestionNextAction({
-      failedCount,
-      queuedCount,
-      runningCount,
-      wouldRunJobs
-    }),
+    nextAction,
     noAutoPromotion: true,
-    policy: scheduledIngestionPolicyReview(options.env),
+    policy,
     queuedJobs: queuedCount,
     recentFailures: failedJobs.length,
     runningJobs: runningCount,
+    worksheet: scheduledIngestionWorksheet({
+      failureReview,
+      maxJobsPerRun,
+      nextAction,
+      policy,
+      queuedCount,
+      recentFailures: failedJobs.length,
+      runningCount,
+      wouldRunJobs
+    }),
     wouldRunJobs
   };
 }
@@ -353,6 +384,144 @@ function scheduledIngestionPolicyReview(
     schedulerDefaultJobsPerRun: DEFAULT_MAX_JOBS_PER_RUN,
     schedulerMaxJobsPerRun: MAX_SCHEDULER_JOBS_PER_RUN,
     sourcePolicy: "review-before-enable"
+  };
+}
+
+function scheduledIngestionWorksheet({
+  failureReview,
+  maxJobsPerRun,
+  nextAction,
+  policy,
+  queuedCount,
+  recentFailures,
+  runningCount,
+  wouldRunJobs
+}: {
+  failureReview: ScheduledIngestionFailureReview;
+  maxJobsPerRun: number;
+  nextAction: string;
+  policy: ScheduledIngestionPolicyReview;
+  queuedCount: number;
+  recentFailures: number;
+  runningCount: number;
+  wouldRunJobs: number;
+}): ScheduledIngestionWorksheet {
+  const ready: ScheduledIngestionWorksheetItem[] = [
+    {
+      id: "dry-run-support",
+      label: "Dry-run support",
+      detail: "Scheduled ingestion can report queue state without running writes."
+    },
+    {
+      id: "source-rate-caps",
+      label: "Source rate caps",
+      detail: `PubMed retmax ${policy.pubMedRetmaxCap}, ClinicalTrials.gov pageSize ${policy.clinicalTrialsPageSizeCap}, max jobs per run ${maxJobsPerRun}.`
+    },
+    {
+      id: "no-auto-promotion",
+      label: "No automatic public promotion",
+      detail: "Scheduled ingestion keeps source candidates separate from public evidence promotion."
+    },
+    {
+      id: "automatic-retries-disabled",
+      label: "Automatic retries disabled",
+      detail: "Failed jobs stay human-reviewed until an explicit retry policy is approved."
+    }
+  ];
+  const blocked: ScheduledIngestionWorksheetItem[] = [];
+  const warnings: ScheduledIngestionWorksheetItem[] = [];
+
+  if (policy.ncbiMetadataConfigured) {
+    ready.push({
+      evidenceKeys: ["NCBI_TOOL", "NCBI_EMAIL"],
+      id: "ncbi-metadata",
+      label: "NCBI request metadata",
+      detail: "NCBI_TOOL and NCBI_EMAIL are configured."
+    });
+  } else {
+    blocked.push({
+      evidenceKeys: policy.missingMetadata,
+      id: "ncbi-metadata",
+      label: "NCBI request metadata",
+      detail: `Missing NCBI metadata: ${policy.missingMetadata.join(", ")}.`,
+      nextAction: `Configure missing NCBI metadata before unattended PubMed ingestion: ${policy.missingMetadata.join(", ")}.`
+    });
+  }
+
+  if (policy.hostedCronReady) {
+    ready.push({
+      evidenceKeys: [
+        "DATABASE_URL",
+        "APEX_DATA_SOURCE=database",
+        `${SCHEDULED_INGESTION_WRITES_ENV}=true`,
+        `${INGESTION_ALERTS_ENV}=true`,
+        `${SCHEDULED_INGESTION_CRON_APPROVAL_ENV}=true`,
+        "NCBI_TOOL",
+        "NCBI_EMAIL"
+      ],
+      id: "hosted-cron",
+      label: "Hosted cron evidence",
+      detail: "Managed database mode, scheduled write gate, alerts, approval, and NCBI metadata are configured."
+    });
+  } else {
+    blocked.push({
+      evidenceKeys: policy.hostedCron.missingEnv,
+      id: "hosted-cron",
+      label: "Hosted cron evidence",
+      detail: `Missing hosted cron evidence: ${policy.hostedCron.missingEnv.join(", ")}.`,
+      nextAction:
+        "Configure hosted cron evidence only after production database, scheduled write gate, alerts, approval, and NCBI metadata are ready."
+    });
+  }
+
+  if (!failureReview.retryAutomationReady) {
+    blocked.push({
+      id: "retry-policy",
+      label: "Retry automation review",
+      detail: "Automatic retry policy is not approved; failed jobs remain manual-review only.",
+      nextAction:
+        "Review failure categories and define an explicit retry policy before enabling retry automation."
+    });
+  }
+
+  if (runningCount > 0) {
+    blocked.push({
+      id: "running-jobs",
+      label: "Running ingestion jobs",
+      detail: `${runningCount} ingestion job(s) are currently running.`,
+      nextAction: "Wait for running ingestion jobs before starting another scheduled batch."
+    });
+  }
+
+  if (recentFailures > 0) {
+    warnings.push({
+      id: "recent-failures",
+      label: "Recent failed jobs",
+      detail: `${recentFailures} recent failed ingestion job(s) need manual retry review.`,
+      nextAction: failureReview.nextAction
+    });
+  }
+
+  const queuedWork = [
+    {
+      id: "queued-jobs",
+      label: "Queued ingestion jobs",
+      detail: `${queuedCount} queued job(s); dry run would process ${wouldRunJobs}.`,
+      nextAction
+    }
+  ];
+
+  return {
+    blocked,
+    humanOwned: true,
+    nextOperatorAction:
+      blocked[0]?.nextAction ??
+      warnings[0]?.nextAction ??
+      queuedWork[0]?.nextAction ??
+      "Scheduled ingestion evidence is ready; review launch readiness before enabling hosted cron.",
+    queuedWork,
+    ready,
+    warnings
   };
 }
 

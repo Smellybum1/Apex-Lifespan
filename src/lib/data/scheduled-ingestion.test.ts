@@ -88,6 +88,73 @@ describe("scheduled source ingestion dry run", () => {
       queuedJobs: 3,
       recentFailures: 0,
       runningJobs: 0,
+      worksheet: {
+        blocked: [
+          {
+            detail: "Automatic retry policy is not approved; failed jobs remain manual-review only.",
+            id: "retry-policy",
+            label: "Retry automation review",
+            nextAction:
+              "Review failure categories and define an explicit retry policy before enabling retry automation."
+          }
+        ],
+        humanOwned: true,
+        nextOperatorAction:
+          "Review failure categories and define an explicit retry policy before enabling retry automation.",
+        queuedWork: [
+          {
+            detail: "3 queued job(s); dry run would process 2.",
+            id: "queued-jobs",
+            label: "Queued ingestion jobs",
+            nextAction: "Scheduled run would process 2 queued job(s)."
+          }
+        ],
+        ready: [
+          {
+            detail: "Scheduled ingestion can report queue state without running writes.",
+            id: "dry-run-support",
+            label: "Dry-run support"
+          },
+          {
+            detail: "PubMed retmax 20, ClinicalTrials.gov pageSize 20, max jobs per run 2.",
+            id: "source-rate-caps",
+            label: "Source rate caps"
+          },
+          {
+            detail:
+              "Scheduled ingestion keeps source candidates separate from public evidence promotion.",
+            id: "no-auto-promotion",
+            label: "No automatic public promotion"
+          },
+          {
+            detail: "Failed jobs stay human-reviewed until an explicit retry policy is approved.",
+            id: "automatic-retries-disabled",
+            label: "Automatic retries disabled"
+          },
+          {
+            detail: "NCBI_TOOL and NCBI_EMAIL are configured.",
+            evidenceKeys: ["NCBI_TOOL", "NCBI_EMAIL"],
+            id: "ncbi-metadata",
+            label: "NCBI request metadata"
+          },
+          {
+            detail:
+              "Managed database mode, scheduled write gate, alerts, approval, and NCBI metadata are configured.",
+            evidenceKeys: [
+              "DATABASE_URL",
+              "APEX_DATA_SOURCE=database",
+              "APEX_SCHEDULED_INGESTION_WRITES_ENABLED=true",
+              "APEX_INGESTION_ALERTS_CONFIGURED=true",
+              "APEX_SCHEDULED_INGESTION_CRON_APPROVED=true",
+              "NCBI_TOOL",
+              "NCBI_EMAIL"
+            ],
+            id: "hosted-cron",
+            label: "Hosted cron evidence"
+          }
+        ],
+        warnings: []
+      },
       wouldRunJobs: 2
     });
   });
@@ -160,6 +227,34 @@ describe("scheduled source ingestion dry run", () => {
         schedulerDefaultJobsPerRun: 1,
         schedulerMaxJobsPerRun: 5,
         sourcePolicy: "review-before-enable"
+      },
+      worksheet: {
+        blocked: expect.arrayContaining([
+          expect.objectContaining({
+            evidenceKeys: ["NCBI_TOOL", "NCBI_EMAIL"],
+            id: "ncbi-metadata",
+            nextAction:
+              "Configure missing NCBI metadata before unattended PubMed ingestion: NCBI_TOOL, NCBI_EMAIL."
+          }),
+          expect.objectContaining({
+            evidenceKeys: [
+              "DATABASE_URL",
+              "APEX_DATA_SOURCE=database",
+              "APEX_SCHEDULED_INGESTION_WRITES_ENABLED=true",
+              "APEX_INGESTION_ALERTS_CONFIGURED=true",
+              "APEX_SCHEDULED_INGESTION_CRON_APPROVED=true",
+              "NCBI_TOOL",
+              "NCBI_EMAIL"
+            ],
+            id: "hosted-cron"
+          }),
+          expect.objectContaining({
+            id: "retry-policy"
+          })
+        ]),
+        humanOwned: true,
+        nextOperatorAction:
+          "Configure missing NCBI metadata before unattended PubMed ingestion: NCBI_TOOL, NCBI_EMAIL."
       },
       wouldRunJobs: 0
     });
@@ -254,7 +349,18 @@ describe("scheduled source ingestion dry run", () => {
         retryAutomationReady: false
       },
       nextAction: "Review failed ingestion jobs before queueing more scheduled work.",
-      recentFailures: 2
+      recentFailures: 2,
+      worksheet: {
+        warnings: [
+          {
+            detail: "2 recent failed ingestion job(s) need manual retry review.",
+            id: "recent-failures",
+            label: "Recent failed jobs",
+            nextAction:
+              "Review failed ingestion jobs and their categories before enabling any retry automation."
+          }
+        ]
+      }
     });
     expect(JSON.stringify(review.failureReview)).not.toContain("secret-123");
     expect(JSON.stringify(review.failureReview)).not.toContain("private@example.com");
