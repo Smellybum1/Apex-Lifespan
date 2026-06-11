@@ -81,6 +81,80 @@ describe("launch readiness report", () => {
       ])
     );
     expect(report.worksheet.humanOwned).toBe(true);
+    expect(report.worksheet.copySafeCommands).toEqual([
+      {
+        command: "npm run launch:readiness",
+        id: "launch-readiness",
+        label: "Refresh aggregate launch readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck production, operator, operations, ingestion, promotion, coverage, smoke, and launch evidence gates."
+      },
+      {
+        command: "npm run production:readiness",
+        id: "production-readiness",
+        label: "Refresh production readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck managed database, migration rehearsal, Vercel project, and secret evidence without printing secret values."
+      },
+      {
+        command: "npm run operator:readiness",
+        id: "operator-readiness",
+        label: "Refresh operator readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck GitHub OAuth, active operator, manual QA, and browser-write-control evidence without enabling writes."
+      },
+      {
+        command: "npm run operations:readiness",
+        id: "operations-readiness",
+        label: "Refresh operations readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck monitoring, alert, backup, restore, rollback, privacy, terms, and runbook evidence."
+      },
+      {
+        command: "npm run ingest:scheduled-dry-run",
+        id: "scheduled-ingestion-dry-run",
+        label: "Refresh scheduled ingestion dry run",
+        mode: "read-only",
+        purpose:
+          "Recheck hosted-cron, retry-policy, queue, dedupe, and no-auto-promotion readiness without running jobs."
+      },
+      {
+        command: "npm run coverage:review",
+        id: "coverage-review",
+        label: "Refresh evidence coverage review",
+        mode: "read-only",
+        purpose:
+          "Recheck human-reviewed coverage, review backlog, source-packet readiness, and intervention gaps."
+      },
+      {
+        command: "npm run promotion:dry-run -- --pmid <pmid>",
+        id: "promotion-dry-run",
+        label: "Dry-run accepted candidate promotion",
+        mode: "read-only",
+        purpose:
+          "Inspect promotion blockers for an accepted PubMed candidate before any explicit human promotion decision."
+      },
+      {
+        command: "npm run smoke:public-mvp -- <fully-live-url>",
+        id: "public-smoke",
+        label: "Smoke fully-live public routes",
+        mode: "read-only",
+        purpose:
+          "Verify the public URL, legal pages, security headers, health endpoint, and live-source preview guards."
+      },
+      {
+        command: "npm run operator:smoke -- <fully-live-url>",
+        id: "operator-anonymous-smoke",
+        label: "Smoke anonymous operator boundary",
+        mode: "read-only",
+        purpose:
+          "Verify anonymous visitors cannot see operator queues, audit content, promotion controls, or write controls."
+      }
+    ]);
     expect(report.worksheet.readyGates.map((gate) => gate.id)).toEqual([
       "fully-live-launch-checklist",
       "post-launch-review-template",
@@ -107,6 +181,56 @@ describe("launch readiness report", () => {
       })
     );
     expect(JSON.stringify(report)).not.toContain("2026-06-11T00:00:00Z");
+  });
+
+  it("emits only read-only commands for launch handoff", () => {
+    const report = buildLaunchReadinessReport({
+      env: {},
+      evidenceCoverage: {
+        dataSource: "seed",
+        report: coverageSummary({
+          claimReviewBacklog: 7,
+          humanReviewedClaims: 0,
+          interventionGaps: 1
+        })
+      },
+      files: {
+        launchChecklist: true,
+        postLaunchReviewTemplate: true
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      operations: readinessReport(["uptime-monitoring"]) as OperationsReadinessReport,
+      operator: readinessReport(["operator-auth-config"]) as OperatorReadinessReport,
+      production: readinessReport(["database-url"]) as ProductionReadinessReport,
+      promotion: {
+        snapshot: promotionSnapshot({ blockedCount: 1, readyCount: 0, total: 1 })
+      },
+      scheduledIngestion: {
+        hostedCronReady: false,
+        missingEnv: ["DATABASE_URL", "APEX_DATA_SOURCE=database"],
+        noAutoPromotion: true,
+        retryAutomationReady: false
+      }
+    });
+    const blockedWriteTokens = [
+      "--apply",
+      "ingest:scheduled-run",
+      "operator:bootstrap",
+      "--accept-candidate",
+      "--reject-candidate",
+      "--link-candidate-claim",
+      "--extract-candidate-study"
+    ];
+
+    expect(report.worksheet.copySafeCommands).toHaveLength(9);
+    expect(report.worksheet.copySafeCommands.every((item) => item.mode === "read-only")).toBe(
+      true
+    );
+    expect(
+      report.worksheet.copySafeCommands.some((item) =>
+        blockedWriteTokens.some((token) => item.command.includes(token))
+      )
+    ).toBe(false);
   });
 
   it("reports ready only when launch evidence and nested gates are ready", () => {

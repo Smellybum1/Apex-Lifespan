@@ -63,10 +63,19 @@ export interface LaunchReadinessReport {
 
 export interface LaunchReadinessWorksheet {
   blockedGates: LaunchReadinessWorksheetItem[];
+  copySafeCommands: LaunchReadinessCommand[];
   humanOwned: true;
   nextLaunchAction: string;
   readyGates: LaunchReadinessWorksheetItem[];
   warningGates: LaunchReadinessWorksheetItem[];
+}
+
+export interface LaunchReadinessCommand {
+  command: string;
+  id: string;
+  label: string;
+  mode: "read-only";
+  purpose: string;
 }
 
 export interface LaunchReadinessWorksheetItem {
@@ -421,6 +430,7 @@ function launchReadinessWorksheet(
     blockedGates: checks
       .filter((check) => check.status === "blocked")
       .map(launchReadinessWorksheetItem),
+    copySafeCommands: launchReadinessCopySafeCommands(),
     humanOwned: true,
     nextLaunchAction: nextAction,
     readyGates: checks
@@ -430,6 +440,83 @@ function launchReadinessWorksheet(
       .filter((check) => check.status === "warning")
       .map(launchReadinessWorksheetItem)
   };
+}
+
+function launchReadinessCopySafeCommands(): LaunchReadinessCommand[] {
+  return [
+    {
+      command: "npm run launch:readiness",
+      id: "launch-readiness",
+      label: "Refresh aggregate launch readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck production, operator, operations, ingestion, promotion, coverage, smoke, and launch evidence gates."
+    },
+    {
+      command: "npm run production:readiness",
+      id: "production-readiness",
+      label: "Refresh production readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck managed database, migration rehearsal, Vercel project, and secret evidence without printing secret values."
+    },
+    {
+      command: "npm run operator:readiness",
+      id: "operator-readiness",
+      label: "Refresh operator readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck GitHub OAuth, active operator, manual QA, and browser-write-control evidence without enabling writes."
+    },
+    {
+      command: "npm run operations:readiness",
+      id: "operations-readiness",
+      label: "Refresh operations readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck monitoring, alert, backup, restore, rollback, privacy, terms, and runbook evidence."
+    },
+    {
+      command: "npm run ingest:scheduled-dry-run",
+      id: "scheduled-ingestion-dry-run",
+      label: "Refresh scheduled ingestion dry run",
+      mode: "read-only",
+      purpose:
+        "Recheck hosted-cron, retry-policy, queue, dedupe, and no-auto-promotion readiness without running jobs."
+    },
+    {
+      command: "npm run coverage:review",
+      id: "coverage-review",
+      label: "Refresh evidence coverage review",
+      mode: "read-only",
+      purpose:
+        "Recheck human-reviewed coverage, review backlog, source-packet readiness, and intervention gaps."
+    },
+    {
+      command: "npm run promotion:dry-run -- --pmid <pmid>",
+      id: "promotion-dry-run",
+      label: "Dry-run accepted candidate promotion",
+      mode: "read-only",
+      purpose:
+        "Inspect promotion blockers for an accepted PubMed candidate before any explicit human promotion decision."
+    },
+    {
+      command: "npm run smoke:public-mvp -- <fully-live-url>",
+      id: "public-smoke",
+      label: "Smoke fully-live public routes",
+      mode: "read-only",
+      purpose:
+        "Verify the public URL, legal pages, security headers, health endpoint, and live-source preview guards."
+    },
+    {
+      command: "npm run operator:smoke -- <fully-live-url>",
+      id: "operator-anonymous-smoke",
+      label: "Smoke anonymous operator boundary",
+      mode: "read-only",
+      purpose:
+        "Verify anonymous visitors cannot see operator queues, audit content, promotion controls, or write controls."
+    }
+  ];
 }
 
 function launchReadinessWorksheetItem(
