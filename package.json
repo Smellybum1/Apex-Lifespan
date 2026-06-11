@@ -12,6 +12,7 @@
     "typecheck": "tsx scripts/generate-prisma-client.ts && next typegen && tsc --noEmit",
     "smoke:public-mvp": "tsx scripts/smoke-public-mvp.ts",
     "promotion:dry-run": "tsx scripts/dry-run-candidate-promotion.ts",
+    "ingest:scheduled-dry-run": "tsx scripts/scheduled-source-ingestion.ts",
     "codex:review-sidecar": "tsx scripts/codex-review-sidecar.ts",
     "ingest:sources": "tsx scripts/run-source-candidate-jobs.ts",
     "db:validate": "prisma validate",

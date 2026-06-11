@@ -70,6 +70,8 @@ The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel
 8. [ ] Add scheduled source ingestion.
    Done when: PubMed and ClinicalTrials.gov ingestion jobs run on a schedule with rate limits, retries, dedupe, failure reporting, dry-run support, and no automatic public promotion.
    Validate with: scheduler dry run, integration tests with mocked upstreams, and source policy/rate-limit review.
+   In progress 2026-06-11: added `docs/codex/scheduled-ingestion-design.md`, a read-only scheduler dry-run planner, and `npm run ingest:scheduled-dry-run`. Dry run reports queued/running/failed state, planned batch size, and `noAutoPromotion=true` without queueing or running jobs. Local dry run passed with no queued jobs. Validation passed: scheduler dry-run tests, public-boundary tests, `npm run typecheck`, `npm run build`, `npm run lint`, and `npm audit`.
+   Remaining blocker 2026-06-11: hosted cron execution, retry policy automation, alerting, and unattended PubMed metadata require production database/secrets, monitoring, and operator approval before enabling scheduled writes.
 
 9. [ ] Expand evidence and intervention coverage.
    Done when: priority interventions and claims have reviewed evidence packets, clear population/dose/form boundaries, and visible uncertainty labels.
