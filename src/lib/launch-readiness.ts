@@ -35,9 +35,14 @@ export interface LaunchReadinessScheduledIngestion {
   unavailable?: boolean;
 }
 
+export interface LaunchReadinessFiles {
+  launchChecklist: boolean;
+}
+
 export interface LaunchReadinessContext {
   env: Record<string, string | undefined>;
   evidenceCoverage: LaunchReadinessEvidenceCoverage;
+  files: LaunchReadinessFiles;
   generatedAt?: Date;
   operations: OperationsReadinessReport;
   operator: OperatorReadinessReport;
@@ -58,11 +63,19 @@ const PUBLIC_SMOKE_KEY = "APEX_PUBLIC_SMOKE_PASSED_AT";
 const ADMIN_FLOW_SMOKE_KEY = "APEX_ADMIN_FLOW_SMOKE_PASSED_AT";
 const LAUNCH_APPROVAL_KEY = "APEX_FULLY_LIVE_LAUNCH_APPROVED_AT";
 const POST_LAUNCH_REVIEW_KEY = "APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT";
+export const FULLY_LIVE_LAUNCH_CHECKLIST_PATH =
+  "docs/codex/fully-live-launch-checklist.md";
 
 export function buildLaunchReadinessReport(
   context: LaunchReadinessContext
 ): LaunchReadinessReport {
   const checks: LaunchReadinessCheck[] = [
+    localFileCheck({
+      id: "fully-live-launch-checklist",
+      label: "Fully-live launch checklist",
+      pathLabel: FULLY_LIVE_LAUNCH_CHECKLIST_PATH,
+      present: context.files.launchChecklist
+    }),
     nestedReadinessCheck({
       id: "production-readiness",
       label: "Production data and secrets",
@@ -125,6 +138,35 @@ export function buildLaunchReadinessReport(
       firstBlocked?.nextAction ??
       "All launch readiness gates are ready; proceed with the launch checklist.",
     overall: counts.blocked > 0 ? "blocked" : "ready"
+  };
+}
+
+function localFileCheck({
+  id,
+  label,
+  pathLabel,
+  present
+}: {
+  id: string;
+  label: string;
+  pathLabel: string;
+  present: boolean;
+}): LaunchReadinessCheck {
+  if (present) {
+    return {
+      id,
+      label,
+      status: "ready",
+      detail: `${pathLabel} is present.`
+    };
+  }
+
+  return {
+    id,
+    label,
+    status: "blocked",
+    detail: `${pathLabel} is missing.`,
+    nextAction: `Create ${pathLabel} before launch approval.`
   };
 }
 

@@ -5,7 +5,10 @@ import path from "node:path";
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import { planScheduledSourceIngestionDryRun } from "@/lib/data/scheduled-ingestion";
 import { summarizeEvidenceCoverage } from "@/lib/evidence-coverage";
-import { buildLaunchReadinessReport } from "@/lib/launch-readiness";
+import {
+  buildLaunchReadinessReport,
+  FULLY_LIVE_LAUNCH_CHECKLIST_PATH
+} from "@/lib/launch-readiness";
 import { buildOperationsReadinessReport } from "@/lib/operations-readiness";
 import { getSourceCandidatePromotionReadinessSnapshot } from "@/lib/operator/curation-promotion";
 import { buildOperatorReadinessReport } from "@/lib/operator/readiness";
@@ -23,6 +26,7 @@ async function main() {
   const report = buildLaunchReadinessReport({
     env: process.env,
     evidenceCoverage,
+    files: readLaunchReadinessFiles(),
     operations: buildOperationsReadinessReport({ env: process.env }),
     operator: buildOperatorReadinessReport({ env: process.env }),
     production: buildProductionReadinessReport({
@@ -37,6 +41,12 @@ async function main() {
   });
 
   console.log(JSON.stringify(report, null, 2));
+}
+
+function readLaunchReadinessFiles() {
+  return {
+    launchChecklist: existsSync(path.join(process.cwd(), FULLY_LIVE_LAUNCH_CHECKLIST_PATH))
+  };
 }
 
 async function readScheduledIngestionEvidence() {

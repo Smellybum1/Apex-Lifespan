@@ -24,6 +24,9 @@ describe("launch readiness report", () => {
           interventionGaps: 1
         })
       },
+      files: {
+        launchChecklist: true
+      },
       generatedAt: new Date("2026-06-11T00:00:00.000Z"),
       operations: readinessReport(["uptime-monitoring"]) as OperationsReadinessReport,
       operator: readinessReport(["operator-auth-config"]) as OperatorReadinessReport,
@@ -42,6 +45,10 @@ describe("launch readiness report", () => {
     expect(report.overall).toBe("blocked");
     expect(report.checks).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          id: "fully-live-launch-checklist",
+          status: "ready"
+        }),
         expect.objectContaining({
           id: "production-readiness",
           status: "blocked",
@@ -91,6 +98,9 @@ describe("launch readiness report", () => {
           interventionGaps: 0
         })
       },
+      files: {
+        launchChecklist: true
+      },
       generatedAt: new Date("2026-06-11T00:00:00.000Z"),
       operations: readinessReport([]) as OperationsReadinessReport,
       operator: readinessReport([]) as OperatorReadinessReport,
@@ -113,6 +123,53 @@ describe("launch readiness report", () => {
     );
     expect(report.checks.map((check) => check.status)).toEqual(
       expect.arrayContaining(["ready"])
+    );
+  });
+
+  it("blocks launch approval when the launch checklist artifact is missing", () => {
+    const report = buildLaunchReadinessReport({
+      env: {
+        APEX_ADMIN_FLOW_SMOKE_PASSED_AT: "recorded",
+        APEX_FULLY_LIVE_LAUNCH_APPROVED_AT: "recorded",
+        APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT: "recorded",
+        APEX_PUBLIC_SMOKE_PASSED_AT: "recorded"
+      },
+      evidenceCoverage: {
+        dataSource: "database",
+        report: coverageSummary({
+          claimReviewBacklog: 0,
+          humanReviewedClaims: 7,
+          interventionGaps: 0
+        })
+      },
+      files: {
+        launchChecklist: false
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      operations: readinessReport([]) as OperationsReadinessReport,
+      operator: readinessReport([]) as OperatorReadinessReport,
+      production: readinessReport([]) as ProductionReadinessReport,
+      promotion: {
+        snapshot: promotionSnapshot({ blockedCount: 0, readyCount: 1, total: 1 })
+      },
+      scheduledIngestion: {
+        hostedCronReady: true,
+        missingEnv: [],
+        noAutoPromotion: true,
+        retryAutomationReady: true
+      }
+    } satisfies LaunchReadinessContext);
+
+    expect(report.overall).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "fully-live-launch-checklist",
+          nextAction:
+            "Create docs/codex/fully-live-launch-checklist.md before launch approval.",
+          status: "blocked"
+        })
+      ])
     );
   });
 });
