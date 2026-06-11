@@ -19,6 +19,7 @@ export interface OperationsReadinessContext {
 }
 
 export interface OperationsReadinessFiles {
+  operationsDrillChecklist: boolean;
   operationsRunbook: boolean;
   privacyPage: boolean;
   termsPage: boolean;
@@ -48,6 +49,7 @@ export interface OperationsEvidenceWorksheetItem {
 }
 
 const DEFAULT_FILE_PATHS: Record<keyof OperationsReadinessFiles, string> = {
+  operationsDrillChecklist: "docs/codex/operations-drill-checklist.md",
   operationsRunbook: "docs/codex/operations-runbook.md",
   privacyPage: "src/app/privacy/page.tsx",
   termsPage: "src/app/terms/page.tsx"
@@ -79,6 +81,12 @@ export function buildOperationsReadinessReport(
       label: "Operations runbook",
       present: files.operationsRunbook,
       pathLabel: DEFAULT_FILE_PATHS.operationsRunbook
+    }),
+    localFileCheck({
+      id: "operations-drill-checklist",
+      label: "Operations drill checklist",
+      present: files.operationsDrillChecklist,
+      pathLabel: DEFAULT_FILE_PATHS.operationsDrillChecklist
     }),
     uptimeMonitoringCheck(context.env),
     configuredFlagCheck({
@@ -150,6 +158,9 @@ export function readOperationsReadinessFiles(
   cwd = process.cwd()
 ): OperationsReadinessFiles {
   return {
+    operationsDrillChecklist: existsSync(
+      path.join(cwd, DEFAULT_FILE_PATHS.operationsDrillChecklist)
+    ),
     operationsRunbook: existsSync(path.join(cwd, DEFAULT_FILE_PATHS.operationsRunbook)),
     privacyPage: existsSync(path.join(cwd, DEFAULT_FILE_PATHS.privacyPage)),
     termsPage: existsSync(path.join(cwd, DEFAULT_FILE_PATHS.termsPage))
@@ -313,7 +324,12 @@ function missingEvidenceCheck({
 function operationsReadinessWorksheet(
   checks: OperationsReadinessCheck[]
 ): OperationsReadinessWorksheet {
-  const localArtifactIds = new Set(["privacy-page", "terms-page", "operations-runbook"]);
+  const localArtifactIds = new Set([
+    "privacy-page",
+    "terms-page",
+    "operations-runbook",
+    "operations-drill-checklist"
+  ]);
   const readyLocalArtifacts = checks
     .filter((check) => check.status === "ready" && localArtifactIds.has(check.id))
     .map(operationsEvidenceWorksheetItem);

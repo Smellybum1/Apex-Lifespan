@@ -22,7 +22,7 @@ Run this before launch evidence review:
 npm run operations:readiness
 ```
 
-The report is read-only. It checks that the local privacy page, terms page, and this runbook exist, then reports whether external operations proof has been recorded through evidence variables. It prints variable names and sanitized URLs only; do not store monitoring tokens, API keys, or database credentials in the report.
+The report is read-only. It checks that the local privacy page, terms page, this runbook, and `docs/codex/operations-drill-checklist.md` exist, then reports whether external operations proof has been recorded through evidence variables. It prints variable names and sanitized URLs only; do not store monitoring tokens, API keys, or database credentials in the report.
 
 External proof variables:
 
@@ -104,6 +104,7 @@ The pages must stay aligned with these product rules:
 
 Record these before fully-live launch:
 
+- Complete the human-owned drill order in `docs/codex/operations-drill-checklist.md`.
 - `git status -sb`
 - `git log -3 --oneline`
 - `npm run test`

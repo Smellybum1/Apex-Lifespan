@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildOperationsReadinessReport } from "@/lib/operations-readiness";
 
 const localFilesReady = {
+  operationsDrillChecklist: true,
   operationsRunbook: true,
   privacyPage: true,
   termsPage: true
@@ -17,11 +18,12 @@ describe("operations readiness report", () => {
     });
 
     expect(report.overall).toBe("blocked");
-    expect(report.counts.ready).toBe(3);
+    expect(report.counts.ready).toBe(4);
     expect(report.worksheet.readyLocalArtifacts.map((item) => item.id)).toEqual([
       "privacy-page",
       "terms-page",
-      "operations-runbook"
+      "operations-runbook",
+      "operations-drill-checklist"
     ]);
     expect(report.worksheet.missingExternalEvidence).toHaveLength(8);
     expect(report.worksheet.missingExternalEvidence[0]).toEqual({
@@ -109,6 +111,7 @@ describe("operations readiness report", () => {
         APEX_UPTIME_MONITORING_URL: "https://uptime.example.com/checks/apex-lifespan"
       },
       files: {
+        operationsDrillChecklist: false,
         operationsRunbook: false,
         privacyPage: true,
         termsPage: false
@@ -121,6 +124,10 @@ describe("operations readiness report", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "operations-runbook",
+          status: "blocked"
+        }),
+        expect.objectContaining({
+          id: "operations-drill-checklist",
           status: "blocked"
         }),
         expect.objectContaining({
