@@ -85,7 +85,8 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
 12. [ ] Publish launch handoff.
     Done when: README or handoff includes the public URL, selected data mode, known limitations, rollback path, and remaining fully-live gaps.
     Validate with: docs diff review and `git diff --check`.
-    Blocked 2026-06-11: depends on step 11 producing a public URL and step 7 naming the selected deployment mode and rollback path.
+    Prepared 2026-06-11: added `docs/codex/public-mvp-launch-handoff.md` with selected seed mode, no-GitHub manual Vercel path, predeploy validation, final public smoke command, known limitations, rollback, and fully-live gaps.
+    Blocked 2026-06-11: depends on step 11 producing a public URL and final public smoke evidence.
 
 13. [ ] Rollover this roadmap.
     Done when: every step above is complete, this file is archived, and a new `docs/codex/roadmap.md` is created for the fully live end product.

@@ -79,6 +79,8 @@ Rollback path: use `vercel rollback <deployment-url>` or the Vercel dashboard to
 
 Known MVP limitations: source-candidate review and promotion stay local; accepted `PMID 42141930` remains curation backlog until a human-owned claim-link and structured extraction are completed; live preview results are unreviewed research leads, not public evidence cards.
 
+Launch handoff draft: `docs/codex/public-mvp-launch-handoff.md`.
+
 ## Local Ingestion
 
 Source-candidate ingestion is an operator-only local workflow. It writes to the configured PostgreSQL database and is not exposed through public app routes.
