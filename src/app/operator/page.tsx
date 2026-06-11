@@ -3,6 +3,7 @@ import { ShieldCheck, ShieldX } from "lucide-react";
 
 import { canOperatorAccess, operatorWritesEnabled } from "@/lib/operator/authorization";
 import { operatorAuthConfigured } from "@/lib/operator/config";
+import { getOperatorReviewQueueSnapshot } from "@/lib/operator/review-queue";
 import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,9 @@ export default async function OperatorPage() {
   const writesEnabled = operatorWritesEnabled();
   const canReviewCandidates = canOperatorAccess(principal.role, "candidate:review");
   const canManageOperators = canOperatorAccess(principal.role, "operator:manage");
+  const reviewQueue = canReviewCandidates
+    ? await getOperatorReviewQueueSnapshot(5)
+    : { pendingCount: 0, rows: [] };
 
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-8 text-slate-950">
@@ -65,6 +69,46 @@ export default async function OperatorPage() {
           <OperatorStatusTile label="Writes" value={writesEnabled ? "Enabled" : "Disabled"} />
           <OperatorStatusTile label="Operator admin" value={canManageOperators ? "Ready" : "No"} />
         </div>
+
+        <section className="rounded-md border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <div>
+              <h2 className="text-lg font-semibold tracking-normal">Candidate review queue</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                {reviewQueue.pendingCount} pending candidates loaded
+              </p>
+            </div>
+            <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+              Read-only
+            </span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {reviewQueue.rows.length > 0 ? (
+              reviewQueue.rows.map((candidate) => (
+                <article className="px-4 py-4" key={candidate.dedupeKey}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium text-slate-500">{candidate.source}</p>
+                      <h3 className="mt-1 max-w-3xl text-base font-semibold text-slate-950">
+                        {candidate.title}
+                      </h3>
+                    </div>
+                    <span className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">
+                      {candidate.triageScore}/100
+                    </span>
+                  </div>
+                  {candidate.curationStatus ? (
+                    <p className="mt-3 text-sm text-slate-700">{candidate.curationStatus}</p>
+                  ) : null}
+                </article>
+              ))
+            ) : (
+              <p className="px-4 py-6 text-sm text-slate-600">
+                No pending candidates are visible for this operator role.
+              </p>
+            )}
+          </div>
+        </section>
       </section>
     </main>
   );
