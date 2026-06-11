@@ -71,6 +71,8 @@ const FILE_PATHS: Record<keyof OperatorReadinessFiles, string> = {
   promotionReadiness: "src/lib/operator/curation-promotion.ts",
   reviewQueue: "src/lib/operator/review-queue.ts"
 };
+const VERCEL_DATABASE_CONFIGURED_KEY = "APEX_VERCEL_DATABASE_CONFIGURED_AT";
+const VERCEL_OPERATOR_AUTH_CONFIGURED_KEY = "APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT";
 
 export function buildOperatorReadinessReport(
   context: OperatorReadinessContext
@@ -241,6 +243,8 @@ function authConfigurationCheck(env: OperatorReadinessContext["env"]): OperatorR
   const missing = ["DATABASE_URL", "AUTH_SECRET", "AUTH_GITHUB_ID", "AUTH_GITHUB_SECRET"].filter(
     (key) => !readEnv(env, key)
   );
+  const vercelDatabaseConfiguredAt = readEnv(env, VERCEL_DATABASE_CONFIGURED_KEY);
+  const vercelOperatorAuthConfiguredAt = readEnv(env, VERCEL_OPERATOR_AUTH_CONFIGURED_KEY);
 
   if (operatorAuthConfigured(env)) {
     return {
@@ -252,14 +256,32 @@ function authConfigurationCheck(env: OperatorReadinessContext["env"]): OperatorR
     };
   }
 
+  if (vercelDatabaseConfiguredAt && vercelOperatorAuthConfiguredAt) {
+    return {
+      id: "operator-auth-config",
+      label: "Database-backed GitHub auth",
+      status: "ready",
+      detail:
+        "Vercel dashboard database and operator auth evidence are recorded; secret values remain dashboard-managed.",
+      evidenceKeys: [VERCEL_DATABASE_CONFIGURED_KEY, VERCEL_OPERATOR_AUTH_CONFIGURED_KEY]
+    };
+  }
+
   return {
     id: "operator-auth-config",
     label: "Database-backed GitHub auth",
     status: "blocked",
     detail: `Missing operator auth variables: ${missing.join(", ")}.`,
-    evidenceKeys: ["DATABASE_URL", "AUTH_SECRET", "AUTH_GITHUB_ID", "AUTH_GITHUB_SECRET"],
+    evidenceKeys: [
+      "DATABASE_URL",
+      "AUTH_SECRET",
+      "AUTH_GITHUB_ID",
+      "AUTH_GITHUB_SECRET",
+      VERCEL_DATABASE_CONFIGURED_KEY,
+      VERCEL_OPERATOR_AUTH_CONFIGURED_KEY
+    ],
     nextAction:
-      "Configure database-backed GitHub OAuth in a non-production environment before manual operator-flow QA."
+      "Configure database-backed GitHub OAuth in a non-production environment, or record APEX_VERCEL_DATABASE_CONFIGURED_AT and APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT after dashboard review, before manual operator-flow QA."
   };
 }
 

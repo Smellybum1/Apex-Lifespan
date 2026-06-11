@@ -7,7 +7,7 @@ Use this checklist in a non-production environment before exposing browser write
 ## Preconditions
 
 - Managed or local non-production PostgreSQL is reachable.
-- GitHub OAuth/Auth.js variables are configured: `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`.
+- GitHub OAuth/Auth.js variables are configured: `DATABASE_URL`, `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`; for dashboard-managed Vercel environments, reviewed `APEX_VERCEL_DATABASE_CONFIGURED_AT` and `APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT` evidence can stand in for copying secret values into the local shell.
 - At least one active operator has been bootstrapped or verified.
 - Public routes remain read-only.
 - `npm run operator:readiness` has been run and remaining blockers are understood.
@@ -49,6 +49,8 @@ Perform these only in non-production with throwaway or reviewed source-candidate
 Record evidence outside the repo, then set these local evidence variables only in the relevant non-production/operator environment:
 
 - `APEX_OPERATOR_ACTIVE_ACCOUNT_READY=true`
+- `APEX_VERCEL_DATABASE_CONFIGURED_AT=<ISO timestamp>` after confirming the managed database variable in the Vercel dashboard
+- `APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT=<ISO timestamp>` after confirming Auth.js and GitHub OAuth variables in the Vercel dashboard
 - `APEX_OPERATOR_NONPROD_WRITE_QA_AT=<ISO timestamp>`
 - `APEX_OPERATOR_FLOW_QA_REVIEWED_AT=<ISO timestamp>`
 - `APEX_OPERATOR_BROWSER_WRITE_CONTROLS_APPROVED_AT=<ISO timestamp>`

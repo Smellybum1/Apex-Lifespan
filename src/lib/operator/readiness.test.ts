@@ -50,7 +50,7 @@ describe("operator readiness report", () => {
       "browser-write-controls-approval"
     ]);
     expect(report.worksheet.nextOperatorAction).toBe(
-      "Configure database-backed GitHub OAuth in a non-production environment before manual operator-flow QA."
+      "Configure database-backed GitHub OAuth in a non-production environment, or record APEX_VERCEL_DATABASE_CONFIGURED_AT and APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT after dashboard review, before manual operator-flow QA."
     );
     expect(report.checks).toEqual(
       expect.arrayContaining([
@@ -74,6 +74,48 @@ describe("operator readiness report", () => {
         })
       ])
     );
+  });
+
+  it("accepts value-free Vercel dashboard evidence for database-backed auth", () => {
+    const report = buildOperatorReadinessReport({
+      env: {
+        APEX_OPERATOR_ACTIVE_ACCOUNT_READY: "true",
+        APEX_OPERATOR_BROWSER_WRITE_CONTROLS_APPROVED_AT: "2026-06-11T13:00:00Z",
+        APEX_OPERATOR_FLOW_QA_REVIEWED_AT: "2026-06-11T12:00:00Z",
+        APEX_OPERATOR_NONPROD_WRITE_QA_AT: "2026-06-11T11:00:00Z",
+        APEX_VERCEL_DATABASE_CONFIGURED_AT: "2026-06-11T09:00:00Z",
+        APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT: "2026-06-11T10:00:00Z"
+      },
+      files: localFilesReady,
+      generatedAt: new Date("2026-06-11T00:00:00.000Z")
+    });
+
+    const serialized = JSON.stringify(report);
+
+    expect(report.overall).toBe("ready");
+    expect(report.counts.blocked).toBe(0);
+    expect(report.worksheet.readyEvidence.map((item) => item.id)).toEqual([
+      "operator-auth-config",
+      "active-operator",
+      "operator-write-gate",
+      "nonproduction-write-qa",
+      "operator-flow-qa",
+      "browser-write-controls-approval"
+    ]);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "operator-auth-config",
+          status: "ready",
+          evidenceKeys: [
+            "APEX_VERCEL_DATABASE_CONFIGURED_AT",
+            "APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT"
+          ]
+        })
+      ])
+    );
+    expect(serialized).not.toContain("2026-06-11T09:00:00Z");
+    expect(serialized).not.toContain("2026-06-11T10:00:00Z");
   });
 
   it("reports ready when local artifacts, auth configuration, and manual QA evidence are present", () => {
