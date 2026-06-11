@@ -98,7 +98,13 @@ describe("launch readiness report", () => {
       "post-launch-review"
     ]);
     expect(report.worksheet.nextLaunchAction).toBe(
-      "Resolve blocked production data and secrets checks before launch."
+      "database-url blocked."
+    );
+    expect(report.worksheet.blockedGates[0]).toEqual(
+      expect.objectContaining({
+        id: "production-readiness",
+        nextAction: "database-url blocked."
+      })
     );
     expect(JSON.stringify(report)).not.toContain("2026-06-11T00:00:00Z");
   });

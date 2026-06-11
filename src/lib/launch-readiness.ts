@@ -209,6 +209,10 @@ function nestedReadinessCheck({
     checks: Array<{ id: string; status: string }>;
     counts: Record<string, number>;
     overall: string;
+    worksheet?: {
+      nextEvidenceAction?: string;
+      nextOperatorAction?: string;
+    };
   };
 }): LaunchReadinessCheck {
   const blockedIds = report.checks
@@ -234,7 +238,10 @@ function nestedReadinessCheck({
     label,
     status: "blocked",
     detail: `Nested report is blocked by ${blockedIds.length} check(s).`,
-    nextAction: `Resolve blocked ${label.toLowerCase()} checks before launch.`
+    nextAction:
+      report.worksheet?.nextOperatorAction ??
+      report.worksheet?.nextEvidenceAction ??
+      `Resolve blocked ${label.toLowerCase()} checks before launch.`
   };
 }
 
