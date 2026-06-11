@@ -9,6 +9,53 @@ type RouteSmoke = {
   validateJson: (body: JsonObject) => void;
 };
 
+type PageSmoke = {
+  path: string;
+  label: string;
+  requiredText: string[];
+};
+
+const pageSmokes: PageSmoke[] = [
+  {
+    path: "/",
+    label: "Homepage",
+    requiredText: [
+      "Apex Lifespan",
+      "AU",
+      "TGA",
+      "Seed fallback",
+      "Unreviewed AI draft",
+      "Source packet",
+      "Live PubMed results are unreviewed citation leads",
+      "Registry records are research leads, not proof of benefit",
+      'href="/privacy"',
+      'href="/terms"'
+    ]
+  },
+  {
+    path: "/privacy",
+    label: "Privacy page",
+    requiredText: [
+      "Privacy",
+      "public evidence dashboard",
+      "Public routes are read-only",
+      "Live Source Searches",
+      "Browser Storage"
+    ]
+  },
+  {
+    path: "/terms",
+    label: "Terms page",
+    requiredText: [
+      "Terms",
+      "No Medical Advice",
+      "Evidence Is Provisional",
+      "Australia/TGA Context",
+      "Public Read-Only Surface"
+    ]
+  }
+];
+
 const routeSmokes: RouteSmoke[] = [
   {
     path: "/api/pubmed/search?term=creatine&retmax=1",
@@ -60,7 +107,9 @@ async function main() {
   const baseUrl = readBaseUrl(process.argv.slice(2));
 
   console.log(`Smoking public MVP at ${baseUrl.href}`);
-  await smokeHomepage(baseUrl);
+  for (const smoke of pageSmokes) {
+    await smokePage(baseUrl, smoke);
+  }
 
   for (const smoke of routeSmokes) {
     await smokeRoute(baseUrl, smoke);
@@ -89,30 +138,21 @@ function readBaseUrl(args: string[]) {
   return url;
 }
 
-async function smokeHomepage(baseUrl: URL) {
-  const response = await fetchWithTimeout(new URL("/", baseUrl));
+async function smokePage(baseUrl: URL, smoke: PageSmoke) {
+  const response = await fetchWithTimeout(new URL(smoke.path, baseUrl));
 
-  expectEqual(response.status, 200, "Homepage status");
+  expectEqual(response.status, 200, `${smoke.label} status`);
+  expectSecurityHeaders(response, smoke.label);
 
   const html = await response.text();
-  const requiredText = [
-    "Apex Lifespan",
-    "AU",
-    "TGA",
-    "Seed fallback",
-    "Unreviewed AI draft",
-    "Source packet",
-    "Live PubMed results are unreviewed citation leads",
-    "Registry records are research leads, not proof of benefit"
-  ];
 
-  for (const text of requiredText) {
+  for (const text of smoke.requiredText) {
     if (!html.includes(text)) {
-      throw new Error(`Homepage is missing expected public-demo text: ${text}`);
+      throw new Error(`${smoke.label} is missing expected public text: ${text}`);
     }
   }
 
-  console.log("[ok] Homepage renders public demo caveats.");
+  console.log(`[ok] ${smoke.label}`);
 }
 
 async function smokeRoute(baseUrl: URL, smoke: RouteSmoke) {
@@ -158,6 +198,15 @@ function expectHeaderIncludes(response: Response, headerName: string, value: str
   if (!headerValue?.toLowerCase().includes(value.toLowerCase())) {
     throw new Error(`${label} must include ${headerName}: ${value}.`);
   }
+}
+
+function expectSecurityHeaders(response: Response, label: string) {
+  expectHeaderIncludes(response, "Content-Security-Policy", "frame-ancestors 'none'", label);
+  expectHeaderIncludes(response, "Referrer-Policy", "strict-origin-when-cross-origin", label);
+  expectHeaderIncludes(response, "Strict-Transport-Security", "max-age=31536000", label);
+  expectHeaderIncludes(response, "X-Content-Type-Options", "nosniff", label);
+  expectHeaderIncludes(response, "X-Frame-Options", "DENY", label);
+  expectHeaderIncludes(response, "Permissions-Policy", "camera=()", label);
 }
 
 function expectArray(value: unknown, label: string) {
