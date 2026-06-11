@@ -35,6 +35,8 @@ External proof variables:
 - `APEX_ROLLBACK_DRILL_REHEARSED_AT`
 - `APEX_ALERT_TESTED_AT`
 
+`APEX_UPTIME_MONITORING_URL` should be a sanitized http(s) monitor URL only. Do not include credentials, query strings, fragments, local hosts, monitor tokens, or API keys.
+
 ## Monitoring
 
 Required before fully-live launch:

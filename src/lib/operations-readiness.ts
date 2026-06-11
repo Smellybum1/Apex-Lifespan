@@ -49,6 +49,16 @@ export interface OperationsEvidenceWorksheetItem {
   nextAction?: string;
 }
 
+type MonitoringUrlCheck =
+  | {
+      ok: true;
+      sanitizedUrl: string;
+    }
+  | {
+      ok: false;
+      reason: string;
+    };
+
 const DEFAULT_FILE_PATHS: Record<keyof OperationsReadinessFiles, string> = {
   healthEndpoint: "src/app/api/health/route.ts",
   operationsDrillChecklist: "docs/codex/operations-drill-checklist.md",
@@ -221,11 +231,25 @@ function uptimeMonitoringCheck(
     });
   }
 
+  const parsedUrl = validateMonitoringUrl(value);
+
+  if (!parsedUrl.ok) {
+    return {
+      id: "uptime-monitoring",
+      label: "Uptime monitoring",
+      status: "blocked",
+      detail: parsedUrl.reason,
+      evidenceKeys: [key],
+      nextAction:
+        "Record a sanitized http(s) uptime monitor URL without credentials, query strings, fragments, or local hosts."
+    };
+  }
+
   return {
     id: "uptime-monitoring",
     label: "Uptime monitoring",
     status: "ready",
-    detail: `Uptime monitoring evidence is configured at ${sanitizeUrl(value)}.`,
+    detail: `Uptime monitoring evidence is configured at ${parsedUrl.sanitizedUrl}.`,
     evidenceKeys: [key]
   };
 }
@@ -387,14 +411,47 @@ function countStatuses(checks: OperationsReadinessCheck[]) {
   );
 }
 
-function sanitizeUrl(value: string) {
+function validateMonitoringUrl(value: string): MonitoringUrlCheck {
+  const localHosts = new Set(["127.0.0.1", "::1", "localhost"]);
+  let url: URL;
+
   try {
-    const url = new URL(value);
-    const pathLabel = url.pathname === "/" ? "" : url.pathname;
-    return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ""}${pathLabel}`;
+    url = new URL(value);
   } catch {
-    return "configured URL";
+    return {
+      ok: false,
+      reason: "Uptime monitoring URL could not be parsed."
+    };
   }
+
+  if (!["http:", "https:"].includes(url.protocol)) {
+    return {
+      ok: false,
+      reason: "Uptime monitoring URL must use http:// or https://."
+    };
+  }
+
+  if (url.username || url.password || url.search || url.hash) {
+    return {
+      ok: false,
+      reason:
+        "Uptime monitoring URL must not include credentials, query strings, or fragments."
+    };
+  }
+
+  if (localHosts.has(url.hostname.toLowerCase())) {
+    return {
+      ok: false,
+      reason: "Uptime monitoring URL must target a non-local host."
+    };
+  }
+
+  const pathLabel = url.pathname === "/" ? "" : url.pathname;
+
+  return {
+    ok: true,
+    sanitizedUrl: `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ""}${pathLabel}`
+  };
 }
 
 function readEnv(env: Record<string, string | undefined>, key: string) {

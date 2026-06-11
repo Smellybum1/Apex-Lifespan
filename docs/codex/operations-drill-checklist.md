@@ -20,7 +20,7 @@ Do not paste secrets, monitor tokens, database URLs, OAuth secrets, raw alert pa
 1. Uptime monitoring
    - Create or verify a lightweight uptime check for `/api/health` on the production domain.
    - Keep `/` covered by public smoke or a separate full-page monitor.
-   - Confirm the check target does not include a private token.
+   - Confirm the recorded monitor URL is http(s), non-local, and does not include credentials, query strings, fragments, or private tokens.
    - Record a sanitized monitor URL in `APEX_UPTIME_MONITORING_URL`.
 
 2. Error monitoring

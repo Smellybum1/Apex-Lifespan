@@ -71,8 +71,7 @@ describe("operations readiness report", () => {
         APEX_ERROR_MONITORING_PROJECT: "private-sentry-project-key",
         APEX_INGESTION_ALERTS_CONFIGURED: "true",
         APEX_ROLLBACK_DRILL_REHEARSED_AT: "2026-06-11T11:00:00Z",
-        APEX_UPTIME_MONITORING_URL:
-          "https://uptime.example.com/checks/apex-lifespan?token=private-token"
+        APEX_UPTIME_MONITORING_URL: "https://uptime.example.com/checks/apex-lifespan"
       },
       files: localFilesReady,
       generatedAt: new Date("2026-06-11T00:00:00.000Z")
@@ -97,8 +96,48 @@ describe("operations readiness report", () => {
       "All external operations evidence is recorded; review the launch readiness report."
     );
     expect(serialized).toContain("https://uptime.example.com/checks/apex-lifespan");
-    expect(serialized).not.toContain("private-token");
     expect(serialized).not.toContain("private-sentry-project-key");
+  });
+
+  it("blocks uptime monitor URLs that contain private URL material", () => {
+    const report = buildOperationsReadinessReport({
+      env: {
+        APEX_ALERT_TESTED_AT: "2026-06-11T10:00:00Z",
+        APEX_BACKUP_RESTORE_REHEARSED_AT: "2026-06-11T09:00:00Z",
+        APEX_DATABASE_BACKUPS_CONFIGURED: "true",
+        APEX_DEPLOYMENT_ALERTS_CONFIGURED: "true",
+        APEX_ERROR_MONITORING_PROJECT: "configured",
+        APEX_INGESTION_ALERTS_CONFIGURED: "true",
+        APEX_ROLLBACK_DRILL_REHEARSED_AT: "2026-06-11T11:00:00Z",
+        APEX_UPTIME_MONITORING_URL:
+          "https://uptime.example.com/checks/apex-lifespan?token=private-token"
+      },
+      files: localFilesReady,
+      generatedAt: new Date("2026-06-11T00:00:00.000Z")
+    });
+
+    const serialized = JSON.stringify(report);
+
+    expect(report.overall).toBe("blocked");
+    expect(report.worksheet.missingExternalEvidence).toEqual([
+      expect.objectContaining({
+        evidenceKeys: ["APEX_UPTIME_MONITORING_URL"],
+        id: "uptime-monitoring",
+        nextAction:
+          "Record a sanitized http(s) uptime monitor URL without credentials, query strings, fragments, or local hosts."
+      })
+    ]);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          detail:
+            "Uptime monitoring URL must not include credentials, query strings, or fragments.",
+          id: "uptime-monitoring",
+          status: "blocked"
+        })
+      ])
+    );
+    expect(serialized).not.toContain("private-token");
   });
 
   it("blocks launch evidence when required local operations artifacts are missing", () => {
