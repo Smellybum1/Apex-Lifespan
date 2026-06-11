@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildOperatorReadinessReport } from "@/lib/operator/readiness";
+import {
+  buildOperatorReadinessReport,
+  summarizeOperatorReadinessCheck
+} from "@/lib/operator/readiness";
 
 const localFilesReady = {
   auditTrail: true,
@@ -15,6 +18,26 @@ const localFilesReady = {
   promotionReadiness: true,
   reviewQueue: true
 };
+
+const operatorCheckIds = [
+  "operator-page",
+  "auth-route",
+  "review-queue",
+  "audit-trail",
+  "audited-action-wrappers",
+  "browser-write-control-gate",
+  "browser-write-action-handlers",
+  "promotion-readiness",
+  "operator-bootstrap",
+  "manual-qa-checklist",
+  "operator-smoke",
+  "operator-auth-config",
+  "active-operator",
+  "operator-write-gate",
+  "nonproduction-write-qa",
+  "operator-flow-qa",
+  "browser-write-controls-approval"
+];
 
 describe("operator readiness report", () => {
   it("reports local operator surfaces as ready but external auth and QA proof as blocked", () => {
@@ -34,6 +57,14 @@ describe("operator readiness report", () => {
         mode: "read-only",
         purpose:
           "Recheck operator auth, local artifacts, and manual QA evidence without printing secret values."
+      },
+      {
+        command: "npm run operator:readiness -- --check <check-id>",
+        id: "operator-readiness-check",
+        label: "Focus one operator readiness check",
+        mode: "read-only",
+        purpose:
+          "Print one operator readiness check with its evidence keys and next action for auth or QA setup."
       },
       {
         command: "npm run operator:smoke -- <base-url>",
@@ -123,6 +154,77 @@ describe("operator readiness report", () => {
         })
       ])
     );
+  });
+
+  it("builds a focused read-only packet for one operator readiness check", () => {
+    expect(
+      summarizeOperatorReadinessCheck(
+        {
+          env: {},
+          files: localFilesReady,
+          generatedAt: new Date("2026-06-11T00:00:00.000Z")
+        },
+        "operator-auth-config"
+      )
+    ).toEqual({
+      availableCheckIds: operatorCheckIds,
+      check: {
+        detail:
+          "Missing operator auth variables: DATABASE_URL, AUTH_SECRET, AUTH_GITHUB_ID, AUTH_GITHUB_SECRET.",
+        evidenceKeys: [
+          "DATABASE_URL",
+          "AUTH_SECRET",
+          "AUTH_GITHUB_ID",
+          "AUTH_GITHUB_SECRET",
+          "APEX_VERCEL_DATABASE_CONFIGURED_AT",
+          "APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT"
+        ],
+        id: "operator-auth-config",
+        label: "Database-backed GitHub auth",
+        nextAction:
+          "Configure database-backed GitHub OAuth in a non-production environment, or record APEX_VERCEL_DATABASE_CONFIGURED_AT and APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT after dashboard review, before manual operator-flow QA.",
+        status: "blocked"
+      },
+      checkId: "operator-auth-config",
+      found: true,
+      humanOwned: true,
+      nextAction:
+        "Configure database-backed GitHub OAuth in a non-production environment, or record APEX_VERCEL_DATABASE_CONFIGURED_AT and APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT after dashboard review, before manual operator-flow QA.",
+      readOnly: true,
+      relatedCommand: {
+        command: "npm run operator:readiness",
+        id: "operator-readiness",
+        label: "Refresh operator readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck operator auth, local artifacts, and manual QA evidence without printing secret values."
+      },
+      status: "blocked"
+    });
+  });
+
+  it("reports missing focused operator readiness checks without writes", () => {
+    expect(
+      summarizeOperatorReadinessCheck(
+        {
+          env: {},
+          files: localFilesReady,
+          generatedAt: new Date("2026-06-11T00:00:00.000Z")
+        },
+        "missing-check"
+      )
+    ).toEqual({
+      availableCheckIds: operatorCheckIds,
+      check: null,
+      checkId: "missing-check",
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No operator readiness check matched this id; rerun npm run operator:readiness to inspect valid check ids.",
+      readOnly: true,
+      relatedCommand: null,
+      status: "not-found"
+    });
   });
 
   it("accepts value-free Vercel dashboard evidence for database-backed auth", () => {

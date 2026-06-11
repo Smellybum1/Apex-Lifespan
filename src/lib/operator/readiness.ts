@@ -42,6 +42,22 @@ export interface OperatorReadinessReport {
   worksheet: OperatorReadinessWorksheet;
 }
 
+export type OperatorReadinessCheckReviewStatus =
+  | OperatorReadinessStatus
+  | "not-found";
+
+export interface OperatorReadinessCheckReviewPacket {
+  availableCheckIds: string[];
+  check: OperatorReadinessCheck | null;
+  checkId: string;
+  found: boolean;
+  humanOwned: true;
+  nextAction: string;
+  readOnly: true;
+  relatedCommand: OperatorReadinessCommand | null;
+  status: OperatorReadinessCheckReviewStatus;
+}
+
 export interface OperatorReadinessWorksheet {
   blocked: OperatorReadinessWorksheetItem[];
   copySafeCommands: OperatorReadinessCommand[];
@@ -200,6 +216,47 @@ export function buildOperatorReadinessReport(
     generatedAt: (context.generatedAt ?? new Date()).toISOString(),
     overall: counts.blocked > 0 ? "blocked" : "ready",
     worksheet: operatorReadinessWorksheet(checks)
+  };
+}
+
+export function summarizeOperatorReadinessCheck(
+  context: OperatorReadinessContext,
+  checkId: string
+): OperatorReadinessCheckReviewPacket {
+  const report = buildOperatorReadinessReport(context);
+  const check = report.checks.find((item) => item.id === checkId) ?? null;
+  const availableCheckIds = report.checks.map((item) => item.id);
+
+  if (!check) {
+    return {
+      availableCheckIds,
+      check: null,
+      checkId,
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No operator readiness check matched this id; rerun npm run operator:readiness to inspect valid check ids.",
+      readOnly: true,
+      relatedCommand: null,
+      status: "not-found"
+    };
+  }
+
+  return {
+    availableCheckIds,
+    check,
+    checkId,
+    found: true,
+    humanOwned: true,
+    nextAction:
+      check.nextAction ??
+      "This operator readiness check is ready; rerun aggregate launch readiness before changing scope.",
+    readOnly: true,
+    relatedCommand:
+      report.worksheet.copySafeCommands.find(
+        (command) => command.id === "operator-readiness"
+      ) ?? null,
+    status: check.status
   };
 }
 
@@ -432,6 +489,14 @@ function operatorReadinessCopySafeCommands(): OperatorReadinessCommand[] {
       label: "Refresh operator readiness",
       mode: "read-only",
       purpose: "Recheck operator auth, local artifacts, and manual QA evidence without printing secret values."
+    },
+    {
+      command: "npm run operator:readiness -- --check <check-id>",
+      id: "operator-readiness-check",
+      label: "Focus one operator readiness check",
+      mode: "read-only",
+      purpose:
+        "Print one operator readiness check with its evidence keys and next action for auth or QA setup."
     },
     {
       command: "npm run operator:smoke -- <base-url>",
