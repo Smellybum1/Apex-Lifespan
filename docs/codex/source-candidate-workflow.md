@@ -1,26 +1,25 @@
 # Source Candidate Workflow
 
-Open this only for source-candidate ingestion, review, or curation work. Use `npm run ingest:sources -- --help` for the live flag list and `docs/codex/reference/source-candidate-command-reference.md` for the full command catalog.
+Local operator workflow for PubMed and ClinicalTrials.gov source candidates. Use `npm run ingest:sources -- --help` for the live flag list and `docs/codex/reference/source-candidate-command-reference.md` only when the compact guide is not enough.
 
-## Boundary
+## Rules
 
-- Private local operator workflow; writes go only to configured PostgreSQL.
-- Public PubMed and ClinicalTrials.gov previews stay read-only leads.
-- Candidate `/100` values are triage scores, not evidence quality.
-- `reviewFlags`/`reviewCautions` are local reviewer prompts, not rejection reasons or evidence-quality scores.
+- Public routes and the public dashboard do not run this workflow or persist candidates.
+- Candidates are review leads; triage scores rank review priority, not evidence quality.
+- Accept/reject decisions require a human review note. Acceptance also requires an existing curated reference that matches the candidate source and external id.
 - Accepted candidates do not auto-promote into public evidence cards.
-- Accepting requires an existing curated reference matching candidate source and external id plus a nonblank human review note.
-- Rejections require a nonblank human review note and no accepted reference id.
+- Curation writes are explicit local commands: first claim link, then structured study extraction.
+- Study extraction fields are human-entered; the command may draft metadata, but it should not invent sample size, population, outcomes, adverse events, funding/conflicts, or risk of bias.
 
 ## Quick Flow
 
-1. Inspect state: `npm run ingest:sources` or `npm run ingest:sources -- --summary`.
-2. Choose a review group: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
-3. Optional flag focus: `npm run ingest:sources -- --candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10`.
-4. List pending candidates: `npm run ingest:sources -- --candidates --candidates-limit 10`.
-5. Inspect one candidate: `npm run ingest:sources -- --candidate-review-packet <dedupe-key>`.
-6. Human review only after checking candidate, siblings, and reference matches.
-7. Post-acceptance curation stays explicit: claim link first, then structured study extraction.
+1. Check DB: `npm run ingest:sources -- --db-status`
+2. Inspect state: `npm run ingest:sources -- --summary`
+3. Choose a group: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`
+4. Inspect flagged groups when useful: `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`
+5. Inspect a candidate packet, siblings, and reference matches before any decision.
+6. Record accept/reject only after human review.
+7. For accepted candidates, run curation handoff/status/draft before any claim-link or extraction write.
 
 ## Common Commands
 
@@ -32,40 +31,25 @@ npm run ingest:sources -- --run-next --limit 1
 npm run ingest:sources -- --queue-claim-sources <claim-id>
 npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10
 npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10
-npm run ingest:sources -- --candidate-review-flags --candidate-review-flag broad-safety-query --candidate-review-flags-limit 10
-npm run ingest:sources -- --candidates --candidate-claim-missing --candidate-intervention-missing
+npm run ingest:sources -- --candidates --candidates-limit 10
 npm run ingest:sources -- --candidates --candidate-duplicates
 npm run ingest:sources -- --candidate-review-packet <dedupe-key>
+npm run ingest:sources -- --candidate-reference-matches <dedupe-key>
+npm run ingest:sources -- --candidate-siblings <dedupe-key>
 npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id> --review-note "Human-reviewed rationale."
-npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Reason."
+npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Human-reviewed rationale."
 npm run ingest:sources -- --candidate-curation-handoff
+npm run ingest:sources -- --candidate-curation-status <dedupe-key>
+npm run ingest:sources -- --candidate-curation-draft <dedupe-key>
 ```
 
-No-arg command output matches `--summary` and stays read-only.
-`--db-status` checks local PostgreSQL connectivity without reading review data.
-Summary output prints read-only next-command hints for DB status, overview, review flags, duplicate scan, queued jobs, and curation handoff; non-empty curation bucket rows include `nextAction`, `nextWrite`/`writeReady`, optional blockers, and status-filtered handoff hints, and a bounded review flag focus block highlights flagged top review groups with caution text, duplicate hints plus `duplicateCaution` when the top PMID/NCT identity repeats, and list/packet/reference-match/sibling/curation/flag-wide `flags` plus scoped `flagFocus` drill-ins.
-Job rows print read-only candidate-list, context-jobs, and status-jobs hints.
-Queue and explicit `--run-next` result rows print read-only candidate-list, context-jobs, and status-jobs follow-ups; they do not print run templates.
-Candidate-oriented output prints `key=b64:...`; prefer that shell-safe value on Windows anywhere `<dedupe-key>` is accepted.
-Candidate filters support `--candidate-claim-missing` and `--candidate-intervention-missing` for exact read-only slices of unscoped rows.
-When emitted beside a row or review group, `flags="..."` stays broad while `flagFocus="..."` includes the selected review flag, or the first listed flag when no flag filter is active, plus the row context filters for claim, intervention, region, and source; copy `flagFocus` exactly for a narrowed read-only focus view.
-Candidate detail output prints read-only packet, reference-match, sibling, group-list, curation-status, curation-draft hints, duplicate hints plus `duplicateCaution` and `duplicateIdentityMixedDecision` when the PMID/NCT identity repeats across decision states, compact `reviewFlags` plus `flags="..."` and `flagFocus="..."` drill-ins, and explanatory `reviewCautions` when a claim-scoped candidate needs extra broad-query/off-claim scrutiny.
-Candidate list rows print `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft hints, duplicate hints plus `duplicateCaution` and `duplicateIdentityMixedDecision` when the PMID/NCT identity repeats across decision states, source-query and ingestion-job trace fields, and compact `reviewFlags`/`reviewCautions` plus `flags="..."` and `flagFocus="..."` drill-ins when applicable.
-Review overview rows print `list="..."` for the filtered pending group, including missing-claim/intervention filters for unscoped contexts, region, `packet="..."`, `referenceMatches="..."`, `siblings="..."`, and curation-status/draft hints for the top candidate drill-in, duplicate hints plus `duplicateCaution` and `duplicateIdentityMixedDecision` when the top PMID/NCT identity repeats across decision states, and `topReviewFlags`/`topReviewCautions` plus `flags="..."` and first-flag `flagFocus="..."` drill-ins when applicable. When top triage ties, repeated PMID/NCT identities are preferred for the top candidate so duplicate cleanup risk is visible in the overview.
-Review flag rows and summary flag-focus rows filter the bounded overview to flagged top candidates only, optionally narrow with `--candidate-review-flag`, and print compact `flags`, `topReviewCautions`, `flagFocus="..."`, duplicate hints plus `duplicateCaution` and `duplicateIdentityMixedDecision` when the top PMID/NCT identity repeats across decision states, `list="..."`, `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft hints, and `overview="..."` without changing review state.
-Reference-match headings print `packet="..."`, `siblings="..."`, `groupList="..."`, curation-status/draft hints, duplicate hints plus `duplicateCaution` and `duplicateIdentityMixedDecision` when the PMID/NCT identity repeats across decision states, and compact `reviewFlags`/`reviewCautions` plus `flags="..."` and `flagFocus="..."` drill-ins when applicable; draft references remain draft-only and require manual verification.
-Review packets print read-only follow-up commands, curation-status/draft hints, conditional duplicate count/caution, `duplicateIdentityMixedDecision` plus a read-only duplicate next action when same-identity sibling decisions differ, focused review-flag hints, accepted-reference match count, explicit accept-gate booleans, and accept/reject templates; write templates still require explicit human review notes.
-Sibling headings print `targetPacket="..."`, `targetReferenceMatches="..."`, target curation-status/draft hints, and duplicate hints plus `duplicateCaution` and `duplicateIdentityMixedDecision` when the target PMID/NCT identity repeats across decision states, and rows print `packet="..."`, `referenceMatches="..."`, and curation-status/draft hints for read-only review of related candidates plus `targetReviewFlags`/`targetReviewCautions`, `reviewFlags`/`reviewCautions`, `flags="..."`, and `flagFocus="..."` drill-ins when applicable.
-Duplicate identity rows print `identityList="..."` plus `duplicateCaution` for the filtered duplicate group, `mixedDecision=true` plus a read-only `nextAction` when the same PMID/NCT spans multiple decision states, and `packet="..."`, `referenceMatches="..."`, `siblings="..."`, curation-status/draft, exact `groupList="..."` hints, accepted-reference/review-note fields for reviewed rows, and explicit `intervention`/`claim` context including `none`, plus `reviewFlags`, `reviewCautions`, `flags="..."`, and `flagFocus="..."` for each candidate row when applicable.
-Curation handoff rows print read-only packet, reference-match, sibling, curation-status, curation-draft hints, `nextWrite`/`writeReady` plus `writeReview` draft drill-ins, duplicate hints plus `duplicateCaution` and `duplicateIdentityMixedDecision` when the PMID/NCT identity repeats across decision states, accepted-reference audit fields plus review-note fields for reviewed rows, and compact `reviewFlags`/`reviewCautions` plus `flags="..."` and `flagFocus="..."` drill-ins when applicable.
-Curation status and draft rows print read-only packet, reference-match, sibling, group-list, paired curation-view hints, Not-accepted accept-gate booleans, duplicate hints plus `duplicateCaution` and `duplicateIdentityMixedDecision` when the PMID/NCT identity repeats across decision states, accepted-reference audit fields plus review-note fields for reviewed rows, and compact `reviewFlags`/`reviewCautions` plus `flags="..."` and `flagFocus="..."` drill-ins when applicable; curation accepted-reference audit fields include available reference id, title, source, identifier, year, and URL; curation status rows include `nextWrite`/`writeReady` plus draft review drill-ins for curation writes, and curation draft rows can include guarded claim-link and study-extraction `commandTemplate` values with `writeReady`/`blockedUntil` fields that still require explicit operator-run write commands plus human-entered extraction fields.
-Claim-link and study-extraction result rows echo `nextWrite`/`writeReady` plus `writeReview` when a follow-on guarded curation write is available; these fields are informational and do not promote source candidates.
+Prefer emitted `key=b64:...` values on Windows when passing a `<dedupe-key>`.
 
 ## Curation Readiness
 
-- `Not accepted`: pending or rejected candidates.
+- `Not accepted`: pending or rejected candidate.
 - `Accepted reference missing`: no accepted reference id or referenced row missing.
-- `Accepted reference mismatch`: accepted reference no longer matches candidate source/external id.
+- `Accepted reference mismatch`: accepted reference no longer matches candidate source and external id.
 - `Candidate claim missing`: accepted candidate has no claim id.
 - `Claim link missing`: accepted reference is not linked to the candidate claim.
 - `Extraction pending`: accepted reference is claim-linked but lacks structured study extraction.

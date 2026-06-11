@@ -9,7 +9,7 @@ Use this compact workflow as active context. Open `docs/codex/reference/workflow
 - Run the narrowest useful check first, then broader checks if risk or touched surfaces justify them.
 - Review the diff before final.
 
-Use formal plans in `docs/codex/plans/YYYY-MM-DD-slug.md` for risky, multi-surface, schema/API/security, UI, unclear refactor, or hard-to-validate work. Archive completed plans with a short `## Result`, or delete them when the final diff/handoff already preserves the useful context.
+Use inline plans by default, including for ordinary multi-file work. Create a formal `docs/codex/plans/YYYY-MM-DD-slug.md` only when the change is genuinely risky, unclear, schema/API/security sensitive, public-boundary sensitive, or hard to validate. Archive completed plans with a short `## Result`, or delete them when the final diff/handoff already preserves the useful context.
 
 ## Context Intake
 
@@ -20,7 +20,7 @@ Quarantine obvious corruption such as tool-schema errors, overlong property name
 ## Validation
 
 - Docs-only workflow/project-memory edits: diff review and `git diff --check`.
-- Small pure logic/data-helper changes: targeted tests first; add full tests/typecheck when shared behavior, citation/review status, or medical/regulatory guardrails are touched.
+- Small pure logic/data-helper changes: targeted tests first; add full tests/typecheck only when shared behavior, citation/review status, or medical/regulatory boundaries are touched.
 - UI changes: targeted tests when present, lint/typecheck, plus browser/screenshot smoke for visible layout.
 - API/security/public read-only/data-boundary changes: targeted boundary tests, full tests, lint, typecheck.
 - Prisma/dependency/build config/app routing changes: relevant DB/dependency checks plus full tests, lint, typecheck, build.
