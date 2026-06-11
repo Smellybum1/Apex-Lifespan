@@ -20,6 +20,9 @@ describe("operator auth controls", () => {
 
   it("keeps source-candidate persistence behind the browser write gate", () => {
     expect(OPERATOR_PAGE_SOURCE).toContain("Promotion readiness");
+    expect(OPERATOR_PAGE_SOURCE).toContain("Audit trail");
+    expect(OPERATOR_PAGE_SOURCE).toContain("getOperatorAuditTrailSnapshot");
+    expect(OPERATOR_PAGE_SOURCE).toContain('canOperatorAccess(principal.role, "audit:read")');
     expect(OPERATOR_PAGE_SOURCE).toContain("getOperatorBrowserWriteControlState");
     expect(OPERATOR_PAGE_SOURCE).toContain("candidateReviewControl.enabled");
     expect(OPERATOR_PAGE_SOURCE).toContain("claimLinkControl.enabled");

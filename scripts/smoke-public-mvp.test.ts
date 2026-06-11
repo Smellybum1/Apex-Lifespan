@@ -35,6 +35,17 @@ describe("public MVP smoke", () => {
       "Operator anonymous boundary exposed authenticated operator content: Candidate review queue"
     );
   });
+
+  it("fails when anonymous users can see the operator audit trail", async () => {
+    const baseUrl = await listenWithPages({
+      homeDataSourceBadge: "Seed fallback",
+      operatorHtml: "Operator access required Audit trail"
+    });
+
+    await expect(runPublicMvpSmoke(baseUrl, quietLogger)).rejects.toThrow(
+      "Operator anonymous boundary exposed authenticated operator content: Audit trail"
+    );
+  });
 });
 
 async function listenWithPages({

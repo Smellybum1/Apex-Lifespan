@@ -5,6 +5,10 @@ import { revalidatePath } from "next/cache";
 import { signIn, signOut } from "@/auth";
 import { canOperatorAccess, operatorWritesEnabled } from "@/lib/operator/authorization";
 import {
+  getOperatorAuditTrailSnapshot,
+  type OperatorAuditTrailSnapshot
+} from "@/lib/operator/audit-trail";
+import {
   extractCandidateStudyFromBrowserForm,
   linkCandidateClaimFromBrowserForm,
   promoteCandidateFromBrowserForm,
@@ -129,6 +133,7 @@ export default async function OperatorPage() {
   }
 
   const writesEnabled = operatorWritesEnabled();
+  const canReadAudit = canOperatorAccess(principal.role, "audit:read");
   const canReviewCandidates = canOperatorAccess(principal.role, "candidate:review");
   const canReviewPromotion = canOperatorAccess(principal.role, "evidence:promote");
   const canManageOperators = canOperatorAccess(principal.role, "operator:manage");
@@ -153,6 +158,9 @@ export default async function OperatorPage() {
   const promotionReadiness = canReviewPromotion
     ? await getSourceCandidatePromotionReadinessSnapshot(5)
     : { blockedCount: 0, readyCount: 0, rows: [], total: 0 };
+  const auditTrail = canReadAudit
+    ? await getOperatorAuditTrailSnapshot(5)
+    : { eventCount: 0, rows: [] };
 
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-8 text-slate-950">
@@ -182,6 +190,7 @@ export default async function OperatorPage() {
             label="Browser controls"
             value={browserControlsEnabled ? "Enabled" : "Locked"}
           />
+          {canReadAudit ? <OperatorStatusTile label="Audit trail" value="Ready" /> : null}
           {canManageOperators ? (
             <OperatorStatusTile label="Operator admin" value="Ready" />
           ) : null}
@@ -238,6 +247,8 @@ export default async function OperatorPage() {
             studyExtractionControl={studyExtractionControl}
           />
         ) : null}
+
+        {canReadAudit ? <AuditTrailPanel snapshot={auditTrail} /> : null}
       </section>
     </main>
   );
@@ -379,6 +390,56 @@ function PromotionReadinessPanel({
         ) : (
           <p className="px-4 py-6 text-sm text-slate-600">
             No accepted candidates are visible for promotion review.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function AuditTrailPanel({ snapshot }: { snapshot: OperatorAuditTrailSnapshot }) {
+  return (
+    <section className="rounded-md border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-normal">Audit trail</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            {snapshot.eventCount} recent operator events loaded
+          </p>
+        </div>
+        <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+          Read-only
+        </span>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {snapshot.rows.length > 0 ? (
+          snapshot.rows.map((event) => (
+            <article className="px-4 py-4" key={event.id}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-500">
+                    {event.actorRole} - {event.actorEmail}
+                  </p>
+                  <h3 className="mt-1 max-w-3xl text-base font-semibold text-slate-950">
+                    {event.action}
+                  </h3>
+                  <p className="mt-2 text-sm text-slate-700">{event.target}</p>
+                </div>
+                <time
+                  className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700"
+                  dateTime={event.createdAt}
+                >
+                  {event.createdAt}
+                </time>
+              </div>
+              {event.notePreview ? (
+                <p className="mt-3 text-sm leading-6 text-slate-700">{event.notePreview}</p>
+              ) : null}
+            </article>
+          ))
+        ) : (
+          <p className="px-4 py-6 text-sm text-slate-600">
+            No operator audit events are visible yet.
           </p>
         )}
       </div>

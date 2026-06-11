@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildOperatorReadinessReport } from "@/lib/operator/readiness";
 
 const localFilesReady = {
+  auditTrail: true,
   auditedActionWrappers: true,
   authRoute: true,
   browserWriteActions: true,
@@ -24,11 +25,12 @@ describe("operator readiness report", () => {
     });
 
     expect(report.overall).toBe("blocked");
-    expect(report.counts.ready).toBe(11);
+    expect(report.counts.ready).toBe(12);
     expect(report.worksheet.readyLocalArtifacts.map((item) => item.id)).toEqual([
       "operator-page",
       "auth-route",
       "review-queue",
+      "audit-trail",
       "audited-action-wrappers",
       "browser-write-control-gate",
       "browser-write-action-handlers",
@@ -161,6 +163,7 @@ describe("operator readiness report", () => {
       files: {
         ...localFilesReady,
         auditedActionWrappers: false,
+        auditTrail: false,
         authRoute: false,
         browserWriteActions: false,
         manualQaChecklist: false,
@@ -173,6 +176,7 @@ describe("operator readiness report", () => {
     expect(report.worksheet.blocked.map((item) => item.id)).toEqual(
       expect.arrayContaining([
         "audited-action-wrappers",
+        "audit-trail",
         "auth-route",
         "browser-write-action-handlers",
         "manual-qa-checklist",
@@ -183,6 +187,10 @@ describe("operator readiness report", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "audited-action-wrappers",
+          status: "blocked"
+        }),
+        expect.objectContaining({
+          id: "audit-trail",
           status: "blocked"
         }),
         expect.objectContaining({

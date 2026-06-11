@@ -208,6 +208,7 @@ async function smokeAnonymousOperatorBoundary(baseUrl: URL, logger: SmokeLogger)
     "Review console",
     "Candidate review queue",
     "Promotion readiness",
+    "Audit trail",
     "pending candidates loaded",
     "Sign out"
   ]) {

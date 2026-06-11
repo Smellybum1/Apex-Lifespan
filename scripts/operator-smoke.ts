@@ -18,6 +18,7 @@ const AUTHENTICATED_CONTENT = [
   "Review console",
   "Candidate review queue",
   "Promotion readiness",
+  "Audit trail",
   "pending candidates loaded",
   "Sign out",
   "Accept",

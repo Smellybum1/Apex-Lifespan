@@ -41,6 +41,14 @@ describe("operator smoke", () => {
       "Operator page exposed authenticated content: Candidate review queue"
     );
   });
+
+  it("fails when anonymous users can see the audit trail", async () => {
+    const baseUrl = await listenWithOperatorHtml("Operator access required Audit trail");
+
+    await expect(runOperatorSmoke(baseUrl, {}, quietLogger)).rejects.toThrow(
+      "Operator page exposed authenticated content: Audit trail"
+    );
+  });
 });
 
 async function listenWithOperatorHtml(operatorHtml: string) {

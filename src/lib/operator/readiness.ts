@@ -15,6 +15,7 @@ export interface OperatorReadinessCheck {
 }
 
 export interface OperatorReadinessFiles {
+  auditTrail: boolean;
   auditedActionWrappers: boolean;
   authRoute: boolean;
   browserWriteActions: boolean;
@@ -58,6 +59,7 @@ export interface OperatorReadinessWorksheetItem {
 }
 
 const FILE_PATHS: Record<keyof OperatorReadinessFiles, string> = {
+  auditTrail: "src/lib/operator/audit-trail.ts",
   auditedActionWrappers: "src/lib/operator/source-candidate-actions.ts",
   authRoute: "src/app/api/auth/[...nextauth]/route.ts",
   browserWriteActions: "src/lib/operator/browser-write-actions.ts",
@@ -95,6 +97,12 @@ export function buildOperatorReadinessReport(
       label: "Read-only review queue",
       pathLabel: FILE_PATHS.reviewQueue,
       present: files.reviewQueue
+    }),
+    localFileCheck({
+      id: "audit-trail",
+      label: "Read-only audit trail",
+      pathLabel: FILE_PATHS.auditTrail,
+      present: files.auditTrail
     }),
     localFileCheck({
       id: "audited-action-wrappers",
@@ -186,6 +194,7 @@ export function buildOperatorReadinessReport(
 
 export function readOperatorReadinessFiles(cwd = process.cwd()): OperatorReadinessFiles {
   return {
+    auditTrail: existsSync(path.join(cwd, FILE_PATHS.auditTrail)),
     auditedActionWrappers: existsSync(path.join(cwd, FILE_PATHS.auditedActionWrappers)),
     authRoute: existsSync(path.join(cwd, FILE_PATHS.authRoute)),
     browserWriteActions: existsSync(path.join(cwd, FILE_PATHS.browserWriteActions)),
@@ -348,6 +357,7 @@ function operatorReadinessWorksheet(
     "operator-page",
     "auth-route",
     "review-queue",
+    "audit-trail",
     "audited-action-wrappers",
     "browser-write-control-gate",
     "browser-write-action-handlers",
