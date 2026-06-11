@@ -11,6 +11,7 @@
     "test": "vitest run",
     "typecheck": "tsx scripts/generate-prisma-client.ts && next typegen && tsc --noEmit",
     "smoke:public-mvp": "tsx scripts/smoke-public-mvp.ts",
+    "operator:smoke": "tsx scripts/operator-smoke.ts",
     "promotion:dry-run": "tsx scripts/dry-run-candidate-promotion.ts",
     "ingest:scheduled-dry-run": "tsx scripts/scheduled-source-ingestion.ts",
     "ingest:scheduled-run": "tsx scripts/scheduled-source-ingestion.ts --apply",

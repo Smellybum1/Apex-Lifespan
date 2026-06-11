@@ -11,10 +11,13 @@ Use this checklist in a non-production environment before exposing browser write
 - At least one active operator has been bootstrapped or verified.
 - Public routes remain read-only.
 - `npm run operator:readiness` has been run and remaining blockers are understood.
+- `npm run operator:smoke -- <base-url>` has passed for the anonymous `/operator` boundary.
 
 ## Access Checks
 
 - Anonymous `/operator` shows a closed access state and no review queue, promotion panel, or sign-out content.
+- For auth-unavailable environments, run `npm run operator:smoke -- <base-url> --expect-auth-unavailable`.
+- For configured-auth environments before sign-in, run `npm run operator:smoke -- <base-url> --expect-auth-required`.
 - Auth-unavailable deployments show `Operator auth unavailable`.
 - Authorized active operators can sign in with GitHub and sign out.
 - Disabled operators cannot access active review surfaces.

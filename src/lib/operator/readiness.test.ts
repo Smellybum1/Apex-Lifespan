@@ -10,6 +10,7 @@ const localFilesReady = {
   bootstrapScript: true,
   manualQaChecklist: true,
   operatorPage: true,
+  operatorSmokeScript: true,
   promotionReadiness: true,
   reviewQueue: true
 };
@@ -23,7 +24,7 @@ describe("operator readiness report", () => {
     });
 
     expect(report.overall).toBe("blocked");
-    expect(report.counts.ready).toBe(10);
+    expect(report.counts.ready).toBe(11);
     expect(report.worksheet.readyLocalArtifacts.map((item) => item.id)).toEqual([
       "operator-page",
       "auth-route",
@@ -33,7 +34,8 @@ describe("operator readiness report", () => {
       "browser-write-action-handlers",
       "promotion-readiness",
       "operator-bootstrap",
-      "manual-qa-checklist"
+      "manual-qa-checklist",
+      "operator-smoke"
     ]);
     expect(report.worksheet.readyEvidence.map((item) => item.id)).toEqual([
       "operator-write-gate"
@@ -161,7 +163,8 @@ describe("operator readiness report", () => {
         auditedActionWrappers: false,
         authRoute: false,
         browserWriteActions: false,
-        manualQaChecklist: false
+        manualQaChecklist: false,
+        operatorSmokeScript: false
       },
       generatedAt: new Date("2026-06-11T00:00:00.000Z")
     });
@@ -172,7 +175,8 @@ describe("operator readiness report", () => {
         "audited-action-wrappers",
         "auth-route",
         "browser-write-action-handlers",
-        "manual-qa-checklist"
+        "manual-qa-checklist",
+        "operator-smoke"
       ])
     );
     expect(report.checks).toEqual(

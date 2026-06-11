@@ -25,6 +25,7 @@ Use this checklist only for the fully live production launch. The seed-backed pu
 
 - Configure Auth.js and GitHub OAuth secrets in the managed environment.
 - Bootstrap or verify at least one active operator account.
+- Run `npm run operator:smoke -- <base-url>` and confirm anonymous `/operator` stays closed.
 - Run non-production accept/reject, claim-link, extraction, fail-closed, and audit checks.
 - Complete `docs/codex/operator-manual-qa-checklist.md`.
 - Record `APEX_OPERATOR_ACTIVE_ACCOUNT_READY=true`, `APEX_OPERATOR_NONPROD_WRITE_QA_AT`, `APEX_OPERATOR_FLOW_QA_REVIEWED_AT`, and `APEX_OPERATOR_BROWSER_WRITE_CONTROLS_APPROVED_AT` only after QA evidence exists.

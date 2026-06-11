@@ -22,6 +22,7 @@ export interface OperatorReadinessFiles {
   bootstrapScript: boolean;
   manualQaChecklist: boolean;
   operatorPage: boolean;
+  operatorSmokeScript: boolean;
   promotionReadiness: boolean;
   reviewQueue: boolean;
 }
@@ -64,6 +65,7 @@ const FILE_PATHS: Record<keyof OperatorReadinessFiles, string> = {
   bootstrapScript: "scripts/operator-bootstrap.ts",
   manualQaChecklist: "docs/codex/operator-manual-qa-checklist.md",
   operatorPage: "src/app/operator/page.tsx",
+  operatorSmokeScript: "scripts/operator-smoke.ts",
   promotionReadiness: "src/lib/operator/curation-promotion.ts",
   reviewQueue: "src/lib/operator/review-queue.ts"
 };
@@ -130,6 +132,12 @@ export function buildOperatorReadinessReport(
       pathLabel: FILE_PATHS.manualQaChecklist,
       present: files.manualQaChecklist
     }),
+    localFileCheck({
+      id: "operator-smoke",
+      label: "Operator smoke helper",
+      pathLabel: FILE_PATHS.operatorSmokeScript,
+      present: files.operatorSmokeScript
+    }),
     authConfigurationCheck(context.env),
     booleanEvidenceCheck({
       env: context.env,
@@ -185,6 +193,7 @@ export function readOperatorReadinessFiles(cwd = process.cwd()): OperatorReadine
     bootstrapScript: existsSync(path.join(cwd, FILE_PATHS.bootstrapScript)),
     manualQaChecklist: existsSync(path.join(cwd, FILE_PATHS.manualQaChecklist)),
     operatorPage: existsSync(path.join(cwd, FILE_PATHS.operatorPage)),
+    operatorSmokeScript: existsSync(path.join(cwd, FILE_PATHS.operatorSmokeScript)),
     promotionReadiness: existsSync(path.join(cwd, FILE_PATHS.promotionReadiness)),
     reviewQueue: existsSync(path.join(cwd, FILE_PATHS.reviewQueue))
   };
@@ -344,7 +353,8 @@ function operatorReadinessWorksheet(
     "browser-write-action-handlers",
     "promotion-readiness",
     "operator-bootstrap",
-    "manual-qa-checklist"
+    "manual-qa-checklist",
+    "operator-smoke"
   ]);
   const blocked = checks
     .filter((check) => check.status === "blocked")
