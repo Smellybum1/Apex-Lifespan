@@ -70,6 +70,18 @@ const pageSmokes: PageSmoke[] = [
 
 const routeSmokes: RouteSmoke[] = [
   {
+    path: "/api/health",
+    label: "Health endpoint",
+    expectedStatus: 200,
+    validateJson: (body) => {
+      expectEqual(body.status, "ok", "Health status");
+      expectEqual(body.service, "apex-lifespan", "Health service");
+      expectEqual(body.surface, "public-read-only", "Health surface");
+      expectObject(body.checks, "Health checks");
+      expectEqual((body.checks as JsonObject).database, "not_checked", "Health database check");
+    }
+  },
+  {
     path: "/api/pubmed/search?term=creatine&retmax=1",
     label: "PubMed live preview",
     expectedStatus: 200,
@@ -277,6 +289,12 @@ function expectSecurityHeaders(response: Response, label: string) {
 function expectArray(value: unknown, label: string) {
   if (!Array.isArray(value)) {
     throw new Error(`${label} must be an array.`);
+  }
+}
+
+function expectObject(value: unknown, label: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object.`);
   }
 }
 

@@ -87,6 +87,18 @@ async function listenWithPages({
       return;
     }
 
+    if (url.pathname === "/api/health") {
+      writeJson(response, 200, {
+        checks: {
+          database: "not_checked"
+        },
+        service: "apex-lifespan",
+        status: "ok",
+        surface: "public-read-only"
+      });
+      return;
+    }
+
     if (url.pathname === "/api/pubmed/search") {
       if (url.searchParams.get("term")?.includes("injection")) {
         writeJson(response, 400, {

@@ -22,7 +22,7 @@ Run this before launch evidence review:
 npm run operations:readiness
 ```
 
-The report is read-only. It checks that the local privacy page, terms page, this runbook, and `docs/codex/operations-drill-checklist.md` exist, then reports whether external operations proof has been recorded through evidence variables. It prints variable names and sanitized URLs only; do not store monitoring tokens, API keys, or database credentials in the report.
+The report is read-only. It checks that the local privacy page, terms page, public `/api/health` endpoint, this runbook, and `docs/codex/operations-drill-checklist.md` exist, then reports whether external operations proof has been recorded through evidence variables. It prints variable names and sanitized URLs only; do not store monitoring tokens, API keys, or database credentials in the report.
 
 External proof variables:
 
@@ -39,7 +39,8 @@ External proof variables:
 
 Required before fully-live launch:
 
-- Uptime check for `/` on the production domain.
+- Lightweight uptime check for `/api/health` on the production domain.
+- Full-page smoke coverage for `/` on the production domain.
 - Error alerting for Next.js server errors and failed public API route responses.
 - Deployment failure alerts from Vercel.
 - Scheduled ingestion failure alerts once hosted cron is enabled.

@@ -18,7 +18,8 @@ Do not paste secrets, monitor tokens, database URLs, OAuth secrets, raw alert pa
 ## Drill Order
 
 1. Uptime monitoring
-   - Create or verify an uptime check for `/` on the production domain.
+   - Create or verify a lightweight uptime check for `/api/health` on the production domain.
+   - Keep `/` covered by public smoke or a separate full-page monitor.
    - Confirm the check target does not include a private token.
    - Record a sanitized monitor URL in `APEX_UPTIME_MONITORING_URL`.
 

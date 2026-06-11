@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildOperationsReadinessReport } from "@/lib/operations-readiness";
 
 const localFilesReady = {
+  healthEndpoint: true,
   operationsDrillChecklist: true,
   operationsRunbook: true,
   privacyPage: true,
@@ -18,22 +19,24 @@ describe("operations readiness report", () => {
     });
 
     expect(report.overall).toBe("blocked");
-    expect(report.counts.ready).toBe(4);
+    expect(report.counts.ready).toBe(5);
     expect(report.worksheet.readyLocalArtifacts.map((item) => item.id)).toEqual([
       "privacy-page",
       "terms-page",
       "operations-runbook",
-      "operations-drill-checklist"
+      "operations-drill-checklist",
+      "health-endpoint"
     ]);
     expect(report.worksheet.missingExternalEvidence).toHaveLength(8);
     expect(report.worksheet.missingExternalEvidence[0]).toEqual({
       evidenceKeys: ["APEX_UPTIME_MONITORING_URL"],
       id: "uptime-monitoring",
       label: "Uptime monitoring",
-      nextAction: "Configure uptime monitoring for / and record its URL in APEX_UPTIME_MONITORING_URL."
+      nextAction:
+        "Configure uptime monitoring for /api/health and record its URL in APEX_UPTIME_MONITORING_URL."
     });
     expect(report.worksheet.nextEvidenceAction).toBe(
-      "Configure uptime monitoring for / and record its URL in APEX_UPTIME_MONITORING_URL."
+      "Configure uptime monitoring for /api/health and record its URL in APEX_UPTIME_MONITORING_URL."
     );
     expect(report.checks).toEqual(
       expect.arrayContaining([
@@ -111,6 +114,7 @@ describe("operations readiness report", () => {
         APEX_UPTIME_MONITORING_URL: "https://uptime.example.com/checks/apex-lifespan"
       },
       files: {
+        healthEndpoint: false,
         operationsDrillChecklist: false,
         operationsRunbook: false,
         privacyPage: true,
@@ -128,6 +132,10 @@ describe("operations readiness report", () => {
         }),
         expect.objectContaining({
           id: "operations-drill-checklist",
+          status: "blocked"
+        }),
+        expect.objectContaining({
+          id: "health-endpoint",
           status: "blocked"
         }),
         expect.objectContaining({

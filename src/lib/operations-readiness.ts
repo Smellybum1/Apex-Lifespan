@@ -19,6 +19,7 @@ export interface OperationsReadinessContext {
 }
 
 export interface OperationsReadinessFiles {
+  healthEndpoint: boolean;
   operationsDrillChecklist: boolean;
   operationsRunbook: boolean;
   privacyPage: boolean;
@@ -49,6 +50,7 @@ export interface OperationsEvidenceWorksheetItem {
 }
 
 const DEFAULT_FILE_PATHS: Record<keyof OperationsReadinessFiles, string> = {
+  healthEndpoint: "src/app/api/health/route.ts",
   operationsDrillChecklist: "docs/codex/operations-drill-checklist.md",
   operationsRunbook: "docs/codex/operations-runbook.md",
   privacyPage: "src/app/privacy/page.tsx",
@@ -87,6 +89,12 @@ export function buildOperationsReadinessReport(
       label: "Operations drill checklist",
       present: files.operationsDrillChecklist,
       pathLabel: DEFAULT_FILE_PATHS.operationsDrillChecklist
+    }),
+    localFileCheck({
+      id: "health-endpoint",
+      label: "Public health endpoint",
+      present: files.healthEndpoint,
+      pathLabel: DEFAULT_FILE_PATHS.healthEndpoint
     }),
     uptimeMonitoringCheck(context.env),
     configuredFlagCheck({
@@ -158,6 +166,7 @@ export function readOperationsReadinessFiles(
   cwd = process.cwd()
 ): OperationsReadinessFiles {
   return {
+    healthEndpoint: existsSync(path.join(cwd, DEFAULT_FILE_PATHS.healthEndpoint)),
     operationsDrillChecklist: existsSync(
       path.join(cwd, DEFAULT_FILE_PATHS.operationsDrillChecklist)
     ),
@@ -207,7 +216,8 @@ function uptimeMonitoringCheck(
       id: "uptime-monitoring",
       key,
       label: "Uptime monitoring",
-      nextAction: "Configure uptime monitoring for / and record its URL in APEX_UPTIME_MONITORING_URL."
+      nextAction:
+        "Configure uptime monitoring for /api/health and record its URL in APEX_UPTIME_MONITORING_URL."
     });
   }
 
@@ -328,7 +338,8 @@ function operationsReadinessWorksheet(
     "privacy-page",
     "terms-page",
     "operations-runbook",
-    "operations-drill-checklist"
+    "operations-drill-checklist",
+    "health-endpoint"
   ]);
   const readyLocalArtifacts = checks
     .filter((check) => check.status === "ready" && localArtifactIds.has(check.id))
