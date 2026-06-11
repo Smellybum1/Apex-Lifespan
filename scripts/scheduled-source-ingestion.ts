@@ -1,13 +1,19 @@
 import {
   planScheduledSourceIngestionDryRun,
-  runScheduledSourceIngestionBatch
+  runScheduledSourceIngestionBatch,
+  summarizeScheduledSourceIngestionDryRun
 } from "@/lib/data/scheduled-ingestion";
 
 async function main() {
-  const maxJobsPerRun = readNumberArg("--max-jobs");
-  const apply = process.argv.includes("--apply");
+  const { apply, maxJobsPerRun, summary } = readScheduledIngestionArgs(
+    process.argv.slice(2)
+  );
 
   if (apply) {
+    if (summary) {
+      throw new Error("--summary is read-only and cannot be combined with --apply.");
+    }
+
     const result = await runScheduledSourceIngestionBatch({
       apply,
       maxJobsPerRun
@@ -23,20 +29,61 @@ async function main() {
   }
 
   const plan = await planScheduledSourceIngestionDryRun({ maxJobsPerRun });
+  const output = summary ? summarizeScheduledSourceIngestionDryRun(plan) : plan;
 
-  console.log(JSON.stringify(plan, null, 2));
+  console.log(JSON.stringify(output, null, 2));
 }
 
-function readNumberArg(name: string) {
-  const index = process.argv.indexOf(name);
+interface ScheduledIngestionCliArgs {
+  apply: boolean;
+  maxJobsPerRun?: number;
+  summary: boolean;
+}
 
-  if (index < 0) {
-    return undefined;
+function readScheduledIngestionArgs(args: string[]): ScheduledIngestionCliArgs {
+  const parsed: ScheduledIngestionCliArgs = {
+    apply: false,
+    summary: false
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === "--apply") {
+      parsed.apply = true;
+      continue;
+    }
+
+    if (arg === "--summary") {
+      parsed.summary = true;
+      continue;
+    }
+
+    if (arg === "--max-jobs") {
+      parsed.maxJobsPerRun = parseMaxJobs(args[index + 1]);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--max-jobs=")) {
+      parsed.maxJobsPerRun = parseMaxJobs(arg.slice("--max-jobs=".length));
+      continue;
+    }
+
+    throw new Error(`Unknown scheduled ingestion argument: ${arg}`);
   }
 
-  const value = Number(process.argv[index + 1]);
+  return parsed;
+}
 
-  return Number.isFinite(value) ? value : undefined;
+function parseMaxJobs(value: string | undefined) {
+  const maxJobs = Number(value?.trim());
+
+  if (!Number.isInteger(maxJobs) || maxJobs < 1) {
+    throw new Error("--max-jobs requires a positive integer.");
+  }
+
+  return maxJobs;
 }
 
 main().catch((error) => {

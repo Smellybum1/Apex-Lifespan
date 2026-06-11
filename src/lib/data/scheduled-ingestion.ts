@@ -40,6 +40,26 @@ export interface ScheduledIngestionDryRun {
   wouldRunJobs: number;
 }
 
+export interface ScheduledIngestionDryRunSummary {
+  blockedChecks: ScheduledIngestionWorksheetItem[];
+  counts: {
+    duplicateIdentityGroups: number;
+    queuedJobs: number;
+    recentFailures: number;
+    runningJobs: number;
+    wouldRunJobs: number;
+  };
+  hostedCronReady: boolean;
+  hostedRunGateReady: boolean;
+  humanOwned: true;
+  nextAction: string;
+  noAutoPromotion: true;
+  readOnly: true;
+  readyChecks: ScheduledIngestionWorksheetItem[];
+  retryAutomationReady: boolean;
+  warningChecks: ScheduledIngestionWorksheetItem[];
+}
+
 export interface ScheduledIngestionBatchResult {
   applied: boolean;
   automaticRetries: false;
@@ -254,6 +274,30 @@ export async function planScheduledSourceIngestionDryRun(
       wouldRunJobs
     }),
     wouldRunJobs
+  };
+}
+
+export function summarizeScheduledSourceIngestionDryRun(
+  plan: ScheduledIngestionDryRun
+): ScheduledIngestionDryRunSummary {
+  return {
+    blockedChecks: plan.worksheet.blocked,
+    counts: {
+      duplicateIdentityGroups: plan.dedupeReview.duplicateIdentityGroups,
+      queuedJobs: plan.queuedJobs,
+      recentFailures: plan.recentFailures,
+      runningJobs: plan.runningJobs,
+      wouldRunJobs: plan.wouldRunJobs
+    },
+    hostedCronReady: plan.policy.hostedCronReady,
+    hostedRunGateReady: plan.hostedRunGate.ready,
+    humanOwned: true,
+    nextAction: plan.worksheet.nextOperatorAction,
+    noAutoPromotion: true,
+    readOnly: true,
+    readyChecks: plan.worksheet.ready,
+    retryAutomationReady: plan.failureReview.retryAutomationReady,
+    warningChecks: plan.worksheet.warnings
   };
 }
 
@@ -714,6 +758,14 @@ function scheduledIngestionCopySafeCommands(): ScheduledIngestionCommand[] {
       mode: "dry-run",
       purpose:
         "Recheck queue state, hosted-cron evidence, retry policy, dedupe review, and no-auto-promotion controls without running writes."
+    },
+    {
+      command: "npm run ingest:scheduled-dry-run -- --summary",
+      id: "scheduled-ingestion-summary",
+      label: "Summarize scheduled ingestion readiness",
+      mode: "read-only",
+      purpose:
+        "Print compact scheduler counts, readiness gates, warnings, and next action without dumping full queue details."
     },
     {
       command: "npm run ingest:sources -- --db-status",

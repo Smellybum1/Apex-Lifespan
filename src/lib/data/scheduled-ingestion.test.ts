@@ -9,7 +9,8 @@ import {
 import { listSourceCandidateIdentityGroups } from "@/lib/data/source-candidates";
 import {
   planScheduledSourceIngestionDryRun,
-  runScheduledSourceIngestionBatch
+  runScheduledSourceIngestionBatch,
+  summarizeScheduledSourceIngestionDryRun
 } from "@/lib/data/scheduled-ingestion";
 import type { SourceCandidate } from "@/lib/types";
 
@@ -141,6 +142,14 @@ describe("scheduled source ingestion dry run", () => {
               "Recheck queue state, hosted-cron evidence, retry policy, dedupe review, and no-auto-promotion controls without running writes."
           },
           {
+            command: "npm run ingest:scheduled-dry-run -- --summary",
+            id: "scheduled-ingestion-summary",
+            label: "Summarize scheduled ingestion readiness",
+            mode: "read-only",
+            purpose:
+              "Print compact scheduler counts, readiness gates, warnings, and next action without dumping full queue details."
+          },
+          {
             command: "npm run ingest:sources -- --db-status",
             id: "source-candidate-db-status",
             label: "Check source-candidate database",
@@ -268,9 +277,10 @@ describe("scheduled source ingestion dry run", () => {
 
     const plan = await planScheduledSourceIngestionDryRun();
 
-    expect(plan.worksheet.copySafeCommands).toHaveLength(7);
+    expect(plan.worksheet.copySafeCommands).toHaveLength(8);
     expect(plan.worksheet.copySafeCommands.map((item) => item.mode)).toEqual([
       "dry-run",
+      "read-only",
       "read-only",
       "read-only",
       "read-only",
@@ -281,6 +291,59 @@ describe("scheduled source ingestion dry run", () => {
     expect(plan.worksheet.copySafeCommands.some((item) => item.command.includes("--apply"))).toBe(
       false
     );
+  });
+
+  it("summarizes scheduler readiness without full queue detail", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [
+        {
+          count: 1,
+          region: "AU",
+          source: SourceKind.PUBMED,
+          status: IngestionStatus.QUEUED
+        }
+      ],
+      total: 1
+    });
+    listJobsMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([queuedJob("job-1")])
+      .mockResolvedValueOnce([]);
+    listDuplicateIdentityGroupsMock.mockResolvedValue([
+      {
+        externalId: "42141930",
+        source: "PubMed",
+        candidates: [
+          sourceCandidate({
+            dedupeKey: "pubmed|au|creatine-meta|42141930||",
+            decision: "Pending review"
+          })
+        ]
+      }
+    ]);
+
+    const plan = await planScheduledSourceIngestionDryRun({
+      env: {},
+      maxJobsPerRun: 1
+    });
+
+    expect(summarizeScheduledSourceIngestionDryRun(plan)).toMatchObject({
+      counts: {
+        duplicateIdentityGroups: 1,
+        queuedJobs: 1,
+        recentFailures: 0,
+        runningJobs: 0,
+        wouldRunJobs: 1
+      },
+      hostedCronReady: false,
+      hostedRunGateReady: true,
+      humanOwned: true,
+      nextAction:
+        "Configure missing NCBI metadata before unattended PubMed ingestion: NCBI_TOOL, NCBI_EMAIL.",
+      noAutoPromotion: true,
+      readOnly: true,
+      retryAutomationReady: false
+    });
   });
 
   it("reports the future hosted-run gate without exposing a hosted write route", async () => {
