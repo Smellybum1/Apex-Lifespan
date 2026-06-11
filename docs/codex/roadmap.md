@@ -26,9 +26,10 @@ The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel
 
 ## Ordered Steps
 
-1. [ ] Reconfirm the live baseline and repo state.
+1. [x] Reconfirm the live baseline and repo state.
    Done when: public smoke still passes, the production branch/commit is known, and the local worktree is clean before new fully-live work starts.
    Validate with: `git status -sb`, `git log -3 --oneline`, `npm run smoke:public-mvp -- https://apex-lifespan.vercel.app`.
+   Completed 2026-06-11: `git status -sb` reported a clean `codex/queue-claim-sources...origin/codex/queue-claim-sources`; `git log -3 --oneline` reported `30d6830 Record public MVP launch`, `762f5cb Generate Prisma client during build`, and `9632d8f Record restored GitHub deploy path`; `npm run smoke:public-mvp -- https://apex-lifespan.vercel.app` passed homepage caveats, PubMed live preview, ClinicalTrials.gov live preview, and invalid-term guards.
 
 2. [ ] Decide the production data architecture.
    Done when: the managed PostgreSQL provider, region, environment variable model, migration policy, backup expectations, and rollback expectations are documented.
