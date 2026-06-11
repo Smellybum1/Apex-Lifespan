@@ -96,6 +96,45 @@ export interface SourceCandidatePromotionReadinessSnapshot {
   total: number;
 }
 
+export interface SourceCandidatePromotionReadinessReport {
+  generatedAt: string;
+  humanOwned: true;
+  readOnly: true;
+  snapshot: SourceCandidatePromotionReadinessSnapshot;
+  worksheet: SourceCandidatePromotionReadinessWorksheet;
+}
+
+export interface SourceCandidatePromotionReadinessReportOptions {
+  generatedAt?: Date;
+  limit?: number;
+}
+
+export interface SourceCandidatePromotionReadinessWorksheet {
+  blocked: SourceCandidatePromotionReadinessWorksheetItem[];
+  copySafeCommands: SourceCandidatePromotionReadinessCommand[];
+  humanOwned: true;
+  nextHumanAction: string;
+  ready: SourceCandidatePromotionReadinessWorksheetItem[];
+}
+
+export interface SourceCandidatePromotionReadinessCommand {
+  command: string;
+  id: string;
+  label: string;
+  mode: "read-only";
+  purpose: string;
+}
+
+export interface SourceCandidatePromotionReadinessWorksheetItem {
+  blockers: string[];
+  dedupeKey: string;
+  externalId: string;
+  label: string;
+  nextAction: string;
+  source: SourceCandidate["source"];
+  status: SourceCandidateCurationStatus["status"];
+}
+
 export async function assessSourceCandidatePublicPromotion(
   dedupeKey: string
 ): Promise<SourceCandidatePromotionAssessment> {
@@ -152,6 +191,21 @@ export async function getSourceCandidatePromotionReadinessSnapshot(
   };
 }
 
+export async function buildSourceCandidatePromotionReadinessReport({
+  generatedAt,
+  limit = 5
+}: SourceCandidatePromotionReadinessReportOptions = {}): Promise<SourceCandidatePromotionReadinessReport> {
+  const snapshot = await getSourceCandidatePromotionReadinessSnapshot(limit);
+
+  return {
+    generatedAt: (generatedAt ?? new Date()).toISOString(),
+    humanOwned: true,
+    readOnly: true,
+    snapshot,
+    worksheet: sourceCandidatePromotionReadinessWorksheet(snapshot)
+  };
+}
+
 function sourceCandidatePromotionReadinessRow(
   status: SourceCandidateCurationStatus
 ): SourceCandidatePromotionReadinessRow {
@@ -173,6 +227,84 @@ function sourceCandidatePromotionReadinessRow(
     publicSourcePacketReady: status.publicSourcePacketReady,
     ready: blockers.length === 0,
     status: status.status
+  };
+}
+
+function sourceCandidatePromotionReadinessWorksheet(
+  snapshot: SourceCandidatePromotionReadinessSnapshot
+): SourceCandidatePromotionReadinessWorksheet {
+  const blocked = snapshot.rows
+    .filter((row) => !row.ready)
+    .map(sourceCandidatePromotionReadinessWorksheetItem);
+  const ready = snapshot.rows
+    .filter((row) => row.ready)
+    .map(sourceCandidatePromotionReadinessWorksheetItem);
+
+  return {
+    blocked,
+    copySafeCommands: sourceCandidatePromotionReadinessCopySafeCommands(),
+    humanOwned: true,
+    nextHumanAction:
+      blocked[0]?.nextAction ??
+      ready[0]?.nextAction ??
+      "No accepted source-candidate promotion rows were found; review curation handoff before enabling promotion.",
+    ready
+  };
+}
+
+function sourceCandidatePromotionReadinessCopySafeCommands(): SourceCandidatePromotionReadinessCommand[] {
+  return [
+    {
+      command: "npm run promotion:readiness",
+      id: "promotion-readiness",
+      label: "Refresh promotion readiness",
+      mode: "read-only",
+      purpose: "Summarize accepted source-candidate promotion blockers without writing public evidence."
+    },
+    {
+      command: "npm run promotion:dry-run -- --pmid <pmid>",
+      id: "promotion-dry-run",
+      label: "Dry-run one accepted PMID",
+      mode: "read-only",
+      purpose:
+        "Inspect one accepted PubMed candidate's claim link, extraction, and public packet readiness."
+    },
+    {
+      command: "npm run ingest:sources -- --candidate-curation-handoff",
+      id: "candidate-curation-handoff",
+      label: "Review curation handoff",
+      mode: "read-only",
+      purpose: "List accepted candidates and their curation handoff status without mutating decisions."
+    },
+    {
+      command:
+        "npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10",
+      id: "candidate-review-overview",
+      label: "Review pending candidate overview",
+      mode: "read-only",
+      purpose: "Inspect pending source-candidate groups before any human review decisions."
+    },
+    {
+      command: "npm run launch:readiness",
+      id: "launch-readiness",
+      label: "Refresh aggregate launch readiness",
+      mode: "read-only",
+      purpose: "Recheck fully-live launch gates after promotion evidence changes."
+    }
+  ];
+}
+
+function sourceCandidatePromotionReadinessWorksheetItem(
+  row: SourceCandidatePromotionReadinessRow
+): SourceCandidatePromotionReadinessWorksheetItem {
+  return {
+    blockers: row.blockers,
+    dedupeKey: row.candidate.dedupeKey,
+    externalId: row.candidate.externalId,
+    label: row.candidate.title,
+    nextAction: row.nextAction,
+    source: row.candidate.source,
+    status: row.status
   };
 }
 

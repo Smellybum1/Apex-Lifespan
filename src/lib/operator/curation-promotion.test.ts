@@ -6,6 +6,7 @@ import {
 } from "@/lib/data/source-candidates";
 import {
   assessSourceCandidatePublicPromotion,
+  buildSourceCandidatePromotionReadinessReport,
   getSourceCandidatePromotionReadinessSnapshot
 } from "@/lib/operator/curation-promotion";
 import type { Reference, SourceCandidate } from "@/lib/types";
@@ -334,6 +335,99 @@ describe("source candidate promotion readiness snapshot", () => {
       total: 2
     });
     expect(listSourceCandidateCurationHandoffMock).toHaveBeenCalledWith({ limit: 2 });
+  });
+
+  it("builds a read-only promotion readiness report", async () => {
+    listSourceCandidateCurationHandoffMock.mockResolvedValue([
+      {
+        acceptedReference,
+        acceptedReferenceId: acceptedReference.id,
+        candidate,
+        claimLinks: [],
+        nextAction: "Link accepted reference to candidate claim.",
+        publicSourcePacketReady: false,
+        status: "Claim link missing",
+        studies: []
+      }
+    ]);
+
+    await expect(
+      buildSourceCandidatePromotionReadinessReport({
+        generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+        limit: 1
+      })
+    ).resolves.toMatchObject({
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      humanOwned: true,
+      readOnly: true,
+      snapshot: {
+        blockedCount: 1,
+        readyCount: 0,
+        total: 1
+      },
+      worksheet: {
+        blocked: [
+          {
+            blockers: [
+              "Accepted reference must be linked to the candidate claim.",
+              "Accepted reference must have a structured study extraction.",
+              "Curation status must report publicSourcePacketReady=true."
+            ],
+            dedupeKey: candidate.dedupeKey,
+            externalId: candidate.externalId,
+            label: candidate.title,
+            nextAction: "Accepted reference must be linked to the candidate claim.",
+            source: "PubMed",
+            status: "Claim link missing"
+          }
+        ],
+        copySafeCommands: [
+          {
+            command: "npm run promotion:readiness",
+            id: "promotion-readiness",
+            label: "Refresh promotion readiness",
+            mode: "read-only",
+            purpose:
+              "Summarize accepted source-candidate promotion blockers without writing public evidence."
+          },
+          {
+            command: "npm run promotion:dry-run -- --pmid <pmid>",
+            id: "promotion-dry-run",
+            label: "Dry-run one accepted PMID",
+            mode: "read-only",
+            purpose:
+              "Inspect one accepted PubMed candidate's claim link, extraction, and public packet readiness."
+          },
+          {
+            command: "npm run ingest:sources -- --candidate-curation-handoff",
+            id: "candidate-curation-handoff",
+            label: "Review curation handoff",
+            mode: "read-only",
+            purpose:
+              "List accepted candidates and their curation handoff status without mutating decisions."
+          },
+          {
+            command:
+              "npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10",
+            id: "candidate-review-overview",
+            label: "Review pending candidate overview",
+            mode: "read-only",
+            purpose: "Inspect pending source-candidate groups before any human review decisions."
+          },
+          {
+            command: "npm run launch:readiness",
+            id: "launch-readiness",
+            label: "Refresh aggregate launch readiness",
+            mode: "read-only",
+            purpose: "Recheck fully-live launch gates after promotion evidence changes."
+          }
+        ],
+        humanOwned: true,
+        nextHumanAction: "Accepted reference must be linked to the candidate claim.",
+        ready: []
+      }
+    });
+    expect(listSourceCandidateCurationHandoffMock).toHaveBeenCalledWith({ limit: 1 });
   });
 });
 
