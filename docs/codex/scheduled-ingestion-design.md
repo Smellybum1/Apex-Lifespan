@@ -50,6 +50,7 @@ The dry run also reports a structured policy review:
   - `APEX_INGESTION_ALERTS_CONFIGURED=true`
   - `APEX_SCHEDULED_INGESTION_CRON_APPROVED=true`
   - `NCBI_TOOL` and `NCBI_EMAIL`
+- Failure review: reports recent failed-job categories and retry dispositions without echoing raw error text. Automatic retry readiness remains false until failure classes are reviewed and an explicit retry policy is approved.
 
 ## Guarded Run
 

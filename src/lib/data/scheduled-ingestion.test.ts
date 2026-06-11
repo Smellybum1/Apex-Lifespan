@@ -54,6 +54,13 @@ describe("scheduled source ingestion dry run", () => {
       })
     ).resolves.toEqual({
       dryRun: true,
+      failureReview: {
+        automaticRetries: false,
+        failedJobsReviewed: 0,
+        items: [],
+        nextAction: "No recent failed ingestion jobs need retry review.",
+        retryAutomationReady: false
+      },
       maxJobsPerRun: 2,
       nextAction: "Scheduled run would process 2 queued job(s).",
       noAutoPromotion: true,
@@ -194,6 +201,63 @@ describe("scheduled source ingestion dry run", () => {
         ncbiMetadataConfigured: true
       }
     });
+  });
+
+  it("summarizes failed jobs for manual retry review without exposing raw errors", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [
+        {
+          count: 2,
+          region: "AU",
+          source: SourceKind.PUBMED,
+          status: IngestionStatus.FAILED
+        }
+      ],
+      total: 2
+    });
+    listJobsMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        failedJob("failed-config", "Environment variable not found: NCBI_EMAIL=private@example.com"),
+        failedJob("failed-upstream", "NCBI unavailable with token secret-123")
+      ]);
+
+    const review = await planScheduledSourceIngestionDryRun({
+      env: readySchedulerEnv()
+    });
+
+    expect(review).toMatchObject({
+      failureReview: {
+        automaticRetries: false,
+        failedJobsReviewed: 2,
+        items: [
+          {
+            category: "missing-configuration",
+            jobId: "failed-config",
+            nextAction: "Fix missing configuration, then rerun a dry-run before any manual retry.",
+            region: "AU",
+            retryDisposition: "fix-configuration-first",
+            source: SourceKind.PUBMED
+          },
+          {
+            category: "upstream-unavailable",
+            jobId: "failed-upstream",
+            nextAction: "Confirm the upstream is healthy before any manual retry.",
+            region: "AU",
+            retryDisposition: "wait-for-upstream-and-review",
+            source: SourceKind.PUBMED
+          }
+        ],
+        nextAction:
+          "Review failed ingestion jobs and their categories before enabling any retry automation.",
+        retryAutomationReady: false
+      },
+      nextAction: "Review failed ingestion jobs before queueing more scheduled work.",
+      recentFailures: 2
+    });
+    expect(JSON.stringify(review.failureReview)).not.toContain("secret-123");
+    expect(JSON.stringify(review.failureReview)).not.toContain("private@example.com");
   });
 });
 
@@ -359,6 +423,14 @@ function queuedJob(jobId: string) {
     source: SourceKind.PUBMED,
     status: IngestionStatus.QUEUED,
     updatedAt: "2026-06-11T00:00:00.000Z"
+  };
+}
+
+function failedJob(jobId: string, error: string) {
+  return {
+    ...queuedJob(jobId),
+    error,
+    status: IngestionStatus.FAILED
   };
 }
 

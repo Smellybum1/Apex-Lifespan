@@ -4,6 +4,7 @@ import {
   listSourceCandidateIngestionJobs,
   runNextSourceCandidateIngestionJob,
   type SourceCandidateIngestionJobOptions,
+  type SourceCandidateIngestionJobListItem,
   type SourceCandidateIngestionJobRunResult,
   summarizeSourceCandidateIngestionJobs
 } from "@/lib/data/source-candidate-jobs";
@@ -20,6 +21,7 @@ export interface ScheduledIngestionBatchOptions extends ScheduledIngestionDryRun
 
 export interface ScheduledIngestionDryRun {
   dryRun: true;
+  failureReview: ScheduledIngestionFailureReview;
   maxJobsPerRun: number;
   nextAction: string;
   noAutoPromotion: true;
@@ -67,6 +69,36 @@ export interface ScheduledIngestionHostedCronReview {
   scheduledWritesEnabled: boolean;
 }
 
+export interface ScheduledIngestionFailureReview {
+  automaticRetries: false;
+  failedJobsReviewed: number;
+  items: ScheduledIngestionFailureReviewItem[];
+  nextAction: string;
+  retryAutomationReady: false;
+}
+
+export interface ScheduledIngestionFailureReviewItem {
+  category: ScheduledIngestionFailureCategory;
+  jobId: string;
+  nextAction: string;
+  region: string;
+  retryDisposition: ScheduledIngestionRetryDisposition;
+  source: SourceCandidateIngestionJobListItem["source"];
+}
+
+export type ScheduledIngestionFailureCategory =
+  | "missing-configuration"
+  | "rate-limited"
+  | "unsupported-source"
+  | "upstream-unavailable"
+  | "unknown";
+
+export type ScheduledIngestionRetryDisposition =
+  | "do-not-retry-unsupported-source"
+  | "fix-configuration-first"
+  | "review-error-before-retry"
+  | "wait-for-upstream-and-review";
+
 export type ScheduledIngestionJobRunner = (
   options: SourceCandidateIngestionJobOptions
 ) => Promise<SourceCandidateIngestionJobRunResult | null>;
@@ -112,6 +144,7 @@ export async function planScheduledSourceIngestionDryRun(
 
   return {
     dryRun: true,
+    failureReview: scheduledIngestionFailureReview(failedJobs),
     maxJobsPerRun,
     nextAction: scheduledIngestionNextAction({
       failedCount,
@@ -193,6 +226,112 @@ export async function runScheduledSourceIngestionBatch(
     noAutoPromotion: true,
     plan
   };
+}
+
+function scheduledIngestionFailureReview(
+  failedJobs: SourceCandidateIngestionJobListItem[]
+): ScheduledIngestionFailureReview {
+  const items = failedJobs.map((job) => scheduledIngestionFailureReviewItem(job));
+
+  return {
+    automaticRetries: false,
+    failedJobsReviewed: items.length,
+    items,
+    nextAction:
+      items.length > 0
+        ? "Review failed ingestion jobs and their categories before enabling any retry automation."
+        : "No recent failed ingestion jobs need retry review.",
+    retryAutomationReady: false
+  };
+}
+
+function scheduledIngestionFailureReviewItem(
+  job: SourceCandidateIngestionJobListItem
+): ScheduledIngestionFailureReviewItem {
+  const category = scheduledIngestionFailureCategory(job.error);
+  const retryDisposition = retryDispositionForFailureCategory(category);
+
+  return {
+    category,
+    jobId: job.jobId,
+    nextAction: nextActionForFailureCategory(category),
+    region: job.region,
+    retryDisposition,
+    source: job.source
+  };
+}
+
+function scheduledIngestionFailureCategory(
+  error: string | undefined
+): ScheduledIngestionFailureCategory {
+  const normalized = error?.toLowerCase() ?? "";
+
+  if (
+    normalized.includes("not configured") ||
+    normalized.includes("environment variable") ||
+    normalized.includes("database_url") ||
+    normalized.includes("ncbi_tool") ||
+    normalized.includes("ncbi_email")
+  ) {
+    return "missing-configuration";
+  }
+
+  if (
+    normalized.includes("rate limit") ||
+    normalized.includes("rate-limit") ||
+    normalized.includes("too many requests") ||
+    normalized.includes("429")
+  ) {
+    return "rate-limited";
+  }
+
+  if (normalized.includes("not implemented") || normalized.includes("unsupported")) {
+    return "unsupported-source";
+  }
+
+  if (
+    normalized.includes("unavailable") ||
+    normalized.includes("timeout") ||
+    normalized.includes("timed out") ||
+    normalized.includes("fetch failed") ||
+    normalized.includes("network") ||
+    normalized.includes("econnreset")
+  ) {
+    return "upstream-unavailable";
+  }
+
+  return "unknown";
+}
+
+function retryDispositionForFailureCategory(
+  category: ScheduledIngestionFailureCategory
+): ScheduledIngestionRetryDisposition {
+  switch (category) {
+    case "missing-configuration":
+      return "fix-configuration-first";
+    case "rate-limited":
+    case "upstream-unavailable":
+      return "wait-for-upstream-and-review";
+    case "unsupported-source":
+      return "do-not-retry-unsupported-source";
+    case "unknown":
+      return "review-error-before-retry";
+  }
+}
+
+function nextActionForFailureCategory(category: ScheduledIngestionFailureCategory) {
+  switch (category) {
+    case "missing-configuration":
+      return "Fix missing configuration, then rerun a dry-run before any manual retry.";
+    case "rate-limited":
+      return "Review source rate limits and wait before any manual retry.";
+    case "unsupported-source":
+      return "Do not retry until the source implementation is reviewed.";
+    case "upstream-unavailable":
+      return "Confirm the upstream is healthy before any manual retry.";
+    case "unknown":
+      return "Inspect the failed job locally before deciding whether a manual retry is appropriate.";
+  }
 }
 
 function scheduledIngestionPolicyReview(
