@@ -1,7 +1,27 @@
-import { planScheduledSourceIngestionDryRun } from "@/lib/data/scheduled-ingestion";
+import {
+  planScheduledSourceIngestionDryRun,
+  runScheduledSourceIngestionBatch
+} from "@/lib/data/scheduled-ingestion";
 
 async function main() {
   const maxJobsPerRun = readNumberArg("--max-jobs");
+  const apply = process.argv.includes("--apply");
+
+  if (apply) {
+    const result = await runScheduledSourceIngestionBatch({
+      apply,
+      maxJobsPerRun
+    });
+
+    console.log(JSON.stringify(result, null, 2));
+
+    if (result.blocked) {
+      process.exitCode = 1;
+    }
+
+    return;
+  }
+
   const plan = await planScheduledSourceIngestionDryRun({ maxJobsPerRun });
 
   console.log(JSON.stringify(plan, null, 2));

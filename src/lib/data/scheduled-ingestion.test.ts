@@ -1,19 +1,29 @@
 import { IngestionStatus, SourceKind } from "@prisma/client";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   listSourceCandidateIngestionJobs,
+  runNextSourceCandidateIngestionJob,
   summarizeSourceCandidateIngestionJobs
 } from "@/lib/data/source-candidate-jobs";
-import { planScheduledSourceIngestionDryRun } from "@/lib/data/scheduled-ingestion";
+import {
+  planScheduledSourceIngestionDryRun,
+  runScheduledSourceIngestionBatch
+} from "@/lib/data/scheduled-ingestion";
 
 vi.mock("@/lib/data/source-candidate-jobs", () => ({
   listSourceCandidateIngestionJobs: vi.fn(),
+  runNextSourceCandidateIngestionJob: vi.fn(),
   summarizeSourceCandidateIngestionJobs: vi.fn()
 }));
 
 const listJobsMock = vi.mocked(listSourceCandidateIngestionJobs);
+const runNextJobMock = vi.mocked(runNextSourceCandidateIngestionJob);
 const summarizeJobsMock = vi.mocked(summarizeSourceCandidateIngestionJobs);
+
+beforeEach(() => {
+  vi.resetAllMocks();
+});
 
 describe("scheduled source ingestion dry run", () => {
   it("plans a bounded queued-job batch without promotion", async () => {
@@ -126,6 +136,153 @@ describe("scheduled source ingestion dry run", () => {
   });
 });
 
+describe("scheduled source ingestion batch runner", () => {
+  it("defaults to dry-run and does not run queued jobs", async () => {
+    mockQueuedSchedulerState(2);
+
+    await expect(
+      runScheduledSourceIngestionBatch({
+        env: readySchedulerEnv(),
+        maxJobsPerRun: 2
+      })
+    ).resolves.toMatchObject({
+      applied: false,
+      blocked: false,
+      dryRun: true,
+      executedJobs: [],
+      noAutoPromotion: true
+    });
+    expect(runNextJobMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks apply mode unless the scheduled-ingestion write gate is enabled", async () => {
+    mockQueuedSchedulerState(1);
+
+    await expect(
+      runScheduledSourceIngestionBatch({
+        apply: true,
+        env: {
+          NCBI_EMAIL: "operator@example.com",
+          NCBI_TOOL: "apex-lifespan"
+        }
+      })
+    ).resolves.toMatchObject({
+      applied: false,
+      blocked: true,
+      dryRun: true,
+      executedJobs: [],
+      nextAction: "APEX_SCHEDULED_INGESTION_WRITES_ENABLED=true is required when --apply is used."
+    });
+    expect(runNextJobMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks apply mode until NCBI metadata is configured", async () => {
+    mockQueuedSchedulerState(1);
+
+    await expect(
+      runScheduledSourceIngestionBatch({
+        apply: true,
+        env: {
+          APEX_SCHEDULED_INGESTION_WRITES_ENABLED: "true"
+        }
+      })
+    ).resolves.toMatchObject({
+      applied: false,
+      blocked: true,
+      dryRun: true,
+      nextAction: "NCBI metadata is required when --apply is used: NCBI_TOOL, NCBI_EMAIL."
+    });
+    expect(runNextJobMock).not.toHaveBeenCalled();
+  });
+
+  it("runs a bounded batch with source caps and no automatic promotion", async () => {
+    mockQueuedSchedulerState(3);
+    runNextJobMock
+      .mockResolvedValueOnce(runResult("job-1"))
+      .mockResolvedValueOnce(runResult("job-2"));
+
+    await expect(
+      runScheduledSourceIngestionBatch({
+        apply: true,
+        env: readySchedulerEnv(),
+        maxJobsPerRun: 2
+      })
+    ).resolves.toMatchObject({
+      applied: true,
+      automaticRetries: false,
+      blocked: false,
+      dryRun: false,
+      executedJobs: [{ jobId: "job-1" }, { jobId: "job-2" }],
+      nextAction: "Scheduled run processed 2 queued job(s).",
+      noAutoPromotion: true
+    });
+    expect(runNextJobMock).toHaveBeenCalledTimes(2);
+    expect(runNextJobMock).toHaveBeenCalledWith({
+      clinicalTrialPageSize: 20,
+      pubMedRetmax: 20
+    });
+  });
+
+  it("does not apply while another scheduled job is running", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [
+        {
+          count: 1,
+          region: "AU",
+          source: SourceKind.PUBMED,
+          status: IngestionStatus.RUNNING
+        }
+      ],
+      total: 1
+    });
+    listJobsMock
+      .mockResolvedValueOnce([queuedJob("running-job")])
+      .mockResolvedValueOnce([queuedJob("queued-job")])
+      .mockResolvedValueOnce([]);
+
+    await expect(
+      runScheduledSourceIngestionBatch({
+        apply: true,
+        env: readySchedulerEnv()
+      })
+    ).resolves.toMatchObject({
+      applied: false,
+      blocked: true,
+      dryRun: true,
+      nextAction: "Wait for running ingestion jobs before starting another scheduled batch."
+    });
+    expect(runNextJobMock).not.toHaveBeenCalled();
+  });
+});
+
+function mockQueuedSchedulerState(queuedCount: number) {
+  summarizeJobsMock.mockResolvedValue({
+    groups: [
+      {
+        count: queuedCount,
+        region: "AU",
+        source: SourceKind.PUBMED,
+        status: IngestionStatus.QUEUED
+      }
+    ],
+    total: queuedCount
+  });
+  listJobsMock
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce(
+      Array.from({ length: queuedCount }, (_, index) => queuedJob(`job-${index + 1}`))
+    )
+    .mockResolvedValueOnce([]);
+}
+
+function readySchedulerEnv() {
+  return {
+    APEX_SCHEDULED_INGESTION_WRITES_ENABLED: "true",
+    NCBI_EMAIL: "operator@example.com",
+    NCBI_TOOL: "apex-lifespan"
+  };
+}
+
 function queuedJob(jobId: string) {
   return {
     createdAt: "2026-06-11T00:00:00.000Z",
@@ -137,5 +294,18 @@ function queuedJob(jobId: string) {
     source: SourceKind.PUBMED,
     status: IngestionStatus.QUEUED,
     updatedAt: "2026-06-11T00:00:00.000Z"
+  };
+}
+
+function runResult(jobId: string) {
+  return {
+    error: undefined,
+    jobId,
+    query: "creatine",
+    recordsChanged: 1,
+    recordsFound: 1,
+    region: "AU",
+    source: SourceKind.PUBMED,
+    status: IngestionStatus.SUCCEEDED
   };
 }

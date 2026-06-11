@@ -13,6 +13,7 @@
     "smoke:public-mvp": "tsx scripts/smoke-public-mvp.ts",
     "promotion:dry-run": "tsx scripts/dry-run-candidate-promotion.ts",
     "ingest:scheduled-dry-run": "tsx scripts/scheduled-source-ingestion.ts",
+    "ingest:scheduled-run": "tsx scripts/scheduled-source-ingestion.ts --apply",
     "coverage:review": "tsx scripts/evidence-coverage-report.ts",
     "regulatory:review": "tsx scripts/australia-regulatory-report.ts",
     "production:readiness": "tsx scripts/production-readiness-report.ts",

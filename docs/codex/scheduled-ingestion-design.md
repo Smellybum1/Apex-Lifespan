@@ -44,6 +44,23 @@ The dry run also reports a structured policy review:
 - Automatic public promotion: disabled.
 - NCBI metadata: reports whether `NCBI_TOOL` and `NCBI_EMAIL` are configured by variable name only.
 
+## Guarded Run
+
+Use:
+
+```bash
+npm run ingest:scheduled-run
+```
+
+The guarded run still plans first. It runs queued source-candidate jobs only when all of these are true:
+
+- The command is invoked with `--apply` through `npm run ingest:scheduled-run`.
+- `APEX_SCHEDULED_INGESTION_WRITES_ENABLED=true`.
+- `NCBI_TOOL` and `NCBI_EMAIL` are configured.
+- No source-candidate ingestion job is already running.
+
+The runner uses the same source caps as the policy review, does not retry failed jobs automatically, and does not promote candidates into public evidence.
+
 ## Future Production Schedule
 
 After production database, secrets, monitoring, and alerts are configured, attach the scheduler to a hosted cron. The cron target should run with `APEX_DATA_SOURCE=database`, database credentials, NCBI metadata, and write access only to ingestion-job/source-candidate tables.
