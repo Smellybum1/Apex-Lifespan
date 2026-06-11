@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildProductionReadinessReport,
-  summarizeProductionReadinessCheck
+  summarizeProductionReadinessCheck,
+  summarizeProductionReadinessReport
 } from "@/lib/production-readiness";
 
 describe("production readiness report", () => {
@@ -92,6 +93,14 @@ describe("production readiness report", () => {
           "Recheck production database, secrets, and evidence gates without printing secret values."
       },
       {
+        command: "npm run production:readiness -- --summary",
+        id: "production-readiness-summary",
+        label: "Refresh compact production summary",
+        mode: "read-only",
+        purpose:
+          "Print production readiness counts, blockers, warnings, ready checks, and next action without dumping all checks."
+      },
+      {
         command: "npm run production:readiness -- --check <check-id>",
         id: "production-readiness-check",
         label: "Focus one production readiness check",
@@ -157,6 +166,59 @@ describe("production readiness report", () => {
         })
       ])
     );
+  });
+
+  it("builds a compact production readiness summary without full report detail", () => {
+    const report = buildProductionReadinessReport({
+      env: {
+        APEX_DATA_SOURCE: "seed",
+        DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/apex_lifespan",
+        NCBI_TOOL: "apex-lifespan"
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      migrationDirectories: ["20260602032000_init"],
+      productionProvisioningChecklistExists: true,
+      trackedEnvFiles: [],
+      vercelCliAvailable: false,
+      vercelProjectLinked: false
+    });
+
+    const summary = summarizeProductionReadinessReport(report);
+
+    expect(summary).toMatchObject({
+      counts: {
+        blocked: 5,
+        info: 0,
+        ready: 5,
+        warning: 2
+      },
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      humanOwned: true,
+      nextAction: "Use a managed non-local PostgreSQL target before production migration rehearsal.",
+      overall: "blocked",
+      readOnly: true
+    });
+    expect(summary.blockedChecks.map((item) => item.id)).toEqual([
+      "database-url",
+      "apex-data-source",
+      "migration-rehearsal",
+      "vercel-project",
+      "operator-auth-secrets"
+    ]);
+    expect(summary.readyChecks.map((item) => item.id)).toEqual([
+      "prisma-migrations",
+      "production-provisioning-checklist",
+      "local-only-sidecar-secrets",
+      "tracked-env-files",
+      "operator-write-flag"
+    ]);
+    expect(summary.warningChecks.map((item) => item.id)).toEqual([
+      "vercel-cli",
+      "ncbi-metadata"
+    ]);
+    expect(summary).not.toHaveProperty("checks");
+    expect(summary).not.toHaveProperty("worksheet");
+    expect(JSON.stringify(summary)).not.toContain("postgres:postgres");
   });
 
   it("builds a focused read-only packet for one production readiness check", () => {

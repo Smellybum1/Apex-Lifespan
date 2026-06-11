@@ -29,6 +29,19 @@ export interface ProductionReadinessReport {
   worksheet: ProductionProvisioningWorksheet;
 }
 
+export interface ProductionReadinessSummary {
+  blockedChecks: ProductionProvisioningWorksheetItem[];
+  counts: Record<ProductionReadinessStatus, number>;
+  generatedAt: string;
+  humanOwned: true;
+  nextAction: string;
+  overall: "ready" | "blocked";
+  readOnly: true;
+  readyChecks: ProductionProvisioningWorksheetItem[];
+  sanitizedDatabaseTarget?: string;
+  warningChecks: ProductionProvisioningWorksheetItem[];
+}
+
 export type ProductionReadinessCheckReviewStatus =
   | ProductionReadinessStatus
   | "not-found";
@@ -165,6 +178,27 @@ export function summarizeProductionReadinessCheck(
         (command) => command.id === "production-readiness"
       ) ?? null,
     status: check.status
+  };
+}
+
+export function summarizeProductionReadinessReport(
+  report: ProductionReadinessReport
+): ProductionReadinessSummary {
+  return {
+    blockedChecks: report.worksheet.blocked,
+    counts: report.counts,
+    generatedAt: report.generatedAt,
+    humanOwned: true,
+    nextAction: report.worksheet.nextOperatorAction,
+    overall: report.overall,
+    readOnly: true,
+    readyChecks: report.worksheet.ready,
+    ...(report.sanitizedDatabaseTarget
+      ? {
+          sanitizedDatabaseTarget: report.sanitizedDatabaseTarget
+        }
+      : {}),
+    warningChecks: report.worksheet.warnings
   };
 }
 
@@ -526,6 +560,14 @@ function productionProvisioningCopySafeCommands(): ProductionProvisioningCommand
       label: "Refresh production readiness",
       mode: "read-only",
       purpose: "Recheck production database, secrets, and evidence gates without printing secret values."
+    },
+    {
+      command: "npm run production:readiness -- --summary",
+      id: "production-readiness-summary",
+      label: "Refresh compact production summary",
+      mode: "read-only",
+      purpose:
+        "Print production readiness counts, blockers, warnings, ready checks, and next action without dumping all checks."
     },
     {
       command: "npm run production:readiness -- --check <check-id>",
