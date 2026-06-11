@@ -19,7 +19,7 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
 ## Current Blockers
 
 - GitHub push limit was lifted on 2026-06-11; pushing to GitHub is allowed when useful.
-- Vercel import/deployment is still pending; no public URL exists to smoke test yet.
+- Vercel production deploy on `main` failed on 2026-06-11 because the clean build did not generate Prisma Client before Next type checking; fix is being pushed before the next deploy. No successful public URL exists to smoke test yet.
 - Source-candidate curation is deferred from public MVP scope; latest snapshot still has 49 pending candidates and 1 accepted candidate that remains local claim-link curation backlog.
 
 ## Ordered Steps
@@ -81,7 +81,8 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
     Done when: a public HTTPS URL renders the dashboard and both live preview routes respond with safe public behavior.
     Validate with: public URL smoke test, `/api/pubmed/search?term=creatine`, `/api/trials/search?term=creatine`, invalid-term checks, and response header checks for live routes.
     Prepared 2026-06-11: added `npm run smoke:public-mvp -- <url>` to verify the deployed homepage, live PubMed and ClinicalTrials.gov routes, invalid-term guards, no-store/noindex headers, and public demo caveats. The command passed against `http://127.0.0.1:3000` on a seed-mode production server.
-    Blocked 2026-06-11: GitHub push access is restored, but Vercel import/deployment has not produced a public HTTPS URL to smoke test yet.
+    Updated 2026-06-11: first Vercel production build from `main` failed at `prisma/seed.ts` because `@prisma/client` had not been generated in the clean install. `npm run build` now runs the Prisma generation helper first, with a build-time placeholder `DATABASE_URL` only when the public seed-mode deploy omits a real database URL.
+    Blocked 2026-06-11: Vercel has not produced a successful public HTTPS URL to smoke test yet.
 
 12. [ ] Publish launch handoff.
     Done when: README or handoff includes the public URL, selected data mode, known limitations, rollback path, and remaining fully-live gaps.
