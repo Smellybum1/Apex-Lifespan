@@ -99,7 +99,7 @@ export interface LaunchReadinessWorksheetItem {
   nextAction?: string;
 }
 
-const PUBLIC_SMOKE_KEY = "APEX_PUBLIC_SMOKE_PASSED_AT";
+const PUBLIC_DATABASE_SMOKE_KEY = "APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT";
 const ADMIN_FLOW_SMOKE_KEY = "APEX_ADMIN_FLOW_SMOKE_PASSED_AT";
 const LAUNCH_APPROVAL_KEY = "APEX_FULLY_LIVE_LAUNCH_APPROVED_AT";
 const POST_LAUNCH_REVIEW_KEY = "APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT";
@@ -145,10 +145,10 @@ export function buildLaunchReadinessReport(
     timestampEvidenceCheck({
       env: context.env,
       id: "public-smoke",
-      key: PUBLIC_SMOKE_KEY,
+      key: PUBLIC_DATABASE_SMOKE_KEY,
       label: "Public smoke",
       nextAction:
-        "Run public smoke against the fully-live production URL and record APEX_PUBLIC_SMOKE_PASSED_AT."
+        "Run npm run smoke:public-mvp -- <fully-live-url> --require-database and record APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT."
     }),
     timestampEvidenceCheck({
       env: context.env,

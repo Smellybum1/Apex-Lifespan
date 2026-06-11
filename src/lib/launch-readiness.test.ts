@@ -15,7 +15,7 @@ describe("launch readiness report", () => {
   it("aggregates current-style blockers without leaking evidence values", () => {
     const report = buildLaunchReadinessReport({
       env: {
-        APEX_PUBLIC_SMOKE_PASSED_AT: "2026-06-11T00:00:00Z"
+        APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT: "2026-06-11T00:00:00Z"
       },
       evidenceCoverage: {
         dataSource: "seed",
@@ -302,7 +302,7 @@ describe("launch readiness report", () => {
         APEX_ADMIN_FLOW_SMOKE_PASSED_AT: "recorded",
         APEX_FULLY_LIVE_LAUNCH_APPROVED_AT: "recorded",
         APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT: "recorded",
-        APEX_PUBLIC_SMOKE_PASSED_AT: "recorded"
+        APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT: "recorded"
       },
       evidenceCoverage: {
         dataSource: "database",
@@ -346,13 +346,63 @@ describe("launch readiness report", () => {
     );
   });
 
-  it("reports ready only when launch evidence and nested gates are ready", () => {
+  it("does not accept generic seed-demo smoke evidence for the fully-live public smoke gate", () => {
     const report = buildLaunchReadinessReport({
       env: {
         APEX_ADMIN_FLOW_SMOKE_PASSED_AT: "recorded",
         APEX_FULLY_LIVE_LAUNCH_APPROVED_AT: "recorded",
         APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT: "recorded",
         APEX_PUBLIC_SMOKE_PASSED_AT: "recorded"
+      },
+      evidenceCoverage: {
+        dataSource: "database",
+        report: coverageSummary({
+          claimReviewBacklog: 0,
+          humanReviewedClaims: 7,
+          interventionGaps: 0
+        })
+      },
+      files: {
+        launchChecklist: true,
+        postLaunchReviewTemplate: true
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      operations: readinessReport([]) as OperationsReadinessReport,
+      operator: readinessReport([]) as OperatorReadinessReport,
+      production: readinessReport([]) as ProductionReadinessReport,
+      promotion: {
+        snapshot: promotionSnapshot({ blockedCount: 0, readyCount: 1, total: 1 })
+      },
+      scheduledIngestion: {
+        hostedCronReady: true,
+        hostedRunGateReady: true,
+        missingEnv: [],
+        noAutoPromotion: true,
+        retryAutomationReady: true
+      }
+    } satisfies LaunchReadinessContext);
+
+    expect(report.overall).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidenceKeys: ["APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT"],
+          id: "public-smoke",
+          nextAction:
+            "Run npm run smoke:public-mvp -- <fully-live-url> --require-database and record APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT.",
+          status: "blocked"
+        })
+      ])
+    );
+  });
+
+  it("reports ready only when launch evidence and nested gates are ready", () => {
+    const report = buildLaunchReadinessReport({
+      env: {
+        APEX_ADMIN_FLOW_SMOKE_PASSED_AT: "recorded",
+        APEX_FULLY_LIVE_LAUNCH_APPROVED_AT: "recorded",
+        APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT: "recorded",
+        APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT: "recorded"
       },
       evidenceCoverage: {
         dataSource: "database",
@@ -403,7 +453,7 @@ describe("launch readiness report", () => {
         APEX_ADMIN_FLOW_SMOKE_PASSED_AT: "recorded",
         APEX_FULLY_LIVE_LAUNCH_APPROVED_AT: "recorded",
         APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT: "recorded",
-        APEX_PUBLIC_SMOKE_PASSED_AT: "recorded"
+        APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT: "recorded"
       },
       evidenceCoverage: {
         dataSource: "database",
@@ -452,7 +502,7 @@ describe("launch readiness report", () => {
         APEX_ADMIN_FLOW_SMOKE_PASSED_AT: "recorded",
         APEX_FULLY_LIVE_LAUNCH_APPROVED_AT: "recorded",
         APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT: "recorded",
-        APEX_PUBLIC_SMOKE_PASSED_AT: "recorded"
+        APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT: "recorded"
       },
       evidenceCoverage: {
         dataSource: "database",
