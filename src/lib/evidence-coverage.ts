@@ -3,7 +3,13 @@ import {
   type ClaimSourcePacketCompletenessStatus,
   summarizeClaimSourcePackets
 } from "@/lib/source-packet";
-import type { Claim, ConfidenceLevel, EvidenceDashboardData, EvidenceLabel } from "@/lib/types";
+import type {
+  Claim,
+  ConfidenceLevel,
+  EvidenceDashboardData,
+  EvidenceLabel,
+  Reference
+} from "@/lib/types";
 
 export interface EvidenceCoverageClaimGap {
   claimId: string;
@@ -33,6 +39,24 @@ export interface EvidenceCoverageReviewBacklogItem {
   reviewStatus: string;
 }
 
+export interface EvidenceCoverageReviewSampleItem {
+  claimId: string;
+  interventionId: string;
+  nextAction: string;
+  outcome: Claim["outcome"];
+  priority: number;
+  priorityReasons: string[];
+  referenceIds: string[];
+  studyIds: string[];
+}
+
+export interface EvidenceCoverageReviewSamplingPlan {
+  batchSize: number;
+  items: EvidenceCoverageReviewSampleItem[];
+  nextAction: string;
+  readyClaims: number;
+}
+
 export interface EvidenceCoverageSummary {
   claimReviewBacklog: EvidenceCoverageReviewBacklogItem[];
   completeSourcePackets: number;
@@ -41,6 +65,7 @@ export interface EvidenceCoverageSummary {
   interventionGaps: EvidenceCoverageInterventionGap[];
   interventionsWithClaims: number;
   interventionsWithoutClaims: string[];
+  reviewSamplingPlan: EvidenceCoverageReviewSamplingPlan;
   totalClaims: number;
   totalInterventions: number;
   unreviewedClaims: number;
@@ -86,6 +111,12 @@ export function summarizeEvidenceCoverage(data: EvidenceDashboardData): Evidence
     })
     .filter((item): item is EvidenceCoverageReviewBacklogItem => Boolean(item))
     .sort(compareReviewBacklogItems);
+  const reviewSamplingPlan = evidenceCoverageReviewSamplingPlan({
+    claimReviewBacklog,
+    claims: data.claims,
+    referencesById,
+    studies: data.studies
+  });
   const interventionGaps = data.interventions
     .filter((intervention) => !claimInterventionIds.has(intervention.id))
     .map((intervention) => ({
@@ -105,10 +136,72 @@ export function summarizeEvidenceCoverage(data: EvidenceDashboardData): Evidence
     interventionGaps,
     interventionsWithClaims: claimInterventionIds.size,
     interventionsWithoutClaims: interventionGaps.map((gap) => gap.interventionId),
+    reviewSamplingPlan,
     totalClaims: data.claims.length,
     totalInterventions: data.interventions.length,
     unreviewedClaims: data.claims.filter((claim) => claim.reviewStatus !== "Human reviewed")
       .length
+  };
+}
+
+function evidenceCoverageReviewSamplingPlan({
+  claimReviewBacklog,
+  claims,
+  referencesById,
+  studies
+}: {
+  claimReviewBacklog: EvidenceCoverageReviewBacklogItem[];
+  claims: Claim[];
+  referencesById: Map<string, Reference>;
+  studies: EvidenceDashboardData["studies"];
+}): EvidenceCoverageReviewSamplingPlan {
+  const claimById = new Map(claims.map((claim) => [claim.id, claim]));
+  const readyBacklog = claimReviewBacklog.filter(
+    (item) =>
+      item.reviewStatus !== "Human reviewed" && item.packetStatus === "complete"
+  );
+  const batchSize = Math.min(3, readyBacklog.length);
+  const items = readyBacklog.slice(0, batchSize).flatMap((item) => {
+    const claim = claimById.get(item.claimId);
+
+    if (!claim) {
+      return [];
+    }
+
+    const packet = buildClaimSourcePacket({
+      claim,
+      referencesById,
+      studies
+    });
+
+    return [
+      {
+        claimId: item.claimId,
+        interventionId: item.interventionId,
+        nextAction:
+          "Review the linked references and structured study extraction before changing this claim's review status.",
+        outcome: item.outcome,
+        priority: item.priority,
+        priorityReasons: item.priorityReasons,
+        referenceIds: packet.referenceIds,
+        studyIds: packet.referenceIds.flatMap((referenceId) =>
+          packet.studies
+            .filter((study) => study.referenceId === referenceId)
+            .map((study) => study.id)
+            .sort()
+        )
+      }
+    ];
+  });
+
+  return {
+    batchSize,
+    items,
+    nextAction:
+      items.length > 0
+        ? "Human review this sampled batch first; do not update review status until the cited packet and extraction are checked."
+        : "No complete unreviewed source packets are ready for sampling.",
+    readyClaims: readyBacklog.length
   };
 }
 
