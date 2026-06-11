@@ -29,6 +29,7 @@ export interface LaunchReadinessPromotion {
 
 export interface LaunchReadinessScheduledIngestion {
   hostedCronReady?: boolean;
+  hostedRunGateReady?: boolean;
   missingEnv?: string[];
   noAutoPromotion?: boolean;
   retryAutomationReady?: boolean;
@@ -269,6 +270,7 @@ function scheduledIngestionCheck(
 
   const blockers = [
     ...(scheduledIngestion.hostedCronReady ? [] : ["hosted-cron"]),
+    ...(scheduledIngestion.hostedRunGateReady ? [] : ["hosted-run-gate"]),
     ...(scheduledIngestion.retryAutomationReady ? [] : ["retry-policy"]),
     ...(scheduledIngestion.noAutoPromotion ? [] : ["no-auto-promotion"])
   ];
@@ -278,7 +280,8 @@ function scheduledIngestionCheck(
       id: "scheduled-ingestion",
       label: "Scheduled source ingestion",
       status: "ready",
-      detail: "Hosted cron, retry policy, and no-auto-promotion evidence are ready."
+      detail:
+        "Hosted cron, hosted-run gate, retry policy, and no-auto-promotion evidence are ready."
     };
   }
 
@@ -291,6 +294,8 @@ function scheduledIngestionCheck(
     nextAction:
       (scheduledIngestion.missingEnv?.length ?? 0) > 0
         ? `Configure scheduled ingestion evidence: ${scheduledIngestion.missingEnv?.join(", ")}.`
+        : blockers.includes("hosted-run-gate")
+          ? "Refresh scheduled ingestion dry-run and verify the hosted-run gate before launch."
         : "Review scheduled ingestion retry policy before launch."
   };
 }

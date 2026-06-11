@@ -84,6 +84,15 @@ describe("scheduled source ingestion dry run", () => {
           retryMode: "manual-reviewed-retry"
         }
       },
+      hostedRunGate: {
+        localCliUnchanged: true,
+        ready: true,
+        routeExposed: false,
+        runOption: "requireHostedRunReadiness",
+        requiresExplicitApply: true,
+        requiresHostedCronReady: true,
+        requiresRetryAutomationReady: true
+      },
       maxJobsPerRun: 2,
       nextAction: "Scheduled run would process 2 queued job(s).",
       noAutoPromotion: true,
@@ -209,6 +218,12 @@ describe("scheduled source ingestion dry run", () => {
             label: "Automatic retries disabled"
           },
           {
+            detail:
+              "Future hosted runs can require hosted cron and retry-policy readiness before processing queued jobs; no hosted write route is exposed.",
+            id: "hosted-run-gate",
+            label: "Hosted-run gate"
+          },
+          {
             detail: "NCBI_TOOL and NCBI_EMAIL are configured.",
             evidenceKeys: ["NCBI_TOOL", "NCBI_EMAIL"],
             id: "ncbi-metadata",
@@ -266,6 +281,34 @@ describe("scheduled source ingestion dry run", () => {
     expect(plan.worksheet.copySafeCommands.some((item) => item.command.includes("--apply"))).toBe(
       false
     );
+  });
+
+  it("reports the future hosted-run gate without exposing a hosted write route", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [],
+      total: 0
+    });
+    listJobsMock.mockResolvedValue([]);
+
+    await expect(planScheduledSourceIngestionDryRun()).resolves.toMatchObject({
+      hostedRunGate: {
+        localCliUnchanged: true,
+        ready: true,
+        routeExposed: false,
+        runOption: "requireHostedRunReadiness",
+        requiresExplicitApply: true,
+        requiresHostedCronReady: true,
+        requiresRetryAutomationReady: true
+      },
+      worksheet: {
+        ready: expect.arrayContaining([
+          expect.objectContaining({
+            id: "hosted-run-gate",
+            label: "Hosted-run gate"
+          })
+        ])
+      }
+    });
   });
 
   it("does not plan new work while jobs are running", async () => {

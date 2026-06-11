@@ -28,6 +28,7 @@ export interface ScheduledIngestionDryRun {
   dedupeReview: ScheduledIngestionDedupeReview;
   dryRun: true;
   failureReview: ScheduledIngestionFailureReview;
+  hostedRunGate: ScheduledIngestionHostedRunGateReview;
   maxJobsPerRun: number;
   nextAction: string;
   noAutoPromotion: true;
@@ -74,6 +75,16 @@ export interface ScheduledIngestionHostedCronReview {
   missingEnv: string[];
   ready: boolean;
   scheduledWritesEnabled: boolean;
+}
+
+export interface ScheduledIngestionHostedRunGateReview {
+  localCliUnchanged: true;
+  ready: true;
+  routeExposed: false;
+  runOption: "requireHostedRunReadiness";
+  requiresExplicitApply: true;
+  requiresHostedCronReady: true;
+  requiresRetryAutomationReady: true;
 }
 
 export interface ScheduledIngestionFailureReview {
@@ -210,6 +221,7 @@ export async function planScheduledSourceIngestionDryRun(
   const retryPolicy = scheduledIngestionRetryPolicyReview(options.env);
   const failureReview = scheduledIngestionFailureReview(failedJobs, retryPolicy);
   const dedupeReview = scheduledIngestionDedupeReview(duplicateIdentityGroups);
+  const hostedRunGate = scheduledIngestionHostedRunGateReview();
   const nextAction = scheduledIngestionNextAction({
     failedCount,
     queuedCount,
@@ -222,6 +234,7 @@ export async function planScheduledSourceIngestionDryRun(
     dedupeReview,
     dryRun: true,
     failureReview,
+    hostedRunGate,
     maxJobsPerRun,
     nextAction,
     noAutoPromotion: true,
@@ -507,6 +520,18 @@ function scheduledIngestionDedupeReviewItem(
   };
 }
 
+function scheduledIngestionHostedRunGateReview(): ScheduledIngestionHostedRunGateReview {
+  return {
+    localCliUnchanged: true,
+    ready: true,
+    routeExposed: false,
+    runOption: "requireHostedRunReadiness",
+    requiresExplicitApply: true,
+    requiresHostedCronReady: true,
+    requiresRetryAutomationReady: true
+  };
+}
+
 function scheduledIngestionWorksheet({
   dedupeReview,
   failureReview,
@@ -548,6 +573,11 @@ function scheduledIngestionWorksheet({
       id: "automatic-retries-disabled",
       label: "Automatic retries disabled",
       detail: "Failed jobs stay human-reviewed until an explicit retry policy is approved."
+    },
+    {
+      id: "hosted-run-gate",
+      label: "Hosted-run gate",
+      detail: "Future hosted runs can require hosted cron and retry-policy readiness before processing queued jobs; no hosted write route is exposed."
     }
   ];
   const blocked: ScheduledIngestionWorksheetItem[] = [];

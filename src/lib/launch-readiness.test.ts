@@ -37,6 +37,7 @@ describe("launch readiness report", () => {
       },
       scheduledIngestion: {
         hostedCronReady: false,
+        hostedRunGateReady: true,
         missingEnv: ["DATABASE_URL", "APEX_DATA_SOURCE=database"],
         noAutoPromotion: true,
         retryAutomationReady: false
@@ -207,6 +208,7 @@ describe("launch readiness report", () => {
       },
       scheduledIngestion: {
         hostedCronReady: false,
+        hostedRunGateReady: true,
         missingEnv: ["DATABASE_URL", "APEX_DATA_SOURCE=database"],
         noAutoPromotion: true,
         retryAutomationReady: false
@@ -231,6 +233,56 @@ describe("launch readiness report", () => {
         blockedWriteTokens.some((token) => item.command.includes(token))
       )
     ).toBe(false);
+  });
+
+  it("blocks scheduled ingestion when the hosted-run gate is not verified", () => {
+    const report = buildLaunchReadinessReport({
+      env: {
+        APEX_ADMIN_FLOW_SMOKE_PASSED_AT: "recorded",
+        APEX_FULLY_LIVE_LAUNCH_APPROVED_AT: "recorded",
+        APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT: "recorded",
+        APEX_PUBLIC_SMOKE_PASSED_AT: "recorded"
+      },
+      evidenceCoverage: {
+        dataSource: "database",
+        report: coverageSummary({
+          claimReviewBacklog: 0,
+          humanReviewedClaims: 7,
+          interventionGaps: 0
+        })
+      },
+      files: {
+        launchChecklist: true,
+        postLaunchReviewTemplate: true
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      operations: readinessReport([]) as OperationsReadinessReport,
+      operator: readinessReport([]) as OperatorReadinessReport,
+      production: readinessReport([]) as ProductionReadinessReport,
+      promotion: {
+        snapshot: promotionSnapshot({ blockedCount: 0, readyCount: 1, total: 1 })
+      },
+      scheduledIngestion: {
+        hostedCronReady: true,
+        hostedRunGateReady: false,
+        missingEnv: [],
+        noAutoPromotion: true,
+        retryAutomationReady: true
+      }
+    } satisfies LaunchReadinessContext);
+
+    expect(report.overall).toBe("blocked");
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          blockerIds: ["hosted-run-gate"],
+          id: "scheduled-ingestion",
+          nextAction:
+            "Refresh scheduled ingestion dry-run and verify the hosted-run gate before launch.",
+          status: "blocked"
+        })
+      ])
+    );
   });
 
   it("reports ready only when launch evidence and nested gates are ready", () => {
@@ -262,6 +314,7 @@ describe("launch readiness report", () => {
       },
       scheduledIngestion: {
         hostedCronReady: true,
+        hostedRunGateReady: true,
         missingEnv: [],
         noAutoPromotion: true,
         retryAutomationReady: true
@@ -312,6 +365,7 @@ describe("launch readiness report", () => {
       },
       scheduledIngestion: {
         hostedCronReady: true,
+        hostedRunGateReady: true,
         missingEnv: [],
         noAutoPromotion: true,
         retryAutomationReady: true
@@ -360,6 +414,7 @@ describe("launch readiness report", () => {
       },
       scheduledIngestion: {
         hostedCronReady: true,
+        hostedRunGateReady: true,
         missingEnv: [],
         noAutoPromotion: true,
         retryAutomationReady: true
