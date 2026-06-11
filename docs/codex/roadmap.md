@@ -55,6 +55,7 @@ The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel
    Done when: source-candidate review, accept/reject, claim linking, extraction, and promotion controls are available only to authenticated operators and every write is explicit and auditable.
    Validate with: route authorization tests, write-boundary tests, and manual operator-flow QA.
    In progress 2026-06-11: added `docs/codex/plans/2026-06-11-authenticated-operator-surfaces.md`, Auth.js-compatible Prisma models, operator role/status models, and append-only operator audit schema foundation. Local migration `20260611131000_operator_auth_foundation` applied successfully with `npm run db:migrate`; `npm run db:validate`, `npm run db:generate`, public read-only boundary tests, and `npm run typecheck` passed.
+   In progress 2026-06-11: added tested operator authorization policy helpers in `src/lib/operator/authorization.ts`; writes fail closed unless `APEX_OPERATOR_WRITES_ENABLED=true`, disabled operators are rejected, and role gates cover audit, candidate review, curation, promotion, and operator management. Validation: `npm run test -- src/lib/operator/authorization.test.ts src/app/api/live-source-readonly-boundary.test.ts src/app/api/source-search-routes.test.ts src/components/evidence-dashboard-live-preview-boundary.test.ts`; `npm run typecheck`.
 
 7. [ ] Implement human-reviewed curation promotion.
    Done when: accepted candidates can become public evidence packets only after claim link, structured extraction, citation traceability, and human review are complete.
