@@ -6,6 +6,7 @@ const localFilesReady = {
   auditedActionWrappers: true,
   authRoute: true,
   bootstrapScript: true,
+  manualQaChecklist: true,
   operatorPage: true,
   promotionReadiness: true,
   reviewQueue: true
@@ -20,7 +21,7 @@ describe("operator readiness report", () => {
     });
 
     expect(report.overall).toBe("blocked");
-    expect(report.counts.ready).toBe(7);
+    expect(report.counts.ready).toBe(8);
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -114,7 +115,8 @@ describe("operator readiness report", () => {
       files: {
         ...localFilesReady,
         auditedActionWrappers: false,
-        authRoute: false
+        authRoute: false,
+        manualQaChecklist: false
       },
       generatedAt: new Date("2026-06-11T00:00:00.000Z")
     });
@@ -128,6 +130,10 @@ describe("operator readiness report", () => {
         }),
         expect.objectContaining({
           id: "auth-route",
+          status: "blocked"
+        }),
+        expect.objectContaining({
+          id: "manual-qa-checklist",
           status: "blocked"
         })
       ])

@@ -83,6 +83,8 @@ Use separate GitHub OAuth apps for preview/staging and production so callback UR
 5. Add audited candidate review writes behind `APEX_OPERATOR_WRITES_ENABLED`.
 6. Add promotion workflows only after candidate review writes are tested and auditable.
 
+Manual QA before browser write controls: `docs/codex/operator-manual-qa-checklist.md`.
+
 ## References
 
 - Next.js authentication guide: https://nextjs.org/docs/app/guides/authentication

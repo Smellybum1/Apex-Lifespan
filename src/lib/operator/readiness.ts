@@ -18,6 +18,7 @@ export interface OperatorReadinessFiles {
   auditedActionWrappers: boolean;
   authRoute: boolean;
   bootstrapScript: boolean;
+  manualQaChecklist: boolean;
   operatorPage: boolean;
   promotionReadiness: boolean;
   reviewQueue: boolean;
@@ -40,6 +41,7 @@ const FILE_PATHS: Record<keyof OperatorReadinessFiles, string> = {
   auditedActionWrappers: "src/lib/operator/source-candidate-actions.ts",
   authRoute: "src/app/api/auth/[...nextauth]/route.ts",
   bootstrapScript: "scripts/operator-bootstrap.ts",
+  manualQaChecklist: "docs/codex/operator-manual-qa-checklist.md",
   operatorPage: "src/app/operator/page.tsx",
   promotionReadiness: "src/lib/operator/curation-promotion.ts",
   reviewQueue: "src/lib/operator/review-queue.ts"
@@ -89,6 +91,12 @@ export function buildOperatorReadinessReport(
       pathLabel: FILE_PATHS.bootstrapScript,
       present: files.bootstrapScript
     }),
+    localFileCheck({
+      id: "manual-qa-checklist",
+      label: "Manual QA checklist",
+      pathLabel: FILE_PATHS.manualQaChecklist,
+      present: files.manualQaChecklist
+    }),
     authConfigurationCheck(context.env),
     booleanEvidenceCheck({
       env: context.env,
@@ -113,7 +121,7 @@ export function buildOperatorReadinessReport(
       key: "APEX_OPERATOR_FLOW_QA_REVIEWED_AT",
       label: "Manual operator-flow QA",
       nextAction:
-        "Complete manual operator sign-in, access, sign-out, disabled-user, and read-only queue QA, then record APEX_OPERATOR_FLOW_QA_REVIEWED_AT."
+        "Complete docs/codex/operator-manual-qa-checklist.md, then record APEX_OPERATOR_FLOW_QA_REVIEWED_AT."
     }),
     timestampEvidenceCheck({
       env: context.env,
@@ -121,7 +129,7 @@ export function buildOperatorReadinessReport(
       key: "APEX_OPERATOR_BROWSER_WRITE_CONTROLS_APPROVED_AT",
       label: "Browser write controls approval",
       nextAction:
-        "Approve browser write controls only after non-production audited write QA, then record APEX_OPERATOR_BROWSER_WRITE_CONTROLS_APPROVED_AT."
+        "Approve browser write controls only after non-production audited write QA in docs/codex/operator-manual-qa-checklist.md, then record APEX_OPERATOR_BROWSER_WRITE_CONTROLS_APPROVED_AT."
     })
   ];
   const counts = countStatuses(checks);
@@ -139,6 +147,7 @@ export function readOperatorReadinessFiles(cwd = process.cwd()): OperatorReadine
     auditedActionWrappers: existsSync(path.join(cwd, FILE_PATHS.auditedActionWrappers)),
     authRoute: existsSync(path.join(cwd, FILE_PATHS.authRoute)),
     bootstrapScript: existsSync(path.join(cwd, FILE_PATHS.bootstrapScript)),
+    manualQaChecklist: existsSync(path.join(cwd, FILE_PATHS.manualQaChecklist)),
     operatorPage: existsSync(path.join(cwd, FILE_PATHS.operatorPage)),
     promotionReadiness: existsSync(path.join(cwd, FILE_PATHS.promotionReadiness)),
     reviewQueue: existsSync(path.join(cwd, FILE_PATHS.reviewQueue))
