@@ -207,7 +207,9 @@ export async function getEvidenceDashboardData(): Promise<EvidenceDashboardData>
   }
 
   try {
-    return await getPrismaDashboardData();
+    return await getPrismaDashboardData({
+      strictDatabaseMode: process.env.APEX_DATA_SOURCE === "database"
+    });
   } catch (error) {
     if (process.env.APEX_DATA_SOURCE === "database") {
       throw error;
@@ -232,7 +234,11 @@ function getSeedDashboardData(fallbackReason?: string): EvidenceDashboardData {
   };
 }
 
-async function getPrismaDashboardData(): Promise<EvidenceDashboardData> {
+async function getPrismaDashboardData({
+  strictDatabaseMode = false
+}: {
+  strictDatabaseMode?: boolean;
+} = {}): Promise<EvidenceDashboardData> {
   const [
     dbReferences,
     dbInterventions,
@@ -259,7 +265,13 @@ async function getPrismaDashboardData(): Promise<EvidenceDashboardData> {
   ]);
 
   if (dbInterventions.length === 0 || dbClaims.length === 0) {
-    return getSeedDashboardData("Database connected but has not been seeded yet.");
+    const reason = "Database connected but has not been seeded yet.";
+
+    if (strictDatabaseMode) {
+      throw new Error(reason);
+    }
+
+    return getSeedDashboardData(reason);
   }
 
   return {

@@ -149,6 +149,26 @@ describe("getEvidenceDashboardData data source behavior", () => {
     expect(data.fallbackReason).not.toContain("postgresql://");
   });
 
+  it("falls back to seed data in auto mode when the database is connected but empty", async () => {
+    process.env.DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/apex_lifespan";
+    mockEmptyDatabase();
+
+    const data = await getEvidenceDashboardData();
+
+    expect(data.dataSource).toBe("seed");
+    expect(data.fallbackReason).toBe("Database connected but has not been seeded yet.");
+  });
+
+  it("fails instead of falling back when strict database mode is connected but empty", async () => {
+    process.env.APEX_DATA_SOURCE = "database";
+    process.env.DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/apex_lifespan";
+    mockEmptyDatabase();
+
+    await expect(getEvidenceDashboardData()).rejects.toThrow(
+      "Database connected but has not been seeded yet."
+    );
+  });
+
   it("maps database claim references and study extractions into a complete source packet", async () => {
     process.env.APEX_DATA_SOURCE = "database";
     process.env.DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/apex_lifespan";
@@ -284,6 +304,12 @@ describe("getEvidenceDashboardData data source behavior", () => {
 function expectPrismaFindManyNotCalled() {
   Object.values(prismaFindManyMocks).forEach((findMany) => {
     expect(findMany).not.toHaveBeenCalled();
+  });
+}
+
+function mockEmptyDatabase() {
+  Object.values(prismaFindManyMocks).forEach((findMany) => {
+    findMany.mockResolvedValue([]);
   });
 }
 

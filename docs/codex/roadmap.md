@@ -50,6 +50,7 @@ The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel
    Done when: public deployment intentionally uses `APEX_DATA_SOURCE=database`, the dashboard renders from managed data, and public failure modes stay safe if the database is unreachable.
    Validate with: `npm run test`, `npm run typecheck`, `npm run build`, public smoke, and a database-mode browser review.
    Blocked 2026-06-11: depends on step 3 provisioning managed database URLs and setting `APEX_DATA_SOURCE=database` in the relevant Vercel environment.
+   In progress 2026-06-11: tightened strict database mode so `APEX_DATA_SOURCE=database` now fails closed when PostgreSQL is reachable but has not been seeded with dashboard interventions and claims, instead of silently rendering seed fallback data. Local/auto mode still uses the seed fallback for development convenience. Production database-mode browser review remains blocked on managed database provisioning. Validation passed: dashboard data-source tests, full `npm run test`, `npm run production:readiness`, `npm run launch:readiness`, `npm run db:validate`, `npm run typecheck`, `npm run build`, `npm run lint`, `npm audit`, and `git diff --check`.
 
 5. [x] Design authenticated operator/admin workflow.
    Done when: auth provider, roles, protected routes, audit fields, local-vs-public write boundaries, and emergency disable/rollback behavior are agreed before implementation.
