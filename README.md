@@ -32,6 +32,8 @@ Detailed local database, Windows DLL-lock, reset, and ingestion workflows live i
 
 ## Public MVP Demo Launch
 
+Public MVP URL: `https://apex-lifespan.vercel.app`.
+
 Selected public MVP data mode: `APEX_DATA_SOURCE=seed`. The first public demo is seed-backed and read-only, with user-triggered PubMed and ClinicalTrials.gov preview routes enabled. Do not configure `DATABASE_URL` for the public MVP unless the deployment is deliberately switched to managed PostgreSQL.
 
 Selected deployment path now that GitHub push access is restored: push the reviewed branch to GitHub, merge or select the intended production branch, then import the GitHub repo into Vercel. Manual Vercel CLI deployment from the local checkout remains a fallback. See Vercel's [deploy](https://vercel.com/docs/cli/deploy), [environment variable](https://vercel.com/docs/environment-variables), and [rollback](https://vercel.com/docs/cli/rollback) docs for the operator workflow.
@@ -70,12 +72,14 @@ npm audit
 Production smoke target once deployed:
 
 ```bash
-npm run smoke:public-mvp -- https://your-public-demo-url.example
+npm run smoke:public-mvp -- https://apex-lifespan.vercel.app
 ```
 
 The smoke command verifies the homepage, PubMed and ClinicalTrials.gov live-preview routes, invalid live-source term guards, no-store/noindex response headers, and the AU/TGA, citation, unreviewed-draft, and live-preview caveats.
 
 Rollback path: use `vercel rollback <deployment-url>` or the Vercel dashboard to restore the previous production deployment, then smoke the dashboard and both live-source routes again.
+
+Latest public smoke: passed on 2026-06-11 against `https://apex-lifespan.vercel.app`.
 
 Known MVP limitations: source-candidate review and promotion stay local; accepted `PMID 42141930` remains curation backlog until a human-owned claim-link and structured extraction are completed; live preview results are unreviewed research leads, not public evidence cards.
 

@@ -1,121 +1,89 @@
-# Roadmap: Public Live MVP/Demo
+# Roadmap: Fully Live End Product
 
 Last updated: 2026-06-11
 
 ## Target
 
-Ship a public, read-only Apex Lifespan demo URL that renders the evidence dashboard, keeps AU/TGA and citation caveats visible, supports user-triggered live PubMed and ClinicalTrials.gov previews, and exposes no public review/admin writes.
+Ship Apex Lifespan as a fully live, public evidence intelligence product with managed production data, authenticated human review, scheduled source ingestion, explicit curation promotion, product-level AU/TGA verification workflows, monitoring, backups, privacy/terms, and launch operations.
 
-Recommended MVP path: ship seed-backed first with live preview routes enabled. This avoids blocking the public demo on production curation data while preserving the existing local PostgreSQL workflow for source review.
+The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel.app`. This roadmap starts from that baseline and works toward the production-grade version.
 
 ## Non-Goals
 
-- Public admin/review UI.
-- Automated source-candidate promotion into public evidence.
-- Scheduled ingestion jobs.
-- Full product-level ARTG/AUST verification across the catalog.
-- Medical advice, dosing, sourcing, reconstitution, injection, cycling, or self-administration guidance.
+- Automated promotion of source candidates into public evidence without human review.
+- Public unauthenticated review/admin writes.
+- Medical advice, diagnosis, treatment instructions, peptide sourcing, compounding, reconstitution, injection, cycling, dosing, or self-administration guidance.
+- Product-level ARTG/AUST confidence inferred from generic intervention evidence.
 
-## Current Blockers
+## Current Baseline
 
-- GitHub push limit was lifted on 2026-06-11; pushing to GitHub is allowed when useful.
-- Vercel production deploy on `main` failed on 2026-06-11 because the clean build did not generate Prisma Client before Next type checking; fix is being pushed before the next deploy. No successful public URL exists to smoke test yet.
-- Source-candidate curation is deferred from public MVP scope; latest snapshot still has 49 pending candidates and 1 accepted candidate that remains local claim-link curation backlog.
+- Public MVP/demo URL: `https://apex-lifespan.vercel.app`.
+- Public data mode: `APEX_DATA_SOURCE=seed`.
+- Public routes and dashboard are read-only.
+- Live PubMed and ClinicalTrials.gov previews are user-triggered unreviewed research leads.
+- Source-candidate ingestion/review/promotion remains local and human-owned.
+- Completed public-MVP roadmap archive: `docs/codex/archive/roadmap/2026-06-11-public-live-mvp.md`.
 
 ## Ordered Steps
 
-1. [x] Reconfirm the baseline and publishing constraint.
-   Done when: worktree is clean, branch ahead/behind state is known, and the current no-push constraint is still captured in handoff.
-   Validate with: `git status -sb`, `git log -3 --oneline`.
-   Completed 2026-06-11: `git status -sb` reported `codex/queue-claim-sources...origin/codex/queue-claim-sources [ahead 3]` with a clean worktree; `git log -3 --oneline` reported `9e7c02a Add public MVP roadmap`, `22d17b7 Trim workflow guardrails`, and `6889e65 Record local-only handoff state`; `docs/codex/handoff.md` still records the GitHub no-push constraint.
+1. [ ] Reconfirm the live baseline and repo state.
+   Done when: public smoke still passes, the production branch/commit is known, and the local worktree is clean before new fully-live work starts.
+   Validate with: `git status -sb`, `git log -3 --oneline`, `npm run smoke:public-mvp -- https://apex-lifespan.vercel.app`.
 
-2. [x] Restore local data operations.
-   Done when: Docker Desktop is running, PostgreSQL is healthy, migrations apply cleanly, seed data verifies, and source-candidate DB preflight is reachable.
-   Validate with: `docker compose ps`, `npm run db:migrate`, `npm run db:seed`, `npm run ingest:sources -- --db-status`.
-   Completed 2026-06-11: launched Docker Desktop, `docker compose ps` reported `apexlifespan-postgres-1` healthy on `localhost:5432`; `npm run db:migrate` reported the schema already in sync; `npm run db:seed` reported `Seed integrity verified`; `npm run ingest:sources -- --db-status` reported `reachable=true`.
+2. [ ] Decide the production data architecture.
+   Done when: the managed PostgreSQL provider, region, environment variable model, migration policy, backup expectations, and rollback expectations are documented.
+   Validate with: docs diff review and an explicit decision note in this roadmap or handoff.
 
-3. [x] Freeze the public MVP data mode.
-   Done when: the team has chosen `APEX_DATA_SOURCE=seed` for the first public demo or has explicitly chosen a managed production PostgreSQL database.
-   Recommended decision: use `APEX_DATA_SOURCE=seed` for the public demo, keep source-candidate review local, and graduate to database-backed public data after curation readiness improves.
-   Validate with: README or handoff note naming the selected mode.
-   Completed 2026-06-11: README now names `APEX_DATA_SOURCE=seed` as the selected public MVP data mode, keeps source-candidate review local, and defers managed PostgreSQL for a later production-data milestone.
+3. [ ] Provision production database and secrets.
+   Done when: production/staging database URLs are configured in the hosting environment, secrets are not committed, Prisma can connect, and seed fallback is not accidentally masking production database failures.
+   Validate with: `npm run db:validate`, `npm run db:migrate:deploy` against a non-production rehearsal database, and a production readiness checklist before any production migration.
 
-4. [x] Audit demo content quality.
-   Done when: first-screen claims, source packets, review-status labels, AU/TGA copy, and label-risk empty states are credible enough for a public demo and do not expose placeholder-looking copy in key paths.
-   Validate with: targeted dashboard tests plus manual browser review.
-   Completed 2026-06-11: seed-mode browser review covered desktop and mobile screenshots (`output/playwright/public-mvp-step4-desktop.png`, `output/playwright/public-mvp-step4-mobile.png`); the dashboard showed first-screen claims, source-packet status, review-status labels, AU/TGA product-level caveats, and cautious live-preview idle copy. Replaced public product-card brand copy from internal `Seed example` to `Demo profile`. `npm run db:seed` and `npm run test -- src/components/evidence-dashboard.test.tsx src/lib/source-packet.test.ts src/lib/seed-integrity.test.ts` passed.
+4. [ ] Migrate from seed-backed demo to database-backed public reads.
+   Done when: public deployment intentionally uses `APEX_DATA_SOURCE=database`, the dashboard renders from managed data, and public failure modes stay safe if the database is unreachable.
+   Validate with: `npm run test`, `npm run typecheck`, `npm run build`, public smoke, and a database-mode browser review.
 
-5. [x] Resolve the accepted PMID 42141930 curation decision.
-   Done when: either the accepted candidate is claim-linked and structurally extracted in local DB, or the public MVP explicitly defers source-candidate curation from the public demo scope.
-   Validate with: `npm run ingest:sources -- --candidate-curation-handoff` when DB is available, or a short handoff note if deferred.
-   Completed 2026-06-11 by explicit MVP deferral: `npm run ingest:sources -- --candidate-curation-handoff` still reports `status="Claim link missing"`, `publicSourcePacketReady=false`, `nextWrite="claimLink"`, and `writeReady=true` for `PMID 42141930`, so README keeps it as local curation backlog instead of promoting it into the public MVP.
+5. [ ] Design authenticated operator/admin workflow.
+   Done when: auth provider, roles, protected routes, audit fields, local-vs-public write boundaries, and emergency disable/rollback behavior are agreed before implementation.
+   Validate with: architecture note or plan plus tests proving public routes remain read-only.
 
-6. [x] Confirm public route boundaries.
-   Done when: public API routes remain GET-only/read-only, source-candidate persistence stays out of public app/runtime surfaces, and live preview wording still frames results as unreviewed leads.
-   Validate with: `npm run test -- src/app/api/live-source-readonly-boundary.test.ts src/app/api/source-search-routes.test.ts src/components/evidence-dashboard-live-preview-boundary.test.ts`.
-   Completed 2026-06-11: boundary tests passed with 27 assertions across three files, covering GET-only/read-only route handlers, no source-candidate persistence imports or write surfaces in public runtime files, live preview request normalization, no-store/noindex response headers, public-safe upstream error text, and review-priority score labels.
+6. [ ] Build authenticated review/admin surfaces.
+   Done when: source-candidate review, accept/reject, claim linking, extraction, and promotion controls are available only to authenticated operators and every write is explicit and auditable.
+   Validate with: route authorization tests, write-boundary tests, and manual operator-flow QA.
 
-7. [x] Choose the deployment path.
-   Done when: hosting target, environment variables, build command, start command, and rollback path are documented.
-   Required decision: if GitHub push remains blocked, choose a local-artifact/manual deploy path or wait for push access.
-   Validate with: README or handoff note naming host, deployment mode, and rollback.
-   Completed 2026-06-11: README selects manual Vercel CLI deployment from the local checkout as the no-GitHub path, names `APEX_DATA_SOURCE=seed`, documents build and local production-smoke commands, public smoke targets, and `vercel rollback <deployment-url>` as the rollback path.
-   Updated 2026-06-11: GitHub push access is restored, so the preferred public MVP deployment path is GitHub import to Vercel after pushing this branch.
+7. [ ] Implement human-reviewed curation promotion.
+   Done when: accepted candidates can become public evidence packets only after claim link, structured extraction, citation traceability, and human review are complete.
+   Validate with: candidate-to-public promotion tests, source-packet tests, and a dry-run promotion of `PMID 42141930` before any public promotion.
 
-8. [x] Prepare production environment configuration.
-   Done when: `.env.example` covers the public demo knobs, secrets are not committed, sidecar tokens remain local-only, and public deploy mode has a clear `APEX_DATA_SOURCE` value.
-   Validate with: env diff review and `git diff --check`.
-   Completed 2026-06-11: `.env.example` documents local `auto`, public MVP/demo `seed`, and managed-production `database` values for `APEX_DATA_SOURCE`; README selects `seed` for public MVP, leaves `DATABASE_URL` out of the public demo path, and keeps Codex sidecar variables local-only.
+8. [ ] Add scheduled source ingestion.
+   Done when: PubMed and ClinicalTrials.gov ingestion jobs run on a schedule with rate limits, retries, dedupe, failure reporting, dry-run support, and no automatic public promotion.
+   Validate with: scheduler dry run, integration tests with mocked upstreams, and source policy/rate-limit review.
 
-9. [x] Run full local release validation.
-   Done when: core checks pass from a clean worktree after stopping the dev server.
-   Validate with: `npm run test`, `npm run lint`, `npm run dev:stop`, `npm run typecheck`, `npm run build`, `npm audit`.
-   Completed 2026-06-11 for the current local production build: clean worktree, no dev server running, `npm run test` passed 21 files/336 tests, `npm run lint` passed, `npm run dev:stop` found no listener, `npm run typecheck` passed, `npm run build` passed, and `npm audit` found 0 vulnerabilities. Rerun if deployment config or code changes before public deploy.
+9. [ ] Expand evidence and intervention coverage.
+   Done when: priority interventions and claims have reviewed evidence packets, clear population/dose/form boundaries, and visible uncertainty labels.
+   Validate with: seed/database integrity checks, source-packet tests, review sampling, and dashboard QA.
 
-10. [x] Run browser QA on the production build.
-    Done when: desktop and mobile views render without obvious layout overlap, live preview controls are usable, empty/error states are cautious, and first-viewport content communicates the product clearly.
-    Validate with: local production build smoke and screenshots.
-    Completed 2026-06-11 in seed-mode production server smoke: desktop and mobile screenshots saved at `output/playwright/public-mvp-step10-prod-desktop.png` and `output/playwright/public-mvp-step10-prod-mobile.png`; PubMed and ClinicalTrials.gov preview controls both returned live results with review-priority/research-lead caveats, captured at `output/playwright/public-mvp-step10-prod-pubmed-preview.png` and `output/playwright/public-mvp-step10-prod-trials-preview.png`. Stopped the production server afterward with `npm run dev:stop`.
+10. [ ] Add product-level AU/TGA verification workflow.
+    Done when: product-level ARTG/AUST evidence can be tracked separately from ingredient-level evidence, with confidence labels and stale/unknown states.
+    Validate with: regulatory data tests, UI review of unknown/stale states, and no inference from generic intervention evidence.
 
-11. [ ] Deploy the public MVP/demo.
-    Done when: a public HTTPS URL renders the dashboard and both live preview routes respond with safe public behavior.
-    Validate with: public URL smoke test, `/api/pubmed/search?term=creatine`, `/api/trials/search?term=creatine`, invalid-term checks, and response header checks for live routes.
-    Prepared 2026-06-11: added `npm run smoke:public-mvp -- <url>` to verify the deployed homepage, live PubMed and ClinicalTrials.gov routes, invalid-term guards, no-store/noindex headers, and public demo caveats. The command passed against `http://127.0.0.1:3000` on a seed-mode production server.
-    Updated 2026-06-11: first Vercel production build from `main` failed at `prisma/seed.ts` because `@prisma/client` had not been generated in the clean install. `npm run build` now runs the Prisma generation helper first, with a build-time placeholder `DATABASE_URL` only when the public seed-mode deploy omits a real database URL.
-    Blocked 2026-06-11: Vercel has not produced a successful public HTTPS URL to smoke test yet.
+11. [ ] Add observability, backups, privacy, and operations.
+    Done when: uptime/error monitoring, deployment alerts, database backups/restore rehearsal, privacy/terms copy, and operator runbooks are in place.
+    Validate with: alert test, backup restore rehearsal, docs review, and deployment rollback drill.
 
-12. [ ] Publish launch handoff.
-    Done when: README or handoff includes the public URL, selected data mode, known limitations, rollback path, and remaining fully-live gaps.
-    Validate with: docs diff review and `git diff --check`.
-    Prepared 2026-06-11: added `docs/codex/public-mvp-launch-handoff.md` with selected seed mode, no-GitHub manual Vercel path, predeploy validation, final public smoke command, known limitations, rollback, and fully-live gaps.
-    Blocked 2026-06-11: depends on step 11 producing a public URL and final public smoke evidence.
+12. [ ] Run full product QA and hardening.
+    Done when: accessibility, mobile/desktop layout, performance, security headers, dependency audit, and regression suites pass for production data mode.
+    Validate with: `npm run test`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm audit`, public smoke, browser QA, and accessibility/performance checks.
 
-13. [ ] Rollover this roadmap.
-    Done when: every step above is complete, this file is archived, and a new `docs/codex/roadmap.md` is created for the fully live end product.
-    Archive path: `docs/codex/archive/roadmap/YYYY-MM-DD-public-live-mvp.md`.
-    Required successor title: `# Roadmap: Fully Live End Product`.
-    Blocked 2026-06-11: public MVP roadmap cannot roll over until the selected manual Vercel deployment produces a public URL and steps 11 and 12 are complete.
+13. [ ] Launch the fully live product and monitor post-launch.
+    Done when: production database mode is live, authenticated workflows are operational, scheduled ingestion is monitored, public smoke passes, rollback is rehearsed, and post-launch issues are tracked.
+    Validate with: launch checklist, public URL smoke, admin-flow smoke, monitoring confirmation, and a 24-48 hour post-launch review.
 
 ## Automatic Rollover Rule
 
-When step 13 is reached, do this in the same local change:
+When step 13 is complete, do this in the same local change:
 
-1. Move this public-MVP roadmap to `docs/codex/archive/roadmap/YYYY-MM-DD-public-live-mvp.md`.
-2. Create a fresh `docs/codex/roadmap.md` for the fully live end product.
-3. Seed the successor roadmap with ordered steps covering production database, authenticated review/admin workflow, scheduled ingestion, curation promotion, broader evidence coverage, regulatory/product verification, monitoring, backups, privacy/terms, and launch operations.
-4. Update `docs/codex/handoff.md` with the archive path and the new roadmap target.
-5. Commit locally. Do not push while the GitHub push limit remains active.
-
-## Successor Roadmap Seed
-
-Use this outline for the replacement roadmap after the public MVP/demo ships:
-
-1. Production data platform and migrations.
-2. Authenticated operator/admin review workflow.
-3. Scheduled source ingestion with rate limits and failure handling.
-4. Human-reviewed curation promotion from candidate to public evidence packet.
-5. Expanded evidence and intervention coverage.
-6. Product-level AU/TGA verification workflow.
-7. Observability, backups, privacy/terms, and operational runbooks.
-8. Performance, accessibility, and public analytics.
-9. Fully live launch checklist and post-launch monitoring.
+1. Move this roadmap to `docs/codex/archive/roadmap/YYYY-MM-DD-fully-live-end-product.md`.
+2. Create a fresh `docs/codex/roadmap.md` for the next operating phase.
+3. Seed the successor roadmap with ordered steps for coverage growth, quality operations, user feedback, analytics, and reliability improvements.
+4. Update `docs/codex/handoff.md` with the archive path and new roadmap target.
+5. Commit and push when useful.
