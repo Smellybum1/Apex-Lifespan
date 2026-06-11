@@ -12,6 +12,10 @@ type RouteSmoke = {
 type PageSmoke = {
   path: string;
   label: string;
+  requiredAnyText?: Array<{
+    label: string;
+    values: string[];
+  }>;
   requiredText: string[];
 };
 
@@ -23,13 +27,18 @@ const pageSmokes: PageSmoke[] = [
       "Apex Lifespan",
       "AU",
       "TGA",
-      "Seed fallback",
       "Unreviewed AI draft",
       "Source packet",
       "Live PubMed results are unreviewed citation leads",
       "Registry records are research leads, not proof of benefit",
       'href="/privacy"',
       'href="/terms"'
+    ],
+    requiredAnyText: [
+      {
+        label: "data source badge",
+        values: ["Seed fallback", "Database-backed"]
+      }
     ]
   },
   {
@@ -111,6 +120,8 @@ async function main() {
     await smokePage(baseUrl, smoke);
   }
 
+  await smokeAnonymousOperatorBoundary(baseUrl);
+
   for (const smoke of routeSmokes) {
     await smokeRoute(baseUrl, smoke);
   }
@@ -152,7 +163,44 @@ async function smokePage(baseUrl: URL, smoke: PageSmoke) {
     }
   }
 
+  for (const requirement of smoke.requiredAnyText ?? []) {
+    if (!requirement.values.some((text) => html.includes(text))) {
+      throw new Error(
+        `${smoke.label} is missing expected ${requirement.label}: ${requirement.values.join(" or ")}`
+      );
+    }
+  }
+
   console.log(`[ok] ${smoke.label}`);
+}
+
+async function smokeAnonymousOperatorBoundary(baseUrl: URL) {
+  const label = "Operator anonymous boundary";
+  const response = await fetchWithTimeout(new URL("/operator", baseUrl));
+
+  expectEqual(response.status, 200, `${label} status`);
+  expectSecurityHeaders(response, label);
+
+  const html = await response.text();
+  const closedStates = ["Operator auth unavailable", "Operator access required"];
+
+  if (!closedStates.some((text) => html.includes(text))) {
+    throw new Error(`${label} must show a closed unauthenticated state.`);
+  }
+
+  for (const text of [
+    "Review console",
+    "Candidate review queue",
+    "Promotion readiness",
+    "pending candidates loaded",
+    "Sign out"
+  ]) {
+    if (html.includes(text)) {
+      throw new Error(`${label} exposed authenticated operator content: ${text}`);
+    }
+  }
+
+  console.log(`[ok] ${label}`);
 }
 
 async function smokeRoute(baseUrl: URL, smoke: RouteSmoke) {
