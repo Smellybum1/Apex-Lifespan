@@ -40,6 +40,7 @@ export interface EvidenceCoverageReviewBacklogItem {
 }
 
 export interface EvidenceCoverageReviewSampleItem {
+  claimBoundary: EvidenceCoverageReviewBoundary;
   claimId: string;
   interventionId: string;
   nextAction: string;
@@ -47,7 +48,18 @@ export interface EvidenceCoverageReviewSampleItem {
   priority: number;
   priorityReasons: string[];
   referenceIds: string[];
+  reviewChecklist: string[];
+  sourcePacketStatus: ClaimSourcePacketCompletenessStatus;
   studyIds: string[];
+}
+
+export interface EvidenceCoverageReviewBoundary {
+  confidenceLevel: ConfidenceLevel;
+  doseFormStudied: string;
+  durationStudied: string;
+  finalLabel: EvidenceLabel;
+  populationStudied: string;
+  reviewStatus: Claim["reviewStatus"];
 }
 
 export interface EvidenceCoverageReviewSamplingPlan {
@@ -256,6 +268,7 @@ function evidenceCoverageReviewSamplingPlan({
 
     return [
       {
+        claimBoundary: evidenceCoverageReviewBoundary(claim),
         claimId: item.claimId,
         interventionId: item.interventionId,
         nextAction:
@@ -264,6 +277,8 @@ function evidenceCoverageReviewSamplingPlan({
         priority: item.priority,
         priorityReasons: item.priorityReasons,
         referenceIds: packet.referenceIds,
+        reviewChecklist: evidenceCoverageReviewChecklist({ claim, packet }),
+        sourcePacketStatus: packet.completeness.status,
         studyIds: packet.referenceIds.flatMap((referenceId) =>
           packet.studies
             .filter((study) => study.referenceId === referenceId)
@@ -283,6 +298,50 @@ function evidenceCoverageReviewSamplingPlan({
         : "No complete unreviewed source packets are ready for sampling.",
     readyClaims: readyBacklog.length
   };
+}
+
+function evidenceCoverageReviewBoundary(claim: Claim): EvidenceCoverageReviewBoundary {
+  return {
+    confidenceLevel: claim.confidenceLevel,
+    doseFormStudied: claim.doseFormStudied,
+    durationStudied: claim.durationStudied,
+    finalLabel: claim.finalLabel,
+    populationStudied: claim.populationStudied,
+    reviewStatus: claim.reviewStatus
+  };
+}
+
+function evidenceCoverageReviewChecklist({
+  claim,
+  packet
+}: {
+  claim: Claim;
+  packet: ReturnType<typeof buildClaimSourcePacket>;
+}) {
+  const checklist = [
+    "Confirm the cited references and structured studies match this claim's population, outcome, comparator, and uncertainty label.",
+    "Check population, dose/form, duration, safety notes, and applicability notes before changing review status.",
+    `Verify source packet status is still ${packet.completeness.status} and every linked reference has traceable extraction.`,
+    "Leave review status unchanged until a human reviewer records the evidence decision."
+  ];
+
+  if (claim.finalLabel === "Regulatory Concern") {
+    checklist.splice(
+      3,
+      0,
+      "Preserve regulatory-concern framing and do not add peptide sourcing, compounding, injection, cycling, or self-administration guidance."
+    );
+  }
+
+  if (claim.outcome === "Safety/adverse effects") {
+    checklist.splice(
+      3,
+      0,
+      "Confirm adverse-event and upper-limit wording does not imply product safety or TGA clearance."
+    );
+  }
+
+  return checklist;
 }
 
 function evidenceCoverageReviewBacklogItem({

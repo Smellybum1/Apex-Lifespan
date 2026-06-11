@@ -177,6 +177,14 @@ describe("evidence coverage summary", () => {
         batchSize: 3,
         items: [
           {
+            claimBoundary: {
+              confidenceLevel: "Very low",
+              doseFormStudied: "Not provided; self-administration details are out of scope.",
+              durationStudied: "Not established for public guidance.",
+              finalLabel: "Regulatory Concern",
+              populationStudied: "Human clinical evidence is limited in the seed data.",
+              reviewStatus: "Unreviewed AI draft"
+            },
             claimId: "bpc-157-injury-healing",
             interventionId: "bpc-157",
             nextAction:
@@ -189,9 +197,25 @@ describe("evidence coverage summary", () => {
               "Regulatory concern label"
             ],
             referenceIds: ["tga-safety-alerts", "fda-bpc-157-category-2"],
+            reviewChecklist: [
+              "Confirm the cited references and structured studies match this claim's population, outcome, comparator, and uncertainty label.",
+              "Check population, dose/form, duration, safety notes, and applicability notes before changing review status.",
+              "Verify source packet status is still complete and every linked reference has traceable extraction.",
+              "Preserve regulatory-concern framing and do not add peptide sourcing, compounding, injection, cycling, or self-administration guidance.",
+              "Leave review status unchanged until a human reviewer records the evidence decision."
+            ],
+            sourcePacketStatus: "complete",
             studyIds: ["study-tga-unapproved-peptides", "study-fda-bpc-157"]
           },
           {
+            claimBoundary: {
+              confidenceLevel: "High",
+              doseFormStudied: "D2 or D3; dosing must be matched to labs and clinical context.",
+              durationStudied: "Varies by deficiency and monitoring plan.",
+              finalLabel: "Conditional / Biomarker-Gated",
+              populationStudied: "People with low vitamin D status or deficiency contexts.",
+              reviewStatus: "Unreviewed AI draft"
+            },
             claimId: "vitamin-d-deficiency",
             interventionId: "vitamin-d",
             nextAction:
@@ -205,9 +229,26 @@ describe("evidence coverage summary", () => {
               "High confidence draft"
             ],
             referenceIds: ["ods-vitamin-d"],
+            reviewChecklist: [
+              "Confirm the cited references and structured studies match this claim's population, outcome, comparator, and uncertainty label.",
+              "Check population, dose/form, duration, safety notes, and applicability notes before changing review status.",
+              "Verify source packet status is still complete and every linked reference has traceable extraction.",
+              "Confirm adverse-event and upper-limit wording does not imply product safety or TGA clearance.",
+              "Leave review status unchanged until a human reviewer records the evidence decision."
+            ],
+            sourcePacketStatus: "complete",
             studyIds: ["study-vitamin-d-ods"]
           },
           {
+            claimBoundary: {
+              confidenceLevel: "High",
+              doseFormStudied:
+                "Creatine monohydrate; dose details must be checked per study.",
+              durationStudied: "Varies by trial and review.",
+              finalLabel: "Core Evidence-Based",
+              populationStudied: "Adults in exercise and sport nutrition literature.",
+              reviewStatus: "Unreviewed AI draft"
+            },
             claimId: "creatine-strength",
             interventionId: "creatine",
             nextAction:
@@ -220,6 +261,13 @@ describe("evidence coverage summary", () => {
               "High confidence draft"
             ],
             referenceIds: ["issn-creatine-2017"],
+            reviewChecklist: [
+              "Confirm the cited references and structured studies match this claim's population, outcome, comparator, and uncertainty label.",
+              "Check population, dose/form, duration, safety notes, and applicability notes before changing review status.",
+              "Verify source packet status is still complete and every linked reference has traceable extraction.",
+              "Leave review status unchanged until a human reviewer records the evidence decision."
+            ],
+            sourcePacketStatus: "complete",
             studyIds: ["study-creatine-issn"]
           }
         ],
@@ -244,18 +292,39 @@ describe("evidence coverage summary", () => {
           "Human review this sampled batch first; do not update review status until the cited packet and extraction are checked.",
         readyReviewBatch: expect.arrayContaining([
           expect.objectContaining({
+            claimBoundary: expect.objectContaining({
+              finalLabel: "Regulatory Concern",
+              populationStudied: "Human clinical evidence is limited in the seed data."
+            }),
             claimId: "bpc-157-injury-healing",
             referenceIds: ["tga-safety-alerts", "fda-bpc-157-category-2"],
+            reviewChecklist: expect.arrayContaining([
+              "Preserve regulatory-concern framing and do not add peptide sourcing, compounding, injection, cycling, or self-administration guidance."
+            ]),
+            sourcePacketStatus: "complete",
             studyIds: ["study-tga-unapproved-peptides", "study-fda-bpc-157"]
           }),
           expect.objectContaining({
+            claimBoundary: expect.objectContaining({
+              finalLabel: "Conditional / Biomarker-Gated",
+              populationStudied: "People with low vitamin D status or deficiency contexts."
+            }),
             claimId: "vitamin-d-deficiency",
             referenceIds: ["ods-vitamin-d"],
+            reviewChecklist: expect.arrayContaining([
+              "Confirm adverse-event and upper-limit wording does not imply product safety or TGA clearance."
+            ]),
+            sourcePacketStatus: "complete",
             studyIds: ["study-vitamin-d-ods"]
           }),
           expect.objectContaining({
+            claimBoundary: expect.objectContaining({
+              finalLabel: "Core Evidence-Based",
+              populationStudied: "Adults in exercise and sport nutrition literature."
+            }),
             claimId: "creatine-strength",
             referenceIds: ["issn-creatine-2017"],
+            sourcePacketStatus: "complete",
             studyIds: ["study-creatine-issn"]
           })
         ]),
