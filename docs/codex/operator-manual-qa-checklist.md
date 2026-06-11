@@ -61,4 +61,6 @@ After recording evidence, rerun:
 npm run operator:readiness
 ```
 
+The readiness report includes `worksheet.copySafeCommands` for refreshing readiness, checking anonymous `/operator` boundaries, dry-running an operator bootstrap plan, and refreshing launch readiness. Treat those as copy-safe starting points; any write still requires the separate documented `--apply`, matching confirmation email, and non-production write gate.
+
 Do not copy OAuth secrets, session secrets, database passwords, source-candidate private notes, or operator tokens into docs, commits, screenshots, or public routes.

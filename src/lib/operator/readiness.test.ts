@@ -26,6 +26,55 @@ describe("operator readiness report", () => {
 
     expect(report.overall).toBe("blocked");
     expect(report.counts.ready).toBe(12);
+    expect(report.worksheet.copySafeCommands).toEqual([
+      {
+        command: "npm run operator:readiness",
+        id: "operator-readiness",
+        label: "Refresh operator readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck operator auth, local artifacts, and manual QA evidence without printing secret values."
+      },
+      {
+        command: "npm run operator:smoke -- <base-url>",
+        id: "operator-smoke-closed",
+        label: "Smoke anonymous operator boundary",
+        mode: "read-only",
+        purpose: "Verify /operator stays closed to anonymous users and does not expose review content."
+      },
+      {
+        command: "npm run operator:smoke -- <base-url> --expect-auth-unavailable",
+        id: "operator-smoke-auth-unavailable",
+        label: "Smoke auth-unavailable operator boundary",
+        mode: "read-only",
+        purpose: "Verify an environment without auth secrets shows the closed auth-unavailable state."
+      },
+      {
+        command: "npm run operator:smoke -- <base-url> --expect-auth-required",
+        id: "operator-smoke-auth-required",
+        label: "Smoke auth-required operator boundary",
+        mode: "read-only",
+        purpose: "Verify configured auth shows the closed sign-in-required state before operator login."
+      },
+      {
+        command:
+          'npm run operator:bootstrap -- --email operator@example.com --role REVIEWER --note "Non-production operator QA bootstrap"',
+        id: "operator-bootstrap-plan",
+        label: "Plan operator bootstrap",
+        mode: "dry-run",
+        purpose: "Preview a local operator account bootstrap plan without writing to the database."
+      },
+      {
+        command: "npm run launch:readiness",
+        id: "launch-readiness",
+        label: "Refresh aggregate launch readiness",
+        mode: "read-only",
+        purpose: "Recheck fully-live launch gates after operator evidence changes."
+      }
+    ]);
+    expect(
+      report.worksheet.copySafeCommands.some((item) => item.command.includes("--apply"))
+    ).toBe(false);
     expect(report.worksheet.readyLocalArtifacts.map((item) => item.id)).toEqual([
       "operator-page",
       "auth-route",
