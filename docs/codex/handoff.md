@@ -14,6 +14,7 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 - Branch: `codex/queue-claim-sources`; latest pre-trim commit was `6889e65 Record local-only handoff state`.
 - GitHub push limit remains active. Do not push to GitHub; make local commits only until the user lifts this constraint.
 - Docker/PostgreSQL is not running as of 2026-06-11; `npm run ingest:sources -- --db-status` cannot reach `localhost:5432`.
+- Current roadmap: `docs/codex/roadmap.md` targets the public live MVP/demo and includes the automatic rollover rule for the fully live end-product roadmap.
 
 ## Keep
 

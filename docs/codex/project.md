@@ -46,6 +46,7 @@ Compact, stable Codex state. Do not turn this into a command catalog or progress
 
 ## Reference Docs
 
+- Roadmap: `docs/codex/roadmap.md`.
 - Local DB and operator setup: `docs/codex/reference/local-operations.md`.
 - Full source-candidate command catalog: `docs/codex/reference/source-candidate-command-reference.md`.
 - Current/resume-only state: `docs/codex/handoff.md`.
