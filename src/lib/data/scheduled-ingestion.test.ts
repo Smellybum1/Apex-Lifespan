@@ -6,10 +6,12 @@ import {
   runNextSourceCandidateIngestionJob,
   summarizeSourceCandidateIngestionJobs
 } from "@/lib/data/source-candidate-jobs";
+import { listSourceCandidateIdentityGroups } from "@/lib/data/source-candidates";
 import {
   planScheduledSourceIngestionDryRun,
   runScheduledSourceIngestionBatch
 } from "@/lib/data/scheduled-ingestion";
+import type { SourceCandidate } from "@/lib/types";
 
 vi.mock("@/lib/data/source-candidate-jobs", () => ({
   listSourceCandidateIngestionJobs: vi.fn(),
@@ -17,12 +19,18 @@ vi.mock("@/lib/data/source-candidate-jobs", () => ({
   summarizeSourceCandidateIngestionJobs: vi.fn()
 }));
 
+vi.mock("@/lib/data/source-candidates", () => ({
+  listSourceCandidateIdentityGroups: vi.fn()
+}));
+
+const listDuplicateIdentityGroupsMock = vi.mocked(listSourceCandidateIdentityGroups);
 const listJobsMock = vi.mocked(listSourceCandidateIngestionJobs);
 const runNextJobMock = vi.mocked(runNextSourceCandidateIngestionJob);
 const summarizeJobsMock = vi.mocked(summarizeSourceCandidateIngestionJobs);
 
 beforeEach(() => {
   vi.resetAllMocks();
+  listDuplicateIdentityGroupsMock.mockResolvedValue([]);
 });
 
 describe("scheduled source ingestion dry run", () => {
@@ -53,6 +61,11 @@ describe("scheduled source ingestion dry run", () => {
         maxJobsPerRun: 2
       })
     ).resolves.toEqual({
+      dedupeReview: {
+        duplicateIdentityGroups: 0,
+        items: [],
+        nextAction: "No duplicate source identities found in the bounded scheduler dedupe review."
+      },
       dryRun: true,
       failureReview: {
         automaticRetries: false,
@@ -151,11 +164,19 @@ describe("scheduled source ingestion dry run", () => {
             ],
             id: "hosted-cron",
             label: "Hosted cron evidence"
+          },
+          {
+            detail: "No duplicate source identities found in the bounded scheduler dedupe review.",
+            id: "dedupe-review",
+            label: "Dedupe review"
           }
         ],
         warnings: []
       },
       wouldRunJobs: 2
+    });
+    expect(listDuplicateIdentityGroupsMock).toHaveBeenCalledWith({
+      limit: 5
     });
   });
 
@@ -365,6 +386,69 @@ describe("scheduled source ingestion dry run", () => {
     expect(JSON.stringify(review.failureReview)).not.toContain("secret-123");
     expect(JSON.stringify(review.failureReview)).not.toContain("private@example.com");
   });
+
+  it("summarizes duplicate source identities for human dedupe review", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [],
+      total: 0
+    });
+    listJobsMock.mockResolvedValue([]);
+    listDuplicateIdentityGroupsMock.mockResolvedValue([
+      {
+        externalId: "42141930",
+        source: "PubMed",
+        candidates: [
+          sourceCandidate({
+            dedupeKey: "pubmed|au|creatine-meta|42141930||",
+            decision: "Pending review"
+          }),
+          sourceCandidate({
+            dedupeKey: "pubmed|au|creatine-strength|42141930|creatine|creatine-strength",
+            decision: "Accepted"
+          })
+        ]
+      }
+    ]);
+
+    await expect(
+      planScheduledSourceIngestionDryRun({
+        env: readySchedulerEnv()
+      })
+    ).resolves.toMatchObject({
+      dedupeReview: {
+        duplicateIdentityGroups: 1,
+        items: [
+          {
+            acceptedCandidates: 1,
+            candidateCount: 2,
+            externalId: "42141930",
+            mixedDecision: true,
+            nextAction:
+              "Compare accepted, rejected, and pending rows before any scheduled retry or review action.",
+            pendingCandidates: 1,
+            rejectedCandidates: 0,
+            reviewCommand:
+              "npm run ingest:sources -- --candidates --candidate-duplicates --candidate-source pubmed --candidate-external-id 42141930",
+            source: "PubMed"
+          }
+        ],
+        nextAction:
+          "Review duplicate source identities before enabling unattended scheduled ingestion."
+      },
+      worksheet: {
+        warnings: [
+          {
+            detail:
+              "1 duplicate source identity group(s) need human review before unattended scheduled ingestion.",
+            id: "duplicate-source-identities",
+            label: "Duplicate source identities",
+            nextAction:
+              "Review duplicate source identities before enabling unattended scheduled ingestion."
+          }
+        ]
+      }
+    });
+  });
 });
 
 describe("scheduled source ingestion batch runner", () => {
@@ -550,5 +634,26 @@ function runResult(jobId: string) {
     region: "AU",
     source: SourceKind.PUBMED,
     status: IngestionStatus.SUCCEEDED
+  };
+}
+
+function sourceCandidate(overrides: Partial<SourceCandidate> = {}): SourceCandidate {
+  return {
+    abstractAvailable: true,
+    decision: "Pending review",
+    dedupeKey: "pubmed|au|creatine|42141930|creatine|creatine-strength",
+    externalId: "42141930",
+    metadata: {},
+    publishedYear: 2026,
+    query: "creatine",
+    region: "AU",
+    reviewStatus: "Unreviewed AI draft",
+    source: "PubMed",
+    sourceType: "Review",
+    title: "Creatine trial",
+    triageReasons: ["Title matches query"],
+    triageScore: 80,
+    url: "https://pubmed.ncbi.nlm.nih.gov/42141930/",
+    ...overrides
   };
 }

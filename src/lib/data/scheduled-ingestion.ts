@@ -8,6 +8,10 @@ import {
   type SourceCandidateIngestionJobRunResult,
   summarizeSourceCandidateIngestionJobs
 } from "@/lib/data/source-candidate-jobs";
+import {
+  listSourceCandidateIdentityGroups,
+  type SourceCandidateIdentityGroup
+} from "@/lib/data/source-candidates";
 
 export interface ScheduledIngestionDryRunOptions {
   env?: Record<string, string | undefined>;
@@ -20,6 +24,7 @@ export interface ScheduledIngestionBatchOptions extends ScheduledIngestionDryRun
 }
 
 export interface ScheduledIngestionDryRun {
+  dedupeReview: ScheduledIngestionDedupeReview;
   dryRun: true;
   failureReview: ScheduledIngestionFailureReview;
   maxJobsPerRun: number;
@@ -87,6 +92,24 @@ export interface ScheduledIngestionFailureReviewItem {
   source: SourceCandidateIngestionJobListItem["source"];
 }
 
+export interface ScheduledIngestionDedupeReview {
+  duplicateIdentityGroups: number;
+  items: ScheduledIngestionDedupeReviewItem[];
+  nextAction: string;
+}
+
+export interface ScheduledIngestionDedupeReviewItem {
+  acceptedCandidates: number;
+  candidateCount: number;
+  externalId: string;
+  mixedDecision: boolean;
+  nextAction: string;
+  pendingCandidates: number;
+  rejectedCandidates: number;
+  reviewCommand: string;
+  source: SourceCandidateIdentityGroup["source"];
+}
+
 export interface ScheduledIngestionWorksheet {
   blocked: ScheduledIngestionWorksheetItem[];
   humanOwned: true;
@@ -123,6 +146,7 @@ export type ScheduledIngestionJobRunner = (
 
 const DEFAULT_MAX_JOBS_PER_RUN = 1;
 const MAX_SCHEDULER_JOBS_PER_RUN = 5;
+const MAX_DEDUPE_REVIEW_GROUPS = 5;
 const SOURCE_RESULT_CAP = 20;
 const REQUIRED_NCBI_METADATA_ENV = ["NCBI_TOOL", "NCBI_EMAIL"] as const;
 const SCHEDULED_INGESTION_WRITES_ENV = "APEX_SCHEDULED_INGESTION_WRITES_ENABLED";
@@ -134,7 +158,7 @@ export async function planScheduledSourceIngestionDryRun(
   options: ScheduledIngestionDryRunOptions = {}
 ): Promise<ScheduledIngestionDryRun> {
   const maxJobsPerRun = normaliseMaxJobsPerRun(options.maxJobsPerRun);
-  const [summary, runningJobs, queuedJobs, failedJobs] = await Promise.all([
+  const [summary, runningJobs, queuedJobs, failedJobs, duplicateIdentityGroups] = await Promise.all([
     summarizeSourceCandidateIngestionJobs(),
     listSourceCandidateIngestionJobs({
       limit: MAX_SCHEDULER_JOBS_PER_RUN,
@@ -147,6 +171,9 @@ export async function planScheduledSourceIngestionDryRun(
     listSourceCandidateIngestionJobs({
       limit: MAX_SCHEDULER_JOBS_PER_RUN,
       status: IngestionStatus.FAILED
+    }),
+    listSourceCandidateIdentityGroups({
+      limit: MAX_DEDUPE_REVIEW_GROUPS
     })
   ]);
   const queuedCount = summary.groups
@@ -160,6 +187,7 @@ export async function planScheduledSourceIngestionDryRun(
     .reduce((total, group) => total + group.count, 0);
   const wouldRunJobs = runningJobs.length > 0 ? 0 : Math.min(maxJobsPerRun, queuedJobs.length);
   const failureReview = scheduledIngestionFailureReview(failedJobs);
+  const dedupeReview = scheduledIngestionDedupeReview(duplicateIdentityGroups);
   const nextAction = scheduledIngestionNextAction({
     failedCount,
     queuedCount,
@@ -169,6 +197,7 @@ export async function planScheduledSourceIngestionDryRun(
   const policy = scheduledIngestionPolicyReview(options.env);
 
   return {
+    dedupeReview,
     dryRun: true,
     failureReview,
     maxJobsPerRun,
@@ -179,6 +208,7 @@ export async function planScheduledSourceIngestionDryRun(
     recentFailures: failedJobs.length,
     runningJobs: runningCount,
     worksheet: scheduledIngestionWorksheet({
+      dedupeReview,
       failureReview,
       maxJobsPerRun,
       nextAction,
@@ -387,7 +417,53 @@ function scheduledIngestionPolicyReview(
   };
 }
 
+function scheduledIngestionDedupeReview(
+  groups: SourceCandidateIdentityGroup[]
+): ScheduledIngestionDedupeReview {
+  const items = groups.map(scheduledIngestionDedupeReviewItem);
+
+  return {
+    duplicateIdentityGroups: items.length,
+    items,
+    nextAction:
+      items.length > 0
+        ? "Review duplicate source identities before enabling unattended scheduled ingestion."
+        : "No duplicate source identities found in the bounded scheduler dedupe review."
+  };
+}
+
+function scheduledIngestionDedupeReviewItem(
+  group: SourceCandidateIdentityGroup
+): ScheduledIngestionDedupeReviewItem {
+  const pendingCandidates = group.candidates.filter(
+    (candidate) => candidate.decision === "Pending review"
+  ).length;
+  const acceptedCandidates = group.candidates.filter(
+    (candidate) => candidate.decision === "Accepted"
+  ).length;
+  const rejectedCandidates = group.candidates.filter(
+    (candidate) => candidate.decision === "Rejected"
+  ).length;
+  const mixedDecision =
+    new Set(group.candidates.map((candidate) => candidate.decision)).size > 1;
+
+  return {
+    acceptedCandidates,
+    candidateCount: group.candidates.length,
+    externalId: group.externalId,
+    mixedDecision,
+    nextAction: mixedDecision
+      ? "Compare accepted, rejected, and pending rows before any scheduled retry or review action."
+      : "Compare duplicate-context rows before any scheduled retry or review action.",
+    pendingCandidates,
+    rejectedCandidates,
+    reviewCommand: `npm run ingest:sources -- --candidates --candidate-duplicates --candidate-source ${sourceCandidateSourceCommandValue(group.source)} --candidate-external-id ${group.externalId}`,
+    source: group.source
+  };
+}
+
 function scheduledIngestionWorksheet({
+  dedupeReview,
   failureReview,
   maxJobsPerRun,
   nextAction,
@@ -397,6 +473,7 @@ function scheduledIngestionWorksheet({
   runningCount,
   wouldRunJobs
 }: {
+  dedupeReview: ScheduledIngestionDedupeReview;
   failureReview: ScheduledIngestionFailureReview;
   maxJobsPerRun: number;
   nextAction: string;
@@ -502,6 +579,21 @@ function scheduledIngestionWorksheet({
     });
   }
 
+  if (dedupeReview.duplicateIdentityGroups > 0) {
+    warnings.push({
+      id: "duplicate-source-identities",
+      label: "Duplicate source identities",
+      detail: `${dedupeReview.duplicateIdentityGroups} duplicate source identity group(s) need human review before unattended scheduled ingestion.`,
+      nextAction: dedupeReview.nextAction
+    });
+  } else {
+    ready.push({
+      id: "dedupe-review",
+      label: "Dedupe review",
+      detail: "No duplicate source identities found in the bounded scheduler dedupe review."
+    });
+  }
+
   const queuedWork = [
     {
       id: "queued-jobs",
@@ -552,6 +644,15 @@ function scheduledIngestionHostedCronReview(
     ready: missingEnv.length === 0,
     scheduledWritesEnabled
   };
+}
+
+function sourceCandidateSourceCommandValue(source: SourceCandidateIdentityGroup["source"]) {
+  switch (source) {
+    case "PubMed":
+      return "pubmed";
+    case "ClinicalTrials.gov":
+      return "clinical-trials";
+  }
 }
 
 function scheduledIngestionApplyBlocker(
