@@ -76,6 +76,8 @@ The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel
 9. [ ] Expand evidence and intervention coverage.
    Done when: priority interventions and claims have reviewed evidence packets, clear population/dose/form boundaries, and visible uncertainty labels.
    Validate with: seed/database integrity checks, source-packet tests, review sampling, and dashboard QA.
+   In progress 2026-06-11: added read-only evidence coverage summary and `npm run coverage:review`. Current local report shows 7/7 structurally complete source packets, 0 human-reviewed claims, 7 unreviewed draft claims, and 1 intervention without claim coverage (`psyllium`). Validation passed: coverage test, source-packet tests, seed-integrity tests, `npm run typecheck`, `npm run build`, `npm run lint`, and `npm audit`.
+   Remaining blocker 2026-06-11: actual coverage expansion requires human evidence review/curation before claims can become human-reviewed or new public evidence is added.
 
 10. [ ] Add product-level AU/TGA verification workflow.
     Done when: product-level ARTG/AUST evidence can be tracked separately from ingredient-level evidence, with confidence labels and stale/unknown states.

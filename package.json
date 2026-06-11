@@ -13,6 +13,7 @@
     "smoke:public-mvp": "tsx scripts/smoke-public-mvp.ts",
     "promotion:dry-run": "tsx scripts/dry-run-candidate-promotion.ts",
     "ingest:scheduled-dry-run": "tsx scripts/scheduled-source-ingestion.ts",
+    "coverage:review": "tsx scripts/evidence-coverage-report.ts",
     "codex:review-sidecar": "tsx scripts/codex-review-sidecar.ts",
     "ingest:sources": "tsx scripts/run-source-candidate-jobs.ts",
     "db:validate": "prisma validate",
