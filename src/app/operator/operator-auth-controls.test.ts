@@ -19,11 +19,13 @@ describe("operator auth controls", () => {
   });
 
   it("does not expose source-candidate write controls in the browser surface", () => {
+    expect(OPERATOR_PAGE_SOURCE).toContain("Promotion readiness");
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/recordSourceCandidateDecision/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/linkSourceCandidateClaim/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/extractSourceCandidateStudy/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/assessSourceCandidatePublicPromotion/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/source-candidate-actions/);
+    expect(OPERATOR_PAGE_SOURCE).not.toMatch(/<button[\s\S]*Promote/);
     expect(OPERATOR_PAGE_SOURCE).toContain("Read-only");
   });
 });

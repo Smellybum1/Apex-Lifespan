@@ -4,6 +4,10 @@ import { LogIn, LogOut, ShieldCheck, ShieldX } from "lucide-react";
 import { signIn, signOut } from "@/auth";
 import { canOperatorAccess, operatorWritesEnabled } from "@/lib/operator/authorization";
 import { operatorAuthConfigured } from "@/lib/operator/config";
+import {
+  getSourceCandidatePromotionReadinessSnapshot,
+  type SourceCandidatePromotionReadinessSnapshot
+} from "@/lib/operator/curation-promotion";
 import { getOperatorReviewQueueSnapshot } from "@/lib/operator/review-queue";
 import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
 
@@ -60,10 +64,14 @@ export default async function OperatorPage() {
 
   const writesEnabled = operatorWritesEnabled();
   const canReviewCandidates = canOperatorAccess(principal.role, "candidate:review");
+  const canReviewPromotion = canOperatorAccess(principal.role, "evidence:promote");
   const canManageOperators = canOperatorAccess(principal.role, "operator:manage");
   const reviewQueue = canReviewCandidates
     ? await getOperatorReviewQueueSnapshot(5)
     : { pendingCount: 0, rows: [] };
+  const promotionReadiness = canReviewPromotion
+    ? await getSourceCandidatePromotionReadinessSnapshot(5)
+    : { blockedCount: 0, readyCount: 0, rows: [], total: 0 };
 
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-8 text-slate-950">
@@ -85,7 +93,13 @@ export default async function OperatorPage() {
         <div className="grid gap-3 md:grid-cols-3">
           <OperatorStatusTile label="Review access" value={canReviewCandidates ? "Ready" : "No"} />
           <OperatorStatusTile label="Writes" value={writesEnabled ? "Enabled" : "Disabled"} />
-          <OperatorStatusTile label="Operator admin" value={canManageOperators ? "Ready" : "No"} />
+          <OperatorStatusTile
+            label="Promotion review"
+            value={canReviewPromotion ? "Ready" : "No"}
+          />
+          {canManageOperators ? (
+            <OperatorStatusTile label="Operator admin" value="Ready" />
+          ) : null}
         </div>
 
         <section className="rounded-md border border-slate-200 bg-white shadow-sm">
@@ -127,6 +141,10 @@ export default async function OperatorPage() {
             )}
           </div>
         </section>
+
+        {canReviewPromotion ? (
+          <PromotionReadinessPanel snapshot={promotionReadiness} />
+        ) : null}
       </section>
     </main>
   );
@@ -194,5 +212,66 @@ function OperatorStatusTile({ label, value }: { label: string; value: string }) 
       <p className="text-sm font-medium text-slate-500">{label}</p>
       <p className="mt-3 text-2xl font-semibold tracking-normal text-slate-950">{value}</p>
     </div>
+  );
+}
+
+function PromotionReadinessPanel({
+  snapshot
+}: {
+  snapshot: SourceCandidatePromotionReadinessSnapshot;
+}) {
+  return (
+    <section className="rounded-md border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-normal">Promotion readiness</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            {snapshot.readyCount} ready and {snapshot.blockedCount} blocked accepted candidates loaded
+          </p>
+        </div>
+        <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+          Read-only
+        </span>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {snapshot.rows.length > 0 ? (
+          snapshot.rows.map((row) => (
+            <article className="px-4 py-4" key={row.candidate.dedupeKey}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-500">
+                    {row.candidate.source} {row.candidate.externalId}
+                  </p>
+                  <h3 className="mt-1 max-w-3xl text-base font-semibold text-slate-950">
+                    {row.candidate.title}
+                  </h3>
+                  <p className="mt-2 text-sm text-slate-700">{row.nextAction}</p>
+                </div>
+                <span
+                  className={
+                    row.ready
+                      ? "rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800"
+                      : "rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900"
+                  }
+                >
+                  {row.ready ? "Ready" : row.status}
+                </span>
+              </div>
+              {row.blockers.length > 0 ? (
+                <ul className="mt-3 space-y-1 text-sm text-slate-700">
+                  {row.blockers.slice(0, 3).map((blocker) => (
+                    <li key={blocker}>{blocker}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </article>
+          ))
+        ) : (
+          <p className="px-4 py-6 text-sm text-slate-600">
+            No accepted candidates are visible for promotion review.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }
