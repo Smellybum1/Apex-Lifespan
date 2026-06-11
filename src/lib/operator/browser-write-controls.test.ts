@@ -71,4 +71,15 @@ describe("operator browser write control gate", () => {
     expect(state.blockers).toEqual([]);
     expect(state.permission).toBe("curation:study-extraction");
   });
+
+  it("maps public promotion to the evidence promotion permission", () => {
+    const state = getOperatorBrowserWriteControlState(
+      activeAdmin,
+      "public-promotion",
+      approvedEnv
+    );
+
+    expect(state.enabled).toBe(true);
+    expect(state.permission).toBe("evidence:promote");
+  });
 });

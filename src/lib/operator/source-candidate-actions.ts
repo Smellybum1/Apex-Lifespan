@@ -1,3 +1,5 @@
+import { ReviewStatus as DbReviewStatus } from "@prisma/client";
+
 import {
   extractAcceptedSourceCandidateStudy,
   getSourceCandidateByDedupeKey,
@@ -8,9 +10,28 @@ import {
   type LinkAcceptedSourceCandidateClaimInput,
   type RecordSourceCandidateDecisionInput
 } from "@/lib/data/source-candidates";
+import { prisma } from "@/lib/db/prisma";
 import type { OperatorPrincipal, OperatorWriteEnv } from "@/lib/operator/authorization";
 import { requireOperatorPermission } from "@/lib/operator/authorization";
 import { recordOperatorAuditEvent } from "@/lib/operator/audit";
+import { assessSourceCandidatePublicPromotion } from "@/lib/operator/curation-promotion";
+
+export interface PromoteSourceCandidatePublicEvidenceInput {
+  dedupeKey: string;
+  promotedAt?: Date;
+  promotionNote: string;
+}
+
+export interface PromotedSourceCandidatePublicEvidence {
+  claim: {
+    id: string;
+    lastReviewedAt?: string;
+    reviewStatus: "Human reviewed";
+  };
+  dedupeKey: string;
+  referenceId: string;
+  studyIds: string[];
+}
 
 export async function reviewSourceCandidateAsOperator(
   principal: OperatorPrincipal,
@@ -109,4 +130,95 @@ export async function extractSourceCandidateStudyAsOperator(
   });
 
   return result;
+}
+
+export async function promoteSourceCandidatePublicEvidenceAsOperator(
+  principal: OperatorPrincipal,
+  input: PromoteSourceCandidatePublicEvidenceInput,
+  env?: OperatorWriteEnv
+): Promise<PromotedSourceCandidatePublicEvidence> {
+  requireOperatorPermission(principal, "evidence:promote", env);
+
+  const promotionNote = input.promotionNote.trim();
+
+  if (!promotionNote) {
+    throw new Error("Promotion note is required.");
+  }
+
+  const assessment = await assessSourceCandidatePublicPromotion(input.dedupeKey);
+
+  if (!assessment.ready || !assessment.publicPacket || !assessment.candidate?.claimId) {
+    throw new Error(
+      `Source candidate is not ready for public promotion: ${
+        assessment.blockers[0] ?? "public packet is missing."
+      }`
+    );
+  }
+
+  const claimId = assessment.publicPacket.claimId;
+  const before = await prisma.claim.findUnique({
+    select: {
+      id: true,
+      lastReviewedAt: true,
+      reviewStatus: true
+    },
+    where: {
+      id: claimId
+    }
+  });
+
+  if (!before) {
+    throw new Error("Promotion target claim was not found.");
+  }
+
+  const promotedAt = input.promotedAt ?? new Date();
+  const claim = await prisma.claim.update({
+    data: {
+      lastReviewedAt: promotedAt,
+      reviewStatus: DbReviewStatus.HUMAN_REVIEWED
+    },
+    select: {
+      id: true,
+      lastReviewedAt: true,
+      reviewStatus: true
+    },
+    where: {
+      id: claimId
+    }
+  });
+
+  await recordOperatorAuditEvent(principal, {
+    action: "sourceCandidate.publicEvidencePromotion",
+    afterSummary: {
+      claimId: claim.id,
+      lastReviewedAt: claim.lastReviewedAt?.toISOString() ?? null,
+      referenceId: assessment.publicPacket.referenceId,
+      reviewStatus: claim.reviewStatus,
+      studyIds: assessment.publicPacket.studyIds
+    },
+    beforeSummary: {
+      claimId: before.id,
+      lastReviewedAt: before.lastReviewedAt?.toISOString() ?? null,
+      reviewStatus: before.reviewStatus
+    },
+    metadata: {
+      candidateExternalId: assessment.candidate.externalId,
+      candidateSource: assessment.candidate.source,
+      publicSourcePacketReady: true
+    },
+    note: promotionNote,
+    targetId: input.dedupeKey,
+    targetType: "SourceCandidate"
+  });
+
+  return {
+    claim: {
+      id: claim.id,
+      lastReviewedAt: claim.lastReviewedAt?.toISOString(),
+      reviewStatus: "Human reviewed"
+    },
+    dedupeKey: input.dedupeKey,
+    referenceId: assessment.publicPacket.referenceId,
+    studyIds: assessment.publicPacket.studyIds
+  };
 }

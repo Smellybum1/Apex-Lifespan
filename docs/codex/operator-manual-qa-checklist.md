@@ -38,6 +38,7 @@ Perform these only in non-production with throwaway or reviewed source-candidate
 - Verify claim-link writes require admin+ permission and append an audit event.
 - Verify structured study extraction requires admin+ permission and appends an audit event.
 - Verify promotion remains blocked until claim link, structured extraction, citation traceability, human review, and `publicSourcePacketReady=true` are all present.
+- Verify public promotion controls render only for a ready accepted candidate row, require an admin+ operator note, mark only the target claim as human-reviewed, and append an audit event.
 - Reset `APEX_OPERATOR_WRITES_ENABLED=false` after QA.
 
 ## Evidence To Record

@@ -7,6 +7,7 @@ import { canOperatorAccess, operatorWritesEnabled } from "@/lib/operator/authori
 import {
   extractCandidateStudyFromBrowserForm,
   linkCandidateClaimFromBrowserForm,
+  promoteCandidateFromBrowserForm,
   reviewCandidateFromBrowserForm
 } from "@/lib/operator/browser-write-actions";
 import {
@@ -77,6 +78,19 @@ async function extractCandidateStudyFromForm(formData: FormData) {
   revalidatePath("/operator");
 }
 
+async function promoteCandidateFromForm(formData: FormData) {
+  "use server";
+
+  const principal = await getCurrentOperatorPrincipal();
+
+  if (!principal) {
+    throw new Error("Operator authentication required.");
+  }
+
+  await promoteCandidateFromBrowserForm(principal, formData);
+  revalidatePath("/operator");
+}
+
 export default async function OperatorPage() {
   const principal = await getCurrentOperatorPrincipal();
 
@@ -123,12 +137,16 @@ export default async function OperatorPage() {
     "candidate-review"
   );
   const claimLinkControl = getOperatorBrowserWriteControlState(principal, "claim-link");
+  const promotionControl = getOperatorBrowserWriteControlState(principal, "public-promotion");
   const studyExtractionControl = getOperatorBrowserWriteControlState(
     principal,
     "study-extraction"
   );
   const browserControlsEnabled =
-    candidateReviewControl.enabled || claimLinkControl.enabled || studyExtractionControl.enabled;
+    candidateReviewControl.enabled ||
+    claimLinkControl.enabled ||
+    promotionControl.enabled ||
+    studyExtractionControl.enabled;
   const reviewQueue = canReviewCandidates
     ? await getOperatorReviewQueueSnapshot(5)
     : { pendingCount: 0, rows: [] };
@@ -215,6 +233,7 @@ export default async function OperatorPage() {
         {canReviewPromotion ? (
           <PromotionReadinessPanel
             claimLinkControl={claimLinkControl}
+            promotionControl={promotionControl}
             snapshot={promotionReadiness}
             studyExtractionControl={studyExtractionControl}
           />
@@ -291,13 +310,18 @@ function OperatorStatusTile({ label, value }: { label: string; value: string }) 
 
 function PromotionReadinessPanel({
   claimLinkControl,
+  promotionControl,
   snapshot,
   studyExtractionControl
 }: {
   claimLinkControl: OperatorBrowserWriteControlState;
+  promotionControl: OperatorBrowserWriteControlState;
   snapshot: SourceCandidatePromotionReadinessSnapshot;
   studyExtractionControl: OperatorBrowserWriteControlState;
 }) {
+  const anyPromotionWriteControl =
+    claimLinkControl.enabled || promotionControl.enabled || studyExtractionControl.enabled;
+
   return (
     <section className="rounded-md border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
@@ -308,7 +332,7 @@ function PromotionReadinessPanel({
           </p>
         </div>
         <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
-          {claimLinkControl.enabled || studyExtractionControl.enabled ? "Write-gated" : "Read-only"}
+          {anyPromotionWriteControl ? "Write-gated" : "Read-only"}
         </span>
       </div>
       <div className="divide-y divide-slate-100">
@@ -342,9 +366,10 @@ function PromotionReadinessPanel({
                   ))}
                 </ul>
               ) : null}
-              {claimLinkControl.enabled || studyExtractionControl.enabled ? (
+              {anyPromotionWriteControl ? (
                 <PromotionCurationControls
                   claimLinkControl={claimLinkControl}
+                  promotionControl={promotionControl}
                   row={row}
                   studyExtractionControl={studyExtractionControl}
                 />
@@ -417,10 +442,12 @@ function CandidateReviewControls({ candidate }: { candidate: OperatorReviewQueue
 
 function PromotionCurationControls({
   claimLinkControl,
+  promotionControl,
   row,
   studyExtractionControl
 }: {
   claimLinkControl: OperatorBrowserWriteControlState;
+  promotionControl: OperatorBrowserWriteControlState;
   row: SourceCandidatePromotionReadinessSnapshot["rows"][number];
   studyExtractionControl: OperatorBrowserWriteControlState;
 }) {
@@ -478,6 +505,26 @@ function PromotionCurationControls({
             </button>
           </form>
         </details>
+      ) : null}
+
+      {promotionControl.enabled && row.ready ? (
+        <form action={promoteCandidateFromForm} className="space-y-3">
+          <input name="dedupeKey" type="hidden" value={row.candidate.dedupeKey} />
+          <label className="block text-sm font-semibold text-slate-700">
+            Promotion review note
+            <textarea
+              className="mt-1 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              name="promotionNote"
+              required
+            />
+          </label>
+          <button
+            className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800"
+            type="submit"
+          >
+            Promote
+          </button>
+        </form>
       ) : null}
     </div>
   );

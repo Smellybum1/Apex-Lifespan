@@ -6,6 +6,7 @@ import {
 import {
   extractSourceCandidateStudyAsOperator,
   linkSourceCandidateClaimAsOperator,
+  promoteSourceCandidatePublicEvidenceAsOperator,
   reviewSourceCandidateAsOperator
 } from "@/lib/operator/source-candidate-actions";
 
@@ -91,6 +92,23 @@ export async function extractCandidateStudyFromBrowserForm(
       relevance: optionalFormNumber(formData, "relevance"),
       riskOfBias: requiredFormString(formData, "riskOfBias"),
       sampleSize: requiredFormString(formData, "sampleSize")
+    },
+    env
+  );
+}
+
+export async function promoteCandidateFromBrowserForm(
+  principal: OperatorPrincipal,
+  formData: FormData,
+  env?: OperatorBrowserWriteControlEnv
+) {
+  requireBrowserControl(principal, "public-promotion", env);
+
+  return promoteSourceCandidatePublicEvidenceAsOperator(
+    principal,
+    {
+      dedupeKey: requiredFormString(formData, "dedupeKey"),
+      promotionNote: requiredFormString(formData, "promotionNote")
     },
     env
   );

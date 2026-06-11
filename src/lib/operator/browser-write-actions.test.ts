@@ -4,11 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   extractSourceCandidateStudyAsOperator,
   linkSourceCandidateClaimAsOperator,
+  promoteSourceCandidatePublicEvidenceAsOperator,
   reviewSourceCandidateAsOperator
 } from "@/lib/operator/source-candidate-actions";
 import {
   extractCandidateStudyFromBrowserForm,
   linkCandidateClaimFromBrowserForm,
+  promoteCandidateFromBrowserForm,
   reviewCandidateFromBrowserForm
 } from "@/lib/operator/browser-write-actions";
 import type { OperatorBrowserWriteControlEnv } from "@/lib/operator/browser-write-controls";
@@ -17,12 +19,14 @@ import type { OperatorPrincipal } from "@/lib/operator/authorization";
 vi.mock("@/lib/operator/source-candidate-actions", () => ({
   extractSourceCandidateStudyAsOperator: vi.fn(),
   linkSourceCandidateClaimAsOperator: vi.fn(),
+  promoteSourceCandidatePublicEvidenceAsOperator: vi.fn(),
   reviewSourceCandidateAsOperator: vi.fn()
 }));
 
 const reviewMock = vi.mocked(reviewSourceCandidateAsOperator);
 const linkMock = vi.mocked(linkSourceCandidateClaimAsOperator);
 const extractMock = vi.mocked(extractSourceCandidateStudyAsOperator);
+const promoteMock = vi.mocked(promoteSourceCandidatePublicEvidenceAsOperator);
 
 const admin: OperatorPrincipal = {
   email: "admin@example.test",
@@ -44,6 +48,7 @@ describe("operator browser write action parsers", () => {
     reviewMock.mockResolvedValue({ ok: true } as never);
     linkMock.mockResolvedValue({ ok: true } as never);
     extractMock.mockResolvedValue({ ok: true } as never);
+    promoteMock.mockResolvedValue({ ok: true } as never);
   });
 
   it("fails closed before calling write wrappers when browser controls are not approved", async () => {
@@ -134,6 +139,23 @@ describe("operator browser write action parsers", () => {
         outcomes: ["Strength", "Lean mass"],
         population: "Adults in resistance training studies."
       }),
+      approvedEnv
+    );
+  });
+
+  it("parses promotion forms only after browser controls are approved", async () => {
+    const promotion = new FormData();
+    promotion.set("dedupeKey", "candidate-1");
+    promotion.set("promotionNote", "Human reviewed the ready source packet.");
+
+    await promoteCandidateFromBrowserForm(admin, promotion, approvedEnv);
+
+    expect(promoteMock).toHaveBeenCalledWith(
+      admin,
+      {
+        dedupeKey: "candidate-1",
+        promotionNote: "Human reviewed the ready source packet."
+      },
       approvedEnv
     );
   });

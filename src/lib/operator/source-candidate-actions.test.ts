@@ -1,4 +1,8 @@
-import { OperatorRole, OperatorStatus } from "@prisma/client";
+import {
+  OperatorRole,
+  OperatorStatus,
+  ReviewStatus as DbReviewStatus
+} from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -9,9 +13,11 @@ import {
   recordSourceCandidateDecision
 } from "@/lib/data/source-candidates";
 import { prisma } from "@/lib/db/prisma";
+import { assessSourceCandidatePublicPromotion } from "@/lib/operator/curation-promotion";
 import {
   extractSourceCandidateStudyAsOperator,
   linkSourceCandidateClaimAsOperator,
+  promoteSourceCandidatePublicEvidenceAsOperator,
   reviewSourceCandidateAsOperator
 } from "@/lib/operator/source-candidate-actions";
 import type { OperatorPrincipal } from "@/lib/operator/authorization";
@@ -27,10 +33,18 @@ vi.mock("@/lib/data/source-candidates", () => ({
 
 vi.mock("@/lib/db/prisma", () => ({
   prisma: {
+    claim: {
+      findUnique: vi.fn(),
+      update: vi.fn()
+    },
     operatorAuditEvent: {
       create: vi.fn()
     }
   }
+}));
+
+vi.mock("@/lib/operator/curation-promotion", () => ({
+  assessSourceCandidatePublicPromotion: vi.fn()
 }));
 
 const getSourceCandidateByDedupeKeyMock = vi.mocked(getSourceCandidateByDedupeKey);
@@ -40,6 +54,9 @@ const linkAcceptedSourceCandidateClaimMock = vi.mocked(linkAcceptedSourceCandida
 const extractAcceptedSourceCandidateStudyMock = vi.mocked(
   extractAcceptedSourceCandidateStudy
 );
+const assessPromotionMock = vi.mocked(assessSourceCandidatePublicPromotion);
+const claimFindUniqueMock = vi.mocked(prisma.claim.findUnique);
+const claimUpdateMock = vi.mocked(prisma.claim.update);
 const operatorAuditCreateMock = vi.mocked(prisma.operatorAuditEvent.create);
 
 const writesEnabled = {
@@ -171,6 +188,41 @@ describe("operator source-candidate actions", () => {
     expect(linkAcceptedSourceCandidateClaimMock).not.toHaveBeenCalled();
   });
 
+  it("requires admin access for public evidence promotion", async () => {
+    await expect(
+      promoteSourceCandidatePublicEvidenceAsOperator(
+        reviewer,
+        {
+          dedupeKey: acceptedCandidate.dedupeKey,
+          promotionNote: "Human reviewed the curation packet."
+        },
+        writesEnabled
+      )
+    ).rejects.toMatchObject({
+      message: "Operator role does not allow this action.",
+      status: 403
+    });
+
+    expect(assessPromotionMock).not.toHaveBeenCalled();
+    expect(claimUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("requires a human promotion note before assessment or writes", async () => {
+    await expect(
+      promoteSourceCandidatePublicEvidenceAsOperator(
+        admin,
+        {
+          dedupeKey: acceptedCandidate.dedupeKey,
+          promotionNote: " "
+        },
+        writesEnabled
+      )
+    ).rejects.toThrow("Promotion note is required.");
+
+    expect(assessPromotionMock).not.toHaveBeenCalled();
+    expect(claimUpdateMock).not.toHaveBeenCalled();
+  });
+
   it("links claims and extracts studies with audit events for admins", async () => {
     getSourceCandidateCurationStatusMock.mockResolvedValue({
       candidate: acceptedCandidate,
@@ -262,6 +314,122 @@ describe("operator source-candidate actions", () => {
         data: expect.objectContaining({
           action: "sourceCandidate.studyExtraction",
           actorRole: OperatorRole.ADMIN
+        })
+      })
+    );
+  });
+
+  it("blocks public promotion before dry-run readiness is complete", async () => {
+    assessPromotionMock.mockResolvedValue({
+      blockers: ["Accepted reference must be linked to the candidate claim."],
+      candidate: acceptedCandidate,
+      dryRun: true,
+      nextAction: "Accepted reference must be linked to the candidate claim.",
+      ready: false
+    });
+
+    await expect(
+      promoteSourceCandidatePublicEvidenceAsOperator(
+        admin,
+        {
+          dedupeKey: acceptedCandidate.dedupeKey,
+          promotionNote: "Human reviewed the curation packet."
+        },
+        writesEnabled
+      )
+    ).rejects.toThrow(
+      "Source candidate is not ready for public promotion: Accepted reference must be linked to the candidate claim."
+    );
+
+    expect(claimFindUniqueMock).not.toHaveBeenCalled();
+    expect(claimUpdateMock).not.toHaveBeenCalled();
+    expect(operatorAuditCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("promotes a ready candidate by marking the claim human-reviewed and auditing it", async () => {
+    const promotedAt = new Date("2026-06-11T14:00:00.000Z");
+    assessPromotionMock.mockResolvedValue({
+      blockers: [],
+      candidate: {
+        acceptedReferenceId: reference.id,
+        claimId: "creatine-strength",
+        decision: "Accepted",
+        dedupeKey: acceptedCandidate.dedupeKey,
+        externalId: acceptedCandidate.externalId,
+        reviewStatus: "Human reviewed",
+        source: "PubMed",
+        title: acceptedCandidate.title
+      },
+      dryRun: true,
+      nextAction: "Ready for explicit human promotion review.",
+      publicPacket: {
+        claimId: "creatine-strength",
+        referenceId: reference.id,
+        referenceUrl: reference.url,
+        studyIds: ["study-42141930"]
+      },
+      ready: true
+    });
+    claimFindUniqueMock.mockResolvedValue({
+      id: "creatine-strength",
+      lastReviewedAt: null,
+      reviewStatus: DbReviewStatus.UNREVIEWED_AI_DRAFT
+    } as never);
+    claimUpdateMock.mockResolvedValue({
+      id: "creatine-strength",
+      lastReviewedAt: promotedAt,
+      reviewStatus: DbReviewStatus.HUMAN_REVIEWED
+    } as never);
+
+    await expect(
+      promoteSourceCandidatePublicEvidenceAsOperator(
+        admin,
+        {
+          dedupeKey: acceptedCandidate.dedupeKey,
+          promotedAt,
+          promotionNote: "Human reviewed the curation packet."
+        },
+        writesEnabled
+      )
+    ).resolves.toEqual({
+      claim: {
+        id: "creatine-strength",
+        lastReviewedAt: "2026-06-11T14:00:00.000Z",
+        reviewStatus: "Human reviewed"
+      },
+      dedupeKey: acceptedCandidate.dedupeKey,
+      referenceId: reference.id,
+      studyIds: ["study-42141930"]
+    });
+
+    expect(claimUpdateMock).toHaveBeenCalledWith({
+      data: {
+        lastReviewedAt: promotedAt,
+        reviewStatus: DbReviewStatus.HUMAN_REVIEWED
+      },
+      select: {
+        id: true,
+        lastReviewedAt: true,
+        reviewStatus: true
+      },
+      where: {
+        id: "creatine-strength"
+      }
+    });
+    expect(operatorAuditCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "sourceCandidate.publicEvidencePromotion",
+          actorRole: OperatorRole.ADMIN,
+          afterSummary: expect.objectContaining({
+            claimId: "creatine-strength",
+            referenceId: reference.id,
+            reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+            studyIds: ["study-42141930"]
+          }),
+          note: "Human reviewed the curation packet.",
+          targetId: acceptedCandidate.dedupeKey,
+          targetType: "SourceCandidate"
         })
       })
     );

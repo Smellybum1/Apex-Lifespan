@@ -11,6 +11,7 @@ import {
 export type OperatorBrowserWriteControl =
   | "candidate-review"
   | "claim-link"
+  | "public-promotion"
   | "study-extraction";
 
 export interface OperatorBrowserWriteControlEnv
@@ -31,6 +32,7 @@ export interface OperatorBrowserWriteControlState {
 const CONTROL_PERMISSION: Record<OperatorBrowserWriteControl, OperatorPermission> = {
   "candidate-review": "candidate:review",
   "claim-link": "curation:claim-link",
+  "public-promotion": "evidence:promote",
   "study-extraction": "curation:study-extraction"
 };
 

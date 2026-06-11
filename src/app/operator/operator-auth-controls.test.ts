@@ -23,13 +23,16 @@ describe("operator auth controls", () => {
     expect(OPERATOR_PAGE_SOURCE).toContain("getOperatorBrowserWriteControlState");
     expect(OPERATOR_PAGE_SOURCE).toContain("candidateReviewControl.enabled");
     expect(OPERATOR_PAGE_SOURCE).toContain("claimLinkControl.enabled");
+    expect(OPERATOR_PAGE_SOURCE).toContain("promotionControl.enabled");
     expect(OPERATOR_PAGE_SOURCE).toContain("studyExtractionControl.enabled");
+    expect(OPERATOR_PAGE_SOURCE).toContain("promoteCandidateFromBrowserForm");
+    expect(OPERATOR_PAGE_SOURCE).toContain("promotionControl.enabled && row.ready");
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/recordSourceCandidateDecision/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/linkSourceCandidateClaim/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/extractSourceCandidateStudy/);
+    expect(OPERATOR_PAGE_SOURCE).not.toMatch(/promoteSourceCandidatePublicEvidence/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/assessSourceCandidatePublicPromotion/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/source-candidate-actions/);
-    expect(OPERATOR_PAGE_SOURCE).not.toMatch(/<button[\s\S]*Promote/);
     expect(OPERATOR_PAGE_SOURCE).toContain("Read-only");
   });
 });

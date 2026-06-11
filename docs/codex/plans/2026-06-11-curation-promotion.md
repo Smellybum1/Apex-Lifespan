@@ -27,3 +27,7 @@ Roadmap step 7: implement human-reviewed curation promotion from source candidat
 - Source-packet tests.
 - Dry-run CLI against accepted `PMID 42141930`.
 - Public boundary tests before any route/control is exposed.
+
+## Result Updates
+
+- 2026-06-11: Added an audited admin-only promotion wrapper and gated browser form. The write path reuses the dry-run readiness assessment, refuses unready candidates, marks only the target claim as human-reviewed, records `lastReviewedAt`, and appends an operator audit event. The browser form is hidden unless the row is ready and existing browser-control QA evidence is present.
