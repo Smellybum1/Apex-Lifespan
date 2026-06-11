@@ -222,6 +222,7 @@ function readinessReport(blockedIds: string[]) {
           ? `${blockedIds[0]} blocked.`
           : "All external operations evidence is recorded; review the launch readiness report.",
       ready: blockedIds.length > 0 ? [] : [{ id: "ready-check", label: "Ready check" }],
+      readyEvidence: blockedIds.length > 0 ? [] : [{ id: "ready-check", label: "Ready check" }],
       readyExternalEvidence: blockedIds.length > 0 ? [] : [{ id: "ready-check", label: "Ready check" }],
       readyLocalArtifacts: [],
       warnings: []

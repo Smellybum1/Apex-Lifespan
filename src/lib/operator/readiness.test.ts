@@ -22,6 +22,28 @@ describe("operator readiness report", () => {
 
     expect(report.overall).toBe("blocked");
     expect(report.counts.ready).toBe(8);
+    expect(report.worksheet.readyLocalArtifacts.map((item) => item.id)).toEqual([
+      "operator-page",
+      "auth-route",
+      "review-queue",
+      "audited-action-wrappers",
+      "promotion-readiness",
+      "operator-bootstrap",
+      "manual-qa-checklist"
+    ]);
+    expect(report.worksheet.readyEvidence.map((item) => item.id)).toEqual([
+      "operator-write-gate"
+    ]);
+    expect(report.worksheet.blocked.map((item) => item.id)).toEqual([
+      "operator-auth-config",
+      "active-operator",
+      "nonproduction-write-qa",
+      "operator-flow-qa",
+      "browser-write-controls-approval"
+    ]);
+    expect(report.worksheet.nextOperatorAction).toBe(
+      "Configure database-backed GitHub OAuth in a non-production environment before manual operator-flow QA."
+    );
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -66,6 +88,18 @@ describe("operator readiness report", () => {
 
     expect(report.overall).toBe("ready");
     expect(report.counts.blocked).toBe(0);
+    expect(report.worksheet.blocked).toEqual([]);
+    expect(report.worksheet.readyEvidence.map((item) => item.id)).toEqual([
+      "operator-auth-config",
+      "active-operator",
+      "operator-write-gate",
+      "nonproduction-write-qa",
+      "operator-flow-qa",
+      "browser-write-controls-approval"
+    ]);
+    expect(report.worksheet.nextOperatorAction).toBe(
+      "Operator workflow evidence is ready; review launch readiness before enabling production writes."
+    );
     expect(serialized).not.toContain("github-secret-value");
     expect(serialized).not.toContain("auth-secret-value");
     expect(serialized).not.toContain("password");
@@ -90,6 +124,12 @@ describe("operator readiness report", () => {
 
     expect(report.overall).toBe("ready");
     expect(report.counts.warning).toBe(1);
+    expect(report.worksheet.warnings.map((item) => item.id)).toEqual([
+      "operator-write-gate"
+    ]);
+    expect(report.worksheet.nextOperatorAction).toBe(
+      "Use this only for controlled non-production QA; keep public production writes disabled until launch approval."
+    );
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -122,6 +162,13 @@ describe("operator readiness report", () => {
     });
 
     expect(report.overall).toBe("blocked");
+    expect(report.worksheet.blocked.map((item) => item.id)).toEqual(
+      expect.arrayContaining([
+        "audited-action-wrappers",
+        "auth-route",
+        "manual-qa-checklist"
+      ])
+    );
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

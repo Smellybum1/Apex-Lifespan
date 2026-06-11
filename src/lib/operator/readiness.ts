@@ -35,6 +35,23 @@ export interface OperatorReadinessReport {
   counts: Record<OperatorReadinessStatus, number>;
   generatedAt: string;
   overall: "ready" | "blocked";
+  worksheet: OperatorReadinessWorksheet;
+}
+
+export interface OperatorReadinessWorksheet {
+  blocked: OperatorReadinessWorksheetItem[];
+  humanOwned: true;
+  nextOperatorAction: string;
+  readyEvidence: OperatorReadinessWorksheetItem[];
+  readyLocalArtifacts: OperatorReadinessWorksheetItem[];
+  warnings: OperatorReadinessWorksheetItem[];
+}
+
+export interface OperatorReadinessWorksheetItem {
+  evidenceKeys?: string[];
+  id: string;
+  label: string;
+  nextAction?: string;
 }
 
 const FILE_PATHS: Record<keyof OperatorReadinessFiles, string> = {
@@ -138,7 +155,8 @@ export function buildOperatorReadinessReport(
     checks,
     counts,
     generatedAt: (context.generatedAt ?? new Date()).toISOString(),
-    overall: counts.blocked > 0 ? "blocked" : "ready"
+    overall: counts.blocked > 0 ? "blocked" : "ready",
+    worksheet: operatorReadinessWorksheet(checks)
   };
 }
 
@@ -293,6 +311,55 @@ function currentWriteGateCheck(env: Record<string, string | undefined>): Operato
     label: "Current write gate",
     status: "ready",
     detail: "Operator writes are disabled in the current environment."
+  };
+}
+
+function operatorReadinessWorksheet(
+  checks: OperatorReadinessCheck[]
+): OperatorReadinessWorksheet {
+  const localArtifactIds = new Set([
+    "operator-page",
+    "auth-route",
+    "review-queue",
+    "audited-action-wrappers",
+    "promotion-readiness",
+    "operator-bootstrap",
+    "manual-qa-checklist"
+  ]);
+  const blocked = checks
+    .filter((check) => check.status === "blocked")
+    .map(operatorReadinessWorksheetItem);
+  const warnings = checks
+    .filter((check) => check.status === "warning")
+    .map(operatorReadinessWorksheetItem);
+  const readyLocalArtifacts = checks
+    .filter((check) => check.status === "ready" && localArtifactIds.has(check.id))
+    .map(operatorReadinessWorksheetItem);
+  const readyEvidence = checks
+    .filter((check) => check.status === "ready" && !localArtifactIds.has(check.id))
+    .map(operatorReadinessWorksheetItem);
+
+  return {
+    blocked,
+    humanOwned: true,
+    nextOperatorAction:
+      blocked[0]?.nextAction ??
+      warnings[0]?.nextAction ??
+      "Operator workflow evidence is ready; review launch readiness before enabling production writes.",
+    readyEvidence,
+    readyLocalArtifacts,
+    warnings
+  };
+}
+
+function operatorReadinessWorksheetItem(
+  check: OperatorReadinessCheck
+): OperatorReadinessWorksheetItem {
+  return {
+    evidenceKeys: check.evidenceKeys,
+    id: check.id,
+    label: check.label,
+    nextAction: check.nextAction
   };
 }
 
