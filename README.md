@@ -18,86 +18,92 @@ Apex Lifespan is an evidence intelligence dashboard for supplements, peptides, a
 - Dev: `npm run dev`
 - Stop dev server on port 3000: `npm run dev:stop`
 - Test: `npm run test`
-- Lint: `npm run lint`
-- Typecheck: `npm run typecheck`
-- Build: `npm run build`
-- Run queued source-candidate ingestion jobs locally: `npm run ingest:sources`
-- Prisma validate: `npm run db:validate`
-- Prisma generate: `npm run db:generate`
-- Apply local Prisma migrations: `npm run db:migrate`
-- Apply committed migrations without creating new ones: `npm run db:migrate:deploy`
-- Push schema to configured PostgreSQL without migrations: `npm run db:push`
-- Seed configured PostgreSQL and verify seed-owned IDs: `npm run db:seed`
+- Lint/typecheck/build: `npm run lint`, `npm run typecheck`, `npm run build`
+- Database: `npm run db:validate`, `npm run db:generate`, `npm run db:migrate`, `npm run db:migrate:deploy`, `npm run db:push`, `npm run db:seed`
+- Local source-candidate CLI: `npm run ingest:sources`
 
-## Local database
+## Local Setup
 
-The local Docker Compose database matches the `DATABASE_URL` in `.env.example`:
+Copy `.env.example` to `.env`, start PostgreSQL with `docker compose up -d postgres`, then run `npm run db:migrate` and `npm run db:seed`.
+
+The dashboard route reads from Prisma when PostgreSQL is reachable and falls back to seed data when unavailable or empty. Set `APEX_DATA_SOURCE=seed` to force seed mode or `APEX_DATA_SOURCE=database` to fail instead of falling back.
+
+Detailed local database, Windows DLL-lock, reset, and ingestion workflows live in `docs/codex/reference/local-operations.md`.
+
+## Public MVP Demo Launch
+
+Selected public MVP data mode: `APEX_DATA_SOURCE=seed`. The first public demo is seed-backed and read-only, with user-triggered PubMed and ClinicalTrials.gov preview routes enabled. Do not configure `DATABASE_URL` for the public MVP unless the deployment is deliberately switched to managed PostgreSQL.
+
+Selected deployment path now that GitHub push access is restored: push the reviewed branch to GitHub, merge or select the intended production branch, then import the GitHub repo into Vercel. Manual Vercel CLI deployment from the local checkout remains a fallback. See Vercel's [deploy](https://vercel.com/docs/cli/deploy), [environment variable](https://vercel.com/docs/environment-variables), and [rollback](https://vercel.com/docs/cli/rollback) docs for the operator workflow.
+
+Public MVP environment:
 
 ```bash
-postgresql://postgres:postgres@localhost:5432/apex_lifespan?schema=public
+APEX_DATA_SOURCE=seed
+NCBI_TOOL=apex-lifespan
+NCBI_EMAIL=
 ```
 
-Workflow:
+Do not configure `APEX_CODEX_THREAD_ID`, `APEX_CODEX_REVIEW_TOKEN`, or other Codex sidecar variables in the public deployment. Those are local-only operator controls.
 
-1. Copy `.env.example` to `.env`.
-2. Start PostgreSQL: `docker compose up -d postgres`
-3. Confirm it is healthy: `docker compose ps`
-4. Validate and generate Prisma client: `npm run db:validate` and `npm run db:generate`
-5. Apply the committed Prisma migrations: `npm run db:migrate`
-6. Seed local data and verify expected seed-owned rows: `npm run db:seed`
-7. Stop the database when done: `docker compose down`
+Build command: `npm run build`.
 
-Use `npm run db:migrate:deploy` when you want to apply committed migrations without generating a new migration. Keep `npm run db:push` for temporary local prototypes only.
+Local production smoke before deploy: set `APEX_DATA_SOURCE=seed`, then run:
 
-The seed command fails if required seed records are missing after the upserts or if stale seed-owned IDs remain in guarded tables. Non-seed import rows are allowed unless they use the seed-owned ID prefixes.
+```bash
+npm run start
+```
 
-To reset local database state, run `docker compose down -v`, then start PostgreSQL again and repeat the migrate/seed steps.
+Vercel serves the deployed app runtime after GitHub import/deploy; no custom public start command is required for the selected Vercel path.
 
-Assumptions: Docker Desktop or Docker Compose is installed, `localhost:5432` is available, and the `postgres/postgres` credentials are local-development only. If port `5432` is already in use, change the host port in `docker-compose.yml` and update `DATABASE_URL` in `.env` to match.
+Predeploy validation from this checkout:
 
-## Data source behavior
+```bash
+npm run test
+npm run lint
+npm run dev:stop
+npm run typecheck
+npm run build
+npm audit
+```
 
-The dashboard route is dynamic. It checks whether PostgreSQL is reachable, reads from Prisma when available, and falls back to seed data when the database is unavailable or empty. Set `APEX_DATA_SOURCE=seed` to force seed mode or `APEX_DATA_SOURCE=database` to fail instead of falling back.
+Production smoke target once deployed:
 
-On Windows, stop the dev server with `npm run dev:stop` before running Prisma-generating checks such as `npm run typecheck` or `npm run build`; this avoids generated query-engine DLL locks without needing PID-specific stop commands.
+```bash
+npm run smoke:public-mvp -- https://your-public-demo-url.example
+```
 
-## Local ingestion
+The smoke command verifies the homepage, PubMed and ClinicalTrials.gov live-preview routes, invalid live-source term guards, no-store/noindex response headers, and the AU/TGA, citation, unreviewed-draft, and live-preview caveats.
+
+Rollback path: use `vercel rollback <deployment-url>` or the Vercel dashboard to restore the previous production deployment, then smoke the dashboard and both live-source routes again.
+
+Known MVP limitations: source-candidate review and promotion stay local; accepted `PMID 42141930` remains curation backlog until a human-owned claim-link and structured extraction are completed; live preview results are unreviewed research leads, not public evidence cards.
+
+Launch handoff draft: `docs/codex/public-mvp-launch-handoff.md`.
+
+## Local Ingestion
 
 Source-candidate ingestion is an operator-only local workflow. It writes to the configured PostgreSQL database and is not exposed through public app routes.
 
-Use the built-in help and the dedicated workflow doc as the command reference:
+Use the built-in help for the current flag list:
 
 ```bash
 npm run ingest:sources -- --help
 ```
 
-See `docs/codex/source-candidate-workflow.md` for queueing, review, curation, output, and safety rules.
-
-Common examples:
+Before reviewing or queueing candidates, check local PostgreSQL connectivity:
 
 ```bash
-npm run ingest:sources
-npm run ingest:sources -- --queue-pubmed "creatine strength randomized trial systematic review"
-npm run ingest:sources -- --jobs
-npm run ingest:sources -- --candidates
-npm run ingest:sources -- --candidate-detail <dedupe-key>
-npm run ingest:sources -- --candidate-curation-handoff
-npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id>
-npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Not relevant to this claim."
+npm run ingest:sources -- --db-status
 ```
 
-The command reports ingestion-operation counts, not evidence-quality scores. Accepted candidates never auto-promote into public evidence cards.
+For queueing, review, curation, and safety rules, see `docs/codex/source-candidate-workflow.md`. For the full command catalog, see `docs/codex/reference/source-candidate-command-reference.md`.
 
-## Australia regulatory lens
+## Australia Regulatory Lens
 
-Apex Lifespan tracks Australia/TGA regulatory status separately from evidence scores. Generic intervention evidence does not imply a product is legal to supply in Australia. Product-level confidence should come from an ARTG/AUST number:
+Apex Lifespan tracks Australia/TGA regulatory status separately from evidence scores. Generic intervention evidence does not imply a product is legal to supply in Australia. Product-level confidence should come from an ARTG/AUST number.
 
-- `AUST L`: listed medicine; quality and safety requirements apply, but efficacy is not individually assessed before listing.
-- `AUST L(A)`: assessed listed medicine; health claims have pre-market efficacy assessment.
-- `AUST R`: registered medicine; quality, safety, and efficacy are assessed before registration.
-- Unknown or unapproved states stay visible until the product label or ARTG record is verified.
-
-## Safety boundaries
+## Safety Boundaries
 
 - General public resource only.
 - Public read-only MVP; admin review can come later.

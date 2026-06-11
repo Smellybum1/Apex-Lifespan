@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { analyzeLabel, compositeScore, scoreBand } from "@/lib/scoring";
+import { references } from "@/lib/seed-data";
 import type { ScoreSet } from "@/lib/types";
 
 const strongScores: ScoreSet = {
@@ -74,6 +75,17 @@ describe("analyzeLabel", () => {
 
     expect(analyzeLabel("Joint support medicine AUST L 123456").map((finding) => finding.id))
       .not.toContain("aust-number-not-visible");
+  });
+
+  it("keeps TGA AUST label findings linked to the curated seed reference", () => {
+    const austReference = references.find((reference) => reference.id === "tga-aust-numbers");
+    const findings = analyzeLabel("Joint repair therapeutic capsules - AUST number pending");
+
+    expect(austReference).toBeDefined();
+    expect(findings.find((finding) => finding.id === "aust-number-unresolved")).toMatchObject({
+      sourceLabel: "TGA AUST numbers",
+      sourceUrl: austReference?.url
+    });
   });
 
   it("distinguishes TGA approval overclaims from approval negation", () => {

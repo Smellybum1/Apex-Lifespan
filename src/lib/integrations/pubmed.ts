@@ -25,6 +25,12 @@ type PubMedSummaryRecord = Record<string, unknown>;
 
 const PUBMED_EUTILS_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 const PUBMED_SOURCE = "NCBI E-utilities";
+const LIVE_SOURCE_FETCH_INIT = {
+  headers: {
+    accept: "application/json"
+  },
+  cache: "no-store"
+} satisfies RequestInit;
 
 export async function searchPubMed(term: string, retmax = 10): Promise<PubMedSearchResult> {
   const url = new URL(`${PUBMED_EUTILS_BASE_URL}/esearch.fcgi`);
@@ -34,14 +40,7 @@ export async function searchPubMed(term: string, retmax = 10): Promise<PubMedSea
   url.searchParams.set("retmax", String(safeRetmax));
   url.searchParams.set("term", term);
 
-  const response = await fetch(url, {
-    headers: {
-      accept: "application/json"
-    },
-    next: {
-      revalidate: 60 * 60
-    }
-  });
+  const response = await fetch(url, LIVE_SOURCE_FETCH_INIT);
 
   if (!response.ok) {
     throw new Error(`PubMed search failed with ${response.status}`);
@@ -49,18 +48,19 @@ export async function searchPubMed(term: string, retmax = 10): Promise<PubMedSea
 
   const data = (await response.json()) as {
     esearchresult?: {
-      count?: string;
-      idlist?: string[];
+      count?: unknown;
+      idlist?: unknown;
     };
   };
+  const searchResult = isPubMedSearchResultRecord(data.esearchresult) ? data.esearchresult : {};
 
-  const ids = data.esearchresult?.idlist ?? [];
+  const ids = readStringArray(searchResult.idlist).slice(0, safeRetmax);
   const summaryById = await fetchPubMedSummaries(ids, term);
 
   return {
     query: term,
     ids,
-    count: Number(data.esearchresult?.count ?? 0),
+    count: readNonNegativeInteger(searchResult.count),
     source: PUBMED_SOURCE,
     articles: ids.map((id) => summaryById.get(id) ?? createPubMedArticleFallback(id))
   };
@@ -80,14 +80,7 @@ async function fetchPubMedSummaries(
   url.searchParams.set("id", ids.join(","));
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        accept: "application/json"
-      },
-      next: {
-        revalidate: 60 * 60
-      }
-    });
+    const response = await fetch(url, LIVE_SOURCE_FETCH_INIT);
 
     if (!response.ok) {
       return new Map();
@@ -192,7 +185,21 @@ function readStringArray(value: unknown): string[] {
     return [];
   }
 
-  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+  return value.flatMap((item) => {
+    const text = firstText(item);
+    return text ? [text] : [];
+  });
+}
+
+function readNonNegativeInteger(value: unknown) {
+  const numericValue =
+    typeof value === "number" || typeof value === "string" ? Number(value) : 0;
+
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return 0;
+  }
+
+  return Math.trunc(numericValue);
 }
 
 function readDoi(articleIds: unknown, elocationId: unknown): string | null {
@@ -321,6 +328,10 @@ function normaliseRetmax(retmax: number) {
   }
 
   return Math.min(Math.max(Math.trunc(retmax), 1), 20);
+}
+
+function isPubMedSearchResultRecord(value: unknown): value is PubMedSummaryRecord {
+  return Boolean(value) && !Array.isArray(value) && typeof value === "object";
 }
 
 function isPubMedSummaryRecord(

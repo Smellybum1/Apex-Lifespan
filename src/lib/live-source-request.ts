@@ -1,4 +1,15 @@
 export const MAX_LIVE_SOURCE_TERM_LENGTH = 240;
+export const MAX_LIVE_SOURCE_RESULT_LIMIT = 20;
+export const LIVE_SOURCE_RESPONSE_HEADERS = {
+  "Cache-Control": "no-store",
+  "X-Robots-Tag": "noindex"
+} satisfies HeadersInit;
+const UNSAFE_LIVE_SOURCE_TERM_PATTERN =
+  /\b(?:buy|inject|injectable|injected|injecting|injection|injections|needle|needles|purchase|reconstitute|reconstituted|reconstitution|supplier|suppliers|sourcing|vendor|vendors|vial|vials)\b/gi;
+const UNSAFE_LIVE_SOURCE_PHRASE_PATTERN =
+  /\b(?:bac(?:teriostatic)?|sterile)[-\s]+water\b|\bself[-\s]+(?:administer(?:ed|ing)?|administration|use)\b/gi;
+const HIDDEN_LIVE_SOURCE_CONTROL_PATTERN =
+  /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g;
 
 interface LiveSourceSearchRequestOptions {
   defaultLimit: number;
@@ -22,9 +33,9 @@ export function parseLiveSourceSearchRequest(
   options: LiveSourceSearchRequestOptions
 ): LiveSourceSearchRequest {
   const url = new URL(requestUrl);
-  const term = normaliseSourceTerm(url.searchParams.get("term") ?? "");
+  const rawTerm = normaliseSourceTerm(url.searchParams.get("term") ?? "");
 
-  if (!term) {
+  if (!rawTerm) {
     return {
       ok: false,
       status: 400,
@@ -32,7 +43,7 @@ export function parseLiveSourceSearchRequest(
     };
   }
 
-  if (term.length > MAX_LIVE_SOURCE_TERM_LENGTH) {
+  if (rawTerm.length > MAX_LIVE_SOURCE_TERM_LENGTH) {
     return {
       ok: false,
       status: 400,
@@ -40,13 +51,61 @@ export function parseLiveSourceSearchRequest(
     };
   }
 
+  const term = normaliseLiveSourceSearchTerm(rawTerm);
+
+  if (!term) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Term query parameter must include citation-oriented search terms."
+    };
+  }
+
   return {
     ok: true,
     term,
-    limit: Number(url.searchParams.get(options.limitParam) ?? options.defaultLimit)
+    limit: normaliseSourceLimit(url.searchParams.get(options.limitParam), options.defaultLimit)
   };
 }
 
+export function publicLiveSourceError(sourceName: string) {
+  return `${sourceName} search is temporarily unavailable.`;
+}
+
+export function publicLiveSourceDisplayError(sourceName: string, error: unknown) {
+  const message =
+    error instanceof Error ? error.message : typeof error === "string" ? error : "";
+
+  return isPublicLiveSourceErrorMessage(sourceName, message)
+    ? message
+    : publicLiveSourceError(sourceName);
+}
+
+export function normaliseLiveSourceSearchTerm(value: string) {
+  return normaliseSourceTerm(
+    value
+      .replace(UNSAFE_LIVE_SOURCE_PHRASE_PATTERN, " ")
+      .replace(UNSAFE_LIVE_SOURCE_TERM_PATTERN, " ")
+  );
+}
+
 function normaliseSourceTerm(value: string) {
-  return value.replace(/\s+/g, " ").trim();
+  return value.replace(HIDDEN_LIVE_SOURCE_CONTROL_PATTERN, " ").replace(/\s+/g, " ").trim();
+}
+
+function isPublicLiveSourceErrorMessage(sourceName: string, message: string) {
+  return [
+    "Missing term query parameter.",
+    `Term query parameter must be ${MAX_LIVE_SOURCE_TERM_LENGTH} characters or fewer.`,
+    "Term query parameter must include citation-oriented search terms.",
+    publicLiveSourceError(sourceName)
+  ].includes(message);
+}
+
+function normaliseSourceLimit(value: string | null, defaultLimit: number) {
+  const parsedLimit = value && value.trim() ? Number(value) : defaultLimit;
+  const fallbackLimit = Number.isFinite(defaultLimit) ? defaultLimit : 10;
+  const limit = Number.isFinite(parsedLimit) ? parsedLimit : fallbackLimit;
+
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_LIVE_SOURCE_RESULT_LIMIT);
 }

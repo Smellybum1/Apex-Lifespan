@@ -1,5 +1,9 @@
-import { runSourceCandidateJobCommand } from "../src/lib/data/source-candidate-job-command";
+process.env.APEX_PRISMA_LOG ??= "silent";
 
-void runSourceCandidateJobCommand().then((exitCode) => {
-  process.exitCode = exitCode;
-});
+void import("../src/lib/data/source-candidate-job-command").then(
+  ({ runSourceCandidateJobCommand }) => {
+    void runSourceCandidateJobCommand().then((exitCode) => {
+      process.exitCode = exitCode;
+    });
+  }
+);

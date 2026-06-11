@@ -56,6 +56,8 @@ import {
   linkAcceptedSourceCandidateClaim,
   listSourceCandidateAcceptedReferenceMatches,
   listSourceCandidateCurationHandoff,
+  listSourceCandidateIdentityGroups,
+  listSourceCandidateReviewOverview,
   listSourceCandidateReviewQueue,
   listSourceCandidateSiblings,
   summarizeSourceCandidateCurationHandoff,
@@ -63,6 +65,7 @@ import {
   summarizeSourceCandidateBacklog,
   upsertSourceCandidateDrafts
 } from "@/lib/data/source-candidates";
+import type { RecordSourceCandidateDecisionInput } from "@/lib/data/source-candidates";
 import type { SourceCandidate } from "@/lib/types";
 
 beforeEach(() => {
@@ -220,9 +223,11 @@ describe("listSourceCandidateReviewQueue", () => {
     await listSourceCandidateReviewQueue({
       claimId: "creatine-strength",
       decision: "Rejected",
+      externalId: "NCT123",
       ingestionJobId: "job-pubmed",
       interventionId: "creatine",
       limit: 250,
+      region: "NZ",
       source: "ClinicalTrials.gov"
     });
 
@@ -230,8 +235,10 @@ describe("listSourceCandidateReviewQueue", () => {
       where: {
         claimId: "creatine-strength",
         decision: "REJECTED",
+        externalId: "NCT123",
         ingestionJobId: "job-pubmed",
         interventionId: "creatine",
+        region: "NZ",
         source: "CLINICALTRIALS_GOV"
       },
       orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
@@ -249,6 +256,433 @@ describe("listSourceCandidateReviewQueue", () => {
       orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
       take: 1
     });
+  });
+
+  it("filters review candidates with missing claim or intervention ids", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([]);
+
+    await listSourceCandidateReviewQueue({
+      claimIdMissing: true,
+      interventionIdMissing: true,
+      region: "AU",
+      source: "PubMed"
+    });
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        claimId: null,
+        decision: "PENDING_REVIEW",
+        interventionId: null,
+        region: "AU",
+        source: "PUBMED"
+      },
+      orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
+      take: 25
+    });
+  });
+});
+
+describe("listSourceCandidateReviewOverview", () => {
+  it("groups pending candidates by claim, intervention, source, and region", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events",
+        externalId: "32634581",
+        source: "PUBMED",
+        title: "Omega-3 cardiovascular meta-analysis",
+        triageScore: 95,
+        interventionId: "omega-3",
+        claimId: "omega-3-cv-events"
+      }),
+      dbSourceCandidate({
+        dedupeKey:
+          "clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events",
+        externalId: "NCT01492361",
+        source: "CLINICALTRIALS_GOV",
+        title: "REDUCE-IT",
+        triageScore: 100,
+        interventionId: "omega-3",
+        claimId: "omega-3-cv-events"
+      }),
+      dbSourceCandidate({
+        dedupeKey:
+          "clinicaltrials.gov|au|omega-cv|nct01169259|omega-3|omega-3-cv-events",
+        externalId: "NCT01169259",
+        source: "CLINICALTRIALS_GOV",
+        title: "VITAL",
+        triageScore: 85,
+        interventionId: "omega-3",
+        claimId: "omega-3-cv-events"
+      })
+    ]);
+
+    await expect(
+      listSourceCandidateReviewOverview({
+        claimId: "omega-3-cv-events",
+        interventionId: "omega-3",
+        limit: 10,
+        region: "AU"
+      })
+    ).resolves.toEqual({
+      candidateCount: 3,
+      totalGroups: 2,
+      groups: [
+        {
+          claimId: "omega-3-cv-events",
+          count: 2,
+          interventionId: "omega-3",
+          region: "AU",
+          source: "ClinicalTrials.gov",
+          topCandidate: expect.objectContaining({
+            dedupeKey:
+              "clinicaltrials.gov|au|omega-cv|nct01492361|omega-3|omega-3-cv-events",
+            externalId: "NCT01492361",
+            triageScore: 100
+          }),
+          topIdentityCandidateCount: 1,
+          topIdentityMixedDecision: false,
+          topTriageScore: 100
+        },
+        {
+          claimId: "omega-3-cv-events",
+          count: 1,
+          interventionId: "omega-3",
+          region: "AU",
+          source: "PubMed",
+          topCandidate: expect.objectContaining({
+            dedupeKey: "pubmed|au|omega-cv|32634581|omega-3|omega-3-cv-events",
+            externalId: "32634581",
+            triageScore: 95
+          }),
+          topIdentityCandidateCount: 1,
+          topIdentityMixedDecision: false,
+          topTriageScore: 95
+        }
+      ]
+    });
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        claimId: "omega-3-cv-events",
+        decision: "PENDING_REVIEW",
+        interventionId: "omega-3",
+        region: "AU"
+      },
+      orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
+      take: 1000
+    });
+  });
+
+  it("counts duplicate identities for each overview top candidate", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine-meta|42141930||",
+        externalId: "42141930",
+        query: "creatine meta",
+        claimId: null,
+        interventionId: null,
+        ingestionJobId: "job-unscoped",
+        triageScore: 80
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine-strength|42141930|creatine|creatine-strength",
+        externalId: "42141930",
+        query: "creatine strength",
+        claimId: "creatine-strength",
+        interventionId: "creatine",
+        ingestionJobId: "job-claim",
+        triageScore: 80
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|30762623|creatine|creatine-strength",
+        externalId: "30762623",
+        query: "creatine strength",
+        claimId: "creatine-strength",
+        interventionId: "creatine",
+        ingestionJobId: "job-claim",
+        triageScore: 70
+      })
+    ]);
+
+    await expect(listSourceCandidateReviewOverview()).resolves.toMatchObject({
+      groups: [
+        expect.objectContaining({
+          claimId: "creatine-strength",
+          topCandidate: expect.objectContaining({
+            dedupeKey: "pubmed|au|creatine-strength|42141930|creatine|creatine-strength"
+          }),
+          topIdentityCandidateCount: 2,
+          topIdentityMixedDecision: false
+        }),
+        expect.objectContaining({
+          claimId: undefined,
+          topCandidate: expect.objectContaining({
+            dedupeKey: "pubmed|au|creatine-meta|42141930||"
+          }),
+          topIdentityCandidateCount: 2,
+          topIdentityMixedDecision: false
+        })
+      ]
+    });
+  });
+
+  it("prefers duplicate identity candidates for tied overview top triage", async () => {
+    prismaMocks.sourceCandidateFindMany
+      .mockResolvedValueOnce([
+        dbSourceCandidate({
+          dedupeKey: "pubmed|au|creatine-meta|42158825||",
+          externalId: "42158825",
+          query: "creatine meta",
+          claimId: null,
+          interventionId: null,
+          triageScore: 80,
+          updatedAt: new Date("2026-06-03T00:00:00.000Z")
+        }),
+        dbSourceCandidate({
+          dedupeKey: "pubmed|au|creatine-meta|42141930||",
+          externalId: "42141930",
+          query: "creatine meta",
+          claimId: null,
+          interventionId: null,
+          triageScore: 80,
+          updatedAt: new Date("2026-06-02T00:00:00.000Z")
+        })
+      ])
+      .mockResolvedValueOnce([
+        dbSourceCandidate({
+          dedupeKey: "pubmed|au|creatine-meta|42158825||",
+          externalId: "42158825",
+          query: "creatine meta",
+          claimId: null,
+          interventionId: null,
+          triageScore: 80
+        }),
+        dbSourceCandidate({
+          dedupeKey: "pubmed|au|creatine-meta|42141930||",
+          externalId: "42141930",
+          query: "creatine meta",
+          claimId: null,
+          interventionId: null,
+          triageScore: 80
+        }),
+        dbSourceCandidate({
+          dedupeKey:
+            "pubmed|au|creatine-strength|42141930|creatine|creatine-strength",
+          externalId: "42141930",
+          query: "creatine strength",
+          claimId: "creatine-strength",
+          interventionId: "creatine",
+          decision: "ACCEPTED",
+          reviewStatus: "HUMAN_REVIEWED",
+          triageScore: 80
+        })
+      ]);
+
+    await expect(listSourceCandidateReviewOverview()).resolves.toMatchObject({
+      groups: [
+        expect.objectContaining({
+          claimId: undefined,
+          count: 2,
+          topCandidate: expect.objectContaining({
+            dedupeKey: "pubmed|au|creatine-meta|42141930||"
+          }),
+          topIdentityCandidateCount: 2,
+          topIdentityMixedDecision: true,
+          topTriageScore: 80
+        })
+      ]
+    });
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        OR: [
+          {
+            externalId: "42158825",
+            source: "PUBMED"
+          },
+          {
+            externalId: "42141930",
+            source: "PUBMED"
+          }
+        ]
+      }
+    });
+  });
+
+  it("bounds overview group limits", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|claim-a|1|a|claim-a",
+        claimId: "claim-a",
+        interventionId: "a"
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|claim-b|2|b|claim-b",
+        claimId: "claim-b",
+        interventionId: "b"
+      })
+    ]);
+
+    await expect(listSourceCandidateReviewOverview({ limit: 1 })).resolves.toMatchObject({
+      groups: [expect.objectContaining({ claimId: "claim-a" })],
+      totalGroups: 2
+    });
+    await expect(listSourceCandidateReviewOverview({ limit: 200 })).resolves.toMatchObject({
+      groups: [
+        expect.objectContaining({ claimId: "claim-a" }),
+        expect.objectContaining({ claimId: "claim-b" })
+      ],
+      totalGroups: 2
+    });
+  });
+
+  it("keeps database queue ordering for tied top triage scores", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|omega-cv|z-newer|omega-3|omega-3-cv-events",
+        externalId: "z-newer",
+        triageScore: 100,
+        interventionId: "omega-3",
+        claimId: "omega-3-cv-events",
+        updatedAt: new Date("2026-06-03T00:00:00.000Z")
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|omega-cv|a-older|omega-3|omega-3-cv-events",
+        externalId: "a-older",
+        triageScore: 100,
+        interventionId: "omega-3",
+        claimId: "omega-3-cv-events",
+        updatedAt: new Date("2026-06-02T00:00:00.000Z")
+      })
+    ]);
+
+    await expect(listSourceCandidateReviewOverview()).resolves.toMatchObject({
+      groups: [
+        {
+          count: 2,
+          topCandidate: expect.objectContaining({
+            dedupeKey: "pubmed|au|omega-cv|z-newer|omega-3|omega-3-cv-events"
+          }),
+          topTriageScore: 100
+        }
+      ]
+    });
+  });
+});
+
+describe("listSourceCandidateIdentityGroups", () => {
+  it("lists duplicate source/external-id groups across decisions by default", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine-meta|42141930||",
+        externalId: "42141930",
+        query: "creatine meta",
+        claimId: null,
+        interventionId: null,
+        ingestionJobId: "job-unscoped"
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine-strength|42141930|creatine|creatine-strength",
+        externalId: "42141930",
+        query: "creatine strength",
+        ingestionJobId: "job-claim",
+        decision: "ACCEPTED",
+        reviewStatus: "HUMAN_REVIEWED",
+        acceptedReferenceId: "ref-pubmed-42141930"
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|30762623|creatine|creatine-strength",
+        externalId: "30762623",
+        query: "creatine strength",
+        ingestionJobId: "job-claim"
+      })
+    ]);
+
+    await expect(
+      listSourceCandidateIdentityGroups({
+        externalId: "42141930",
+        limit: 2,
+        source: "PubMed"
+      })
+    ).resolves.toEqual([
+      {
+        candidates: [
+          expect.objectContaining({
+            dedupeKey: "pubmed|au|creatine-meta|42141930||",
+            externalId: "42141930",
+            claimId: undefined,
+            interventionId: undefined
+          }),
+          expect.objectContaining({
+            dedupeKey:
+              "pubmed|au|creatine-strength|42141930|creatine|creatine-strength",
+            externalId: "42141930",
+            claimId: "creatine-strength",
+            decision: "Accepted",
+            interventionId: "creatine"
+          })
+        ],
+        externalId: "42141930",
+        source: "PubMed"
+      }
+    ]);
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        externalId: "42141930",
+        source: "PUBMED"
+      },
+      orderBy: [{ source: "asc" }, { externalId: "asc" }, { triageScore: "desc" }],
+      take: 500
+    });
+  });
+
+  it("honors explicit decision filters for duplicate identity groups", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([]);
+
+    await expect(
+      listSourceCandidateIdentityGroups({
+        decision: "Accepted",
+        externalId: "42141930",
+        source: "PubMed"
+      })
+    ).resolves.toEqual([]);
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        decision: "ACCEPTED",
+        externalId: "42141930",
+        source: "PUBMED"
+      },
+      orderBy: [{ source: "asc" }, { externalId: "asc" }, { triageScore: "desc" }],
+      take: 500
+    });
+  });
+
+  it("bounds duplicate group limits", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|1a",
+        externalId: "1"
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|1b",
+        externalId: "1"
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|2a",
+        externalId: "2"
+      }),
+      dbSourceCandidate({
+        dedupeKey: "pubmed|au|creatine|2b",
+        externalId: "2"
+      })
+    ]);
+
+    await expect(listSourceCandidateIdentityGroups({ limit: 1 })).resolves.toHaveLength(1);
+    await expect(listSourceCandidateIdentityGroups({ limit: 250 })).resolves.toHaveLength(
+      2
+    );
   });
 });
 
@@ -1351,6 +1785,35 @@ describe("extractAcceptedSourceCandidateStudy", () => {
     expect(prismaMocks.studyCreate).not.toHaveBeenCalled();
   });
 
+  it("requires operator-supplied extraction fields before database lookup", async () => {
+    await expect(
+      extractAcceptedSourceCandidateStudy({
+        ...studyExtractionInput(),
+        sampleSize: " "
+      })
+    ).rejects.toThrow("Study extraction requires --study-sample-size.");
+
+    await expect(
+      extractAcceptedSourceCandidateStudy({
+        ...studyExtractionInput(),
+        outcomes: [" "]
+      })
+    ).rejects.toThrow("Study extraction requires at least one --study-outcome.");
+
+    await expect(
+      extractAcceptedSourceCandidateStudy({
+        ...studyExtractionInput(),
+        sourceType: "NOT_A_STUDY_TYPE"
+      } as unknown as Parameters<typeof extractAcceptedSourceCandidateStudy>[0])
+    ).rejects.toThrow(
+      "Study extraction requires --study-source-type because source type cannot be inferred."
+    );
+
+    expect(prismaMocks.sourceCandidateFindUnique).not.toHaveBeenCalled();
+    expect(prismaMocks.studyCreate).not.toHaveBeenCalled();
+    expect(prismaMocks.studyUpdate).not.toHaveBeenCalled();
+  });
+
   it("refuses extraction when the claim link is missing", async () => {
     prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
       dbSourceCandidate({
@@ -1573,6 +2036,7 @@ describe("listSourceCandidateCurationHandoff", () => {
         ingestionJobId: "job-pubmed",
         interventionId: "creatine",
         limit: 100,
+        region: "AU",
         source: "PubMed"
       })
     ).resolves.toEqual([
@@ -1688,6 +2152,7 @@ describe("listSourceCandidateCurationHandoff", () => {
         decision: "ACCEPTED",
         ingestionJobId: "job-pubmed",
         interventionId: "creatine",
+        region: "AU",
         source: "PUBMED"
       },
       orderBy: [{ reviewedAt: "asc" }, { updatedAt: "desc" }],
@@ -1745,6 +2210,34 @@ describe("listSourceCandidateCurationHandoff", () => {
 
     await expect(listSourceCandidateCurationHandoff()).resolves.toEqual([]);
 
+    expect(prismaMocks.referenceFindMany).not.toHaveBeenCalled();
+    expect(prismaMocks.claimReferenceFindMany).not.toHaveBeenCalled();
+    expect(prismaMocks.studyFindMany).not.toHaveBeenCalled();
+  });
+
+  it("filters curation handoff rows with missing claim or intervention ids", async () => {
+    prismaMocks.sourceCandidateFindMany.mockResolvedValue([]);
+
+    await expect(
+      listSourceCandidateCurationHandoff({
+        claimIdMissing: true,
+        interventionIdMissing: true,
+        region: "AU",
+        source: "PubMed"
+      })
+    ).resolves.toEqual([]);
+
+    expect(prismaMocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        claimId: null,
+        decision: "ACCEPTED",
+        interventionId: null,
+        region: "AU",
+        source: "PUBMED"
+      },
+      orderBy: [{ reviewedAt: "asc" }, { updatedAt: "desc" }],
+      take: 25
+    });
     expect(prismaMocks.referenceFindMany).not.toHaveBeenCalled();
     expect(prismaMocks.claimReferenceFindMany).not.toHaveBeenCalled();
     expect(prismaMocks.studyFindMany).not.toHaveBeenCalled();
@@ -2103,7 +2596,7 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: " ref-creatine-position-stand ",
-        reviewNote: "Promoted after full-text review.",
+        reviewNote: " Promoted after full-text review. ",
         reviewedAt
       })
     ).resolves.toEqual(
@@ -2186,7 +2679,7 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Rejected"
-      })
+      } as RecordSourceCandidateDecisionInput)
     ).rejects.toThrow("Rejected source candidates require a reviewNote.");
 
     await expect(
@@ -2201,12 +2694,66 @@ describe("recordSourceCandidateDecision", () => {
     expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
   });
 
+  it("rejects non-review decisions before database lookup", async () => {
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Pending review",
+        reviewNote: "Not a terminal review decision."
+      } as unknown as RecordSourceCandidateDecisionInput)
+    ).rejects.toThrow(
+      "Source candidate review decision must be Accepted or Rejected."
+    );
+
+    expect(prismaMocks.sourceCandidateFindUnique).not.toHaveBeenCalled();
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects curated reference links on rejected decisions", async () => {
+    await expect(
+      recordSourceCandidateDecision({
+        acceptedReferenceId: "ref-creatine-position-stand",
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Rejected",
+        reviewNote: "Not relevant to the AU consumer claim."
+      } as unknown as RecordSourceCandidateDecisionInput)
+    ).rejects.toThrow(
+      "Rejected source candidates cannot include an acceptedReferenceId."
+    );
+
+    expect(prismaMocks.sourceCandidateFindUnique).not.toHaveBeenCalled();
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
+  it("requires a nonblank review note when accepting candidates", async () => {
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Accepted",
+        acceptedReferenceId: "ref-creatine-position-stand"
+      } as RecordSourceCandidateDecisionInput)
+    ).rejects.toThrow("Accepted source candidates require a reviewNote.");
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Accepted",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        reviewNote: " "
+      })
+    ).rejects.toThrow("Accepted source candidates require a reviewNote.");
+
+    expect(prismaMocks.sourceCandidateFindUnique).not.toHaveBeenCalled();
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+
   it("rejects accepted decisions without a curated reference link", async () => {
     await expect(
       recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
-        acceptedReferenceId: " "
+        acceptedReferenceId: " ",
+        reviewNote: "Full-text reviewed."
       })
     ).rejects.toThrow("Accepted source candidates require an acceptedReferenceId.");
 
@@ -2239,7 +2786,8 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
-        acceptedReferenceId: "missing-reference"
+        acceptedReferenceId: "missing-reference",
+        reviewNote: "Full-text reviewed."
       })
     ).rejects.toThrow("Accepted source candidate reference was not found.");
 
@@ -2259,7 +2807,8 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
-        acceptedReferenceId: "ods-creatine"
+        acceptedReferenceId: "ods-creatine",
+        reviewNote: "Full-text reviewed."
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
@@ -2280,7 +2829,8 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
-        acceptedReferenceId: "wrong-pubmed-reference"
+        acceptedReferenceId: "wrong-pubmed-reference",
+        reviewNote: "Full-text reviewed."
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
@@ -2307,7 +2857,8 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|1234",
         decision: "Accepted",
-        acceptedReferenceId: "substring-pubmed-reference"
+        acceptedReferenceId: "substring-pubmed-reference",
+        reviewNote: "Full-text reviewed."
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
@@ -2338,6 +2889,7 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: "ref-creatine-position-stand",
+        reviewNote: "Full-text reviewed.",
         reviewedAt
       })
     ).resolves.toEqual(
@@ -2387,6 +2939,7 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
         decision: "Accepted",
         acceptedReferenceId: "trial-nct123",
+        reviewNote: "Full-text reviewed.",
         reviewedAt
       })
     ).resolves.toEqual(
@@ -2420,7 +2973,8 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
         decision: "Accepted",
-        acceptedReferenceId: "trial-nct1234"
+        acceptedReferenceId: "trial-nct1234",
+        reviewNote: "Full-text reviewed."
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
@@ -2451,7 +3005,8 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
         decision: "Accepted",
-        acceptedReferenceId: "clinicaltrials-api"
+        acceptedReferenceId: "clinicaltrials-api",
+        reviewNote: "Full-text reviewed."
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."

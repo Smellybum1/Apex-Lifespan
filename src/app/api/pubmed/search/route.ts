@@ -1,5 +1,9 @@
 import { searchPubMed } from "@/lib/integrations/pubmed";
-import { parseLiveSourceSearchRequest } from "@/lib/live-source-request";
+import {
+  LIVE_SOURCE_RESPONSE_HEADERS,
+  parseLiveSourceSearchRequest,
+  publicLiveSourceError
+} from "@/lib/live-source-request";
 
 export const dynamic = "force-dynamic";
 
@@ -10,18 +14,21 @@ export async function GET(request: Request) {
   });
 
   if (!searchRequest.ok) {
-    return Response.json({ error: searchRequest.error }, { status: searchRequest.status });
+    return Response.json(
+      { error: searchRequest.error },
+      { headers: LIVE_SOURCE_RESPONSE_HEADERS, status: searchRequest.status }
+    );
   }
 
   try {
     const result = await searchPubMed(searchRequest.term, searchRequest.limit);
-    return Response.json(result);
-  } catch (error) {
+    return Response.json(result, { headers: LIVE_SOURCE_RESPONSE_HEADERS });
+  } catch {
     return Response.json(
       {
-        error: error instanceof Error ? error.message : "PubMed search failed."
+        error: publicLiveSourceError("PubMed")
       },
-      { status: 502 }
+      { headers: LIVE_SOURCE_RESPONSE_HEADERS, status: 502 }
     );
   }
 }

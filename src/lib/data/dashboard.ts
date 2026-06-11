@@ -57,6 +57,10 @@ type DbClaimWithReferences = DbClaim & {
   references: DbClaimReference[];
 };
 
+type DatabasePreflight =
+  | { reachable: true }
+  | { reachable: false; reason: string };
+
 const categoryMap: Record<DbInterventionCategory, InterventionCategory> = {
   VITAMIN_MINERAL: "Vitamin/mineral",
   FATTY_ACID: "Fatty acid",
@@ -192,19 +196,14 @@ export async function getEvidenceDashboardData(): Promise<EvidenceDashboardData>
     return getSeedDashboardData("Seed mode forced by APEX_DATA_SOURCE.");
   }
 
-  const databaseUrl = process.env.DATABASE_URL;
-  const databaseReachable = databaseUrl ? await canReachDatabase(databaseUrl) : false;
+  const databasePreflight = await checkDatabaseConnection(process.env.DATABASE_URL);
 
-  if (!databaseReachable) {
-    const reason = databaseUrl
-      ? "Database is not reachable, using seed data."
-      : "DATABASE_URL is not configured, using seed data.";
-
+  if (!databasePreflight.reachable) {
     if (process.env.APEX_DATA_SOURCE === "database") {
-      throw new Error(reason);
+      throw new Error(databasePreflight.reason);
     }
 
-    return getSeedDashboardData(reason);
+    return getSeedDashboardData(databasePreflight.reason);
   }
 
   try {
@@ -440,26 +439,66 @@ function formatDate(value?: Date | null) {
 }
 
 function readableError(error: unknown) {
-  if (error instanceof Error) {
-    return `Database unavailable, using seed data: ${error.message}`;
+  const message = error instanceof Error ? error.message : "";
+
+  if (message.includes("Environment variable not found: DATABASE_URL")) {
+    return "DATABASE_URL is not configured, using seed data.";
   }
 
-  return "Database unavailable, using seed data.";
+  if (
+    message.includes("P1001") ||
+    message.includes("Can't reach database server")
+  ) {
+    return "Database is not reachable, using seed data.";
+  }
+
+  if (message.includes("DATABASE_URL") && message.toLowerCase().includes("invalid")) {
+    return "DATABASE_URL is invalid, using seed data.";
+  }
+
+  return "Database query failed, using seed data.";
 }
 
-function canReachDatabase(databaseUrl: string) {
+async function checkDatabaseConnection(databaseUrl: string | undefined): Promise<DatabasePreflight> {
+  if (!databaseUrl) {
+    return {
+      reachable: false,
+      reason: "DATABASE_URL is not configured, using seed data."
+    };
+  }
+
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(databaseUrl);
+  } catch {
+    return {
+      reachable: false,
+      reason: "DATABASE_URL is invalid, using seed data."
+    };
+  }
+
+  if (!["postgres:", "postgresql:"].includes(parsedUrl.protocol)) {
+    return {
+      reachable: false,
+      reason: "DATABASE_URL is invalid, using seed data."
+    };
+  }
+
+  const reachable = await canReachDatabase(parsedUrl);
+
+  return reachable
+    ? { reachable: true }
+    : {
+        reachable: false,
+        reason: "Database is not reachable, using seed data."
+      };
+}
+
+function canReachDatabase(databaseUrl: URL) {
   return new Promise<boolean>((resolve) => {
-    let parsedUrl: URL;
-
-    try {
-      parsedUrl = new URL(databaseUrl);
-    } catch {
-      resolve(false);
-      return;
-    }
-
     const socket = new Socket();
-    const port = Number(parsedUrl.port || 5432);
+    const port = Number(databaseUrl.port || 5432);
 
     const finish = (reachable: boolean) => {
       socket.destroy();
@@ -470,6 +509,6 @@ function canReachDatabase(databaseUrl: string) {
     socket.once("connect", () => finish(true));
     socket.once("timeout", () => finish(false));
     socket.once("error", () => finish(false));
-    socket.connect(port, parsedUrl.hostname);
+    socket.connect(port, databaseUrl.hostname);
   });
 }

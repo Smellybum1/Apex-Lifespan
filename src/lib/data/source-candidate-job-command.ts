@@ -1,15 +1,23 @@
+import { Buffer } from "node:buffer";
+
 import {
   listSourceCandidateIngestionJobs,
+  queueClaimSourceCandidateIngestionJobs,
   queueSourceCandidateIngestionJob,
   runNextSourceCandidateIngestionJob,
   runSourceCandidateIngestionJob,
+  summarizeSourceCandidateIngestionJobs,
+  type QueueClaimSourceCandidateIngestionJobsInput,
   type QueueSourceCandidateIngestionJobInput,
+  type QueuedClaimSourceCandidateIngestionJobs,
   type QueuedSourceCandidateIngestionJob,
   type SourceCandidateIngestionJobListItem,
   type SourceCandidateIngestionJobListOptions,
   type SourceCandidateIngestionJobOptions,
-  type SourceCandidateIngestionJobRunResult
+  type SourceCandidateIngestionJobRunResult,
+  type SourceCandidateIngestionJobSummary
 } from "@/lib/data/source-candidate-jobs";
+import { prisma } from "@/lib/db/prisma";
 import {
   extractAcceptedSourceCandidateStudy,
   getSourceCandidateCurationDraft,
@@ -18,11 +26,14 @@ import {
   linkAcceptedSourceCandidateClaim,
   listSourceCandidateAcceptedReferenceMatches,
   listSourceCandidateCurationHandoff,
+  listSourceCandidateIdentityGroups,
+  listSourceCandidateReviewOverview,
   listSourceCandidateReviewQueue,
   listSourceCandidateSiblings,
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
   summarizeSourceCandidateCurationHandoff,
+  curationNextAction,
   type ExtractAcceptedSourceCandidateStudyInput,
   type ExtractedSourceCandidateStudy,
   type LinkAcceptedSourceCandidateClaimInput,
@@ -36,6 +47,8 @@ import {
   type SourceCandidateCurationHandoffSummary,
   type SourceCandidateCurationStatus,
   type SourceCandidateCurationStatusKind,
+  type SourceCandidateIdentityGroup,
+  type SourceCandidateReviewOverview,
   type SourceCandidateStudyExtractionSourceType,
   type SourceCandidateSiblingOptions,
   type SourceCandidateSiblings
@@ -47,6 +60,18 @@ import type {
   SourceCandidateSource
 } from "@/lib/types";
 
+const SOURCE_CANDIDATE_REVIEW_FLAG_CODES = [
+  "broad-safety-query",
+  "low-title-query-overlap"
+] as const;
+const SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION =
+  "Same source/external id appears in multiple candidate contexts; compare duplicate identity rows before accepting or rejecting any candidate.";
+const SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION =
+  "Review duplicate identity rows together before changing any candidate decision.";
+
+type SourceCandidateReviewFlagCode =
+  (typeof SOURCE_CANDIDATE_REVIEW_FLAG_CODES)[number];
+
 export interface SourceCandidateJobCommandOptions
   extends SourceCandidateIngestionJobOptions {
   acceptedReferenceId?: string;
@@ -57,10 +82,21 @@ export interface SourceCandidateJobCommandOptions
   candidateCurationStatusDedupeKey?: string;
   candidateDetailDedupeKey?: string;
   candidateDecision?: SourceCandidateDecision;
+  candidateDuplicates?: boolean;
+  candidateClaimMissing?: boolean;
   candidateClaimId?: string;
+  candidateExternalId?: string;
+  candidateInterventionMissing?: boolean;
   candidateInterventionId?: string;
   candidateJobId?: string;
   candidateReferenceMatchesDedupeKey?: string;
+  candidateRegion?: string;
+  candidateReviewFlag?: SourceCandidateReviewFlagCode;
+  candidateReviewFlags?: boolean;
+  candidateReviewFlagsLimit?: number;
+  candidateReviewOverview?: boolean;
+  candidateReviewOverviewLimit?: number;
+  candidateReviewPacketDedupeKey?: string;
   candidateSiblingsDedupeKey?: string;
   candidateSiblingsLimit?: number;
   candidateSource?: SourceCandidateSource;
@@ -69,20 +105,28 @@ export interface SourceCandidateJobCommandOptions
   claimId?: string;
   claimLinkNote?: string;
   claimLinkRelevance?: number;
+  dbStatus?: boolean;
   extractCandidateStudyDedupeKey?: string;
   help: boolean;
   interventionId?: string;
   jobId?: string;
   jobs?: boolean;
+  jobsClaimId?: string;
+  jobsInterventionId?: string;
   jobsLimit?: number;
+  jobsRegion?: string;
+  jobsSource?: SourceCandidateSource;
+  jobsStatus?: SourceCandidateIngestionJobListOptions["status"];
   linkCandidateClaimDedupeKey?: string;
   limit: number;
+  queueClaimSourcesClaimId?: string;
   queueQuery?: string;
   queueSource?: SourceCandidateSource;
   region?: string;
   reviewCandidateDedupeKey?: string;
   reviewDecision?: ReviewedSourceCandidateDecision;
   reviewNote?: string;
+  runNextJobs?: boolean;
   studyAbstract?: string;
   studyAdverseEvents?: string;
   studyDose?: string;
@@ -106,6 +150,7 @@ export interface SourceCandidateJobCommandIo {
 }
 
 export interface SourceCandidateJobCommandRunners {
+  checkDatabase?: () => Promise<SourceCandidateDatabaseStatus>;
   getCurationDraft?: (
     dedupeKey: string
   ) => Promise<SourceCandidateCurationDraft | null>;
@@ -119,9 +164,27 @@ export interface SourceCandidateJobCommandRunners {
   listCurationHandoff?: (
     options: SourceCandidateCurationHandoffOptions
   ) => Promise<SourceCandidateCurationStatus[]>;
+  listIdentityGroups?: (options: {
+    claimId?: string;
+    decision?: SourceCandidateDecision;
+    externalId?: string;
+    ingestionJobId?: string;
+    interventionId?: string;
+    limit?: number;
+    source?: SourceCandidateSource;
+  }) => Promise<SourceCandidateIdentityGroup[]>;
+  listReviewOverview?: (options: {
+    claimId?: string;
+    ingestionJobId?: string;
+    interventionId?: string;
+    limit?: number;
+    region?: string;
+    source?: SourceCandidateSource;
+  }) => Promise<SourceCandidateReviewOverview>;
   listCandidates?: (options: {
     claimId?: string;
     decision?: SourceCandidateDecision;
+    externalId?: string;
     ingestionJobId?: string;
     interventionId?: string;
     limit?: number;
@@ -143,6 +206,9 @@ export interface SourceCandidateJobCommandRunners {
   queueJob?: (
     input: QueueSourceCandidateIngestionJobInput
   ) => Promise<QueuedSourceCandidateIngestionJob>;
+  queueClaimSources?: (
+    input: QueueClaimSourceCandidateIngestionJobsInput
+  ) => Promise<QueuedClaimSourceCandidateIngestionJobs>;
   runJobById?: (
     jobId: string,
     options: SourceCandidateIngestionJobOptions
@@ -155,12 +221,48 @@ export interface SourceCandidateJobCommandRunners {
   ) => Promise<SourceCandidate>;
   summarizeBacklog?: () => Promise<SourceCandidateBacklogSummary>;
   summarizeCurationHandoff?: () => Promise<SourceCandidateCurationHandoffSummary>;
+  summarizeJobs?: () => Promise<SourceCandidateIngestionJobSummary>;
+}
+
+interface SourceCandidateDatabaseStatus {
+  target: string;
+  latencyMs: number;
+}
+
+interface SourceCandidateReviewPacket {
+  candidate: SourceCandidate;
+  referenceMatches: SourceCandidateAcceptedReferenceMatches;
+  siblings: SourceCandidateSiblings;
 }
 
 const DEFAULT_JOB_LIMIT = 1;
 const MAX_JOB_LIMIT = 25;
 const MAX_METADATA_ARRAY_ITEMS = 8;
 const MAX_METADATA_VALUE_LENGTH = 240;
+const MIN_REVIEW_QUERY_TOKENS_FOR_OVERLAP_FLAG = 3;
+const DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT = 10;
+const SUMMARY_REVIEW_FLAG_GROUP_LIMIT = 50;
+const reviewQueryTokenStopwords = new Set([
+  "and",
+  "clinical",
+  "effects",
+  "evidence",
+  "for",
+  "human",
+  "humans",
+  "of",
+  "prevention",
+  "randomised",
+  "randomized",
+  "review",
+  "study",
+  "systematic",
+  "the",
+  "trial",
+  "trials",
+  "with"
+]);
+const CANDIDATE_KEY_B64_PREFIX = "b64:";
 const PRINTABLE_METADATA_KEYS = new Set([
   "abstractAvailable",
   "authors",
@@ -191,6 +293,8 @@ export async function runSourceCandidateJobCommand(
 ) {
   const stdout = io.stdout ?? console.log;
   const stderr = io.stderr ?? console.error;
+  const checkDatabase =
+    runners.checkDatabase ?? checkSourceCandidateDatabaseStatus;
   const extractCandidateStudy =
     runners.extractCandidateStudy ?? extractAcceptedSourceCandidateStudy;
   const getCurationDraft =
@@ -200,6 +304,10 @@ export async function runSourceCandidateJobCommand(
   const getCandidate = runners.getCandidate ?? getSourceCandidateByDedupeKey;
   const listCurationHandoff =
     runners.listCurationHandoff ?? listSourceCandidateCurationHandoff;
+  const listIdentityGroups =
+    runners.listIdentityGroups ?? listSourceCandidateIdentityGroups;
+  const listReviewOverview =
+    runners.listReviewOverview ?? listSourceCandidateReviewOverview;
   const listCandidates = runners.listCandidates ?? listSourceCandidateReviewQueue;
   const listJobs = runners.listJobs ?? listSourceCandidateIngestionJobs;
   const listReferenceMatches =
@@ -208,12 +316,16 @@ export async function runSourceCandidateJobCommand(
   const linkCandidateClaim =
     runners.linkCandidateClaim ?? linkAcceptedSourceCandidateClaim;
   const queueJob = runners.queueJob ?? queueSourceCandidateIngestionJob;
+  const queueClaimSources =
+    runners.queueClaimSources ?? queueClaimSourceCandidateIngestionJobs;
   const recordDecision = runners.recordDecision ?? recordSourceCandidateDecision;
   const runJobById = runners.runJobById ?? runSourceCandidateIngestionJob;
   const runNextJob = runners.runNextJob ?? runNextSourceCandidateIngestionJob;
   const summarizeBacklog = runners.summarizeBacklog ?? summarizeSourceCandidateBacklog;
   const summarizeCurationHandoff =
     runners.summarizeCurationHandoff ?? summarizeSourceCandidateCurationHandoff;
+  const summarizeJobs =
+    runners.summarizeJobs ?? summarizeSourceCandidateIngestionJobs;
 
   let options: SourceCandidateJobCommandOptions;
 
@@ -231,17 +343,34 @@ export async function runSourceCandidateJobCommand(
   }
 
   try {
+    if (options.dbStatus) {
+      stdout(formatSourceCandidateDatabaseStatus(await checkDatabase()));
+      return 0;
+    }
+
     if (options.candidateCurationHandoff) {
       const statuses = await listCurationHandoff({
         claimId: options.candidateClaimId,
+        ...sourceCandidateMissingFilterOptions(options),
         ingestionJobId: options.candidateJobId,
         interventionId: options.candidateInterventionId,
+        region: options.candidateRegion,
         source: options.candidateSource,
         status: options.candidateCurationHandoffStatus,
         limit: options.candidateCurationHandoffLimit
       });
 
-      stdout(formatSourceCandidateCurationHandoff(statuses));
+      const duplicateIdentityInfoByDedupeKey =
+        await sourceCandidateDuplicateIdentityInfoMap(
+          statuses.map((status) => status.candidate),
+          listSiblings
+        );
+
+      stdout(
+        formatSourceCandidateCurationHandoff(statuses, {
+          duplicateIdentityInfoByDedupeKey
+        })
+      );
       return 0;
     }
 
@@ -255,7 +384,14 @@ export async function runSourceCandidateJobCommand(
         return 1;
       }
 
-      stdout(formatSourceCandidateCurationDraft(draft));
+      stdout(
+        formatSourceCandidateCurationDraft(draft, {
+          duplicateIdentityInfo: await sourceCandidateDuplicateIdentityInfoForDedupeKey(
+            draft.status.candidate.dedupeKey,
+            listSiblings
+          )
+        })
+      );
       return 0;
     }
 
@@ -271,7 +407,44 @@ export async function runSourceCandidateJobCommand(
         return 1;
       }
 
-      stdout(formatSourceCandidateCurationStatus(status));
+      stdout(
+        formatSourceCandidateCurationStatus(status, {
+          duplicateIdentityInfo: await sourceCandidateDuplicateIdentityInfoForDedupeKey(
+            status.candidate.dedupeKey,
+            listSiblings
+          )
+        })
+      );
+      return 0;
+    }
+
+    if (options.candidateReviewFlags) {
+      const overview = await listReviewOverview({
+        claimId: options.candidateClaimId,
+        ...sourceCandidateMissingFilterOptions(options),
+        ingestionJobId: options.candidateJobId,
+        interventionId: options.candidateInterventionId,
+        limit: options.candidateReviewFlagsLimit,
+        region: options.candidateRegion,
+        source: options.candidateSource
+      });
+
+      stdout(formatSourceCandidateReviewFlags(overview, options.candidateReviewFlag));
+      return 0;
+    }
+
+    if (options.candidateReviewOverview) {
+      const overview = await listReviewOverview({
+        claimId: options.candidateClaimId,
+        ...sourceCandidateMissingFilterOptions(options),
+        ingestionJobId: options.candidateJobId,
+        interventionId: options.candidateInterventionId,
+        limit: options.candidateReviewOverviewLimit,
+        region: options.candidateRegion,
+        source: options.candidateSource
+      });
+
+      stdout(formatSourceCandidateReviewOverview(overview));
       return 0;
     }
 
@@ -289,7 +462,49 @@ export async function runSourceCandidateJobCommand(
         return 1;
       }
 
-      stdout(formatSourceCandidateReferenceMatches(matches));
+      const siblings = await listSiblings(options.candidateReferenceMatchesDedupeKey, {});
+
+      if (!siblings) {
+        stderr(
+          `Source candidate not found: ${quote(
+            options.candidateReferenceMatchesDedupeKey
+          )}`
+        );
+        return 1;
+      }
+
+      stdout(
+        formatSourceCandidateReferenceMatches(matches, {
+          duplicateIdentityCandidateCount:
+            sourceCandidateSiblingDuplicateIdentityCount(siblings),
+          duplicateIdentityMixedDecision:
+            sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(siblings)
+        })
+      );
+      return 0;
+    }
+
+    if (options.candidateReviewPacketDedupeKey) {
+      const [candidate, referenceMatches, siblings] = await Promise.all([
+        getCandidate(options.candidateReviewPacketDedupeKey),
+        listReferenceMatches(options.candidateReviewPacketDedupeKey),
+        listSiblings(options.candidateReviewPacketDedupeKey, {})
+      ]);
+
+      if (!candidate || !referenceMatches || !siblings) {
+        stderr(
+          `Source candidate not found: ${quote(options.candidateReviewPacketDedupeKey)}`
+        );
+        return 1;
+      }
+
+      stdout(
+        formatSourceCandidateReviewPacket({
+          candidate,
+          referenceMatches,
+          siblings
+        })
+      );
       return 0;
     }
 
@@ -319,17 +534,35 @@ export async function runSourceCandidateJobCommand(
         return 1;
       }
 
-      stdout(formatSourceCandidateDetail(candidate));
+      const siblings = await listSiblings(candidate.dedupeKey, {});
+
+      stdout(
+        formatSourceCandidateDetail(candidate, {
+          duplicateIdentityCandidateCount:
+            siblings ? sourceCandidateSiblingDuplicateIdentityCount(siblings) : 1,
+          duplicateIdentityMixedDecision: siblings
+            ? sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(siblings)
+            : false
+        })
+      );
       return 0;
     }
 
     if (options.reviewDecision && options.reviewCandidateDedupeKey) {
-      const candidate = await recordDecision({
-        dedupeKey: options.reviewCandidateDedupeKey,
-        decision: options.reviewDecision,
-        acceptedReferenceId: options.acceptedReferenceId,
-        reviewNote: options.reviewNote
-      });
+      const candidate = await recordDecision(
+        options.reviewDecision === "Accepted"
+          ? {
+              acceptedReferenceId: options.acceptedReferenceId!,
+              dedupeKey: options.reviewCandidateDedupeKey,
+              decision: "Accepted",
+              reviewNote: options.reviewNote!
+            }
+          : {
+              dedupeKey: options.reviewCandidateDedupeKey,
+              decision: "Rejected",
+              reviewNote: options.reviewNote!
+            }
+      );
 
       stdout(formatReviewedSourceCandidate(candidate));
       return 0;
@@ -370,23 +603,66 @@ export async function runSourceCandidateJobCommand(
     }
 
     if (options.candidates) {
-      const candidates = await listCandidates({
+      const candidateListOptions = {
         decision: options.candidateDecision,
         claimId: options.candidateClaimId,
+        ...sourceCandidateMissingFilterOptions(options),
+        externalId: options.candidateExternalId,
         ingestionJobId: options.candidateJobId,
         interventionId: options.candidateInterventionId,
         limit: options.candidatesLimit,
+        region: options.candidateRegion,
         source: options.candidateSource
-      });
+      };
 
-      stdout(formatSourceCandidateReviewQueue(candidates, options.candidateDecision));
+      if (options.candidateDuplicates) {
+        const groups = await listIdentityGroups(candidateListOptions);
+
+        stdout(formatSourceCandidateIdentityGroups(groups, options.candidateDecision));
+        return 0;
+      }
+
+      const candidates = await listCandidates(candidateListOptions);
+      const duplicateIdentityInfoByDedupeKey =
+        await sourceCandidateDuplicateIdentityInfoMap(
+          candidates,
+          listSiblings
+        );
+
+      stdout(
+        formatSourceCandidateReviewQueue(candidates, options.candidateDecision, {
+          duplicateIdentityInfoByDedupeKey
+        })
+      );
       return 0;
     }
 
     if (options.jobs) {
-      const jobs = await listJobs({
+      const listJobOptions: SourceCandidateIngestionJobListOptions = {
         limit: options.jobsLimit
-      });
+      };
+
+      if (options.jobsClaimId) {
+        listJobOptions.claimId = options.jobsClaimId;
+      }
+
+      if (options.jobsInterventionId) {
+        listJobOptions.interventionId = options.jobsInterventionId;
+      }
+
+      if (options.jobsRegion) {
+        listJobOptions.region = options.jobsRegion;
+      }
+
+      if (options.jobsSource) {
+        listJobOptions.source = options.jobsSource;
+      }
+
+      if (options.jobsStatus) {
+        listJobOptions.status = options.jobsStatus;
+      }
+
+      const jobs = await listJobs(listJobOptions);
 
       stdout(formatSourceCandidateIngestionJobs(jobs));
       return 0;
@@ -405,40 +681,189 @@ export async function runSourceCandidateJobCommand(
       return 0;
     }
 
+    if (options.queueClaimSourcesClaimId) {
+      const result = await queueClaimSources({
+        claimId: options.queueClaimSourcesClaimId,
+        region: options.region
+      });
+
+      stdout(formatQueuedClaimSourceCandidateJobs(result));
+      return 0;
+    }
+
     if (options.summary) {
-      const [backlogSummary, curationHandoffSummary] = await Promise.all([
+      const [
+        jobSummary,
+        backlogSummary,
+        curationHandoffSummary,
+        reviewOverview
+      ] = await Promise.all([
+        summarizeJobs(),
         summarizeBacklog(),
-        summarizeCurationHandoff()
+        summarizeCurationHandoff(),
+        listReviewOverview({ limit: SUMMARY_REVIEW_FLAG_GROUP_LIMIT })
       ]);
 
       stdout(
         formatSourceCandidateWorkflowSummary(
+          jobSummary,
           backlogSummary,
-          curationHandoffSummary
+          curationHandoffSummary,
+          reviewOverview
         )
       );
       return 0;
     }
 
-    const runnerOptions = sourceCandidateIngestionJobOptions(options);
-    const results = options.jobId
-      ? [await runJobById(options.jobId, runnerOptions)]
-      : await runNextJobs(options.limit, runnerOptions, runNextJob);
+    if (options.jobId || options.runNextJobs) {
+      const runnerOptions = sourceCandidateIngestionJobOptions(options);
+      const results = options.jobId
+        ? [await runJobById(options.jobId, runnerOptions)]
+        : await runNextJobs(options.limit, runnerOptions, runNextJob);
 
-    if (results.length === 0) {
-      stdout("No queued PubMed or ClinicalTrials.gov source-candidate jobs found.");
-      return 0;
+      if (results.length === 0) {
+        stdout("No queued PubMed or ClinicalTrials.gov source-candidate jobs found.");
+        return 0;
+      }
+
+      for (const result of results) {
+        stdout(formatSourceCandidateJobResult(result));
+      }
+
+      return results.some((result) => result.status === "FAILED") ? 1 : 0;
     }
 
-    for (const result of results) {
-      stdout(formatSourceCandidateJobResult(result));
-    }
-
-    return results.some((result) => result.status === "FAILED") ? 1 : 0;
+    stdout(commandUsage());
+    return 0;
   } catch (error) {
-    stderr(error instanceof Error ? error.message : String(error));
+    stderr(
+      formatSourceCandidateCommandError(error, {
+        includePreflightHint: !options.dbStatus
+      })
+    );
     return 1;
   }
+}
+
+function formatSourceCandidateCommandError(
+  error: unknown,
+  options: { includePreflightHint?: boolean } = {}
+) {
+  const message = error instanceof Error ? error.message : String(error);
+  const databaseIssue = sourceCandidateDatabaseIssue(message);
+
+  if (!databaseIssue) {
+    return message;
+  }
+
+  const preflightHint = options.includePreflightHint
+    ? ["Preflight: npm run ingest:sources -- --db-status"]
+    : [];
+
+  if (databaseIssue.kind === "missing-url") {
+    return [
+      "Source-candidate database configuration missing: DATABASE_URL is not set.",
+      "Copy .env.example to .env, then confirm the local PostgreSQL URL.",
+      ...preflightHint,
+      "Setup: docs/codex/reference/local-operations.md"
+    ].join("\n");
+  }
+
+  if (databaseIssue.kind === "invalid-url") {
+    return [
+      "Source-candidate database configuration invalid: DATABASE_URL could not be parsed.",
+      "Set DATABASE_URL to the local PostgreSQL URL from .env.example, then retry.",
+      ...preflightHint,
+      "Setup: docs/codex/reference/local-operations.md"
+    ].join("\n");
+  }
+
+  return [
+    `Source-candidate database unavailable: can't reach PostgreSQL at ${databaseIssue.target}.`,
+    "Start the local PostgreSQL service and confirm DATABASE_URL, then retry.",
+    ...preflightHint,
+    "Setup: docs/codex/reference/local-operations.md"
+  ].join("\n");
+}
+
+function sourceCandidateDatabaseIssue(message: string):
+  | { kind: "unavailable"; target: string }
+  | { kind: "missing-url" }
+  | { kind: "invalid-url" }
+  | null {
+  if (
+    message.includes("Environment variable not found: DATABASE_URL") ||
+    (message.includes("Environment variable not found") &&
+      message.includes("DATABASE_URL"))
+  ) {
+    return { kind: "missing-url" };
+  }
+
+  if (
+    message.includes("DATABASE_URL") &&
+    (message.includes("Error validating datasource") ||
+      message.includes("must start with the protocol") ||
+      message.includes("Invalid value") ||
+      message.includes("invalid database URL"))
+  ) {
+    return { kind: "invalid-url" };
+  }
+
+  const target = message.match(/Can't reach database server at `([^`]+)`/);
+
+  if (target) {
+    return {
+      kind: "unavailable",
+      target: target[1]
+    };
+  }
+
+  if (message.includes("P1001") || message.includes("Can't reach database server")) {
+    return {
+      kind: "unavailable",
+      target: "the configured DATABASE_URL"
+    };
+  }
+
+  return null;
+}
+
+async function checkSourceCandidateDatabaseStatus(): Promise<SourceCandidateDatabaseStatus> {
+  const startedAt = Date.now();
+
+  await prisma.$queryRaw`SELECT 1`;
+
+  return {
+    target: configuredDatabaseTarget(process.env.DATABASE_URL),
+    latencyMs: Date.now() - startedAt
+  };
+}
+
+function configuredDatabaseTarget(databaseUrl: string | undefined) {
+  if (!databaseUrl) {
+    return "configured DATABASE_URL";
+  }
+
+  try {
+    const url = new URL(databaseUrl);
+    const host = url.port ? `${url.hostname}:${url.port}` : url.hostname;
+    const database = url.pathname.replace(/^\//, "");
+
+    return database ? `${host}/${database}` : host;
+  } catch {
+    return "configured DATABASE_URL";
+  }
+}
+
+function formatSourceCandidateDatabaseStatus(status: SourceCandidateDatabaseStatus) {
+  return [
+    "Source-candidate database status",
+    "reachable=true",
+    `target=${quote(status.target)}`,
+    `latencyMs=${Math.max(0, Math.round(status.latencyMs))}`,
+    "safeReadOnly=true",
+    'summary="--summary"'
+  ].join("\n");
 }
 
 export function parseSourceCandidateJobCommandArgs(
@@ -452,16 +877,28 @@ export function parseSourceCandidateJobCommandArgs(
   let candidatesLimitProvided = false;
   let candidateDecisionProvided = false;
   let candidateClaimIdProvided = false;
+  let candidateClaimMissingProvided = false;
+  let candidateExternalIdProvided = false;
   let candidateInterventionIdProvided = false;
+  let candidateInterventionMissingProvided = false;
   let candidateJobIdProvided = false;
   let candidateCurationHandoffLimitProvided = false;
   let candidateCurationHandoffStatusProvided = false;
+  let candidateRegionProvided = false;
+  let candidateReviewFlagProvided = false;
+  let candidateReviewFlagsLimitProvided = false;
+  let candidateReviewOverviewLimitProvided = false;
   let candidateSiblingsLimitProvided = false;
   let acceptedReferenceIdProvided = false;
   let claimLinkNoteProvided = false;
   let claimLinkRelevanceProvided = false;
   let limitProvided = false;
+  let jobsClaimIdProvided = false;
+  let jobsInterventionIdProvided = false;
   let jobsLimitProvided = false;
+  let jobsRegionProvided = false;
+  let jobsSourceProvided = false;
+  let jobsStatusProvided = false;
   let reviewNoteProvided = false;
   let sourceLimitProvided = false;
 
@@ -479,25 +916,43 @@ export function parseSourceCandidateJobCommandArgs(
       continue;
     }
 
+    if (arg === "--run-next") {
+      options.runNextJobs = true;
+      continue;
+    }
+
     if (arg === "--summary") {
       options.summary = true;
       continue;
     }
 
+    if (arg === "--db-status") {
+      options.dbStatus = true;
+      continue;
+    }
+
     if (arg === "--candidate-detail") {
-      options.candidateDetailDedupeKey = readRequiredValue(args, index, arg);
+      options.candidateDetailDedupeKey = readCandidateKeyValue(args, index, arg);
       index += 1;
       continue;
     }
 
     if (arg === "--candidate-curation-status") {
-      options.candidateCurationStatusDedupeKey = readRequiredValue(args, index, arg);
+      options.candidateCurationStatusDedupeKey = readCandidateKeyValue(
+        args,
+        index,
+        arg
+      );
       index += 1;
       continue;
     }
 
     if (arg === "--candidate-curation-draft") {
-      options.candidateCurationDraftDedupeKey = readRequiredValue(args, index, arg);
+      options.candidateCurationDraftDedupeKey = readCandidateKeyValue(
+        args,
+        index,
+        arg
+      );
       index += 1;
       continue;
     }
@@ -529,13 +984,60 @@ export function parseSourceCandidateJobCommandArgs(
     }
 
     if (arg === "--candidate-reference-matches") {
-      options.candidateReferenceMatchesDedupeKey = readRequiredValue(args, index, arg);
+      options.candidateReferenceMatchesDedupeKey = readCandidateKeyValue(
+        args,
+        index,
+        arg
+      );
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-review-flags") {
+      options.candidateReviewFlags = true;
+      continue;
+    }
+
+    if (arg === "--candidate-review-flag") {
+      options.candidateReviewFlag = readCandidateReviewFlag(
+        readRequiredValue(args, index, arg)
+      );
+      candidateReviewFlagProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-review-flags-limit") {
+      options.candidateReviewFlagsLimit = readPositiveInteger(args, index, arg, 50);
+      candidateReviewFlagsLimitProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-review-overview") {
+      options.candidateReviewOverview = true;
+      continue;
+    }
+
+    if (arg === "--candidate-review-overview-limit") {
+      options.candidateReviewOverviewLimit = readPositiveInteger(args, index, arg, 50);
+      candidateReviewOverviewLimitProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-review-packet") {
+      options.candidateReviewPacketDedupeKey = readCandidateKeyValue(
+        args,
+        index,
+        arg
+      );
       index += 1;
       continue;
     }
 
     if (arg === "--candidate-siblings") {
-      options.candidateSiblingsDedupeKey = readRequiredValue(args, index, arg);
+      options.candidateSiblingsDedupeKey = readCandidateKeyValue(args, index, arg);
       index += 1;
       continue;
     }
@@ -551,7 +1053,7 @@ export function parseSourceCandidateJobCommandArgs(
       setCandidateReviewOption(
         options,
         "Accepted",
-        readRequiredValue(args, index, arg)
+        readCandidateKeyValue(args, index, arg)
       );
       index += 1;
       continue;
@@ -561,20 +1063,24 @@ export function parseSourceCandidateJobCommandArgs(
       setCandidateReviewOption(
         options,
         "Rejected",
-        readRequiredValue(args, index, arg)
+        readCandidateKeyValue(args, index, arg)
       );
       index += 1;
       continue;
     }
 
     if (arg === "--link-candidate-claim") {
-      options.linkCandidateClaimDedupeKey = readRequiredValue(args, index, arg);
+      options.linkCandidateClaimDedupeKey = readCandidateKeyValue(args, index, arg);
       index += 1;
       continue;
     }
 
     if (arg === "--extract-candidate-study") {
-      options.extractCandidateStudyDedupeKey = readRequiredValue(args, index, arg);
+      options.extractCandidateStudyDedupeKey = readCandidateKeyValue(
+        args,
+        index,
+        arg
+      );
       index += 1;
       continue;
     }
@@ -711,6 +1217,13 @@ export function parseSourceCandidateJobCommandArgs(
       continue;
     }
 
+    if (arg === "--candidate-region") {
+      options.candidateRegion = readRequiredValue(args, index, arg).toUpperCase();
+      candidateRegionProvided = true;
+      index += 1;
+      continue;
+    }
+
     if (arg === "--candidate-decision") {
       options.candidateDecision = readCandidateDecision(
         readRequiredValue(args, index, arg)
@@ -720,9 +1233,21 @@ export function parseSourceCandidateJobCommandArgs(
       continue;
     }
 
+    if (arg === "--candidate-duplicates") {
+      options.candidateDuplicates = true;
+      continue;
+    }
+
     if (arg === "--candidate-job-id") {
       options.candidateJobId = readRequiredValue(args, index, arg);
       candidateJobIdProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-external-id") {
+      options.candidateExternalId = readRequiredValue(args, index, arg);
+      candidateExternalIdProvided = true;
       index += 1;
       continue;
     }
@@ -734,10 +1259,22 @@ export function parseSourceCandidateJobCommandArgs(
       continue;
     }
 
+    if (arg === "--candidate-intervention-missing") {
+      options.candidateInterventionMissing = true;
+      candidateInterventionMissingProvided = true;
+      continue;
+    }
+
     if (arg === "--candidate-claim-id") {
       options.candidateClaimId = readRequiredValue(args, index, arg);
       candidateClaimIdProvided = true;
       index += 1;
+      continue;
+    }
+
+    if (arg === "--candidate-claim-missing") {
+      options.candidateClaimMissing = true;
+      candidateClaimMissingProvided = true;
       continue;
     }
 
@@ -749,6 +1286,41 @@ export function parseSourceCandidateJobCommandArgs(
     if (arg === "--jobs-limit") {
       options.jobsLimit = readPositiveInteger(args, index, arg, 50);
       jobsLimitProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--jobs-source") {
+      options.jobsSource = readJobSource(readRequiredValue(args, index, arg));
+      jobsSourceProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--jobs-region") {
+      options.jobsRegion = readRequiredValue(args, index, arg);
+      jobsRegionProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--jobs-intervention-id") {
+      options.jobsInterventionId = readRequiredValue(args, index, arg);
+      jobsInterventionIdProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--jobs-claim-id") {
+      options.jobsClaimId = readRequiredValue(args, index, arg);
+      jobsClaimIdProvided = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--jobs-status") {
+      options.jobsStatus = readJobStatus(readRequiredValue(args, index, arg));
+      jobsStatusProvided = true;
       index += 1;
       continue;
     }
@@ -765,6 +1337,12 @@ export function parseSourceCandidateJobCommandArgs(
         "ClinicalTrials.gov",
         readRequiredValue(args, index, arg)
       );
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--queue-claim-sources") {
+      setQueueClaimSourcesOption(options, readRequiredValue(args, index, arg));
       index += 1;
       continue;
     }
@@ -815,6 +1393,13 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--job-id runs exactly one job and cannot be combined with --limit.");
   }
 
+  if (options.runNextJobs && options.jobId) {
+    throw new Error("--run-next cannot be combined with --job-id.");
+  }
+
+  const runOptionProvided =
+    options.runNextJobs || Boolean(options.jobId) || limitProvided || sourceLimitProvided;
+
   if (candidateCurationHandoffLimitProvided && !options.candidateCurationHandoff) {
     throw new Error(
       "--candidate-curation-handoff-limit requires --candidate-curation-handoff."
@@ -825,6 +1410,18 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error(
       "--candidate-curation-handoff-status requires --candidate-curation-handoff."
     );
+  }
+
+  if (candidateReviewFlagsLimitProvided && !options.candidateReviewFlags) {
+    throw new Error("--candidate-review-flags-limit requires --candidate-review-flags.");
+  }
+
+  if (candidateReviewFlagProvided && !options.candidateReviewFlags) {
+    throw new Error("--candidate-review-flag requires --candidate-review-flags.");
+  }
+
+  if (candidateReviewOverviewLimitProvided && !options.candidateReviewOverview) {
+    throw new Error("--candidate-review-overview-limit requires --candidate-review-overview.");
   }
 
   if (candidateSiblingsLimitProvided && !options.candidateSiblingsDedupeKey) {
@@ -841,6 +1438,38 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (hasStudyExtractionOptions(options) && !options.extractCandidateStudyDedupeKey) {
     throw new Error("Study extraction options require --extract-candidate-study.");
+  }
+
+  if (options.candidateReviewOverview && options.reviewDecision) {
+    throw new Error("--candidate-review-overview cannot be combined with review options.");
+  }
+
+  if (options.candidateReviewOverview && options.linkCandidateClaimDedupeKey) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with --link-candidate-claim."
+    );
+  }
+
+  if (options.candidateReviewOverview && options.extractCandidateStudyDedupeKey) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.reviewDecision) {
+    throw new Error("--candidate-review-flags cannot be combined with review options.");
+  }
+
+  if (options.candidateReviewFlags && options.linkCandidateClaimDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --link-candidate-claim."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.extractCandidateStudyDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --extract-candidate-study."
+    );
   }
 
   if (options.extractCandidateStudyDedupeKey) {
@@ -897,6 +1526,12 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (options.candidateCurationHandoff && options.candidateReviewPacketDedupeKey) {
+    throw new Error(
+      "--candidate-curation-handoff cannot be combined with --candidate-review-packet."
+    );
+  }
+
   if (options.candidateCurationHandoff && options.candidateSiblingsDedupeKey) {
     throw new Error(
       "--candidate-curation-handoff cannot be combined with --candidate-siblings."
@@ -923,6 +1558,24 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (options.candidateCurationHandoff && candidateExternalIdProvided) {
+    throw new Error(
+      "--candidate-external-id cannot be combined with --candidate-curation-handoff."
+    );
+  }
+
+  if (options.candidateClaimId && options.candidateClaimMissing) {
+    throw new Error(
+      "--candidate-claim-missing cannot be combined with --candidate-claim-id."
+    );
+  }
+
+  if (options.candidateInterventionId && options.candidateInterventionMissing) {
+    throw new Error(
+      "--candidate-intervention-missing cannot be combined with --candidate-intervention-id."
+    );
+  }
+
   if (options.candidateCurationHandoff && options.reviewDecision) {
     throw new Error(
       "--candidate-curation-handoff cannot be combined with review options."
@@ -939,7 +1592,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-curation-handoff cannot be combined with --jobs.");
   }
 
-  if (options.candidateCurationHandoff && options.queueSource) {
+  if (options.candidateCurationHandoff && hasQueueOption(options)) {
     throw new Error(
       "--candidate-curation-handoff cannot be combined with queue options."
     );
@@ -956,7 +1609,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateCurationHandoff &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-curation-handoff cannot be combined with run options.");
   }
@@ -996,9 +1649,13 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1017,7 +1674,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-detail cannot be combined with --jobs.");
   }
 
-  if (options.candidateDetailDedupeKey && options.queueSource) {
+  if (options.candidateDetailDedupeKey && hasQueueOption(options)) {
     throw new Error("--candidate-detail cannot be combined with queue options.");
   }
 
@@ -1030,7 +1687,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateDetailDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-detail cannot be combined with run options.");
   }
@@ -1075,9 +1732,13 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1105,7 +1766,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-curation-status cannot be combined with --jobs.");
   }
 
-  if (options.candidateCurationStatusDedupeKey && options.queueSource) {
+  if (options.candidateCurationStatusDedupeKey && hasQueueOption(options)) {
     throw new Error(
       "--candidate-curation-status cannot be combined with queue options."
     );
@@ -1122,7 +1783,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateCurationStatusDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-curation-status cannot be combined with run options.");
   }
@@ -1158,9 +1819,13 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1186,7 +1851,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-curation-draft cannot be combined with --jobs.");
   }
 
-  if (options.candidateCurationDraftDedupeKey && options.queueSource) {
+  if (options.candidateCurationDraftDedupeKey && hasQueueOption(options)) {
     throw new Error("--candidate-curation-draft cannot be combined with queue options.");
   }
 
@@ -1199,7 +1864,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateCurationDraftDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-curation-draft cannot be combined with run options.");
   }
@@ -1217,9 +1882,13 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1247,7 +1916,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-reference-matches cannot be combined with --jobs.");
   }
 
-  if (options.candidateReferenceMatchesDedupeKey && options.queueSource) {
+  if (options.candidateReferenceMatchesDedupeKey && hasQueueOption(options)) {
     throw new Error(
       "--candidate-reference-matches cannot be combined with queue options."
     );
@@ -1264,7 +1933,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateReferenceMatchesDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-reference-matches cannot be combined with run options.");
   }
@@ -1276,6 +1945,114 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error(
       "--candidate-siblings cannot be combined with --candidate-reference-matches."
     );
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.candidateDetailDedupeKey) {
+    throw new Error(
+      "--candidate-detail cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    options.candidateCurationStatusDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-curation-status cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    options.candidateCurationDraftDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-curation-draft cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    options.candidateReferenceMatchesDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-reference-matches cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.candidateSiblingsDedupeKey) {
+    throw new Error(
+      "--candidate-siblings cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.summary) {
+    throw new Error("--candidate-review-packet cannot be combined with --summary.");
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.candidates) {
+    throw new Error("--candidate-review-packet cannot be combined with --candidates.");
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    hasCandidateListFilter({
+      candidatesLimitProvided,
+      candidateDecisionProvided,
+      candidateExternalIdProvided,
+      candidateJobIdProvided,
+      candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
+      candidateClaimIdProvided,
+      candidateClaimMissingProvided,
+      candidateRegionProvided,
+      candidateSource: options.candidateSource
+    })
+  ) {
+    throw new Error(
+      "Candidate-list filters cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.reviewDecision) {
+    throw new Error("--candidate-review-packet cannot be combined with review options.");
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    options.linkCandidateClaimDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-review-packet cannot be combined with --link-candidate-claim."
+    );
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.extractCandidateStudyDedupeKey) {
+    throw new Error(
+      "--candidate-review-packet cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.candidateReviewPacketDedupeKey && options.jobs) {
+    throw new Error("--candidate-review-packet cannot be combined with --jobs.");
+  }
+
+  if (options.candidateReviewPacketDedupeKey && hasQueueOption(options)) {
+    throw new Error("--candidate-review-packet cannot be combined with queue options.");
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    (options.region || options.interventionId || options.claimId)
+  ) {
+    throw new Error("--candidate-review-packet cannot be combined with queue metadata.");
+  }
+
+  if (
+    options.candidateReviewPacketDedupeKey &&
+    runOptionProvided
+  ) {
+    throw new Error("--candidate-review-packet cannot be combined with run options.");
   }
 
   if (options.candidateSiblingsDedupeKey && options.summary) {
@@ -1291,9 +2068,13 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1314,7 +2095,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidate-siblings cannot be combined with --jobs.");
   }
 
-  if (options.candidateSiblingsDedupeKey && options.queueSource) {
+  if (options.candidateSiblingsDedupeKey && hasQueueOption(options)) {
     throw new Error("--candidate-siblings cannot be combined with queue options.");
   }
 
@@ -1327,7 +2108,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.candidateSiblingsDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--candidate-siblings cannot be combined with run options.");
   }
@@ -1344,6 +2125,10 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--accept-candidate requires --accepted-reference-id.");
   }
 
+  if (options.reviewDecision === "Accepted" && !options.reviewNote?.trim()) {
+    throw new Error("--accept-candidate requires --review-note.");
+  }
+
   if (options.reviewDecision && options.summary) {
     throw new Error("Review options cannot be combined with --summary.");
   }
@@ -1357,9 +2142,13 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1370,7 +2159,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("Review options cannot be combined with --jobs.");
   }
 
-  if (options.reviewDecision && options.queueSource) {
+  if (options.reviewDecision && hasQueueOption(options)) {
     throw new Error("Review options cannot be combined with queue options.");
   }
 
@@ -1378,7 +2167,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("Review options cannot be combined with queue metadata.");
   }
 
-  if (options.reviewDecision && (options.jobId || limitProvided || sourceLimitProvided)) {
+  if (options.reviewDecision && runOptionProvided) {
     throw new Error("Review options cannot be combined with run options.");
   }
 
@@ -1403,9 +2192,13 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1418,7 +2211,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--link-candidate-claim cannot be combined with --jobs.");
   }
 
-  if (options.linkCandidateClaimDedupeKey && options.queueSource) {
+  if (options.linkCandidateClaimDedupeKey && hasQueueOption(options)) {
     throw new Error("--link-candidate-claim cannot be combined with queue options.");
   }
 
@@ -1431,7 +2224,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.linkCandidateClaimDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--link-candidate-claim cannot be combined with run options.");
   }
@@ -1492,9 +2285,13 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     })
   ) {
@@ -1517,7 +2314,7 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--extract-candidate-study cannot be combined with --jobs.");
   }
 
-  if (options.extractCandidateStudyDedupeKey && options.queueSource) {
+  if (options.extractCandidateStudyDedupeKey && hasQueueOption(options)) {
     throw new Error("--extract-candidate-study cannot be combined with queue options.");
   }
 
@@ -1530,7 +2327,7 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (
     options.extractCandidateStudyDedupeKey &&
-    (options.jobId || limitProvided || sourceLimitProvided)
+    runOptionProvided
   ) {
     throw new Error("--extract-candidate-study cannot be combined with run options.");
   }
@@ -1539,17 +2336,261 @@ export function parseSourceCandidateJobCommandArgs(
     hasCandidateListFilter({
       candidatesLimitProvided,
       candidateDecisionProvided,
+      candidateExternalIdProvided,
       candidateJobIdProvided,
       candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
       candidateClaimIdProvided,
+      candidateClaimMissingProvided,
+      candidateRegionProvided,
       candidateSource: options.candidateSource
     }) &&
     !options.candidates &&
-    !options.candidateCurationHandoff
+    !options.candidateCurationHandoff &&
+    !options.candidateReviewFlags &&
+    !options.candidateReviewOverview
   ) {
     throw new Error(
       "Candidate-list filters require --candidates."
     );
+  }
+
+  if (options.candidateReviewFlags && options.candidateReviewOverview) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-review-overview."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.candidateCurationHandoff) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-curation-handoff."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.candidateDetailDedupeKey) {
+    throw new Error("--candidate-review-flags cannot be combined with --candidate-detail.");
+  }
+
+  if (options.candidateReviewFlags && options.candidateCurationStatusDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-curation-status."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.candidateCurationDraftDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-curation-draft."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.candidateReferenceMatchesDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-reference-matches."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.candidateReviewPacketDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.candidateSiblingsDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --candidate-siblings."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.summary) {
+    throw new Error("--candidate-review-flags cannot be combined with --summary.");
+  }
+
+  if (options.candidateReviewFlags && options.candidates) {
+    throw new Error("--candidate-review-flags cannot be combined with --candidates.");
+  }
+
+  if (options.candidateReviewFlags && options.candidateDuplicates) {
+    throw new Error(
+      "--candidate-duplicates cannot be combined with --candidate-review-flags."
+    );
+  }
+
+  if (options.candidateReviewFlags && candidatesLimitProvided) {
+    throw new Error(
+      "--candidates-limit cannot be combined with --candidate-review-flags."
+    );
+  }
+
+  if (options.candidateReviewFlags && candidateDecisionProvided) {
+    throw new Error(
+      "--candidate-decision cannot be combined with --candidate-review-flags."
+    );
+  }
+
+  if (options.candidateReviewFlags && candidateExternalIdProvided) {
+    throw new Error(
+      "--candidate-external-id cannot be combined with --candidate-review-flags."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.reviewDecision) {
+    throw new Error("--candidate-review-flags cannot be combined with review options.");
+  }
+
+  if (options.candidateReviewFlags && options.linkCandidateClaimDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --link-candidate-claim."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.extractCandidateStudyDedupeKey) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.candidateReviewFlags && options.jobs) {
+    throw new Error("--candidate-review-flags cannot be combined with --jobs.");
+  }
+
+  if (options.candidateReviewFlags && hasQueueOption(options)) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with queue options."
+    );
+  }
+
+  if (
+    options.candidateReviewFlags &&
+    (options.region || options.interventionId || options.claimId)
+  ) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with queue metadata."
+    );
+  }
+
+  if (
+    options.candidateReviewFlags &&
+    runOptionProvided
+  ) {
+    throw new Error("--candidate-review-flags cannot be combined with run options.");
+  }
+
+  if (options.candidateReviewOverview && options.candidateCurationHandoff) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with --candidate-curation-handoff."
+    );
+  }
+
+  if (options.candidateReviewOverview && options.candidateDetailDedupeKey) {
+    throw new Error("--candidate-review-overview cannot be combined with --candidate-detail.");
+  }
+
+  if (options.candidateReviewOverview && options.candidateCurationStatusDedupeKey) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with --candidate-curation-status."
+    );
+  }
+
+  if (options.candidateReviewOverview && options.candidateCurationDraftDedupeKey) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with --candidate-curation-draft."
+    );
+  }
+
+  if (options.candidateReviewOverview && options.candidateReferenceMatchesDedupeKey) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with --candidate-reference-matches."
+    );
+  }
+
+  if (options.candidateReviewOverview && options.candidateReviewPacketDedupeKey) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with --candidate-review-packet."
+    );
+  }
+
+  if (options.candidateReviewOverview && options.candidateSiblingsDedupeKey) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with --candidate-siblings."
+    );
+  }
+
+  if (options.candidateReviewOverview && options.summary) {
+    throw new Error("--candidate-review-overview cannot be combined with --summary.");
+  }
+
+  if (options.candidateReviewOverview && options.candidates) {
+    throw new Error("--candidate-review-overview cannot be combined with --candidates.");
+  }
+
+  if (options.candidateReviewOverview && options.candidateDuplicates) {
+    throw new Error(
+      "--candidate-duplicates cannot be combined with --candidate-review-overview."
+    );
+  }
+
+  if (options.candidateReviewOverview && candidatesLimitProvided) {
+    throw new Error(
+      "--candidates-limit cannot be combined with --candidate-review-overview."
+    );
+  }
+
+  if (options.candidateReviewOverview && candidateDecisionProvided) {
+    throw new Error(
+      "--candidate-decision cannot be combined with --candidate-review-overview."
+    );
+  }
+
+  if (options.candidateReviewOverview && candidateExternalIdProvided) {
+    throw new Error(
+      "--candidate-external-id cannot be combined with --candidate-review-overview."
+    );
+  }
+
+  if (options.candidateReviewOverview && options.reviewDecision) {
+    throw new Error("--candidate-review-overview cannot be combined with review options.");
+  }
+
+  if (options.candidateReviewOverview && options.linkCandidateClaimDedupeKey) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with --link-candidate-claim."
+    );
+  }
+
+  if (options.candidateReviewOverview && options.extractCandidateStudyDedupeKey) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.candidateReviewOverview && options.jobs) {
+    throw new Error("--candidate-review-overview cannot be combined with --jobs.");
+  }
+
+  if (options.candidateReviewOverview && hasQueueOption(options)) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with queue options."
+    );
+  }
+
+  if (
+    options.candidateReviewOverview &&
+    (options.region || options.interventionId || options.claimId)
+  ) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with queue metadata."
+    );
+  }
+
+  if (
+    options.candidateReviewOverview &&
+    runOptionProvided
+  ) {
+    throw new Error("--candidate-review-overview cannot be combined with run options.");
+  }
+
+  if (options.candidateDuplicates && !options.candidates) {
+    throw new Error("--candidate-duplicates requires --candidates.");
   }
 
   if (options.candidates && options.summary) {
@@ -1560,11 +2601,11 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--candidates cannot be combined with --jobs.");
   }
 
-  if (options.candidates && options.queueSource) {
+  if (options.candidates && hasQueueOption(options)) {
     throw new Error("--candidates is read-only and cannot be combined with queue options.");
   }
 
-  if (options.candidates && (options.jobId || limitProvided || sourceLimitProvided)) {
+  if (options.candidates && runOptionProvided) {
     throw new Error("--candidates is read-only and cannot be combined with run options.");
   }
 
@@ -1572,32 +2613,94 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error("--jobs-limit requires --jobs.");
   }
 
+  if (
+    (jobsClaimIdProvided ||
+      jobsInterventionIdProvided ||
+      jobsRegionProvided ||
+      jobsSourceProvided) &&
+    !options.jobs
+  ) {
+    throw new Error("Job-list filters require --jobs.");
+  }
+
+  if (jobsStatusProvided && !options.jobs) {
+    throw new Error("--jobs-status requires --jobs.");
+  }
+
   if (options.jobs && options.summary) {
     throw new Error("--jobs cannot be combined with --summary.");
   }
 
-  if (options.jobs && options.queueSource) {
+  if (options.jobs && hasQueueOption(options)) {
     throw new Error("--jobs is read-only and cannot be combined with queue options.");
   }
 
-  if (options.jobs && (options.jobId || limitProvided || sourceLimitProvided)) {
+  if (options.jobs && runOptionProvided) {
     throw new Error("--jobs is read-only and cannot be combined with run options.");
   }
 
-  if (options.queueSource && options.summary) {
+  if (hasQueueOption(options) && options.summary) {
     throw new Error("--summary is read-only and cannot be combined with queue options.");
   }
 
-  if (options.queueSource && (options.jobId || limitProvided || sourceLimitProvided)) {
+  if (hasQueueOption(options) && runOptionProvided) {
     throw new Error("Queue options cannot be combined with run options.");
   }
 
-  if (!options.queueSource && (options.region || options.interventionId || options.claimId)) {
+  if (
+    options.queueClaimSourcesClaimId &&
+    (options.interventionId || options.claimId)
+  ) {
+    throw new Error(
+      "--intervention-id and --claim-id cannot be combined with --queue-claim-sources."
+    );
+  }
+
+  if (!hasQueueOption(options) && (options.region || options.interventionId || options.claimId)) {
     throw new Error("--region, --intervention-id, and --claim-id require a queue option.");
   }
 
-  if (options.summary && (options.jobId || limitProvided || sourceLimitProvided)) {
+  if (options.summary && runOptionProvided) {
     throw new Error("--summary is read-only and cannot be combined with run options.");
+  }
+
+  if (limitProvided && !options.runNextJobs) {
+    throw new Error("--limit requires --run-next.");
+  }
+
+  if (sourceLimitProvided && !options.runNextJobs && !options.jobId) {
+    throw new Error(
+      "--pubmed-retmax and --clinical-trial-page-size require --run-next or --job-id."
+    );
+  }
+
+  if (
+    options.dbStatus &&
+    (options.summary ||
+      Boolean(options.jobId) ||
+      Boolean(options.runNextJobs) ||
+      options.candidateCurationHandoff ||
+      Boolean(options.candidateCurationDraftDedupeKey) ||
+      Boolean(options.candidateCurationStatusDedupeKey) ||
+      Boolean(options.candidateDetailDedupeKey) ||
+      Boolean(options.candidateReferenceMatchesDedupeKey) ||
+      Boolean(options.candidateReviewPacketDedupeKey) ||
+      Boolean(options.candidateSiblingsDedupeKey) ||
+      options.candidateReviewFlags ||
+      options.candidateReviewOverview ||
+      options.candidates ||
+      options.jobs ||
+      Boolean(options.reviewDecision) ||
+      Boolean(options.linkCandidateClaimDedupeKey) ||
+      Boolean(options.extractCandidateStudyDedupeKey) ||
+      hasQueueOption(options) ||
+      runOptionProvided)
+  ) {
+    throw new Error("--db-status cannot be combined with other options.");
+  }
+
+  if (args.length === 0) {
+    options.summary = true;
   }
 
   return options;
@@ -1609,20 +2712,28 @@ export function commandUsage() {
     "",
     "Options:",
     "  --job-id <id>                     Run one specific ingestion job.",
-    "  --limit <count>                   Run up to count queued jobs (default 1, max 25).",
-    "  --candidate-detail <dedupe-key>   Print one source-candidate detail record.",
-    "  --candidate-curation-draft <dedupe-key> Print read-only claim-link and study-extraction draft fields.",
-    "  --candidate-curation-status <dedupe-key> Print accepted candidate curation handoff status and next action.",
-    "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows and next actions.",
+    "  --run-next                        Run queued PubMed/ClinicalTrials.gov jobs.",
+    "  --limit <count>                   With --run-next, run up to count queued jobs (default 1, max 25).",
+    "  --db-status                       Check local PostgreSQL connectivity without reading review data.",
+    "  --candidate-detail <dedupe-key>   Print one source-candidate detail record with review/curation hints.",
+    "  --candidate-curation-draft <dedupe-key> Print read-only claim-link/study draft fields with command hints.",
+    "  --candidate-curation-status <dedupe-key> Print curation handoff status, next action, and command hints.",
+    "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows, next actions, and command hints.",
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
     "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
-    "  --candidate-reference-matches <dedupe-key> Print candidate identity and curated reference ids eligible for acceptance.",
-    "  --candidate-siblings <dedupe-key> Print same-identity source-candidate siblings and match reasons.",
+    "  --candidate-reference-matches <dedupe-key> Print accepted-reference matches and review/curation hints.",
+    "  --candidate-review-flags        Print read-only flagged pending review groups with review/curation hints.",
+    "  --candidate-review-flag <flag>  With --candidate-review-flags, filter by broad-safety-query or low-title-query-overlap.",
+    "  --candidate-review-flags-limit <count> Review flag group count (default 25, max 50).",
+    "  --candidate-review-overview     Print read-only pending review groups with review/curation hints.",
+    "  --candidate-review-overview-limit <count> Review overview group count (default 25, max 50).",
+    "  --candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, sibling/duplicate context, and curation hints.",
+    "  --candidate-siblings <dedupe-key> Print source-candidate siblings with match reasons and review/curation hints.",
     "  --candidate-siblings-limit <count> Sibling row count (default 25, max 50).",
     "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
     "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
     "  --accepted-reference-id <id>      Required curated reference id for --accept-candidate.",
-    "  --review-note <note>              Human review note; required for --reject-candidate.",
+    "  --review-note <note>              Human review note; required for --accept-candidate and --reject-candidate.",
     "  --link-candidate-claim <dedupe-key> Link an accepted candidate reference to its claim.",
     "  --claim-link-note <note>          Optional note for --link-candidate-claim.",
     "  --claim-link-relevance <1-5>      Optional relevance for --link-candidate-claim.",
@@ -1641,23 +2752,35 @@ export function commandUsage() {
     "  --study-abstract <text>           Optional abstract field for --extract-candidate-study.",
     "  --study-relevance <1-5>           Optional relevance score for --extract-candidate-study.",
     "  --update-existing-study           Update the one existing extraction for this accepted reference.",
-    "  --candidates                      Print pending source-candidate review queue rows.",
+    "  --candidates                      Print read-only source-candidate review rows with review/curation hints.",
     "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
-    "  --candidate-source <source>       Filter candidates or handoff by source: pubmed or clinical-trials.",
+    "  <dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse.",
+    "  --candidate-source <source>       Filter candidates, overview, flags, or handoff by source: pubmed or clinical-trials.",
     "  --candidate-decision <decision>   Candidate decision: pending, accepted, or rejected.",
-    "  --candidate-job-id <id>           Filter --candidates or handoff by ingestion job id.",
-    "  --candidate-intervention-id <id>  Filter --candidates or handoff by intervention id.",
-    "  --candidate-claim-id <id>         Filter --candidates or handoff by claim id.",
-    "  --jobs                            Print recent source-candidate ingestion jobs.",
+    "  --candidate-duplicates            With --candidates, print read-only duplicate source/external-id groups with review/curation hints.",
+    "  --candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id.",
+    "  --candidate-job-id <id>           Filter candidates, overview, flags, or handoff by ingestion job id.",
+    "  --candidate-intervention-id <id>  Filter candidates, overview, flags, or handoff by intervention id.",
+    "  --candidate-intervention-missing  Filter candidates, overview, flags, or handoff to rows without intervention id.",
+    "  --candidate-claim-id <id>         Filter candidates, overview, flags, or handoff by claim id.",
+    "  --candidate-claim-missing         Filter candidates, overview, flags, or handoff to rows without claim id.",
+    "  --candidate-region <region>       Filter candidates, overview, flags, or handoff by region.",
+    "  --jobs                            Print recent source-candidate ingestion jobs with read-only hints.",
     "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
+    "  --jobs-source <source>            Filter --jobs by source: pubmed or clinical-trials.",
+    "  --jobs-region <region>            Filter --jobs by region.",
+    "  --jobs-intervention-id <id>       Filter --jobs by intervention id.",
+    "  --jobs-claim-id <id>              Filter --jobs by claim id.",
+    "  --jobs-status <status>            Filter --jobs by queued, running, succeeded, failed, or skipped.",
     "  --queue-pubmed <term>             Queue a PubMed source-candidate job.",
     "  --queue-clinical-trials <term>    Queue a ClinicalTrials.gov source-candidate job.",
+    "  --queue-claim-sources <claim-id>  Queue PubMed and ClinicalTrials.gov jobs from claim context.",
     "  --region <region>                 Region metadata for queued jobs (default AU).",
     "  --intervention-id <id>            Intervention metadata for queued jobs.",
     "  --claim-id <id>                   Claim metadata for queued jobs.",
     "  --pubmed-retmax <count>           PubMed result limit passed to NCBI (max 20).",
     "  --clinical-trial-page-size <count> ClinicalTrials.gov page size (max 20).",
-    "  --summary                         Print read-only source-candidate workflow and curation handoff counts.",
+    "  --summary                         Print read-only workflow counts and next-command hints.",
     "  --help                            Show this help."
   ].join("\n");
 }
@@ -1668,6 +2791,13 @@ function sourceCandidateIngestionJobOptions(
   return {
     clinicalTrialPageSize: options.clinicalTrialPageSize,
     pubMedRetmax: options.pubMedRetmax
+  };
+}
+
+function sourceCandidateMissingFilterOptions(options: SourceCandidateJobCommandOptions) {
+  return {
+    ...(options.candidateClaimMissing ? { claimIdMissing: true } : {}),
+    ...(options.candidateInterventionMissing ? { interventionIdMissing: true } : {})
   };
 }
 
@@ -1699,7 +2829,8 @@ function formatSourceCandidateJobResult(result: SourceCandidateIngestionJobRunRe
     result.region,
     quote(result.query),
     `found=${result.recordsFound}`,
-    `changed=${result.recordsChanged}`
+    `changed=${result.recordsChanged}`,
+    ...formatSourceCandidateJobCommandHints(result)
   ];
 
   if (result.error) {
@@ -1716,7 +2847,8 @@ function formatQueuedSourceCandidateJob(result: QueuedSourceCandidateIngestionJo
     result.source,
     result.region,
     quote(result.query),
-    `created=${result.created}`
+    `created=${result.created}`,
+    ...formatSourceCandidateJobCommandHints(result)
   ];
 
   appendJobContext(parts, result);
@@ -1730,12 +2862,23 @@ function formatQueuedSourceCandidateJob(result: QueuedSourceCandidateIngestionJo
   return parts.join(" ");
 }
 
+function formatQueuedClaimSourceCandidateJobs(
+  result: QueuedClaimSourceCandidateIngestionJobs
+) {
+  return [
+    `Claim source-candidate jobs: ${quote(result.label)} claim=${result.claimId} intervention=${result.interventionId} region=${result.region}`,
+    ...result.jobs.map((job) => `- ${formatQueuedSourceCandidateJob(job)}`)
+  ].join("\n");
+}
+
 function formatReviewedSourceCandidate(candidate: SourceCandidate) {
   const parts = [
     `[${candidate.decision}] source-candidate`,
     candidate.source,
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    `externalId=${quote(candidate.externalId)}`,
     `title=${quote(candidate.title)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
@@ -1752,18 +2895,21 @@ function formatReviewedSourceCandidate(candidate: SourceCandidate) {
 }
 
 function formatLinkedSourceCandidateClaim(result: LinkedSourceCandidateClaim) {
+  const key = safeCandidateKey(result.candidate.dedupeKey);
   const parts = [
     "[CLAIM_LINKED] source-candidate",
     result.candidate.source,
     result.candidate.region,
     `dedupe=${quote(result.candidate.dedupeKey)}`,
+    `key=${key}`,
     `reference=${result.acceptedReference.id}`,
     `claim=${result.claimLink.claimId}`,
     `created=${result.created}`,
     `relevance=${result.claimLink.relevance}`,
     `status=${quote(result.status.status)}`,
     `publicSourcePacketReady=${result.status.publicSourcePacketReady}`,
-    `nextAction=${quote(result.status.nextAction)}`
+    `nextAction=${quote(result.status.nextAction)}`,
+    ...formatSourceCandidateCurationWriteFields(result.status, key)
   ];
 
   if (result.claimLink.note) {
@@ -1774,17 +2920,20 @@ function formatLinkedSourceCandidateClaim(result: LinkedSourceCandidateClaim) {
 }
 
 function formatExtractedSourceCandidateStudy(result: ExtractedSourceCandidateStudy) {
+  const key = safeCandidateKey(result.candidate.dedupeKey);
   const parts = [
     "[STUDY_EXTRACTED] source-candidate",
     result.candidate.source,
     result.candidate.region,
     `dedupe=${quote(result.candidate.dedupeKey)}`,
+    `key=${key}`,
     `reference=${result.acceptedReference.id}`,
     `study=${result.study.id}`,
     `created=${result.created}`,
     `status=${quote(result.status.status)}`,
     `publicSourcePacketReady=${result.status.publicSourcePacketReady}`,
     `nextAction=${quote(result.status.nextAction)}`,
+    ...formatSourceCandidateCurationWriteFields(result.status, key),
     `title=${quote(result.study.title)}`
   ];
 
@@ -1799,10 +2948,29 @@ function formatExtractedSourceCandidateStudy(result: ExtractedSourceCandidateStu
   return parts.join(" ");
 }
 
-function formatSourceCandidateDetail(candidate: SourceCandidate) {
+function formatSourceCandidateDetail(
+  candidate: SourceCandidate,
+  options: {
+    commandHints?: boolean;
+    duplicateIdentityCandidateCount?: number;
+    duplicateIdentityMixedDecision?: boolean;
+  } = {}
+) {
+  const reviewFlags = sourceCandidateReviewFlags(candidate);
   const lines = [
     "Source-candidate detail",
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    ...(options.commandHints === false
+      ? []
+      : formatSourceCandidateDetailCommandHints(candidate)),
+    ...formatSourceCandidateDuplicateIdentityFields(
+      candidate,
+      options.duplicateIdentityCandidateCount ?? 1,
+      {
+        duplicateIdentityMixedDecision: options.duplicateIdentityMixedDecision
+      }
+    ),
     `source=${quote(candidate.source)}`,
     `externalId=${quote(candidate.externalId)}`,
     `region=${quote(candidate.region)}`,
@@ -1852,6 +3020,23 @@ function formatSourceCandidateDetail(candidate: SourceCandidate) {
 
   lines.push(formatStringList("triageReasons", candidate.triageReasons));
 
+  if (reviewFlags.length > 0) {
+    const reviewFlagCodes = reviewFlags.map((flag) => flag.code);
+    lines.push(
+      ...formatSourceCandidateReviewFlagFields(
+        "reviewFlags",
+        reviewFlagCodes,
+        sourceCandidateReviewFlagContext(candidate)
+      )
+    );
+    lines.push(
+      formatStringList(
+        "reviewCautions",
+        sourceCandidateReviewCautions(reviewFlags)
+      )
+    );
+  }
+
   const metadataLines = formatMetadata(candidate.metadata);
 
   if (metadataLines.length > 0) {
@@ -1862,13 +3047,276 @@ function formatSourceCandidateDetail(candidate: SourceCandidate) {
   return lines.join("\n");
 }
 
-function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft) {
+type SourceCandidateDrillInHint =
+  | "packet"
+  | "referenceMatches"
+  | "siblings"
+  | "groupList"
+  | "curationStatus"
+  | "curationDraft";
+
+function formatSourceCandidateDetailCommandHints(candidate: SourceCandidate) {
+  const key = safeCandidateKey(candidate.dedupeKey);
+
+  return [
+    "Source-candidate detail command hints",
+    "safeReadOnly=true",
+    ...formatSourceCandidateDrillInHints(candidate, key, [
+      "packet",
+      "referenceMatches",
+      "siblings",
+      "groupList",
+      "curationStatus",
+      "curationDraft"
+    ])
+  ];
+}
+
+function formatSourceCandidateReviewDrillInHints(
+  candidate: SourceCandidate,
+  key: string
+) {
+  return formatSourceCandidateDrillInHints(candidate, key, [
+    "packet",
+    "referenceMatches",
+    "siblings",
+    "curationStatus",
+    "curationDraft"
+  ]);
+}
+
+function formatSourceCandidateDrillInHints(
+  candidate: SourceCandidate,
+  key: string,
+  hints: readonly SourceCandidateDrillInHint[]
+) {
+  return hints.map((hint) => formatSourceCandidateDrillInHint(candidate, key, hint));
+}
+
+function formatSourceCandidateDrillInHint(
+  candidate: SourceCandidate,
+  key: string,
+  hint: SourceCandidateDrillInHint
+) {
+  switch (hint) {
+    case "packet":
+      return `packet=${quote(`--candidate-review-packet ${key}`)}`;
+    case "referenceMatches":
+      return `referenceMatches=${quote(`--candidate-reference-matches ${key}`)}`;
+    case "siblings":
+      return `siblings=${quote(`--candidate-siblings ${key}`)}`;
+    case "groupList":
+      return `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`;
+    case "curationStatus":
+      return `curationStatus=${quote(`--candidate-curation-status ${key}`)}`;
+    case "curationDraft":
+      return `curationDraft=${quote(`--candidate-curation-draft ${key}`)}`;
+  }
+}
+
+function formatSourceCandidateReviewPacket(packet: SourceCandidateReviewPacket) {
+  return [
+    "Source-candidate review packet",
+    formatSourceCandidateReviewPacketCommandHints(packet),
+    formatSourceCandidateDetail(packet.candidate, { commandHints: false }),
+    formatSourceCandidateReferenceMatches(packet.referenceMatches, {
+      duplicateIdentityCandidateCount:
+        sourceCandidateReviewPacketDuplicateIdentityCount(packet),
+      duplicateIdentityMixedDecision:
+        sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(packet.siblings)
+    }),
+    formatSourceCandidateSiblings(packet.siblings)
+  ].join("\n\n");
+}
+
+function formatSourceCandidateReviewPacketCommandHints(
+  packet: SourceCandidateReviewPacket
+) {
+  const candidate = packet.candidate;
+  const key = safeCandidateKey(candidate.dedupeKey);
+  const duplicateIdentityCount = sourceCandidateReviewPacketDuplicateIdentityCount(packet);
+  const acceptedReferenceMatches = packet.referenceMatches.references.length;
+  const reviewFlagCodes = sourceCandidateReviewFlagCodes(candidate);
+  const lines = [
+    "Source-candidate review command hints",
+    "safeReadOnly=true",
+    `detail=${quote(`--candidate-detail ${key}`)}`,
+    ...formatSourceCandidateDrillInHints(candidate, key, [
+      "referenceMatches",
+      "siblings",
+      "groupList",
+      "curationStatus",
+      "curationDraft"
+    ])
+  ];
+
+  if (duplicateIdentityCount > 1) {
+    lines.push(
+      `duplicateIdentityCandidates=${duplicateIdentityCount}`,
+      `duplicates=${quote(
+        formatSourceCandidateDuplicateIdentityListCommand({
+          externalId: candidate.externalId,
+          limit: duplicateIdentityCount,
+          source: candidate.source
+        })
+      )}`,
+      `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
+    );
+
+    if (sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(packet.siblings)) {
+      lines.push(
+        "duplicateIdentityMixedDecision=true",
+        `duplicateIdentityNextAction=${quote(
+          SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+        )}`
+      );
+    }
+  }
+
+  if (reviewFlagCodes.length > 0) {
+    lines.push(
+      `reviewFlags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
+      `flagFocus=${quote(
+        formatSourceCandidateReviewFlagsCommand(
+          reviewFlagCodes[0],
+          sourceCandidateReviewFlagContext(candidate)
+        )
+      )}`
+    );
+  }
+
+  lines.push(
+    "humanReviewedWritesRequireOperator=true",
+    "acceptRequiresMatchingCuratedReference=true",
+    `acceptedReferenceMatches=${acceptedReferenceMatches}`,
+    `acceptReferenceReady=${acceptedReferenceMatches > 0}`,
+    "reviewDecisionRequiresHumanNote=true",
+    `acceptTemplate=${quote(
+      `--accept-candidate ${key} --accepted-reference-id <reference-id> --review-note "Human-reviewed rationale."`
+    )}`,
+    `rejectTemplate=${quote(
+      `--reject-candidate ${key} --review-note "Human-reviewed rationale."`
+    )}`
+  );
+
+  return lines.join("\n");
+}
+
+function sourceCandidateReviewPacketDuplicateIdentityCount(
+  packet: SourceCandidateReviewPacket
+) {
+  return sourceCandidateSiblingDuplicateIdentityCount(packet.siblings);
+}
+
+function sourceCandidateSiblingDuplicateIdentityCount(
+  siblings: SourceCandidateSiblings
+) {
+  return sourceCandidateSiblingDuplicateIdentityCandidates(siblings).length;
+}
+
+function sourceCandidateSiblingDuplicateIdentityCandidates(
+  siblings: SourceCandidateSiblings
+) {
+  return [
+    siblings.target,
+    ...siblings.siblings
+      .filter((sibling) => sibling.matchReasons.includes("Same source/external id"))
+      .map((sibling) => sibling.candidate)
+  ];
+}
+
+function sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(
+  siblings: SourceCandidateSiblings
+) {
+  return sourceCandidateIdentityHasMixedDecisions(
+    sourceCandidateIdentityDecisionCounts(
+      sourceCandidateSiblingDuplicateIdentityCandidates(siblings)
+    )
+  );
+}
+
+interface SourceCandidateDuplicateIdentityInfo {
+  candidateCount: number;
+  mixedDecision: boolean;
+}
+
+async function sourceCandidateDuplicateIdentityInfoForDedupeKey(
+  dedupeKey: string,
+  listSiblings: NonNullable<SourceCandidateJobCommandRunners["listSiblings"]>
+): Promise<SourceCandidateDuplicateIdentityInfo> {
+  const siblings = await listSiblings(dedupeKey, {});
+
+  return {
+    candidateCount: siblings ? sourceCandidateSiblingDuplicateIdentityCount(siblings) : 1,
+    mixedDecision: siblings
+      ? sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(siblings)
+      : false
+  };
+}
+
+async function sourceCandidateDuplicateIdentityInfoMap(
+  candidates: SourceCandidate[],
+  listSiblings: NonNullable<SourceCandidateJobCommandRunners["listSiblings"]>
+) {
+  const info = await Promise.all(
+    candidates.map(async (candidate) => [
+      candidate.dedupeKey,
+      await sourceCandidateDuplicateIdentityInfoForDedupeKey(
+        candidate.dedupeKey,
+        listSiblings
+      )
+    ] as const)
+  );
+
+  return new Map(info);
+}
+
+function formatSourceCandidateDuplicateIdentityFields(
+  candidate: SourceCandidate,
+  duplicateIdentityCandidateCount: number,
+  options: { duplicateIdentityMixedDecision?: boolean } = {}
+) {
+  if (duplicateIdentityCandidateCount <= 1) {
+    return [];
+  }
+
+  const fields = [
+    `duplicateIdentityCandidates=${duplicateIdentityCandidateCount}`,
+    `duplicates=${quote(
+      formatSourceCandidateDuplicateIdentityListCommand({
+        externalId: candidate.externalId,
+        limit: duplicateIdentityCandidateCount,
+        source: candidate.source
+      })
+    )}`,
+    `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
+  ];
+
+  if (options.duplicateIdentityMixedDecision) {
+    fields.push(
+      "duplicateIdentityMixedDecision=true",
+      `duplicateIdentityNextAction=${quote(
+        SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+      )}`
+    );
+  }
+
+  return fields;
+}
+
+function formatSourceCandidateCurationDraft(
+  draft: SourceCandidateCurationDraft,
+  options: { duplicateIdentityInfo?: SourceCandidateDuplicateIdentityInfo } = {}
+) {
   const status = draft.status;
   const candidate = status.candidate;
+  const reviewFlagFields = sourceCandidateReviewFlagFields("reviewFlags", candidate);
   const lines = [
     "Source-candidate curation draft",
     "readOnly=true",
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    ...formatSourceCandidateCurationCommandHints(candidate, "draft"),
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`,
     `status=${quote(status.status)}`,
@@ -1876,13 +3324,41 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
     `publicSourcePacketReady=${status.publicSourcePacketReady}`
   ];
 
+  if (status.status === "Not accepted") {
+    lines.push(
+      "acceptRequiresMatchingCuratedReference=true",
+      "reviewDecisionRequiresHumanNote=true"
+    );
+  }
+
+  if (candidate.reviewedAt) {
+    lines.push(`reviewed=${candidate.reviewedAt}`);
+  }
+
+  if (candidate.reviewNote) {
+    lines.push(`note=${quote(candidate.reviewNote)}`);
+  }
+
+  lines.push(
+    ...formatSourceCandidateDuplicateIdentityFields(
+      candidate,
+      options.duplicateIdentityInfo?.candidateCount ?? 1,
+      {
+        duplicateIdentityMixedDecision: options.duplicateIdentityInfo?.mixedDecision
+      }
+    )
+  );
+
+  if (reviewFlagFields.length > 0) {
+    lines.push(...reviewFlagFields);
+  }
+
   if (status.acceptedReferenceId) {
     lines.push(`acceptedReference=${status.acceptedReferenceId}`);
   }
 
   if (status.acceptedReference) {
-    lines.push(`acceptedReferenceTitle=${quote(status.acceptedReference.title)}`);
-    lines.push(`acceptedReferenceUrl=${status.acceptedReference.url}`);
+    lines.push(...formatAcceptedReferenceAuditFields(status.acceptedReference));
   }
 
   if (candidate.claimId) {
@@ -1894,17 +3370,37 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
   }
 
   if (draft.claimLinkDraft) {
+    const claimLinkWriteReady = !draft.claimLinkDraft.alreadyLinked;
+
     lines.push("claimLinkDraft:");
     lines.push(`  reference=${draft.claimLinkDraft.referenceId}`);
     lines.push(`  claim=${draft.claimLinkDraft.claimId}`);
     lines.push(`  relevance=${draft.claimLinkDraft.relevance}`);
     lines.push(`  alreadyLinked=${draft.claimLinkDraft.alreadyLinked}`);
+    lines.push(`  writeReady=${claimLinkWriteReady}`);
+
+    if (!claimLinkWriteReady) {
+      lines.push("  alreadySatisfied=true");
+    }
+
     lines.push(`  note=${quote(draft.claimLinkDraft.note)}`);
+    lines.push(
+      `  commandTemplate=${quote(
+        formatSourceCandidateClaimLinkCommandTemplate(
+          candidate,
+          draft.claimLinkDraft
+        )
+      )}`
+    );
   } else {
     lines.push("claimLinkDraft: unavailable");
   }
 
   if (draft.studyExtractionDraft) {
+    const studyWriteReadiness = sourceCandidateStudyExtractionWriteReadiness(
+      status
+    );
+
     lines.push("studyExtractionDraft:");
     lines.push(`  reference=${draft.studyExtractionDraft.referenceId}`);
     lines.push(`  title=${quote(draft.studyExtractionDraft.title)}`);
@@ -1913,6 +3409,13 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
       `  sourceTypeSuggestion=${quote(draft.studyExtractionDraft.sourceTypeSuggestion)}`
     );
     lines.push(`  alreadyExtracted=${draft.studyExtractionDraft.alreadyExtracted}`);
+    lines.push("  claimLinkRequired=true");
+    lines.push(`  writeReady=${studyWriteReadiness.ready}`);
+
+    if (studyWriteReadiness.blockedUntil) {
+      lines.push(`  blockedUntil=${quote(studyWriteReadiness.blockedUntil)}`);
+    }
+
     lines.push(`  url=${draft.studyExtractionDraft.url}`);
 
     if (draft.studyExtractionDraft.year !== undefined) {
@@ -1938,6 +3441,14 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
     lines.push(
       `  manualFields=${quote(draft.studyExtractionDraft.manualFields.join(", "))}`
     );
+    lines.push(
+      `  commandTemplate=${quote(
+        formatSourceCandidateStudyExtractionCommandTemplate(
+          candidate,
+          draft.studyExtractionDraft
+        )
+      )}`
+    );
 
     if (draft.studyExtractionDraft.metadataFields.length > 0) {
       lines.push("  metadataFields:");
@@ -1954,24 +3465,151 @@ function formatSourceCandidateCurationDraft(draft: SourceCandidateCurationDraft)
   return lines.join("\n");
 }
 
-function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStatus) {
+function sourceCandidateStudyExtractionWriteReadiness(
+  status: SourceCandidateCurationStatus
+) {
+  if (!status.candidate.claimId) {
+    return {
+      blockedUntil: "Accepted candidate claim id required before study extraction.",
+      ready: false
+    };
+  }
+
+  if (status.candidateClaimLinked !== true) {
+    return {
+      blockedUntil: "Claim link required before study extraction.",
+      ready: false
+    };
+  }
+
+  return { ready: true };
+}
+
+function formatSourceCandidateClaimLinkCommandTemplate(
+  candidate: SourceCandidate,
+  draft: NonNullable<SourceCandidateCurationDraft["claimLinkDraft"]>
+) {
+  return [
+    `--link-candidate-claim ${safeCandidateKey(candidate.dedupeKey)}`,
+    `--claim-link-relevance ${draft.relevance}`,
+    `--claim-link-note ${commandTextArgument("Human-reviewed claim-link rationale.")}`
+  ].join(" ");
+}
+
+function formatSourceCandidateStudyExtractionCommandTemplate(
+  candidate: SourceCandidate,
+  draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>
+) {
+  return [
+    `--extract-candidate-study ${safeCandidateKey(candidate.dedupeKey)}`,
+    `--study-source-type ${formatStudySourceTypeCommandValue(
+      draft.sourceTypeSuggestion
+    )}`,
+    `--study-sample-size ${commandTextArgument("Human-entered sample size.")}`,
+    `--study-population ${commandTextArgument("Human-reviewed population.")}`,
+    `--study-intervention-name ${commandTextArgument(
+      "Human-reviewed intervention."
+    )}`,
+    `--study-outcome ${commandTextArgument("Human-reviewed outcome.")}`,
+    `--study-adverse-events ${commandTextArgument(
+      "Human-reviewed adverse event summary."
+    )}`,
+    `--study-funding-conflicts ${commandTextArgument(
+      "Human-reviewed funding/conflict note."
+    )}`,
+    `--study-risk-of-bias ${commandTextArgument(
+      "Human-reviewed risk-of-bias assessment."
+    )}`,
+    ...(draft.alreadyExtracted ? ["--update-existing-study"] : [])
+  ].join(" ");
+}
+
+function formatStudySourceTypeCommandValue(sourceTypeSuggestion: string) {
+  switch (sourceTypeSuggestion) {
+    case "META_ANALYSIS":
+      return "meta-analysis";
+    case "SYSTEMATIC_REVIEW":
+      return "systematic-review";
+    case "RANDOMIZED_CONTROLLED_TRIAL":
+      return "randomized-controlled-trial";
+    case "OBSERVATIONAL_COHORT":
+      return "observational-cohort";
+    case "CASE_REPORT":
+      return "case-report";
+    case "ANIMAL_STUDY":
+      return "animal-study";
+    case "IN_VITRO_MECHANISTIC":
+      return "in-vitro-mechanistic";
+    case "CLINICAL_TRIAL_RECORD":
+      return "clinical-trial-record";
+    case "REGULATORY_SAFETY_WARNING":
+      return "regulatory-safety-warning";
+    default:
+      return "<source-type>";
+  }
+}
+
+function commandTextArgument(value: string) {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll("\"", "\\\"")}"`;
+}
+
+function formatSourceCandidateCurationStatus(
+  status: SourceCandidateCurationStatus,
+  options: { duplicateIdentityInfo?: SourceCandidateDuplicateIdentityInfo } = {}
+) {
+  const key = safeCandidateKey(status.candidate.dedupeKey);
+  const reviewFlagFields = sourceCandidateReviewFlagFields(
+    "reviewFlags",
+    status.candidate
+  );
   const lines = [
     "Source-candidate curation status",
     `dedupe=${quote(status.candidate.dedupeKey)}`,
+    `key=${key}`,
+    ...formatSourceCandidateCurationCommandHints(status.candidate, "status"),
     `decision=${quote(status.candidate.decision)}`,
     `reviewStatus=${quote(status.candidate.reviewStatus)}`,
     `status=${quote(status.status)}`,
     `nextAction=${quote(status.nextAction)}`,
-    `publicSourcePacketReady=${status.publicSourcePacketReady}`
+    `publicSourcePacketReady=${status.publicSourcePacketReady}`,
+    ...formatSourceCandidateCurationWriteFields(status, key)
   ];
+
+  if (status.status === "Not accepted") {
+    lines.push(
+      "acceptRequiresMatchingCuratedReference=true",
+      "reviewDecisionRequiresHumanNote=true"
+    );
+  }
+
+  if (status.candidate.reviewedAt) {
+    lines.push(`reviewed=${status.candidate.reviewedAt}`);
+  }
+
+  if (status.candidate.reviewNote) {
+    lines.push(`note=${quote(status.candidate.reviewNote)}`);
+  }
+
+  lines.push(
+    ...formatSourceCandidateDuplicateIdentityFields(
+      status.candidate,
+      options.duplicateIdentityInfo?.candidateCount ?? 1,
+      {
+        duplicateIdentityMixedDecision: options.duplicateIdentityInfo?.mixedDecision
+      }
+    )
+  );
+
+  if (reviewFlagFields.length > 0) {
+    lines.push(...reviewFlagFields);
+  }
 
   if (status.acceptedReferenceId) {
     lines.push(`acceptedReference=${status.acceptedReferenceId}`);
   }
 
   if (status.acceptedReference) {
-    lines.push(`acceptedReferenceTitle=${quote(status.acceptedReference.title)}`);
-    lines.push(`acceptedReferenceUrl=${status.acceptedReference.url}`);
+    lines.push(...formatAcceptedReferenceAuditFields(status.acceptedReference));
   }
 
   if (status.candidate.claimId) {
@@ -2000,8 +3638,36 @@ function formatSourceCandidateCurationStatus(status: SourceCandidateCurationStat
   return lines.join("\n");
 }
 
+function formatSourceCandidateCurationCommandHints(
+  candidate: SourceCandidate,
+  surface: "draft" | "status"
+) {
+  const key = safeCandidateKey(candidate.dedupeKey);
+  const pairedCurationCommand = surface === "draft"
+    ? `--candidate-curation-status ${key}`
+    : `--candidate-curation-draft ${key}`;
+
+  return [
+    ...formatSourceCandidateDrillInHints(candidate, key, [
+      "packet",
+      "referenceMatches",
+      "siblings",
+      "groupList"
+    ]),
+    `curation${surface === "draft" ? "Status" : "Draft"}=${quote(
+      pairedCurationCommand
+    )}`
+  ];
+}
+
 function formatSourceCandidateCurationHandoff(
-  statuses: SourceCandidateCurationStatus[]
+  statuses: SourceCandidateCurationStatus[],
+  options: {
+    duplicateIdentityInfoByDedupeKey?: Map<
+      string,
+      SourceCandidateDuplicateIdentityInfo
+    >;
+  } = {}
 ) {
   if (statuses.length === 0) {
     return "Source-candidate curation handoff: total=0";
@@ -2009,26 +3675,64 @@ function formatSourceCandidateCurationHandoff(
 
   return [
     `Source-candidate curation handoff: total=${statuses.length}`,
-    ...statuses.map(formatSourceCandidateCurationHandoffItem)
+    ...statuses.map((status) =>
+      formatSourceCandidateCurationHandoffItem(status, {
+        duplicateIdentityInfo: options.duplicateIdentityInfoByDedupeKey?.get(
+          status.candidate.dedupeKey
+        )
+      })
+    )
   ].join("\n");
 }
 
 function formatSourceCandidateCurationHandoffItem(
-  status: SourceCandidateCurationStatus
+  status: SourceCandidateCurationStatus,
+  options: { duplicateIdentityInfo?: SourceCandidateDuplicateIdentityInfo } = {}
 ) {
   const candidate = status.candidate;
+  const key = safeCandidateKey(candidate.dedupeKey);
+  const reviewFlagFields = sourceCandidateReviewFlagFields("reviewFlags", candidate);
   const parts = [
     `- status=${quote(status.status)}`,
     `nextAction=${quote(status.nextAction)}`,
     `publicSourcePacketReady=${status.publicSourcePacketReady}`,
+    ...formatSourceCandidateCurationWriteFields(status, key),
     candidate.source,
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${key}`,
+    ...formatSourceCandidateCurationHandoffCommandHints(candidate),
     `title=${quote(candidate.title)}`
   ];
 
+  if (reviewFlagFields.length > 0) {
+    parts.push(...reviewFlagFields);
+  }
+
+  parts.push(
+    ...formatSourceCandidateDuplicateIdentityFields(
+      candidate,
+      options.duplicateIdentityInfo?.candidateCount ?? 1,
+      {
+        duplicateIdentityMixedDecision: options.duplicateIdentityInfo?.mixedDecision
+      }
+    )
+  );
+
   if (status.acceptedReferenceId) {
     parts.push(`acceptedReference=${status.acceptedReferenceId}`);
+  }
+
+  if (status.acceptedReference) {
+    parts.push(...formatAcceptedReferenceAuditFields(status.acceptedReference));
+  }
+
+  if (candidate.reviewedAt) {
+    parts.push(`reviewed=${candidate.reviewedAt}`);
+  }
+
+  if (candidate.reviewNote) {
+    parts.push(`note=${quote(candidate.reviewNote)}`);
   }
 
   if (candidate.claimId) {
@@ -2043,6 +3747,126 @@ function formatSourceCandidateCurationHandoffItem(
   parts.push(`studies=${status.studies.length}`);
 
   return parts.join(" ");
+}
+
+function formatAcceptedReferenceAuditFields(reference: Reference) {
+  const fields = [
+    `acceptedReferenceTitle=${quote(reference.title)}`,
+    `acceptedReferenceSource=${quote(reference.source)}`
+  ];
+
+  if (reference.identifier) {
+    fields.push(`acceptedReferenceIdentifier=${quote(reference.identifier)}`);
+  }
+
+  if (reference.year !== undefined) {
+    fields.push(`acceptedReferenceYear=${reference.year}`);
+  }
+
+  fields.push(`acceptedReferenceUrl=${reference.url}`);
+
+  return fields;
+}
+
+function formatSourceCandidateCurationWriteFields(
+  status: SourceCandidateCurationStatus,
+  key: string
+) {
+  const assessment = sourceCandidateCurationWriteAssessment(status);
+  const fields = [
+    `nextWrite=${quote(assessment.nextWrite)}`,
+    `writeReady=${assessment.ready}`
+  ];
+
+  if (assessment.blockedUntil) {
+    fields.push(`blockedUntil=${quote(assessment.blockedUntil)}`);
+  }
+
+  if (
+    assessment.nextWrite === "claimLink" ||
+    assessment.nextWrite === "studyExtraction"
+  ) {
+    fields.push(`writeReview=${quote(`--candidate-curation-draft ${key}`)}`);
+  }
+
+  return fields;
+}
+
+function sourceCandidateCurationWriteAssessment(
+  status: SourceCandidateCurationStatus
+) {
+  switch (status.status) {
+    case "Claim link missing":
+      return status.candidate.claimId && status.acceptedReferenceId
+        ? { nextWrite: "claimLink", ready: true }
+        : {
+            blockedUntil:
+              "Accepted candidate claim id and reference required before claim linking.",
+            nextWrite: "claimLink",
+            ready: false
+          };
+    case "Extraction pending":
+      return {
+        nextWrite: "studyExtraction",
+        ...sourceCandidateStudyExtractionWriteReadiness(status)
+      };
+    case "Public source packet ready":
+      return { nextWrite: "none", ready: false };
+    case "Candidate claim missing":
+      return {
+        blockedUntil: "Accepted candidate claim id required before claim linking.",
+        nextWrite: "claimLink",
+        ready: false
+      };
+    default:
+      return sourceCandidateCurationStatusKindWriteAssessment(status.status);
+  }
+}
+
+function sourceCandidateCurationStatusKindWriteAssessment(
+  status: SourceCandidateCurationStatusKind
+) {
+  switch (status) {
+    case "Claim link missing":
+      return { nextWrite: "claimLink", ready: true };
+    case "Extraction pending":
+      return { nextWrite: "studyExtraction", ready: true };
+    case "Public source packet ready":
+      return { nextWrite: "none", ready: false };
+    case "Candidate claim missing":
+      return {
+        blockedUntil: "Accepted candidate claim id required before claim linking.",
+        nextWrite: "claimLink",
+        ready: false
+      };
+    case "Accepted reference missing":
+      return {
+        blockedUntil: "Accepted candidate reference required before claim linking.",
+        nextWrite: "claimLink",
+        ready: false
+      };
+    case "Accepted reference mismatch":
+      return {
+        blockedUntil:
+          "Accepted candidate reference must match candidate source and external id.",
+        nextWrite: "claimLink",
+        ready: false
+      };
+    case "Not accepted":
+      return {
+        blockedUntil: "Accepted candidate review decision required before curation writes.",
+        nextWrite: "reviewDecision",
+        ready: false
+      };
+  }
+}
+
+function formatSourceCandidateCurationHandoffCommandHints(
+  candidate: SourceCandidate
+) {
+  const key = safeCandidateKey(candidate.dedupeKey);
+
+  return formatSourceCandidateReviewDrillInHints(candidate, key);
 }
 
 function formatCurationClaimLink(
@@ -2072,12 +3896,19 @@ function formatCurationStudy(status: SourceCandidateCurationStatus["studies"][nu
 }
 
 function formatSourceCandidateReferenceMatches(
-  matches: SourceCandidateAcceptedReferenceMatches
+  matches: SourceCandidateAcceptedReferenceMatches,
+  options: {
+    duplicateIdentityCandidateCount?: number;
+    duplicateIdentityMixedDecision?: boolean;
+  } = {}
 ) {
-  const heading = formatSourceCandidateReferenceMatchHeading(matches);
+  const heading = formatSourceCandidateReferenceMatchHeading(matches, options);
 
   if (matches.references.length === 0) {
-    return heading;
+    return [
+      heading,
+      formatSourceCandidateReferenceDraft(matches.candidate)
+    ].join("\n");
   }
 
   return [
@@ -2087,19 +3918,58 @@ function formatSourceCandidateReferenceMatches(
 }
 
 function formatSourceCandidateReferenceMatchHeading(
-  matches: SourceCandidateAcceptedReferenceMatches
+  matches: SourceCandidateAcceptedReferenceMatches,
+  options: {
+    duplicateIdentityCandidateCount?: number;
+    duplicateIdentityMixedDecision?: boolean;
+  } = {}
 ) {
   const candidate = matches.candidate;
+  const key = safeCandidateKey(candidate.dedupeKey);
+  const reviewFlagFields = sourceCandidateReviewFlagFields("reviewFlags", candidate);
+  const duplicateIdentityCandidateCount =
+    options.duplicateIdentityCandidateCount ?? 1;
   const parts = [
     `Source-candidate accepted-reference matches: total=${matches.references.length}`,
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${key}`,
     `candidate=${quote(candidate.title)}`,
     `source=${quote(candidate.source)}`,
     `externalId=${quote(candidate.externalId)}`,
     `url=${candidate.url}`,
+    ...formatSourceCandidateDrillInHints(candidate, key, [
+      "packet",
+      "siblings",
+      "groupList",
+      "curationStatus",
+      "curationDraft"
+    ]),
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
+
+  parts.push(
+    ...formatSourceCandidateDuplicateIdentityFields(
+      candidate,
+      duplicateIdentityCandidateCount
+    )
+  );
+
+  if (
+    duplicateIdentityCandidateCount > 1 &&
+    options.duplicateIdentityMixedDecision
+  ) {
+    parts.push(
+      "duplicateIdentityMixedDecision=true",
+      `duplicateIdentityNextAction=${quote(
+        SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+      )}`
+    );
+  }
+
+  if (reviewFlagFields.length > 0) {
+    parts.push(...reviewFlagFields);
+  }
 
   if (candidate.acceptedReferenceId) {
     parts.push(`acceptedReference=${candidate.acceptedReferenceId}`);
@@ -2127,11 +3997,65 @@ function formatSourceCandidateReferenceMatch(reference: Reference) {
   return parts.join(" ");
 }
 
+function formatSourceCandidateReferenceDraft(candidate: SourceCandidate) {
+  const parts = [
+    `- referenceDraft=${quote(sourceCandidateReferenceDraftId(candidate))}`,
+    `source=${quote(candidate.source)}`,
+    `identifier=${quote(sourceCandidateReferenceIdentifier(candidate))}`,
+    `title=${quote(candidate.title)}`,
+    `url=${candidate.url}`,
+    'note="Draft only; verify before adding a curated reference."'
+  ];
+
+  if (candidate.publishedYear !== undefined) {
+    parts.push(`year=${candidate.publishedYear}`);
+  }
+
+  return parts.join(" ");
+}
+
+function sourceCandidateReferenceDraftId(candidate: SourceCandidate) {
+  const sourceSlug =
+    candidate.source === "ClinicalTrials.gov" ? "clinicaltrials-gov" : "pubmed";
+  const externalIdSlug = slugReferenceIdPart(candidate.externalId);
+
+  return `ref-${sourceSlug}-${externalIdSlug || "candidate"}`;
+}
+
+function sourceCandidateReferenceIdentifier(candidate: SourceCandidate) {
+  if (candidate.source === "PubMed") {
+    return `PMID: ${candidate.externalId}`;
+  }
+
+  return candidate.externalId.toUpperCase();
+}
+
+function slugReferenceIdPart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
   const target = siblings.target;
+  const targetKey = safeCandidateKey(target.dedupeKey);
+  const targetReviewFlags = sourceCandidateReviewFlags(target);
+  const duplicateIdentityCandidateCount =
+    sourceCandidateSiblingDuplicateIdentityCount(siblings);
   const headingParts = [
     `Source-candidate siblings: total=${siblings.siblings.length}`,
     `target=${quote(target.dedupeKey)}`,
+    `targetKey=${targetKey}`,
+    `targetPacket=${quote(`--candidate-review-packet ${targetKey}`)}`,
+    `targetReferenceMatches=${quote(`--candidate-reference-matches ${targetKey}`)}`,
+    `targetCurationStatus=${quote(`--candidate-curation-status ${targetKey}`)}`,
+    `targetCurationDraft=${quote(`--candidate-curation-draft ${targetKey}`)}`,
+    ...formatSourceCandidateDuplicateIdentityFields(
+      target,
+      duplicateIdentityCandidateCount
+    ),
     `candidate=${quote(target.title)}`,
     `source=${quote(target.source)}`,
     `externalId=${quote(target.externalId)}`,
@@ -2140,6 +4064,18 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
     `decision=${quote(target.decision)}`,
     `reviewStatus=${quote(target.reviewStatus)}`
   ];
+
+  if (
+    duplicateIdentityCandidateCount > 1 &&
+    sourceCandidateSiblingsHaveMixedDuplicateIdentityDecisions(siblings)
+  ) {
+    headingParts.push(
+      "duplicateIdentityMixedDecision=true",
+      `duplicateIdentityNextAction=${quote(
+        SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+      )}`
+    );
+  }
 
   if (target.interventionId) {
     headingParts.push(`intervention=${target.interventionId}`);
@@ -2151,6 +4087,16 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
 
   if (target.acceptedReferenceId) {
     headingParts.push(`acceptedReference=${target.acceptedReferenceId}`);
+  }
+
+  if (targetReviewFlags.length > 0) {
+    headingParts.push(
+      ...formatSourceCandidateReviewFields(
+        "targetReviewFlags",
+        targetReviewFlags,
+        sourceCandidateReviewFlagContext(target)
+      )
+    );
   }
 
   const heading = headingParts.join(" ");
@@ -2167,12 +4113,21 @@ function formatSourceCandidateSiblings(siblings: SourceCandidateSiblings) {
 
 function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings"][number]) {
   const candidate = sibling.candidate;
+  const reviewFlags = sourceCandidateReviewFlags(candidate);
+  const key = safeCandidateKey(candidate.dedupeKey);
   const parts = [
     `- match=${quote(sibling.matchReasons.join(", "))}`,
     `triage=${candidate.triageScore}/100`,
     candidate.source,
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${key}`,
+    ...formatSourceCandidateDrillInHints(candidate, key, [
+      "packet",
+      "referenceMatches",
+      "curationStatus",
+      "curationDraft"
+    ]),
     `externalId=${quote(candidate.externalId)}`,
     `query=${quote(candidate.query)}`,
     `title=${quote(candidate.title)}`,
@@ -2180,6 +4135,16 @@ function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`
   ];
+
+  if (reviewFlags.length > 0) {
+    parts.push(
+      ...formatSourceCandidateReviewFields(
+        "reviewFlags",
+        reviewFlags,
+        sourceCandidateReviewFlagContext(candidate)
+      )
+    );
+  }
 
   if (candidate.acceptedReferenceId) {
     parts.push(`acceptedReference=${candidate.acceptedReferenceId}`);
@@ -2206,7 +4171,13 @@ function formatSourceCandidateSibling(sibling: SourceCandidateSiblings["siblings
 
 function formatSourceCandidateReviewQueue(
   candidates: SourceCandidate[],
-  decision?: SourceCandidateDecision
+  decision?: SourceCandidateDecision,
+  options: {
+    duplicateIdentityInfoByDedupeKey?: Map<
+      string,
+      SourceCandidateDuplicateIdentityInfo
+    >;
+  } = {}
 ) {
   const heading = decision && decision !== "Pending review"
     ? `Source-candidate review records: decision=${quote(decision)}`
@@ -2218,19 +4189,457 @@ function formatSourceCandidateReviewQueue(
 
   return [
     `${heading}: total=${candidates.length}`,
-    ...candidates.map(formatSourceCandidateReviewQueueItem)
+    ...candidates.map((candidate) => {
+      const duplicateIdentityInfo =
+        options.duplicateIdentityInfoByDedupeKey?.get(candidate.dedupeKey);
+
+      return formatSourceCandidateReviewQueueItem(candidate, {
+        duplicateIdentityCandidateCount: duplicateIdentityInfo?.candidateCount,
+        duplicateIdentityMixedDecision: duplicateIdentityInfo?.mixedDecision
+      });
+    })
   ].join("\n");
 }
 
-function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
+function formatSourceCandidateIdentityGroups(
+  groups: SourceCandidateIdentityGroup[],
+  decision?: SourceCandidateDecision
+) {
+  const heading = decision && decision !== "Pending review"
+    ? `Source-candidate duplicate identities: decision=${quote(decision)}`
+    : "Source-candidate duplicate identities";
+
+  if (groups.length === 0) {
+    return `${heading}: total=0`;
+  }
+
+  return [
+    `${heading}: total=${groups.length}`,
+    ...groups.flatMap(formatSourceCandidateIdentityGroup)
+  ].join("\n");
+}
+
+function formatSourceCandidateIdentityGroup(group: SourceCandidateIdentityGroup) {
+  const counts = sourceCandidateIdentityDecisionCounts(group.candidates);
+  const title = group.candidates[0]?.title ?? "";
+  const parts = [
+    `- ${group.source}`,
+    `externalId=${quote(group.externalId)}`,
+    `candidates=${group.candidates.length}`,
+    `pending=${counts.pending}`,
+    `accepted=${counts.accepted}`,
+    `rejected=${counts.rejected}`,
+    `identityList=${quote(formatSourceCandidateIdentityGroupListCommand(group))}`,
+    `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`,
+    `title=${quote(title)}`
+  ];
+
+  if (sourceCandidateIdentityHasMixedDecisions(counts)) {
+    parts.push(
+      "mixedDecision=true",
+      `nextAction=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION)}`
+    );
+  }
+
+  return [
+    parts.join(" "),
+    ...group.candidates.map(formatSourceCandidateIdentityGroupCandidate)
+  ];
+}
+
+function sourceCandidateIdentityHasMixedDecisions(
+  counts: ReturnType<typeof sourceCandidateIdentityDecisionCounts>
+) {
+  return (
+    [counts.pending, counts.accepted, counts.rejected].filter((count) => count > 0)
+      .length > 1
+  );
+}
+
+function formatSourceCandidateIdentityGroupCandidate(candidate: SourceCandidate) {
+  const reviewFlags = sourceCandidateReviewFlags(candidate);
+  const key = safeCandidateKey(candidate.dedupeKey);
+  const parts = [
+    "  -",
+    `triage=${candidate.triageScore}/100`,
+    `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${key}`,
+    ...formatSourceCandidateReviewDrillInHints(candidate, key),
+    `groupList=${quote(formatSourceCandidateGroupListCommand(candidate))}`,
+    `query=${quote(candidate.query)}`,
+    `decision=${quote(candidate.decision)}`,
+    `reviewStatus=${quote(candidate.reviewStatus)}`
+  ];
+
+  if (reviewFlags.length > 0) {
+    parts.push(
+      ...formatSourceCandidateReviewFields(
+        "reviewFlags",
+        reviewFlags,
+        sourceCandidateReviewFlagContext(candidate)
+      )
+    );
+  }
+
+  if (candidate.acceptedReferenceId) {
+    parts.push(`acceptedReference=${candidate.acceptedReferenceId}`);
+  }
+
+  if (candidate.reviewedAt) {
+    parts.push(`reviewed=${candidate.reviewedAt}`);
+  }
+
+  if (candidate.reviewNote) {
+    parts.push(`note=${quote(candidate.reviewNote)}`);
+  }
+
+  parts.push(
+    `intervention=${candidate.interventionId ?? "none"}`,
+    `claim=${candidate.claimId ?? "none"}`
+  );
+
+  if (candidate.ingestionJobId) {
+    parts.push(`ingestionJob=${candidate.ingestionJobId}`);
+  }
+
+  return parts.join(" ");
+}
+
+function formatSourceCandidateIdentityGroupListCommand(
+  group: SourceCandidateIdentityGroup
+) {
+  return formatSourceCandidateDuplicateIdentityListCommand({
+    externalId: group.externalId,
+    limit: group.candidates.length,
+    source: group.source
+  });
+}
+
+function sourceCandidateIdentityDecisionCounts(candidates: SourceCandidate[]) {
+  return candidates.reduce(
+    (counts, candidate) => {
+      if (candidate.decision === "Accepted") {
+        counts.accepted += 1;
+      } else if (candidate.decision === "Rejected") {
+        counts.rejected += 1;
+      } else {
+        counts.pending += 1;
+      }
+
+      return counts;
+    },
+    {
+      accepted: 0,
+      pending: 0,
+      rejected: 0
+    }
+  );
+}
+
+function formatSourceCandidateReviewOverview(overview: SourceCandidateReviewOverview) {
+  if (overview.groups.length === 0) {
+    return "Source-candidate review overview: totalGroups=0 candidateCount=0";
+  }
+
+  const suffix = overview.groups.length < overview.totalGroups
+    ? ` shown=${overview.groups.length}`
+    : "";
+
+  return [
+    `Source-candidate review overview: totalGroups=${overview.totalGroups} candidateCount=${overview.candidateCount}${suffix}`,
+    ...overview.groups.map(formatSourceCandidateReviewOverviewGroup)
+  ].join("\n");
+}
+
+function formatSourceCandidateReviewFlags(
+  overview: SourceCandidateReviewOverview,
+  flag?: SourceCandidateReviewFlagCode
+) {
+  const groups = overview.groups.filter(
+    (group) =>
+      sourceCandidateReviewFlagCodes(group.topCandidate).some(
+        (reviewFlag) => !flag || reviewFlag === flag
+      )
+  );
+  const suffix = overview.groups.length < overview.totalGroups
+    ? ` shown=${overview.groups.length}`
+    : "";
+  const heading =
+    `Source-candidate review flags: totalGroups=${overview.totalGroups}` +
+    ` candidateCount=${overview.candidateCount}${suffix}` +
+    `${flag ? ` flag=${quote(flag)}` : ""}` +
+    ` flaggedTopGroups=${groups.length}`;
+
+  if (groups.length === 0) {
+    return heading;
+  }
+
+  return [
+    heading,
+    ...groups.map((group) => formatSourceCandidateReviewFlagGroup(group, flag))
+  ].join("\n");
+}
+
+function formatSourceCandidateReviewFlagGroup(
+  group: SourceCandidateReviewOverview["groups"][number],
+  requestedFlag?: SourceCandidateReviewFlagCode
+) {
+  const candidate = group.topCandidate;
+  const key = safeCandidateKey(candidate.dedupeKey);
+  const reviewFlags = sourceCandidateReviewFlags(candidate);
+  const reviewFlagCodes = reviewFlags.map((reviewFlag) => reviewFlag.code);
+  const focusFlag =
+    requestedFlag && reviewFlagCodes.includes(requestedFlag)
+      ? requestedFlag
+      : reviewFlagCodes[0];
+  const parts = [
+    "-",
+    `flags=${quote(reviewFlagCodes.join(", "))}`,
+    `topReviewCautions=${quote(sourceCandidateReviewCautions(reviewFlags).join(" | "))}`,
+    `flagFocus=${quote(
+      formatSourceCandidateReviewFlagsCommand(
+        focusFlag,
+        sourceCandidateReviewFlagGroupContext(group)
+      )
+    )}`,
+    `claim=${group.claimId ?? "none"}`,
+    `intervention=${group.interventionId ?? "none"}`,
+    group.source,
+    group.region,
+    `pending=${group.count}`,
+    `topTriage=${group.topTriageScore}/100`,
+    `topKey=${key}`,
+    `topExternalId=${quote(candidate.externalId)}`
+  ];
+
+  if (group.topIdentityCandidateCount > 1) {
+    parts.push(
+      `topIdentityCandidates=${group.topIdentityCandidateCount}`,
+      `duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(group))}`,
+      `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
+    );
+
+    if (group.topIdentityMixedDecision) {
+      parts.push(
+        "duplicateIdentityMixedDecision=true",
+        `duplicateIdentityNextAction=${quote(
+          SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+        )}`
+      );
+    }
+  }
+
+  parts.push(
+    `topTitle=${quote(candidate.title)}`,
+    `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
+    ...formatSourceCandidateReviewDrillInHints(candidate, key),
+    `overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
+  );
+
+  return parts.join(" ");
+}
+
+function formatSourceCandidateReviewOverviewGroup(
+  group: SourceCandidateReviewOverview["groups"][number]
+) {
+  const candidate = group.topCandidate;
+  const key = safeCandidateKey(candidate.dedupeKey);
+  const reviewFlags = sourceCandidateReviewFlags(candidate);
+  const reviewFlagCodes = reviewFlags.map((reviewFlag) => reviewFlag.code);
+  const parts = [
+    "-",
+    `claim=${group.claimId ?? "none"}`,
+    `intervention=${group.interventionId ?? "none"}`,
+    group.source,
+    group.region,
+    `pending=${group.count}`,
+    `topTriage=${group.topTriageScore}/100`,
+    `topKey=${key}`,
+    `topExternalId=${quote(candidate.externalId)}`
+  ];
+
+  if (group.topIdentityCandidateCount > 1) {
+    parts.push(
+      `topIdentityCandidates=${group.topIdentityCandidateCount}`,
+      `duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(group))}`,
+      `duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`
+    );
+
+    if (group.topIdentityMixedDecision) {
+      parts.push(
+        "duplicateIdentityMixedDecision=true",
+        `duplicateIdentityNextAction=${quote(
+          SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+        )}`
+      );
+    }
+  }
+
+  if (reviewFlagCodes.length > 0) {
+    parts.push(
+      `topReviewFlags=${quote(reviewFlagCodes.join(", "))}`,
+      `topReviewCautions=${quote(sourceCandidateReviewCautions(reviewFlags).join(" | "))}`,
+      `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
+      `flagFocus=${quote(
+        formatSourceCandidateReviewFlagsCommand(
+          reviewFlagCodes[0],
+          sourceCandidateReviewFlagGroupContext(group)
+        )
+      )}`
+    );
+  }
+
+  parts.push(
+    `topTitle=${quote(candidate.title)}`,
+    `list=${quote(formatSourceCandidateReviewOverviewListCommand(group))}`,
+    ...formatSourceCandidateReviewDrillInHints(candidate, key)
+  );
+
+  return parts.join(" ");
+}
+
+function formatSourceCandidateReviewOverviewListCommand(
+  group: SourceCandidateReviewOverview["groups"][number]
+) {
+  return formatSourceCandidateContextListCommand({
+    claimId: group.claimId,
+    claimIdMissing: !group.claimId,
+    interventionId: group.interventionId,
+    interventionIdMissing: !group.interventionId,
+    limit: Math.min(group.count, DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT),
+    region: group.region,
+    source: group.source
+  });
+}
+
+function formatSourceCandidateReviewOverviewDuplicateListCommand(
+  group: SourceCandidateReviewOverview["groups"][number]
+) {
+  return formatSourceCandidateDuplicateIdentityListCommand({
+    externalId: group.topCandidate.externalId,
+    limit: group.topIdentityCandidateCount,
+    source: group.source
+  });
+}
+
+function formatSourceCandidateDuplicateIdentityListCommand({
+  externalId,
+  limit,
+  source
+}: {
+  externalId: string;
+  limit: number;
+  source: SourceCandidateSource;
+}) {
+  return [
+    "--candidates",
+    "--candidate-duplicates",
+    "--candidate-source",
+    sourceCandidateSourceCliValue(source),
+    "--candidate-external-id",
+    externalId,
+    "--candidates-limit",
+    String(Math.min(limit, DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT))
+  ].join(" ");
+}
+
+function formatSourceCandidateGroupListCommand(candidate: SourceCandidate) {
+  return formatSourceCandidateContextListCommand({
+    claimId: candidate.claimId,
+    claimIdMissing: !candidate.claimId,
+    interventionId: candidate.interventionId,
+    interventionIdMissing: !candidate.interventionId,
+    limit: DEFAULT_REVIEW_GROUP_CANDIDATE_LIMIT,
+    region: candidate.region,
+    source: candidate.source
+  });
+}
+
+function formatSourceCandidateContextListCommand({
+  claimId,
+  claimIdMissing,
+  interventionId,
+  interventionIdMissing,
+  limit,
+  region,
+  source
+}: {
+  claimId?: string;
+  claimIdMissing?: boolean;
+  interventionId?: string;
+  interventionIdMissing?: boolean;
+  limit: number;
+  region: string;
+  source: SourceCandidateSource;
+}) {
+  const args = ["--candidates"];
+
+  if (claimId) {
+    args.push("--candidate-claim-id", claimId);
+  } else if (claimIdMissing) {
+    args.push("--candidate-claim-missing");
+  }
+
+  if (interventionId) {
+    args.push("--candidate-intervention-id", interventionId);
+  } else if (interventionIdMissing) {
+    args.push("--candidate-intervention-missing");
+  }
+
+  args.push(
+    "--candidate-region",
+    region,
+    "--candidate-source",
+    sourceCandidateSourceCliValue(source),
+    "--candidates-limit",
+    String(limit)
+  );
+
+  return args.join(" ");
+}
+
+function sourceCandidateSourceCliValue(source: SourceCandidateSource) {
+  return source === "ClinicalTrials.gov" ? "clinical-trials" : "pubmed";
+}
+
+function formatSourceCandidateReviewQueueItem(
+  candidate: SourceCandidate,
+  options: {
+    duplicateIdentityCandidateCount?: number;
+    duplicateIdentityMixedDecision?: boolean;
+  } = {}
+) {
+  const reviewFlags = sourceCandidateReviewFlags(candidate);
+  const key = safeCandidateKey(candidate.dedupeKey);
   const parts = [
     `- triage=${candidate.triageScore}/100`,
     candidate.source,
     candidate.region,
     `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${key}`,
+    ...formatSourceCandidateReviewDrillInHints(candidate, key),
+    ...formatSourceCandidateDuplicateIdentityFields(
+      candidate,
+      options.duplicateIdentityCandidateCount ?? 1,
+      {
+        duplicateIdentityMixedDecision: options.duplicateIdentityMixedDecision
+      }
+    ),
+    `externalId=${quote(candidate.externalId)}`,
+    `query=${quote(candidate.query)}`,
     `title=${quote(candidate.title)}`,
     `url=${candidate.url}`
   ];
+
+  if (reviewFlags.length > 0) {
+    parts.push(
+      ...formatSourceCandidateReviewFields(
+        "reviewFlags",
+        reviewFlags,
+        sourceCandidateReviewFlagContext(candidate)
+      )
+    );
+  }
 
   if (candidate.decision !== "Pending review") {
     parts.push(`decision=${quote(candidate.decision)}`);
@@ -2252,6 +4661,10 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
     parts.push(`note=${quote(candidate.reviewNote)}`);
   }
 
+  if (candidate.ingestionJobId) {
+    parts.push(`ingestionJob=${candidate.ingestionJobId}`);
+  }
+
   if (candidate.interventionId) {
     parts.push(`intervention=${candidate.interventionId}`);
   }
@@ -2261,6 +4674,199 @@ function formatSourceCandidateReviewQueueItem(candidate: SourceCandidate) {
   }
 
   return parts.join(" ");
+}
+
+function sourceCandidateReviewFlagCodes(candidate: SourceCandidate) {
+  return sourceCandidateReviewFlags(candidate).map((flag) => flag.code);
+}
+
+function sourceCandidateReviewCautions(
+  reviewFlags: ReturnType<typeof sourceCandidateReviewFlags>
+) {
+  return reviewFlags.map((flag) => `${flag.code}: ${flag.message}`);
+}
+
+interface SourceCandidateReviewFlagCommandContext {
+  claimId?: string;
+  claimIdMissing?: boolean;
+  interventionId?: string;
+  interventionIdMissing?: boolean;
+  region?: string;
+  source?: SourceCandidateSource;
+}
+
+function sourceCandidateReviewFlagContext(
+  candidate: SourceCandidate
+): SourceCandidateReviewFlagCommandContext {
+  return {
+    claimId: candidate.claimId,
+    claimIdMissing: !candidate.claimId,
+    interventionId: candidate.interventionId,
+    interventionIdMissing: !candidate.interventionId,
+    region: candidate.region,
+    source: candidate.source
+  };
+}
+
+function sourceCandidateReviewFlagGroupContext(
+  group: SourceCandidateReviewOverview["groups"][number]
+): SourceCandidateReviewFlagCommandContext {
+  return {
+    claimId: group.claimId,
+    claimIdMissing: !group.claimId,
+    interventionId: group.interventionId,
+    interventionIdMissing: !group.interventionId,
+    region: group.region,
+    source: group.source
+  };
+}
+
+function sourceCandidateReviewFlagFields(label: string, candidate: SourceCandidate) {
+  return formatSourceCandidateReviewFields(
+    label,
+    sourceCandidateReviewFlags(candidate),
+    sourceCandidateReviewFlagContext(candidate)
+  );
+}
+
+function formatSourceCandidateReviewFields(
+  label: string,
+  reviewFlags: ReturnType<typeof sourceCandidateReviewFlags>,
+  context?: SourceCandidateReviewFlagCommandContext
+) {
+  return [
+    ...formatSourceCandidateReviewFlagFields(
+      label,
+      reviewFlags.map((flag) => flag.code),
+      context
+    ),
+    ...formatSourceCandidateReviewCautionFields(label, reviewFlags)
+  ];
+}
+
+function formatSourceCandidateReviewFlagFields(
+  label: string,
+  reviewFlagCodes: readonly SourceCandidateReviewFlagCode[],
+  context?: SourceCandidateReviewFlagCommandContext
+) {
+  if (reviewFlagCodes.length === 0) {
+    return [];
+  }
+
+  return [
+    `${label}=${quote(reviewFlagCodes.join(", "))}`,
+    `flags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
+    `flagFocus=${quote(formatSourceCandidateReviewFlagsCommand(reviewFlagCodes[0], context))}`
+  ];
+}
+
+function formatSourceCandidateReviewCautionFields(
+  flagLabel: string,
+  reviewFlags: ReturnType<typeof sourceCandidateReviewFlags>
+) {
+  const cautions = sourceCandidateReviewCautions(reviewFlags);
+
+  if (cautions.length === 0) {
+    return [];
+  }
+
+  return [
+    `${sourceCandidateReviewCautionLabel(flagLabel)}=${quote(cautions.join(" | "))}`
+  ];
+}
+
+function sourceCandidateReviewCautionLabel(flagLabel: string) {
+  return flagLabel.endsWith("Flags")
+    ? `${flagLabel.slice(0, -"Flags".length)}Cautions`
+    : `${flagLabel}Cautions`;
+}
+
+function sourceCandidateReviewFlags(candidate: SourceCandidate) {
+  if (!candidate.claimId) {
+    return [];
+  }
+
+  const flags: { code: SourceCandidateReviewFlagCode; message: string }[] = [];
+  const queryTokens = sourceCandidateReviewTokens(candidate.query);
+  const titleTokens = sourceCandidateReviewTokens(candidate.title);
+
+  if (sourceCandidateBroadSafetyQueryTokens(queryTokens)) {
+    flags.push({
+      code: "broad-safety-query",
+      message:
+        "Broad safety/adverse query; verify title, population, outcomes, and source identity against the candidate claim."
+    });
+  }
+
+  if (
+    queryTokens.length >= MIN_REVIEW_QUERY_TOKENS_FOR_OVERLAP_FLAG &&
+    !sourceCandidateReviewTokensOverlap(queryTokens, titleTokens)
+  ) {
+    flags.push({
+      code: "low-title-query-overlap",
+      message:
+        "Low title/query overlap; inspect the packet and siblings for off-claim or off-intervention matches."
+    });
+  }
+
+  return flags;
+}
+
+function sourceCandidateBroadSafetyQueryTokens(tokens: string[]) {
+  return tokens.includes("safety") && tokens.includes("adverse");
+}
+
+function sourceCandidateReviewTokens(value: string) {
+  const seen = new Set<string>();
+
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9+-]+/g, " ")
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => {
+      if (token.length < 3 || reviewQueryTokenStopwords.has(token) || seen.has(token)) {
+        return false;
+      }
+
+      seen.add(token);
+      return true;
+    })
+    .map(sourceCandidateReviewTokenRoot);
+}
+
+function sourceCandidateReviewTokensOverlap(
+  queryTokens: string[],
+  titleTokens: string[]
+) {
+  return queryTokens.some((queryToken) =>
+    titleTokens.some((titleToken) =>
+      queryToken === titleToken ||
+      (queryToken.length >= 5 &&
+        titleToken.length >= 5 &&
+        (titleToken.includes(queryToken) || queryToken.includes(titleToken)))
+    )
+  );
+}
+
+function sourceCandidateReviewTokenRoot(token: string) {
+  if (token.length > 8 && token.endsWith("emia")) {
+    return token.slice(0, -4);
+  }
+
+  if (token.length > 5 && token.endsWith("ies")) {
+    return `${token.slice(0, -3)}y`;
+  }
+
+  if (token.length > 5 && token.endsWith("es")) {
+    return token.slice(0, -2);
+  }
+
+  if (token.length > 4 && token.endsWith("s")) {
+    return token.slice(0, -1);
+  }
+
+  return token;
 }
 
 function formatSourceCandidateIngestionJobs(jobs: SourceCandidateIngestionJobListItem[]) {
@@ -2283,7 +4889,8 @@ function formatSourceCandidateIngestionJob(job: SourceCandidateIngestionJobListI
     quote(job.query),
     `found=${job.recordsFound}`,
     `changed=${job.recordsChanged}`,
-    `updated=${job.updatedAt}`
+    `updated=${job.updatedAt}`,
+    ...formatSourceCandidateJobCommandHints(job)
   ];
 
   appendJobContext(parts, job);
@@ -2293,6 +4900,83 @@ function formatSourceCandidateIngestionJob(job: SourceCandidateIngestionJobListI
   }
 
   return parts.join(" ");
+}
+
+interface SourceCandidateJobCommandHintContext {
+  claimId?: string;
+  interventionId?: string;
+  jobId: string;
+  region: string;
+  source: SourceCandidateIngestionJobListItem["source"];
+  status: SourceCandidateIngestionJobListItem["status"];
+}
+
+function formatSourceCandidateJobCommandHints(
+  job: SourceCandidateJobCommandHintContext
+) {
+  return [
+    `candidates=${quote(formatSourceCandidateJobCandidatesCommand(job.jobId))}`,
+    `contextJobs=${quote(formatSourceCandidateJobContextCommand(job))}`,
+    `statusJobs=${quote(
+      `--jobs --jobs-status ${formatSourceCandidateJobStatusValue(job.status)} --jobs-limit 10`
+    )}`
+  ];
+}
+
+function formatSourceCandidateJobCandidatesCommand(jobId: string) {
+  return `--candidates --candidate-job-id ${jobId} --candidates-limit 10`;
+}
+
+function formatSourceCandidateJobContextCommand(
+  job: SourceCandidateJobCommandHintContext
+) {
+  const parts = [
+    "--jobs",
+    "--jobs-source",
+    formatSourceCandidateJobSourceValue(job.source),
+    "--jobs-region",
+    job.region
+  ];
+
+  if (job.interventionId) {
+    parts.push("--jobs-intervention-id", job.interventionId);
+  }
+
+  if (job.claimId) {
+    parts.push("--jobs-claim-id", job.claimId);
+  }
+
+  parts.push("--jobs-limit", "10");
+
+  return parts.join(" ");
+}
+
+function formatSourceCandidateJobSourceValue(
+  source: SourceCandidateIngestionJobListItem["source"]
+) {
+  switch (source) {
+    case "PUBMED":
+      return "pubmed";
+    case "CLINICALTRIALS_GOV":
+      return "clinical-trials";
+  }
+}
+
+function formatSourceCandidateJobStatusValue(
+  status: SourceCandidateIngestionJobListItem["status"]
+) {
+  switch (status) {
+    case "QUEUED":
+      return "queued";
+    case "RUNNING":
+      return "running";
+    case "SUCCEEDED":
+      return "succeeded";
+    case "FAILED":
+      return "failed";
+    case "SKIPPED":
+      return "skipped";
+  }
 }
 
 function appendJobContext(
@@ -2309,12 +4993,199 @@ function appendJobContext(
 }
 
 function formatSourceCandidateWorkflowSummary(
+  jobSummary: SourceCandidateIngestionJobSummary,
   backlogSummary: SourceCandidateBacklogSummary,
-  curationHandoffSummary: SourceCandidateCurationHandoffSummary
+  curationHandoffSummary: SourceCandidateCurationHandoffSummary,
+  reviewOverview: SourceCandidateReviewOverview
 ) {
   return [
+    formatSourceCandidateIngestionJobSummary(jobSummary),
     formatSourceCandidateBacklogSummary(backlogSummary),
-    formatSourceCandidateCurationHandoffSummary(curationHandoffSummary)
+    formatSourceCandidateCurationHandoffSummary(curationHandoffSummary),
+    formatSourceCandidateReviewFlagSummary(reviewOverview),
+    formatSourceCandidateWorkflowSummaryCommandHints()
+  ].join("\n");
+}
+
+function formatSourceCandidateReviewFlagSummary(
+  reviewOverview: SourceCandidateReviewOverview
+) {
+  const groups = sourceCandidateReviewFlagSummaryGroups(reviewOverview);
+  const flaggedTopGroups = reviewOverview.groups.filter(
+    (group) => sourceCandidateReviewFlagCodes(group.topCandidate).length > 0
+  ).length;
+  const heading =
+    `Source-candidate review flag focus: totalGroups=${reviewOverview.totalGroups}` +
+    ` candidateCount=${reviewOverview.candidateCount}` +
+    ` flaggedTopGroups=${flaggedTopGroups}`;
+
+  if (groups.length === 0) {
+    return heading;
+  }
+
+  return [
+    heading,
+    ...groups.map(formatSourceCandidateReviewFlagSummaryGroup)
+  ].join("\n");
+}
+
+function formatSourceCandidateReviewFlagSummaryGroup(
+  group: ReturnType<typeof sourceCandidateReviewFlagSummaryGroups>[number]
+) {
+  const exampleGroup = group.exampleGroup;
+  const candidate = exampleGroup.topCandidate;
+  const caution = sourceCandidateReviewFlags(candidate).find(
+    (reviewFlag) => reviewFlag.code === group.flag
+  )?.message;
+  const key = safeCandidateKey(candidate.dedupeKey);
+  const drillInHints = formatSourceCandidateReviewDrillInHints(candidate, key)
+    .map((hint) => ` ${hint}`)
+    .join("");
+  const duplicateIdentityHints = exampleGroup.topIdentityCandidateCount > 1
+    ? [
+        ` topIdentityCandidates=${exampleGroup.topIdentityCandidateCount}`,
+        ` duplicates=${quote(formatSourceCandidateReviewOverviewDuplicateListCommand(exampleGroup))}`,
+        ` duplicateCaution=${quote(SOURCE_CANDIDATE_DUPLICATE_IDENTITY_CAUTION)}`,
+        ...(exampleGroup.topIdentityMixedDecision
+          ? [
+              " duplicateIdentityMixedDecision=true",
+              ` duplicateIdentityNextAction=${quote(
+                SOURCE_CANDIDATE_DUPLICATE_IDENTITY_REVIEW_ACTION
+              )}`
+            ]
+          : [])
+      ].join("")
+    : "";
+
+  return (
+    `- flag=${quote(group.flag)} topGroups=${group.topGroups}` +
+    ` pendingInTopGroups=${group.pendingInTopGroups}` +
+    ` topGroup=${quote(formatSourceCandidateReviewFlagSummaryGroupLabel(exampleGroup))}` +
+    `${caution ? ` caution=${quote(caution)}` : ""}` +
+    duplicateIdentityHints +
+    ` list=${quote(formatSourceCandidateReviewOverviewListCommand(exampleGroup))}` +
+    drillInHints +
+    ` flags=${quote(formatSourceCandidateReviewFlagsCommand(group.flag))}` +
+    ` flagFocus=${quote(
+      formatSourceCandidateReviewFlagsCommand(
+        group.flag,
+        sourceCandidateReviewFlagGroupContext(exampleGroup)
+      )
+    )}` +
+    ` overview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`
+  );
+}
+
+function formatSourceCandidateReviewFlagsCommand(
+  flag?: SourceCandidateReviewFlagCode,
+  context?: SourceCandidateReviewFlagCommandContext
+) {
+  const parts = ["--candidate-review-flags"];
+
+  if (flag) {
+    parts.push("--candidate-review-flag", flag);
+  }
+
+  if (context?.claimId) {
+    parts.push("--candidate-claim-id", context.claimId);
+  } else if (context?.claimIdMissing) {
+    parts.push("--candidate-claim-missing");
+  }
+
+  if (context?.interventionId) {
+    parts.push("--candidate-intervention-id", context.interventionId);
+  } else if (context?.interventionIdMissing) {
+    parts.push("--candidate-intervention-missing");
+  }
+
+  if (context?.region) {
+    parts.push("--candidate-region", context.region);
+  }
+
+  if (context?.source) {
+    parts.push("--candidate-source", sourceCandidateSourceCliValue(context.source));
+  }
+
+  parts.push("--candidate-review-flags-limit", "10");
+
+  return parts.join(" ");
+}
+
+function formatSourceCandidateReviewFlagSummaryGroupLabel(
+  group: SourceCandidateReviewOverview["groups"][number]
+) {
+  return [
+    group.claimId ?? "none",
+    group.interventionId ?? "none",
+    group.source,
+    group.region
+  ].join(" ");
+}
+
+function sourceCandidateReviewFlagSummaryGroups(
+  reviewOverview: SourceCandidateReviewOverview
+) {
+  const groupsByFlag = new Map<
+    string,
+    {
+      exampleGroup: SourceCandidateReviewOverview["groups"][number];
+      flag: SourceCandidateReviewFlagCode;
+      pendingInTopGroups: number;
+      topGroups: number;
+    }
+  >();
+
+  for (const group of reviewOverview.groups) {
+    for (const flag of sourceCandidateReviewFlagCodes(group.topCandidate)) {
+      let current = groupsByFlag.get(flag);
+
+      if (!current) {
+        current = {
+          exampleGroup: group,
+          flag,
+          pendingInTopGroups: 0,
+          topGroups: 0
+        };
+        groupsByFlag.set(flag, current);
+      }
+
+      current.pendingInTopGroups += group.count;
+      current.topGroups += 1;
+    }
+  }
+
+  return Array.from(groupsByFlag.values()).sort(
+    (left, right) =>
+      right.pendingInTopGroups - left.pendingInTopGroups ||
+      right.topGroups - left.topGroups ||
+      left.flag.localeCompare(right.flag)
+  );
+}
+
+function formatSourceCandidateWorkflowSummaryCommandHints() {
+  return [
+    "Source-candidate read-only next commands",
+    `dbStatus=${quote("--db-status")}`,
+    `reviewOverview=${quote("--candidate-review-overview --candidate-review-overview-limit 10")}`,
+    `reviewFlags=${quote(formatSourceCandidateReviewFlagsCommand())}`,
+    `duplicates=${quote("--candidates --candidate-duplicates")}`,
+    `queuedJobs=${quote("--jobs --jobs-status queued")}`,
+    `curationHandoff=${quote("--candidate-curation-handoff")}`
+  ].join("\n");
+}
+
+function formatSourceCandidateIngestionJobSummary(
+  summary: SourceCandidateIngestionJobSummary
+) {
+  if (summary.total === 0) {
+    return "Source-candidate ingestion jobs: total=0";
+  }
+
+  return [
+    `Source-candidate ingestion jobs: total=${summary.total}`,
+    ...summary.groups.map(
+      (group) => `- ${group.source} ${group.region} ${group.status}: ${group.count}`
+    )
   ].join("\n");
 }
 
@@ -2341,11 +5212,58 @@ function formatSourceCandidateCurationHandoffSummary(
 
   return [
     `Source-candidate curation handoff: total=${summary.total}`,
-    ...summary.groups.map(
-      (group) =>
-        `- status=${quote(group.status)} publicSourcePacketReady=${group.publicSourcePacketReady}: ${group.count}`
-    )
+    ...summary.groups.map(formatSourceCandidateCurationHandoffSummaryGroup)
   ].join("\n");
+}
+
+function formatSourceCandidateCurationHandoffSummaryGroup(
+  group: SourceCandidateCurationHandoffSummary["groups"][number]
+) {
+  const assessment = sourceCandidateCurationStatusKindWriteAssessment(group.status);
+  const writeFields = [
+    `nextWrite=${quote(assessment.nextWrite)}`,
+    `writeReady=${assessment.ready}`
+  ];
+
+  if (assessment.blockedUntil) {
+    writeFields.push(`blockedUntil=${quote(assessment.blockedUntil)}`);
+  }
+
+  return [
+    `- status=${quote(group.status)}`,
+    `publicSourcePacketReady=${group.publicSourcePacketReady}:`,
+    String(group.count),
+    `nextAction=${quote(curationNextAction(group.status))}`,
+    ...writeFields,
+    `handoff=${quote(formatSourceCandidateCurationHandoffStatusCommand(group.status))}`
+  ].join(" ");
+}
+
+function formatSourceCandidateCurationHandoffStatusCommand(
+  status: SourceCandidateCurationStatusKind
+) {
+  return `--candidate-curation-handoff --candidate-curation-handoff-status ${formatSourceCandidateCurationHandoffStatusValue(
+    status
+  )}`;
+}
+
+function formatSourceCandidateCurationHandoffStatusValue(
+  status: SourceCandidateCurationStatusKind
+) {
+  switch (status) {
+    case "Accepted reference missing":
+      return "missing-reference";
+    case "Accepted reference mismatch":
+      return "reference-mismatch";
+    case "Candidate claim missing":
+      return "candidate-claim-missing";
+    case "Claim link missing":
+      return "claim-link-missing";
+    case "Extraction pending":
+      return "extraction-pending";
+    case "Public source packet ready":
+      return "ready";
+  }
 }
 
 function formatStringList(label: string, values: string[]) {
@@ -2413,6 +5331,44 @@ function readRequiredValue(args: readonly string[], index: number, option: strin
   return value;
 }
 
+function readCandidateKeyValue(
+  args: readonly string[],
+  index: number,
+  option: string
+) {
+  return decodeCandidateKeyValue(readRequiredValue(args, index, option), option);
+}
+
+function decodeCandidateKeyValue(value: string, option: string) {
+  if (!value.startsWith(CANDIDATE_KEY_B64_PREFIX)) {
+    return value;
+  }
+
+  const encoded = value.slice(CANDIDATE_KEY_B64_PREFIX.length);
+
+  if (!encoded || !/^[A-Za-z0-9_-]+={0,2}$/.test(encoded)) {
+    throw new Error(`${option} has an invalid b64 candidate key.`);
+  }
+
+  try {
+    const decoded = Buffer.from(encoded, "base64url").toString("utf8");
+    const normalisedInput = encoded.replace(/=+$/g, "");
+    const normalisedRoundTrip = Buffer.from(decoded, "utf8").toString("base64url");
+
+    if (!decoded || normalisedInput !== normalisedRoundTrip) {
+      throw new Error("Candidate key did not round-trip.");
+    }
+
+    return decoded;
+  } catch {
+    throw new Error(`${option} has an invalid b64 candidate key.`);
+  }
+}
+
+function safeCandidateKey(dedupeKey: string) {
+  return `${CANDIDATE_KEY_B64_PREFIX}${Buffer.from(dedupeKey, "utf8").toString("base64url")}`;
+}
+
 function readPositiveInteger(
   args: readonly string[],
   index: number,
@@ -2430,6 +5386,17 @@ function readPositiveInteger(
 }
 
 function readCandidateSource(value: string): SourceCandidateSource {
+  return readSourceCandidateSource(value, "--candidate-source");
+}
+
+function readJobSource(value: string): SourceCandidateSource {
+  return readSourceCandidateSource(value, "--jobs-source");
+}
+
+function readSourceCandidateSource(
+  value: string,
+  option: "--candidate-source" | "--jobs-source"
+): SourceCandidateSource {
   const normalised = value.trim().toLowerCase();
 
   if (normalised === "pubmed") {
@@ -2444,7 +5411,7 @@ function readCandidateSource(value: string): SourceCandidateSource {
     return "ClinicalTrials.gov";
   }
 
-  throw new Error("--candidate-source must be pubmed or clinical-trials.");
+  throw new Error(`${option} must be pubmed or clinical-trials.`);
 }
 
 function readCandidateDecision(value: string): SourceCandidateDecision {
@@ -2463,6 +5430,36 @@ function readCandidateDecision(value: string): SourceCandidateDecision {
   }
 
   throw new Error("--candidate-decision must be pending, accepted, or rejected.");
+}
+
+function readJobStatus(
+  value: string
+): SourceCandidateIngestionJobListOptions["status"] {
+  const normalised = value.trim().toLowerCase().replaceAll("_", "-");
+
+  if (normalised === "queued") {
+    return "QUEUED";
+  }
+
+  if (normalised === "running") {
+    return "RUNNING";
+  }
+
+  if (normalised === "succeeded" || normalised === "success") {
+    return "SUCCEEDED";
+  }
+
+  if (normalised === "failed" || normalised === "failure") {
+    return "FAILED";
+  }
+
+  if (normalised === "skipped" || normalised === "skip") {
+    return "SKIPPED";
+  }
+
+  throw new Error(
+    "--jobs-status must be queued, running, succeeded, failed, or skipped."
+  );
 }
 
 function readCurationHandoffStatus(value: string): SourceCandidateCurationStatusKind {
@@ -2512,6 +5509,26 @@ function readCurationHandoffStatus(value: string): SourceCandidateCurationStatus
 
   throw new Error(
     "--candidate-curation-handoff-status must be missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
+  );
+}
+
+function readCandidateReviewFlag(value: string): SourceCandidateReviewFlagCode {
+  const normalised = value.trim().toLowerCase();
+
+  if (isSourceCandidateReviewFlagCode(normalised)) {
+    return normalised;
+  }
+
+  throw new Error(
+    "--candidate-review-flag must be broad-safety-query or low-title-query-overlap."
+  );
+}
+
+function isSourceCandidateReviewFlagCode(
+  value: string
+): value is SourceCandidateReviewFlagCode {
+  return SOURCE_CANDIDATE_REVIEW_FLAG_CODES.includes(
+    value as SourceCandidateReviewFlagCode
   );
 }
 
@@ -2574,25 +5591,37 @@ function readStudySourceType(value: string): SourceCandidateStudyExtractionSourc
 function hasCandidateListFilter({
   candidatesLimitProvided,
   candidateDecisionProvided,
+  candidateExternalIdProvided,
   candidateJobIdProvided,
   candidateInterventionIdProvided,
+  candidateInterventionMissingProvided,
   candidateClaimIdProvided,
+  candidateClaimMissingProvided,
+  candidateRegionProvided,
   candidateSource
 }: {
   candidatesLimitProvided: boolean;
   candidateDecisionProvided: boolean;
+  candidateExternalIdProvided: boolean;
   candidateJobIdProvided: boolean;
   candidateInterventionIdProvided: boolean;
+  candidateInterventionMissingProvided?: boolean;
   candidateClaimIdProvided: boolean;
+  candidateClaimMissingProvided?: boolean;
+  candidateRegionProvided: boolean;
   candidateSource?: SourceCandidateSource;
 }) {
   return Boolean(
     candidatesLimitProvided ||
       candidateSource ||
       candidateDecisionProvided ||
+      candidateExternalIdProvided ||
       candidateJobIdProvided ||
       candidateInterventionIdProvided ||
-      candidateClaimIdProvided
+      candidateInterventionMissingProvided ||
+      candidateClaimIdProvided ||
+      candidateClaimMissingProvided ||
+      candidateRegionProvided
   );
 }
 
@@ -2620,12 +5649,27 @@ function setQueueOption(
   source: SourceCandidateSource,
   query: string
 ) {
-  if (options.queueSource) {
+  if (hasQueueOption(options)) {
     throw new Error("Only one queue option can be used at a time.");
   }
 
   options.queueSource = source;
   options.queueQuery = query;
+}
+
+function setQueueClaimSourcesOption(
+  options: SourceCandidateJobCommandOptions,
+  claimId: string
+) {
+  if (hasQueueOption(options)) {
+    throw new Error("Only one queue option can be used at a time.");
+  }
+
+  options.queueClaimSourcesClaimId = claimId;
+}
+
+function hasQueueOption(options: SourceCandidateJobCommandOptions) {
+  return Boolean(options.queueSource || options.queueClaimSourcesClaimId);
 }
 
 function setCandidateReviewOption(

@@ -1,60 +1,63 @@
 # Thread Handoff
 
-Refreshed on 2026-06-04. Treat the worktree as authoritative: run `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
-## Start Here
+## Startup
 
-1. Read `AGENTS.md`.
-2. Use `$project-workflow`; if unavailable, read `.agents/skills/project-workflow/SKILL.md`.
-3. Read `docs/codex/project.md` for stable memory.
-4. Read `docs/codex/source-candidate-workflow.md` before ingestion or curation work.
-5. For docs-only memory edits, review the diff and run `git diff --check`.
+- Normal startup: read `AGENTS.md` and `docs/codex/project.md`.
+- Read this handoff only when resuming current work or needing operator state.
+- Open `docs/codex/source-candidate-workflow.md` only for source ingestion/review/curation.
+- Do not read archives wholesale; search them only for targeted history.
 
-## Current State
+## Operator State
 
-- The app is a public read-only Next.js evidence dashboard with PostgreSQL/Prisma support and seed fallback.
-- Default lens is Australia/TGA; do not imply ARTG/AUST status without product-level evidence.
-- Public live-source API routes must stay read-only and must not import or call source-candidate persistence.
-- Source-candidate ingestion and review remain local operator-only under `npm run ingest:sources`.
-- Local Docker/PostgreSQL setup has been verified; migrations and seed have been applied locally.
+- Branch: `codex/queue-claim-sources`; latest pre-trim commit was `6889e65 Record local-only handoff state`.
+- GitHub push limit was lifted on 2026-06-11. Push to GitHub when useful.
+- Docker Compose PostgreSQL is running and healthy as of 2026-06-11; `npm run ingest:sources -- --db-status` reports `reachable=true`.
+- Current roadmap: `docs/codex/roadmap.md` targets the public live MVP/demo and includes the automatic rollover rule for the fully live end-product roadmap.
 
-## Recent Source-Candidate Work
+## Keep
 
-- Curation readiness is guarded:
-  - accepted-reference mismatch blocks readiness;
-  - accepted candidates without a claim id report `Candidate claim missing`;
-  - handoff/status wording stays source-packet readiness, not evidence quality.
-- Database-mode dashboard regression coverage verifies claim reference links and structured study extraction rows map into complete public source packets.
-- Operator-only curation views now include candidate detail, siblings, reference matches, curation status, curation draft, curation handoff, and summary.
-- Review actions can accept/reject pending candidates with human constraints.
-- `--link-candidate-claim <dedupe-key>` is a guarded local write that upserts only the accepted reference's `ClaimReference`; it does not create references, studies, or public promotions.
-- `--extract-candidate-study <dedupe-key>` is a guarded local write that creates or explicitly updates only a structured `Study` extraction after acceptance, matching-reference, claim-context, and claim-link gates pass.
-- Ingestion job identity is source/query/region plus optional intervention and claim context; PostgreSQL partial unique indexes separate unscoped, intervention, claim, and intervention+claim queue buckets.
-- Queueing validates requested intervention/claim context before job creation.
-
-## Recent Validation
-
-- `npm run db:validate`
-- `npm run db:generate`
-- `npm run test -- src/lib/data/source-candidate-jobs.test.ts`
-- `npm run test -- src/lib/data/source-candidate-job-command.test.ts`
-- `npm run test -- src/lib/data/source-candidates.test.ts`
-- `npm run test -- src/lib/data/dashboard.test.ts`
-- `npm run ingest:sources -- --help`
-- `npm run test`
-- `npm run lint`
-- `npm run typecheck`
-- `npm run build`
-- HTTP smoke for `http://localhost:3000` returned `200`
-
-## Useful Next Tasks
-
-- Use `--candidate-curation-handoff --candidate-curation-handoff-status extraction-pending` to find accepted, claim-linked candidates ready for manual study extraction.
-- Continue source-packet curation in small guarded slices; keep public promotion human-reviewed and never automatic.
-
-## Guardrails
-
-- Keep medical claims citation-traceable and review-status visible.
-- Keep live PubMed/ClinicalTrials.gov previews labeled as unreviewed leads.
-- Keep source-candidate curation wording framed as handoff/readiness, not source quality or medical advice.
+- Public routes and dashboard remain read-only; review/admin writes stay local operator-only.
+- Australia/TGA is the default lens; product-level confidence needs product-level evidence.
+- Live PubMed and ClinicalTrials.gov previews are unreviewed leads; `/100` values are triage/review priority, not evidence quality.
+- Source-candidate accept/reject, claim linking, and study extraction remain explicit human-reviewed local writes under `npm run ingest:sources`.
+- Accepted candidates do not become public evidence until a matching curated reference is claim-linked and structurally extracted.
 - Avoid peptide sourcing, compounding, reconstitution, injection, cycling, dosing, or self-administration guidance.
+
+## Simplified
+
+- Do not preserve long CLI output contracts in this handoff. Use `npm run ingest:sources -- --help` and `docs/codex/source-candidate-workflow.md` for current operator commands.
+- Use inline plans for ordinary multi-file work. Create `docs/codex/plans/` files only for genuinely risky, unclear, schema/API/security, public-boundary, or hard-to-validate changes.
+- Prefer tests/code boundaries over adding more startup instructions. Add docs only when they reduce future context load.
+
+## Source-Candidate Snapshot
+
+- Latest known successful summary: 15 ingestion jobs total, 49 pending candidates, 1 accepted candidate, curation handoff `total=1`.
+- Pending split: PubMed AU 19 and ClinicalTrials.gov AU 30.
+- Accepted candidate: scoped PubMed AU `PMID 42141930` for `claim=creatine-strength` / `intervention=creatine`, accepted with `ref-pubmed-42141930`.
+- Accepted `PMID 42141930` still needs human-owned curation: status `Claim link missing`, `publicSourcePacketReady=false`.
+- Duplicate scan showed one mixed PubMed identity group for `PMID 42141930`: one pending unscoped row plus one accepted scoped `creatine-strength` row.
+- Review overview had 9 pending groups. Useful entry point: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`.
+- Review flags had 3 flagged top groups: two broad `vitamin-d-deficiency` safety-query groups and one `creatine-lifespan` low-title-overlap group.
+
+## Latest Local Validation
+
+- Startup docs and repo-local workflow skill re-read.
+- `git status -sb`
+- `git log -3 --oneline`
+- `docker compose ps` failed because Docker Desktop was not running.
+- `npm run ingest:sources -- --db-status` failed because PostgreSQL was unreachable at `localhost:5432`.
+- Roadmap step 1 completed: `git status -sb` showed a clean branch ahead of origin by 3 commits, and `git log -3 --oneline` confirmed the latest local commits.
+- Roadmap step 2 completed after launching Docker Desktop: `docker compose ps`, `npm run db:migrate`, `npm run db:seed`, and `npm run ingest:sources -- --db-status` passed.
+- Roadmap step 3 completed: README selects `APEX_DATA_SOURCE=seed` for the public MVP/demo and keeps managed PostgreSQL for a later production-data milestone.
+- Roadmap step 4 completed: seed-mode desktop/mobile browser review passed, public product-card brand copy changed from `Seed example` to `Demo profile`, `npm run db:seed` refreshed local data, and targeted dashboard/source-packet/seed-integrity tests passed.
+- Roadmap step 5 completed by explicit MVP deferral: `npm run ingest:sources -- --candidate-curation-handoff` still reports accepted `PMID 42141930` as `Claim link missing` with `publicSourcePacketReady=false`, so it stays local curation backlog and is not promoted into the public MVP.
+- Roadmap step 6 completed: public route/read-only boundary tests passed for live-source routes, dashboard live-preview fetches, public-safe errors, no-store/noindex headers, and source-candidate workflow separation.
+- Roadmap step 7 completed: README selects manual Vercel CLI deployment from the local checkout as the no-GitHub path and documents env, build/local smoke commands, public smoke targets, and rollback. After GitHub push access was restored, the preferred path became GitHub import to Vercel after pushing this branch.
+- Roadmap step 8 completed: `.env.example` and README document public-demo `APEX_DATA_SOURCE=seed`; public deploy should omit `DATABASE_URL` and all local Codex sidecar variables.
+- Roadmap step 9 completed for the current local build: `npm run test`, `npm run lint`, `npm run dev:stop`, `npm run typecheck`, `npm run build`, and `npm audit` passed.
+- Roadmap step 10 completed for the current seed-mode production build: desktop/mobile screenshots and PubMed/ClinicalTrials.gov live-preview smokes passed, then `npm run dev:stop` stopped the production server.
+- Roadmap steps 11-13 are blocked until Vercel deployment produces a public URL, launch handoff details, and final public smoke evidence. Use `npm run smoke:public-mvp -- <url>` for final public smoke once a URL exists; it passed against `http://127.0.0.1:3000` on a seed-mode production server. Launch handoff draft is `docs/codex/public-mvp-launch-handoff.md`.
+
+Historical source-candidate progress lives in `docs/codex/archive/handoff/2026-06-04-source-candidate-progress.md`; search it only for targeted evidence.

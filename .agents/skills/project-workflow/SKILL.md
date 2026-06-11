@@ -5,7 +5,7 @@ description: Use for non-trivial features, bugs, refactors, tests, reviews, PR p
 
 # Project Workflow Skill
 
-Follow `docs/codex/workflow.md` for planning, validation, review, UI polish, and compound-learning rules.
+Use the quick loop below by default. Open `docs/codex/workflow.md` only for risky changes, unclear validation scope, instruction edits, compaction recovery, or when a user asks for process detail.
 
 Quick loop:
 - Inspect relevant files and project memory.

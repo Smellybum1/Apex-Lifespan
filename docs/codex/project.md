@@ -1,66 +1,53 @@
 # Project Memory
 
-Keep this file as compact, stable Codex state. Put command catalogs in dedicated docs, current thread state in `docs/codex/handoff.md`, and completed plan detail in `docs/codex/plans/archive/`.
+Compact, stable Codex state. Do not turn this into a command catalog or progress log.
 
 ## Shape
 
 - Stack: Next.js, TypeScript, Tailwind CSS, TanStack Table, Recharts, PostgreSQL, Prisma, Node/npm.
-- App Router lives under `src/app/`; dashboard UI is in `src/components/evidence-dashboard.tsx`.
-- Domain types, seed data, scoring, regulatory labels, and data helpers live under `src/lib/`.
-- Public source wrappers live under `src/lib/integrations/`; public API routes live under `src/app/api/`.
-- Prisma schema, migrations, and seed script live under `prisma/`.
+- App Router: `src/app/`; dashboard UI: `src/components/evidence-dashboard.tsx`.
+- Domain types, seed data, scoring, regulatory labels, and data helpers: `src/lib/`.
+- Public source wrappers: `src/lib/integrations/`; public API routes: `src/app/api/`.
+- Prisma schema, migrations, and seed script: `prisma/`.
 
 ## Commands
 
 - Install/dev: `npm install`, `npm run dev`, `npm run dev:stop`.
 - Test/build: `npm run test`, `npm run lint`, `npm run typecheck`, `npm run build`.
 - Database: `npm run db:validate`, `npm run db:generate`, `npm run db:migrate`, `npm run db:migrate:deploy`, `npm run db:push`, `npm run db:seed`.
-- Local PostgreSQL: `docker compose up -d postgres`, `docker compose ps`, `docker compose down`; reset with `docker compose down -v`.
-- Local source-candidate ingestion: `npm run ingest:sources`; use `npm run ingest:sources -- --help` and `docs/codex/source-candidate-workflow.md` for modes and output rules.
+- Source-candidate CLI: `npm run ingest:sources -- --help`; open `docs/codex/source-candidate-workflow.md` only for ingestion or curation work.
+- Codex review sidecar: `npm run codex:review-sidecar` for token-gated local dashboard packets.
 
-## Data And Boundaries
+## Boundaries
 
-- MVP mode is public read-only; admin/review writes stay local operator-only.
-- Dashboard reads through `src/lib/data/dashboard.ts`; it prefers Prisma when PostgreSQL is reachable and falls back to seed data unless `APEX_DATA_SOURCE=database`.
-- Prisma migrations are the reproducible database path; reserve `db:push` for temporary local prototypes.
-- `prisma/seed.ts` runs integrity checks so missing required seed IDs or stale seed-owned IDs fail loudly.
-- Public live-source API routes must stay read-only and must not import or call source-candidate persistence.
+- Public app surfaces are read-only; review/admin writes stay local operator-only.
+- Dashboard reads through `src/lib/data/dashboard.ts`; it prefers Prisma when reachable and falls back to seed data unless `APEX_DATA_SOURCE=database`.
+- Public live-source API routes must not import or call source-candidate persistence.
+- Dashboard-to-Codex packet sends go through the local sidecar, not public Next.js API routes.
 - Live PubMed and ClinicalTrials.gov previews are unreviewed leads; `/100` values are triage scores, not evidence quality.
-- Source-candidate ingestion/review writes live under `npm run ingest:sources` only.
-- Accepted source candidates require a matching curated reference and do not auto-promote into public evidence cards.
-- Guarded post-review curation writes are `--link-candidate-claim` for `ClaimReference` and `--extract-candidate-study` for `Study`; neither creates references, source documents, decisions, or public promotions.
+- Source-candidate writes live only under `npm run ingest:sources`; accept/reject and curation writes remain human-reviewed and never auto-promote public evidence.
 
 ## Product Rules
 
-- Default regulatory lens: Australia/TGA.
+- Default lens: Australia/TGA.
 - Do not infer ARTG/AUST status from generic intervention evidence; product-level confidence needs product-level evidence.
-- Product labels should show product-market context separately from AU/TGA status.
-- Evidence cards stay consumer-friendly by default and citation-traceable, with review status visible.
+- Evidence cards stay citation-traceable with review status visible.
 - Label-risk empty states say no local warnings were found; they do not imply safety, efficacy, or TGA clearance.
-- Claim score table rows stay mouse/keyboard selectable and include source-packet completeness.
+- Avoid peptide sourcing, compounding, reconstitution, injection, cycling, dosing, or self-administration guidance.
 
-## Validation
+## Iteration
 
-- Use the matrix in `docs/codex/workflow.md`; run targeted checks first, then broader checks according to risk.
-- On Windows, stop the dev server with `npm run dev:stop` before Prisma-generating checks such as `npm run typecheck` or `npm run build`.
+- Use `docs/codex/workflow.md` for the compact loop and validation hints.
+- Inline plans are enough for ordinary work, even across a few files.
+- Create `docs/codex/plans/` files only for genuinely risky, unclear, schema/API/security, public-boundary, or hard-to-validate changes.
+- On Windows, run `npm run dev:stop` before Prisma-generating checks such as `npm run typecheck` or `npm run build`.
 - Include `db:validate`/`db:generate` for Prisma schema, migration, or generated-client changes.
 - Run `docker compose config` after Compose changes and `npm audit` after dependency changes.
 
-## Local Database Assumptions
+## Reference Docs
 
-- `.env.example` points Prisma at `postgresql://postgres:postgres@localhost:5432/apex_lifespan?schema=public`.
-- Docker Desktop or Docker Compose must be available locally.
-- The default `postgres/postgres` credentials are development-only.
-- If port `5432` is occupied, change the Compose host port and local `.env` `DATABASE_URL` together.
-
-## Risk Areas
-
-- Medical claim accuracy and currentness.
-- Citation traceability and human review status.
-- ARTG/AUST status accuracy for Australia-facing product claims.
-- Peptide/drug regulatory guardrails and avoiding individualized medical advice.
-- Package advisories in the frontend toolchain.
-
-## Open Questions
-
-- First production deployment target.
+- Roadmap: `docs/codex/roadmap.md`.
+- Local DB and operator setup: `docs/codex/reference/local-operations.md`.
+- Full source-candidate command catalog: `docs/codex/reference/source-candidate-command-reference.md`.
+- Current/resume-only state: `docs/codex/handoff.md`.
+- Completed plans and historical handoffs are archive context; search them only for targeted evidence.

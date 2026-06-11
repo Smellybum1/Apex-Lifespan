@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(),
   findMany: vi.fn(),
   findUnique: vi.fn(),
+  groupBy: vi.fn(),
   interventionFindUnique: vi.fn(),
   update: vi.fn(),
   updateMany: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("@/lib/db/prisma", () => ({
       findFirst: mocks.findFirst,
       findMany: mocks.findMany,
       findUnique: mocks.findUnique,
+      groupBy: mocks.groupBy,
       update: mocks.update,
       updateMany: mocks.updateMany
     },
@@ -39,9 +41,11 @@ vi.mock("@/lib/data/source-candidate-ingestion", () => ({
 
 import {
   listSourceCandidateIngestionJobs,
+  queueClaimSourceCandidateIngestionJobs,
   queueSourceCandidateIngestionJob,
   runNextSourceCandidateIngestionJob,
-  runSourceCandidateIngestionJob
+  runSourceCandidateIngestionJob,
+  summarizeSourceCandidateIngestionJobs
 } from "@/lib/data/source-candidate-jobs";
 
 const timestamp = new Date("2026-06-02T03:00:00.000Z");
@@ -144,10 +148,141 @@ describe("listSourceCandidateIngestionJobs", () => {
     );
   });
 
+  it("filters source-candidate ingestion jobs by status", async () => {
+    mocks.findMany.mockResolvedValue([
+      dbIngestionJob({
+        status: "QUEUED"
+      })
+    ]);
+
+    await listSourceCandidateIngestionJobs({
+      status: "QUEUED"
+    });
+
+    expect(mocks.findMany).toHaveBeenCalledWith({
+      where: {
+        source: {
+          in: ["PUBMED", "CLINICALTRIALS_GOV"]
+        },
+        status: "QUEUED"
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      take: 10
+    });
+  });
+
+  it("filters source-candidate ingestion jobs by source, region, and context", async () => {
+    mocks.findMany.mockResolvedValue([
+      dbIngestionJob({
+        status: "QUEUED"
+      })
+    ]);
+
+    await listSourceCandidateIngestionJobs({
+      claimId: " creatine-strength ",
+      interventionId: "creatine",
+      region: "au",
+      source: "PubMed",
+      status: "QUEUED"
+    });
+
+    expect(mocks.findMany).toHaveBeenCalledWith({
+      where: {
+        source: "PUBMED",
+        region: "AU",
+        interventionId: "creatine",
+        claimId: "creatine-strength",
+        status: "QUEUED"
+      },
+      orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      take: 10
+    });
+  });
+
   it("returns an empty job list", async () => {
     mocks.findMany.mockResolvedValue([]);
 
     await expect(listSourceCandidateIngestionJobs()).resolves.toEqual([]);
+  });
+});
+
+describe("summarizeSourceCandidateIngestionJobs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("summarizes supported ingestion jobs by status, source, and region", async () => {
+    mocks.groupBy.mockResolvedValue([
+      {
+        _count: {
+          _all: 2
+        },
+        region: "AU",
+        source: "CLINICALTRIALS_GOV",
+        status: "QUEUED"
+      },
+      {
+        _count: {
+          _all: 1
+        },
+        region: "AU",
+        source: "PUBMED",
+        status: "SUCCEEDED"
+      },
+      {
+        _count: {
+          _all: 3
+        },
+        region: "NZ",
+        source: "PUBMED",
+        status: "QUEUED"
+      }
+    ]);
+
+    await expect(summarizeSourceCandidateIngestionJobs()).resolves.toEqual({
+      groups: [
+        {
+          count: 3,
+          region: "NZ",
+          source: "PUBMED",
+          status: "QUEUED"
+        },
+        {
+          count: 2,
+          region: "AU",
+          source: "CLINICALTRIALS_GOV",
+          status: "QUEUED"
+        },
+        {
+          count: 1,
+          region: "AU",
+          source: "PUBMED",
+          status: "SUCCEEDED"
+        }
+      ],
+      total: 6
+    });
+
+    expect(mocks.groupBy).toHaveBeenCalledWith({
+      by: ["source", "status", "region"],
+      where: {
+        source: {
+          in: ["PUBMED", "CLINICALTRIALS_GOV"]
+        }
+      },
+      _count: {
+        _all: true
+      }
+    });
+  });
+
+  it("returns an empty summary", async () => {
+    mocks.groupBy.mockResolvedValue([]);
+
+    await expect(summarizeSourceCandidateIngestionJobs()).resolves.toEqual({
+      groups: [],
+      total: 0
+    });
   });
 });
 
@@ -713,6 +848,156 @@ describe("queueSourceCandidateIngestionJob", () => {
     );
 
     expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.findFirst).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("queueClaimSourceCandidateIngestionJobs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("queues PubMed and ClinicalTrials.gov jobs from claim context", async () => {
+    mocks.claimFindUnique
+      .mockResolvedValueOnce({
+        id: "creatine-strength",
+        claimText: "Supports strength gains with resistance training.",
+        outcome: "MUSCLE_STRENGTH",
+        intervention: {
+          id: "creatine",
+          name: "Creatine monohydrate",
+          synonyms: ["creatine"]
+        }
+      })
+      .mockResolvedValue({
+        interventionId: "creatine"
+      });
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.create
+      .mockResolvedValueOnce(
+        dbIngestionJob({
+          id: "job-pubmed-creatine-strength",
+          query:
+            "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review"
+        })
+      )
+      .mockResolvedValueOnce(
+        dbIngestionJob({
+          id: "job-trials-creatine-strength",
+          source: "CLINICALTRIALS_GOV",
+          query: "Creatine monohydrate strength resistance training lean mass gains"
+        })
+      );
+
+    await expect(
+      queueClaimSourceCandidateIngestionJobs({
+        claimId: " creatine-strength ",
+        region: "au"
+      })
+    ).resolves.toEqual({
+      claimId: "creatine-strength",
+      interventionId: "creatine",
+      label: "Creatine monohydrate - Muscle/strength",
+      pubMedTerm:
+        "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review",
+      region: "AU",
+      trialTerm: "Creatine monohydrate strength resistance training lean mass gains",
+      jobs: [
+        {
+          claimId: "creatine-strength",
+          contextMismatchFields: [],
+          created: true,
+          interventionId: "creatine",
+          jobId: "job-pubmed-creatine-strength",
+          source: "PUBMED",
+          query:
+            "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review",
+          region: "AU",
+          status: "QUEUED"
+        },
+        {
+          claimId: "creatine-strength",
+          contextMismatchFields: [],
+          created: true,
+          interventionId: "creatine",
+          jobId: "job-trials-creatine-strength",
+          source: "CLINICALTRIALS_GOV",
+          query: "Creatine monohydrate strength resistance training lean mass gains",
+          region: "AU",
+          status: "QUEUED"
+        }
+      ]
+    });
+
+    expect(mocks.claimFindUnique).toHaveBeenNthCalledWith(1, {
+      where: {
+        id: "creatine-strength"
+      },
+      select: {
+        claimText: true,
+        id: true,
+        outcome: true,
+        intervention: {
+          select: {
+            id: true,
+            name: true,
+            synonyms: true
+          }
+        }
+      }
+    });
+    expect(mocks.create).toHaveBeenNthCalledWith(1, {
+      data: {
+        source: "PUBMED",
+        status: "QUEUED",
+        query:
+          "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review",
+        region: "AU",
+        interventionId: "creatine",
+        claimId: "creatine-strength",
+        metadata: {
+          interventionId: "creatine",
+          claimId: "creatine-strength"
+        }
+      }
+    });
+    expect(mocks.create).toHaveBeenNthCalledWith(2, {
+      data: {
+        source: "CLINICALTRIALS_GOV",
+        status: "QUEUED",
+        query: "Creatine monohydrate strength resistance training lean mass gains",
+        region: "AU",
+        interventionId: "creatine",
+        claimId: "creatine-strength",
+        metadata: {
+          interventionId: "creatine",
+          claimId: "creatine-strength"
+        }
+      }
+    });
+  });
+
+  it("rejects missing claim ids before queueing", async () => {
+    await expect(
+      queueClaimSourceCandidateIngestionJobs({
+        claimId: " "
+      })
+    ).rejects.toThrow("Claim id is required to queue claim source-candidate jobs.");
+
+    expect(mocks.claimFindUnique).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing claims before queueing", async () => {
+    mocks.claimFindUnique.mockResolvedValue(null);
+
+    await expect(
+      queueClaimSourceCandidateIngestionJobs({
+        claimId: "missing-claim"
+      })
+    ).rejects.toThrow("Source-candidate ingestion job claim not found: missing-claim.");
+
     expect(mocks.findFirst).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
   });

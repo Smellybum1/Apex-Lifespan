@@ -95,14 +95,12 @@ const missingAustPattern =
 const tgaApprovalOverclaimPattern =
   /\b(?:TGA|ARTG)\s+(?:approved|registered|listed|endorsed|certified)\b/i;
 const tgaApprovalNegationPattern =
-  /\b(?:not|isn['’]?t|not\s+yet|never|no)\s+(?:TGA|ARTG)\s+(?:approved|registered|listed|endorsed|certified)\b/i;
+  /\b(?:not|isn(?:'|\u2019)?t|not\s+yet|never|no)\s+(?:TGA|ARTG)\s+(?:approved|registered|listed|endorsed|certified)\b/i;
 const researchUsePeptidePattern =
   /\b(research\s+use\s+only|not\s+for\s+human\s+consumption|reconstitute|reconstitution|injectable|injection|vial|lyophili[sz]ed|sterile\s+water|bac\s+water|bacteriostatic)\b/i;
-const unicodeTgaApprovalNegationPattern =
-  /\b(?:not|isn(?:'|\u2019)?t|not\s+yet|never|no)\s+(?:TGA|ARTG)\s+(?:approved|registered|listed|endorsed|certified)\b/i;
 
 const tgaAustNumbersUrl =
-  "https://www.tga.gov.au/products/medicines/labelling-and-advertising/medicines-and-biologicals-labelling-and-packaging/aust-numbers-medicine-labels";
+  "https://www.tga.gov.au/how-we-regulate/labelling-and-packaging/medicines-and-biologicals/aust-numbers-medicine-labels";
 const tgaPeptideSafetyUrl =
   "https://www.tga.gov.au/safety/safety-monitoring-and-information/safety-alerts/tga-warning-risks-importing-unapproved-peptide-products";
 const nihOdsVitaminDUrl =
@@ -110,10 +108,7 @@ const nihOdsVitaminDUrl =
 const heuristicSourceLabel = "Heuristic check";
 
 function isTgaApprovalNegation(text: string) {
-  return (
-    tgaApprovalNegationPattern.test(text) ||
-    unicodeTgaApprovalNegationPattern.test(text)
-  );
+  return tgaApprovalNegationPattern.test(text);
 }
 
 export function analyzeLabel(labelText: string): LabelFinding[] {
@@ -126,7 +121,8 @@ export function analyzeLabel(labelText: string): LabelFinding[] {
   const findings: LabelFinding[] = [];
 
   const mentionsProprietaryBlend = /proprietary blend/i.test(text);
-  const negatesProprietaryBlend = /\b(no|not|without)\s+(?:a\s+)?proprietary blends?\b/i.test(text);
+  const negatesProprietaryBlend =
+    /\b(no|not|without)\s+(?:a\s+)?proprietary blends?\b/i.test(text);
 
   if (mentionsProprietaryBlend && !negatesProprietaryBlend) {
     findings.push({
@@ -162,10 +158,7 @@ export function analyzeLabel(labelText: string): LabelFinding[] {
     });
   }
 
-  if (
-    tgaApprovalOverclaimPattern.test(text) &&
-    !isTgaApprovalNegation(text)
-  ) {
+  if (tgaApprovalOverclaimPattern.test(text) && !isTgaApprovalNegation(text)) {
     findings.push({
       id: "tga-approval-overclaim",
       level: "high",
@@ -199,7 +192,10 @@ export function analyzeLabel(labelText: string): LabelFinding[] {
     });
   }
 
-  if (/\b(vitamin\s*d|cholecalciferol)\b/i.test(text) && /\b(10000|10,000|20000|20,000)\s*(iu|i\.u\.)\b/i.test(text)) {
+  if (
+    /\b(vitamin\s*d|cholecalciferol)\b/i.test(text) &&
+    /\b(10000|10,000|20000|20,000)\s*(iu|i\.u\.)\b/i.test(text)
+  ) {
     findings.push({
       id: "high-vitamin-d",
       level: "moderate",

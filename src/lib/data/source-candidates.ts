@@ -50,11 +50,50 @@ export interface SourceCandidateCurationHandoffSummary {
 
 export interface SourceCandidateReviewQueueOptions {
   claimId?: string;
+  claimIdMissing?: boolean;
   decision?: SourceCandidateDecision;
+  externalId?: string;
   ingestionJobId?: string;
   interventionId?: string;
+  interventionIdMissing?: boolean;
   limit?: number;
+  region?: string;
   source?: SourceCandidateSource;
+}
+
+export interface SourceCandidateReviewOverviewOptions {
+  claimId?: string;
+  claimIdMissing?: boolean;
+  ingestionJobId?: string;
+  interventionId?: string;
+  interventionIdMissing?: boolean;
+  limit?: number;
+  region?: string;
+  source?: SourceCandidateSource;
+}
+
+export interface SourceCandidateReviewOverviewGroup {
+  claimId?: string;
+  count: number;
+  interventionId?: string;
+  region: string;
+  source: SourceCandidateSource;
+  topCandidate: SourceCandidate;
+  topIdentityCandidateCount: number;
+  topIdentityMixedDecision: boolean;
+  topTriageScore: number;
+}
+
+export interface SourceCandidateReviewOverview {
+  candidateCount: number;
+  groups: SourceCandidateReviewOverviewGroup[];
+  totalGroups: number;
+}
+
+export interface SourceCandidateIdentityGroup {
+  candidates: SourceCandidate[];
+  externalId: string;
+  source: SourceCandidateSource;
 }
 
 export interface SourceCandidateAcceptedReferenceMatches {
@@ -204,9 +243,12 @@ export interface ExtractedSourceCandidateStudy {
 
 export interface SourceCandidateCurationHandoffOptions {
   claimId?: string;
+  claimIdMissing?: boolean;
   ingestionJobId?: string;
   interventionId?: string;
+  interventionIdMissing?: boolean;
   limit?: number;
+  region?: string;
   source?: SourceCandidateSource;
   status?: SourceCandidateCurationStatusKind;
 }
@@ -216,16 +258,31 @@ export type ReviewedSourceCandidateDecision = Exclude<
   "Pending review"
 >;
 
-export interface RecordSourceCandidateDecisionInput {
+interface RecordSourceCandidateDecisionInputBase {
   dedupeKey: string;
-  decision: ReviewedSourceCandidateDecision;
-  acceptedReferenceId?: string;
-  reviewNote?: string;
   reviewedAt?: Date;
 }
 
+export type RecordSourceCandidateDecisionInput =
+  | (RecordSourceCandidateDecisionInputBase & {
+      acceptedReferenceId: string;
+      decision: "Accepted";
+      reviewNote: string;
+    })
+  | (RecordSourceCandidateDecisionInputBase & {
+      acceptedReferenceId?: never;
+      decision: "Rejected";
+      reviewNote: string;
+    });
+
 const DEFAULT_REVIEW_QUEUE_LIMIT = 25;
 const MAX_REVIEW_QUEUE_LIMIT = 100;
+const DEFAULT_REVIEW_OVERVIEW_LIMIT = 25;
+const MAX_REVIEW_OVERVIEW_LIMIT = 50;
+const MAX_REVIEW_OVERVIEW_SCAN_CANDIDATES = 1000;
+const DEFAULT_IDENTITY_GROUP_LIMIT = 25;
+const MAX_IDENTITY_GROUP_LIMIT = 50;
+const MAX_IDENTITY_SCAN_CANDIDATES = 500;
 const DEFAULT_CURATION_HANDOFF_LIMIT = 25;
 const MAX_CURATION_HANDOFF_LIMIT = 50;
 const DEFAULT_SIBLING_LIMIT = 25;
@@ -303,33 +360,190 @@ export async function upsertSourceCandidateDrafts(
 export async function listSourceCandidateReviewQueue(
   options: SourceCandidateReviewQueueOptions = {}
 ): Promise<SourceCandidate[]> {
-  const where: Prisma.SourceCandidateWhereInput = {
-    decision: decisionMap[options.decision ?? "Pending review"]
-  };
-
-  if (options.source) {
-    where.source = sourceMap[options.source];
-  }
-
-  if (options.ingestionJobId) {
-    where.ingestionJobId = options.ingestionJobId;
-  }
-
-  if (options.interventionId) {
-    where.interventionId = options.interventionId;
-  }
-
-  if (options.claimId) {
-    where.claimId = options.claimId;
-  }
-
   const candidates = await prisma.sourceCandidate.findMany({
-    where,
+    where: sourceCandidateReviewQueueWhere(options),
     orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
     take: normaliseReviewQueueLimit(options.limit)
   });
 
   return candidates.map(mapDbSourceCandidate);
+}
+
+export async function listSourceCandidateReviewOverview(
+  options: SourceCandidateReviewOverviewOptions = {}
+): Promise<SourceCandidateReviewOverview> {
+  const candidates = (
+    await prisma.sourceCandidate.findMany({
+      where: sourceCandidateReviewQueueWhere({
+        claimId: options.claimId,
+        claimIdMissing: options.claimIdMissing,
+        ingestionJobId: options.ingestionJobId,
+        interventionId: options.interventionId,
+        interventionIdMissing: options.interventionIdMissing,
+        region: options.region,
+        source: options.source
+      }),
+      orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
+      take: MAX_REVIEW_OVERVIEW_SCAN_CANDIDATES
+    })
+  ).map(mapDbSourceCandidate);
+  const identityInfoByKey = await sourceCandidateIdentityInfoAcrossDecisions(
+    candidates
+  );
+  const groupsByContext = new Map<string, SourceCandidateReviewOverviewGroup>();
+
+  for (const candidate of candidates) {
+    const key = [
+      candidate.claimId ?? "",
+      candidate.interventionId ?? "",
+      candidate.source,
+      candidate.region
+    ].join("\u0000");
+    const currentGroup = groupsByContext.get(key);
+
+    if (!currentGroup) {
+      groupsByContext.set(key, {
+        claimId: candidate.claimId,
+        count: 1,
+        interventionId: candidate.interventionId,
+        region: candidate.region,
+        source: candidate.source,
+        topCandidate: candidate,
+        topIdentityCandidateCount:
+          identityInfoByKey.get(sourceCandidateIdentityKey(candidate))?.candidateCount ??
+          1,
+        topIdentityMixedDecision:
+          identityInfoByKey.get(sourceCandidateIdentityKey(candidate))?.mixedDecision ??
+          false,
+        topTriageScore: candidate.triageScore
+      });
+      continue;
+    }
+
+    currentGroup.count += 1;
+
+    if (
+      compareSourceCandidateReviewOverviewTop(
+        candidate,
+        currentGroup.topCandidate,
+        identityInfoByKey
+      ) < 0
+    ) {
+      currentGroup.topCandidate = candidate;
+      currentGroup.topIdentityCandidateCount =
+        identityInfoByKey.get(sourceCandidateIdentityKey(candidate))?.candidateCount ??
+        1;
+      currentGroup.topIdentityMixedDecision =
+        identityInfoByKey.get(sourceCandidateIdentityKey(candidate))?.mixedDecision ??
+        false;
+      currentGroup.topTriageScore = candidate.triageScore;
+    }
+  }
+
+  const groups = Array.from(groupsByContext.values()).sort(
+    compareSourceCandidateReviewOverviewGroups
+  );
+
+  return {
+    candidateCount: candidates.length,
+    groups: groups.slice(0, normaliseReviewOverviewLimit(options.limit)),
+    totalGroups: groups.length
+  };
+}
+
+export async function listSourceCandidateIdentityGroups(
+  options: SourceCandidateReviewQueueOptions = {}
+): Promise<SourceCandidateIdentityGroup[]> {
+  const candidates = await prisma.sourceCandidate.findMany({
+    where: sourceCandidateReviewQueueWhere(options, { defaultDecision: null }),
+    orderBy: [{ source: "asc" }, { externalId: "asc" }, { triageScore: "desc" }],
+    take: MAX_IDENTITY_SCAN_CANDIDATES
+  });
+  const groupsByIdentity = new Map<string, SourceCandidate[]>();
+
+  for (const candidate of candidates.map(mapDbSourceCandidate)) {
+    const key = sourceCandidateIdentityKey(candidate);
+    groupsByIdentity.set(key, [...(groupsByIdentity.get(key) ?? []), candidate]);
+  }
+
+  return Array.from(groupsByIdentity.values())
+    .filter((group) => group.length > 1)
+    .map((candidatesInGroup) => ({
+      candidates: candidatesInGroup,
+      externalId: candidatesInGroup[0]?.externalId ?? "",
+      source: candidatesInGroup[0]?.source ?? "PubMed"
+    }))
+    .sort(sourceCandidateIdentityGroupSort)
+    .slice(0, normaliseIdentityGroupLimit(options.limit));
+}
+
+interface SourceCandidateIdentityInfo {
+  candidateCount: number;
+  mixedDecision: boolean;
+}
+
+function sourceCandidateIdentityInfo(candidates: SourceCandidate[]) {
+  const info = new Map<
+    string,
+    SourceCandidateIdentityInfo & { decisions: Set<SourceCandidate["decision"]> }
+  >();
+
+  for (const candidate of candidates) {
+    const key = sourceCandidateIdentityKey(candidate);
+    const current = info.get(key) ?? {
+      candidateCount: 0,
+      decisions: new Set<SourceCandidate["decision"]>(),
+      mixedDecision: false
+    };
+
+    current.candidateCount += 1;
+    current.decisions.add(candidate.decision);
+    current.mixedDecision = current.decisions.size > 1;
+    info.set(key, current);
+  }
+
+  return new Map(
+    Array.from(info.entries()).map(([key, value]) => [
+      key,
+      {
+        candidateCount: value.candidateCount,
+        mixedDecision: value.mixedDecision
+      }
+    ])
+  );
+}
+
+async function sourceCandidateIdentityInfoAcrossDecisions(
+  candidates: SourceCandidate[]
+) {
+  if (candidates.length === 0) {
+    return sourceCandidateIdentityInfo(candidates);
+  }
+
+  const identities = Array.from(
+    new Map(
+      candidates.map((candidate) => [
+        sourceCandidateIdentityKey(candidate),
+        {
+          externalId: candidate.externalId,
+          source: sourceMap[candidate.source]
+        }
+      ])
+    ).values()
+  );
+  const identityCandidates = (
+    await prisma.sourceCandidate.findMany({
+      where: {
+        OR: identities
+      }
+    })
+  ).map(mapDbSourceCandidate);
+
+  return sourceCandidateIdentityInfo(identityCandidates);
+}
+
+function sourceCandidateIdentityKey(candidate: SourceCandidate) {
+  return `${candidate.source}\u0000${candidate.externalId}`;
 }
 
 export async function getSourceCandidateByDedupeKey(
@@ -614,6 +828,8 @@ export async function extractAcceptedSourceCandidateStudy({
   dedupeKey,
   ...input
 }: ExtractAcceptedSourceCandidateStudyInput): Promise<ExtractedSourceCandidateStudy> {
+  assertStudyExtractionManualInput(input);
+
   const candidate = await prisma.sourceCandidate.findUnique({
     where: {
       dedupeKey
@@ -745,12 +961,20 @@ export async function listSourceCandidateCurationHandoff(
     where.ingestionJobId = options.ingestionJobId;
   }
 
-  if (options.interventionId) {
+  if (options.interventionIdMissing) {
+    where.interventionId = null;
+  } else if (options.interventionId) {
     where.interventionId = options.interventionId;
   }
 
-  if (options.claimId) {
+  if (options.claimIdMissing) {
+    where.claimId = null;
+  } else if (options.claimId) {
     where.claimId = options.claimId;
+  }
+
+  if (options.region) {
+    where.region = options.region;
   }
 
   const limit = normaliseCurationHandoffLimit(options.limit);
@@ -921,8 +1145,20 @@ export async function recordSourceCandidateDecision({
   const acceptedReferenceIdOrUndefined = acceptedReferenceId?.trim();
   const reviewNoteOrUndefined = reviewNote?.trim();
 
+  if (decision !== "Accepted" && decision !== "Rejected") {
+    throw new Error("Source candidate review decision must be Accepted or Rejected.");
+  }
+
   if (decision === "Accepted" && !acceptedReferenceIdOrUndefined) {
     throw new Error("Accepted source candidates require an acceptedReferenceId.");
+  }
+
+  if (decision === "Rejected" && acceptedReferenceIdOrUndefined) {
+    throw new Error("Rejected source candidates cannot include an acceptedReferenceId.");
+  }
+
+  if (decision === "Accepted" && !reviewNoteOrUndefined) {
+    throw new Error("Accepted source candidates require a reviewNote.");
   }
 
   if (decision === "Rejected" && !reviewNoteOrUndefined) {
@@ -967,7 +1203,7 @@ export async function recordSourceCandidateDecision({
         decision: decisionMap[decision],
         reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
         reviewedAt,
-        reviewNote: decision === "Rejected" ? reviewNoteOrUndefined : reviewNote,
+        reviewNote: reviewNoteOrUndefined,
         acceptedReferenceId:
           decision === "Accepted" ? acceptedReferenceIdOrUndefined : null
       }
@@ -1020,12 +1256,148 @@ function sourceCandidateRediscoveryScalars(candidate: SourceCandidate) {
   };
 }
 
+function sourceCandidateReviewQueueWhere(
+  options: SourceCandidateReviewQueueOptions,
+  config: { defaultDecision?: SourceCandidateDecision | null } = {}
+): Prisma.SourceCandidateWhereInput {
+  const defaultDecision =
+    config.defaultDecision === undefined ? "Pending review" : config.defaultDecision;
+  const decision = options.decision ?? defaultDecision;
+  const where: Prisma.SourceCandidateWhereInput = {};
+
+  if (decision) {
+    where.decision = decisionMap[decision];
+  }
+
+  if (options.source) {
+    where.source = sourceMap[options.source];
+  }
+
+  if (options.ingestionJobId) {
+    where.ingestionJobId = options.ingestionJobId;
+  }
+
+  if (options.externalId) {
+    where.externalId = options.externalId;
+  }
+
+  if (options.interventionIdMissing) {
+    where.interventionId = null;
+  } else if (options.interventionId) {
+    where.interventionId = options.interventionId;
+  }
+
+  if (options.claimIdMissing) {
+    where.claimId = null;
+  } else if (options.claimId) {
+    where.claimId = options.claimId;
+  }
+
+  if (options.region) {
+    where.region = options.region;
+  }
+
+  return where;
+}
+
+function sourceCandidateIdentityGroupSort(
+  left: SourceCandidateIdentityGroup,
+  right: SourceCandidateIdentityGroup
+) {
+  const countDelta = right.candidates.length - left.candidates.length;
+
+  if (countDelta !== 0) {
+    return countDelta;
+  }
+
+  const leftTriage = Math.max(...left.candidates.map((candidate) => candidate.triageScore));
+  const rightTriage = Math.max(
+    ...right.candidates.map((candidate) => candidate.triageScore)
+  );
+  const triageDelta = rightTriage - leftTriage;
+
+  if (triageDelta !== 0) {
+    return triageDelta;
+  }
+
+  return `${left.source}:${left.externalId}`.localeCompare(
+    `${right.source}:${right.externalId}`
+  );
+}
+
 function normaliseReviewQueueLimit(limit: number | undefined) {
   if (limit === undefined || !Number.isFinite(limit)) {
     return DEFAULT_REVIEW_QUEUE_LIMIT;
   }
 
   return Math.min(Math.max(Math.trunc(limit), 1), MAX_REVIEW_QUEUE_LIMIT);
+}
+
+function normaliseReviewOverviewLimit(limit: number | undefined) {
+  if (limit === undefined || !Number.isFinite(limit)) {
+    return DEFAULT_REVIEW_OVERVIEW_LIMIT;
+  }
+
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_REVIEW_OVERVIEW_LIMIT);
+}
+
+function compareSourceCandidateReviewOverviewGroups(
+  left: SourceCandidateReviewOverviewGroup,
+  right: SourceCandidateReviewOverviewGroup
+) {
+  const topTriageDelta = right.topTriageScore - left.topTriageScore;
+
+  if (topTriageDelta !== 0) {
+    return topTriageDelta;
+  }
+
+  const countDelta = right.count - left.count;
+
+  if (countDelta !== 0) {
+    return countDelta;
+  }
+
+  return [
+    left.claimId ?? "",
+    left.interventionId ?? "",
+    left.source,
+    left.region
+  ].join(":").localeCompare([
+    right.claimId ?? "",
+    right.interventionId ?? "",
+    right.source,
+    right.region
+  ].join(":"));
+}
+
+function compareSourceCandidateReviewOverviewTop(
+  left: SourceCandidate,
+  right: SourceCandidate,
+  identityInfoByKey: Map<string, SourceCandidateIdentityInfo>
+) {
+  const triageDelta = right.triageScore - left.triageScore;
+
+  if (triageDelta !== 0) {
+    return triageDelta;
+  }
+
+  const identityCountDelta =
+    (identityInfoByKey.get(sourceCandidateIdentityKey(right))?.candidateCount ?? 1) -
+    (identityInfoByKey.get(sourceCandidateIdentityKey(left))?.candidateCount ?? 1);
+
+  if (identityCountDelta !== 0) {
+    return identityCountDelta;
+  }
+
+  return 0;
+}
+
+function normaliseIdentityGroupLimit(limit: number | undefined) {
+  if (limit === undefined || !Number.isFinite(limit)) {
+    return DEFAULT_IDENTITY_GROUP_LIMIT;
+  }
+
+  return Math.min(Math.max(Math.trunc(limit), 1), MAX_IDENTITY_GROUP_LIMIT);
 }
 
 function normaliseCurationHandoffLimit(limit: number | undefined) {
@@ -1258,6 +1630,24 @@ function sourceCandidateStudyExtractionInput(
   };
 }
 
+function assertStudyExtractionManualInput(
+  input: Omit<ExtractAcceptedSourceCandidateStudyInput, "dedupeKey">
+) {
+  requireStudyText(input.adverseEvents, "--study-adverse-events");
+  requireStudyText(input.fundingConflicts, "--study-funding-conflicts");
+  requireStudyText(input.interventionName, "--study-intervention-name");
+  normaliseStudyOutcomes(input.outcomes);
+  requireStudyText(input.population, "--study-population");
+  requireStudyText(input.riskOfBias, "--study-risk-of-bias");
+  requireStudyText(input.sampleSize, "--study-sample-size");
+
+  if (input.sourceType !== undefined && !isStudySourceType(input.sourceType)) {
+    throw new Error(
+      "Study extraction requires --study-source-type because source type cannot be inferred."
+    );
+  }
+}
+
 function normaliseStudySourceType(
   sourceType: SourceCandidateStudyExtractionSourceType | undefined,
   candidate: SourceCandidate
@@ -1273,15 +1663,13 @@ function normaliseStudySourceType(
   );
 }
 
-function isStudySourceType(
-  value: string
-): value is SourceCandidateStudyExtractionSourceType {
-  return value in studyTypeMap;
+function isStudySourceType(value: unknown): value is SourceCandidateStudyExtractionSourceType {
+  return typeof value === "string" && value in studyTypeMap;
 }
 
-function normaliseStudyOutcomes(outcomes: string[]) {
-  const normalised = outcomes
-    .map((outcome) => outcome.trim())
+function normaliseStudyOutcomes(outcomes: string[] | undefined) {
+  const normalised = (outcomes ?? [])
+    .map((outcome) => (typeof outcome === "string" ? outcome.trim() : ""))
     .filter((outcome) => outcome.length > 0);
 
   if (normalised.length === 0) {
@@ -1291,8 +1679,8 @@ function normaliseStudyOutcomes(outcomes: string[]) {
   return normalised;
 }
 
-function requireStudyText(value: string, option: string) {
-  const trimmed = value.trim();
+function requireStudyText(value: string | undefined, option: string) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
 
   if (!trimmed) {
     throw new Error(`Study extraction requires ${option}.`);
@@ -1472,7 +1860,7 @@ function metadataStringArray(metadata: Record<string, unknown>, key: string) {
   );
 }
 
-function curationNextAction(status: SourceCandidateCurationStatusKind) {
+export function curationNextAction(status: SourceCandidateCurationStatusKind) {
   switch (status) {
     case "Not accepted":
       return "Accept with a matching curated reference before curation handoff.";

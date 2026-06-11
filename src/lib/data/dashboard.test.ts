@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const netSocketMocks = vi.hoisted(() => {
   type EventName = "connect" | "timeout" | "error";
   type EventHandler = () => void;
+  const state = { nextEvent: "connect" as EventName };
 
   class MockSocket {
     handlers: Partial<Record<EventName, EventHandler>> = {};
@@ -13,14 +14,15 @@ const netSocketMocks = vi.hoisted(() => {
     });
     destroy = vi.fn();
     connect = vi.fn(() => {
-      this.handlers.connect?.();
+      this.handlers[state.nextEvent]?.();
       return this;
     });
   }
 
   return {
     Socket: MockSocket,
-    instances: [] as MockSocket[]
+    instances: [] as MockSocket[],
+    state
   };
 });
 
@@ -71,6 +73,7 @@ describe("getEvidenceDashboardData data source behavior", () => {
     delete process.env.DATABASE_URL;
     vi.clearAllMocks();
     netSocketMocks.instances.length = 0;
+    netSocketMocks.state.nextEvent = "connect";
   });
 
   afterEach(() => {
@@ -100,8 +103,20 @@ describe("getEvidenceDashboardData data source behavior", () => {
     expectPrismaFindManyNotCalled();
   });
 
-  it("falls back to seed data when the configured database is unreachable", async () => {
+  it("falls back to seed data when DATABASE_URL is invalid", async () => {
     process.env.DATABASE_URL = "not-a-valid-database-url";
+
+    const data = await getEvidenceDashboardData();
+
+    expect(data.dataSource).toBe("seed");
+    expect(data.fallbackReason).toBe("DATABASE_URL is invalid, using seed data.");
+    expect(data.interventions[0]?.id).toBe(interventions[0]?.id);
+    expectPrismaFindManyNotCalled();
+  });
+
+  it("falls back to seed data when the configured database is unreachable", async () => {
+    process.env.DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:1/apex_lifespan";
+    netSocketMocks.state.nextEvent = "error";
 
     const data = await getEvidenceDashboardData();
 
@@ -118,6 +133,20 @@ describe("getEvidenceDashboardData data source behavior", () => {
       "DATABASE_URL is not configured, using seed data."
     );
     expectPrismaFindManyNotCalled();
+  });
+
+  it("does not expose raw database query errors in seed fallback reasons", async () => {
+    process.env.DATABASE_URL = "postgresql://postgres:secret@127.0.0.1:5432/apex_lifespan";
+    prismaFindManyMocks.reference.mockRejectedValue(
+      new Error("Query failed for postgresql://postgres:secret@127.0.0.1:5432/apex_lifespan")
+    );
+
+    const data = await getEvidenceDashboardData();
+
+    expect(data.dataSource).toBe("seed");
+    expect(data.fallbackReason).toBe("Database query failed, using seed data.");
+    expect(data.fallbackReason).not.toContain("secret");
+    expect(data.fallbackReason).not.toContain("postgresql://");
   });
 
   it("maps database claim references and study extractions into a complete source packet", async () => {
