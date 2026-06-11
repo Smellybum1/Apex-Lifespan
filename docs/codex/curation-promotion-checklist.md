@@ -65,7 +65,7 @@ npm run promotion:dry-run -- <dedupe-key>
 ```
 
 Promotion is not ready unless the dry run reports `ready=true`, no blockers, a claim id, a reference id, a reference URL, and study ids.
-The dry run also emits `worksheet.readOnlyCommands` for packet, reference-match, sibling, curation-status, curation-draft, and rerun inspection.
+The dry run also emits `worksheet.requiredEvidence` for the human evidence gates and `worksheet.readOnlyCommands` for packet, reference-match, sibling, curation-status, curation-draft, and rerun inspection.
 
 7. Use the authenticated operator promotion control only after the dry run is ready and operator browser-control QA evidence has been recorded. The promotion note should summarize the human review decision and any remaining uncertainty labels.
 

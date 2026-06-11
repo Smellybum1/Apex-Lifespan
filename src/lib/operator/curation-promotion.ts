@@ -55,12 +55,20 @@ export interface SourceCandidatePromotionWorksheet {
     referenceMatches: string;
     siblings: string;
   };
+  requiredEvidence: SourceCandidatePromotionEvidenceItem[];
   studyExtraction: {
     existingStudyIds: string[];
     nextAction: string;
     ready: boolean;
     targetReferenceId?: string;
   };
+}
+
+export interface SourceCandidatePromotionEvidenceItem {
+  id: string;
+  label: string;
+  nextAction: string;
+  ready: boolean;
 }
 
 export interface SourceCandidatePromotionReadinessRow {
@@ -263,6 +271,13 @@ function sourceCandidatePromotionWorksheet(
       referenceMatches: `npm run ingest:sources -- --candidate-reference-matches ${safeKey}`,
       siblings: `npm run ingest:sources -- --candidate-siblings ${safeKey}`
     },
+    requiredEvidence: sourceCandidatePromotionRequiredEvidence({
+      claimLinkNextAction,
+      claimLinkReady,
+      status,
+      studyExtractionNextAction,
+      studyExtractionReady
+    }),
     studyExtraction: {
       existingStudyIds,
       nextAction: studyExtractionNextAction,
@@ -270,6 +285,75 @@ function sourceCandidatePromotionWorksheet(
       targetReferenceId
     }
   };
+}
+
+function sourceCandidatePromotionRequiredEvidence({
+  claimLinkNextAction,
+  claimLinkReady,
+  status,
+  studyExtractionNextAction,
+  studyExtractionReady
+}: {
+  claimLinkNextAction: string;
+  claimLinkReady: boolean;
+  status: SourceCandidateCurationStatus;
+  studyExtractionNextAction: string;
+  studyExtractionReady: boolean;
+}): SourceCandidatePromotionEvidenceItem[] {
+  const acceptedReferenceReady = Boolean(
+    status.acceptedReferenceId &&
+      status.acceptedReference?.title &&
+      status.acceptedReference.url
+  );
+
+  return [
+    {
+      id: "candidate-accepted",
+      label: "Candidate accepted",
+      nextAction:
+        status.candidate.decision === "Accepted"
+          ? "Candidate is accepted."
+          : "Accept the candidate only after human review and a matching curated reference.",
+      ready: status.candidate.decision === "Accepted"
+    },
+    {
+      id: "candidate-human-reviewed",
+      label: "Candidate human review",
+      nextAction:
+        status.candidate.reviewStatus === "Human reviewed"
+          ? "Candidate review status is Human reviewed."
+          : "Record a human review decision before promotion review.",
+      ready: status.candidate.reviewStatus === "Human reviewed"
+    },
+    {
+      id: "accepted-reference-traceable",
+      label: "Traceable accepted reference",
+      nextAction: acceptedReferenceReady
+        ? "Accepted reference has id, title, and URL."
+        : "Attach a matching accepted reference with id, title, and URL.",
+      ready: acceptedReferenceReady
+    },
+    {
+      id: "claim-link",
+      label: "Claim link",
+      nextAction: claimLinkNextAction,
+      ready: claimLinkReady
+    },
+    {
+      id: "structured-extraction",
+      label: "Structured extraction",
+      nextAction: studyExtractionNextAction,
+      ready: studyExtractionReady
+    },
+    {
+      id: "public-source-packet-ready",
+      label: "Public source packet readiness",
+      nextAction: status.publicSourcePacketReady
+        ? "Curation status reports publicSourcePacketReady=true."
+        : "Rerun the dry run after claim link and structured extraction are complete.",
+      ready: status.publicSourcePacketReady
+    }
+  ];
 }
 
 function safeCandidateKey(dedupeKey: string) {

@@ -106,6 +106,46 @@ describe("source candidate promotion assessment", () => {
         ],
         publicSourcePacketReady: false,
         readOnlyCommands: candidateReadOnlyCommands,
+        requiredEvidence: [
+          {
+            id: "candidate-accepted",
+            label: "Candidate accepted",
+            nextAction: "Candidate is accepted.",
+            ready: true
+          },
+          {
+            id: "candidate-human-reviewed",
+            label: "Candidate human review",
+            nextAction: "Candidate review status is Human reviewed.",
+            ready: true
+          },
+          {
+            id: "accepted-reference-traceable",
+            label: "Traceable accepted reference",
+            nextAction: "Accepted reference has id, title, and URL.",
+            ready: true
+          },
+          {
+            id: "claim-link",
+            label: "Claim link",
+            nextAction:
+              "Human link the accepted reference to the candidate claim before promotion review.",
+            ready: false
+          },
+          {
+            id: "structured-extraction",
+            label: "Structured extraction",
+            nextAction:
+              "Human add structured study extraction for the accepted reference before promotion review.",
+            ready: false
+          },
+          {
+            id: "public-source-packet-ready",
+            label: "Public source packet readiness",
+            nextAction: "Rerun the dry run after claim link and structured extraction are complete.",
+            ready: false
+          }
+        ],
         studyExtraction: {
           existingStudyIds: [],
           nextAction:
@@ -179,6 +219,44 @@ describe("source candidate promotion assessment", () => {
         nextHumanActions: ["Human review the ready public packet before any explicit promotion."],
         publicSourcePacketReady: true,
         readOnlyCommands: candidateReadOnlyCommands,
+        requiredEvidence: [
+          {
+            id: "candidate-accepted",
+            label: "Candidate accepted",
+            nextAction: "Candidate is accepted.",
+            ready: true
+          },
+          {
+            id: "candidate-human-reviewed",
+            label: "Candidate human review",
+            nextAction: "Candidate review status is Human reviewed.",
+            ready: true
+          },
+          {
+            id: "accepted-reference-traceable",
+            label: "Traceable accepted reference",
+            nextAction: "Accepted reference has id, title, and URL.",
+            ready: true
+          },
+          {
+            id: "claim-link",
+            label: "Claim link",
+            nextAction: "Accepted reference is linked to the candidate claim.",
+            ready: true
+          },
+          {
+            id: "structured-extraction",
+            label: "Structured extraction",
+            nextAction: "Structured study extraction is present for the accepted reference.",
+            ready: true
+          },
+          {
+            id: "public-source-packet-ready",
+            label: "Public source packet readiness",
+            nextAction: "Curation status reports publicSourcePacketReady=true.",
+            ready: true
+          }
+        ],
         studyExtraction: {
           existingStudyIds: ["study-pubmed-42141930"],
           nextAction: "Structured study extraction is present for the accepted reference.",
