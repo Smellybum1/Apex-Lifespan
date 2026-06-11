@@ -33,7 +33,7 @@ describe("production readiness report", () => {
       "prisma-migrations",
       "production-provisioning-checklist",
       "migration-rehearsal",
-      "vercel-project-link",
+      "vercel-project",
       "vercel-cli",
       "operator-auth-secrets",
       "local-only-sidecar-secrets",
@@ -69,7 +69,7 @@ describe("production readiness report", () => {
       "database-url",
       "apex-data-source",
       "migration-rehearsal",
-      "vercel-project-link",
+      "vercel-project",
       "operator-auth-secrets"
     ]);
     expect(report.worksheet.warnings.map((item) => item.id)).toEqual([
@@ -90,7 +90,7 @@ describe("production readiness report", () => {
           status: "blocked"
         }),
         expect.objectContaining({
-          id: "vercel-project-link",
+          id: "vercel-project",
           status: "blocked"
         }),
         expect.objectContaining({
@@ -107,6 +107,40 @@ describe("production readiness report", () => {
         })
       ])
     );
+  });
+
+  it("accepts GitHub-imported Vercel project evidence without a local Vercel link", () => {
+    const report = buildProductionReadinessReport({
+      env: {
+        APEX_DATA_SOURCE: "database",
+        APEX_MIGRATION_REHEARSAL_PASSED_AT: "2026-06-11T00:00:00Z",
+        APEX_VERCEL_PROJECT_CONFIGURED_AT: "2026-06-11T01:00:00Z",
+        AUTH_GITHUB_ID: "github-id",
+        AUTH_GITHUB_SECRET: "github-oauth-value",
+        AUTH_SECRET: "session-value",
+        DATABASE_URL: "postgresql://user:dbpass@db.example.com:5432/apex?schema=public",
+        NCBI_EMAIL: "operator@example.com",
+        NCBI_TOOL: "apex-lifespan"
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      migrationDirectories: ["20260602032000_init", "20260611131000_operator_auth_foundation"],
+      productionProvisioningChecklistExists: true,
+      trackedEnvFiles: [],
+      vercelCliAvailable: false,
+      vercelProjectLinked: false
+    });
+
+    expect(report.overall).toBe("ready");
+    expect(report.counts.warning).toBe(1);
+    expect(report.worksheet.ready).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidenceKeys: ["APEX_VERCEL_PROJECT_CONFIGURED_AT"],
+          id: "vercel-project"
+        })
+      ])
+    );
+    expect(report.worksheet.warnings.map((item) => item.id)).toEqual(["vercel-cli"]);
   });
 
   it("blocks local-only sidecar variables and tracked private env files", () => {

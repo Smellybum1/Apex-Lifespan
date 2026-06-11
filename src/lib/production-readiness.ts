@@ -51,6 +51,7 @@ const LOCAL_ONLY_ENV_KEYS = [
   "APEX_CODEX_REVIEW_PORT",
   "APEX_CODEX_REVIEW_ORIGINS"
 ];
+const VERCEL_PROJECT_CONFIGURED_KEY = "APEX_VERCEL_PROJECT_CONFIGURED_AT";
 
 export function buildProductionReadinessReport(
   context: ProductionReadinessContext
@@ -67,7 +68,10 @@ export function buildProductionReadinessReport(
     migrationCheck(latestMigration),
     productionProvisioningChecklistCheck(context.productionProvisioningChecklistExists),
     migrationRehearsalCheck(readEnv(context.env, "APEX_MIGRATION_REHEARSAL_PASSED_AT")),
-    vercelProjectCheck(context.vercelProjectLinked),
+    vercelProjectCheck(
+      context.vercelProjectLinked,
+      readEnv(context.env, VERCEL_PROJECT_CONFIGURED_KEY)
+    ),
     vercelCliCheck(context.vercelCliAvailable),
     operatorAuthCheck(context.env),
     localOnlySecretCheck(context.env),
@@ -213,22 +217,40 @@ function migrationRehearsalCheck(value: string | undefined): ProductionReadiness
   };
 }
 
-function vercelProjectCheck(vercelProjectLinked: boolean): ProductionReadinessCheck {
-  return vercelProjectLinked
-    ? {
-        id: "vercel-project-link",
-        label: "Vercel project link",
-        status: "ready",
-        detail: ".vercel/project.json is present in the local checkout."
-      }
-    : {
-        id: "vercel-project-link",
-        label: "Vercel project link",
-        status: "blocked",
-        detail: ".vercel/project.json is not present.",
-        nextAction:
-          "Link the local checkout to the intended Vercel project or complete equivalent checks in the Vercel dashboard."
-      };
+function vercelProjectCheck(
+  vercelProjectLinked: boolean,
+  githubImportConfiguredAt: string | undefined
+): ProductionReadinessCheck {
+  if (vercelProjectLinked) {
+    return {
+      id: "vercel-project",
+      label: "Vercel project",
+      status: "ready",
+      detail: ".vercel/project.json is present in the local checkout."
+    };
+  }
+
+  if (githubImportConfiguredAt) {
+    return {
+      evidenceKeys: [VERCEL_PROJECT_CONFIGURED_KEY],
+      id: "vercel-project",
+      label: "Vercel project",
+      status: "ready",
+      detail:
+        "GitHub-imported Vercel project evidence is recorded; local CLI link is optional for dashboard-managed deployments."
+    };
+  }
+
+  return {
+    evidenceKeys: [VERCEL_PROJECT_CONFIGURED_KEY],
+    id: "vercel-project",
+    label: "Vercel project",
+    status: "blocked",
+    detail:
+      ".vercel/project.json is not present and GitHub-imported Vercel project evidence is not recorded.",
+    nextAction:
+      "Confirm the GitHub-imported Vercel project in the Vercel dashboard, then record APEX_VERCEL_PROJECT_CONFIGURED_AT."
+  };
 }
 
 function vercelCliCheck(vercelCliAvailable: boolean): ProductionReadinessCheck {

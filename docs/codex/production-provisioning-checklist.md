@@ -16,13 +16,14 @@ Use this checklist when moving from the seed-backed public demo to managed datab
 1. Create or link the Neon integration from the Vercel Marketplace for the Apex Lifespan project.
 2. Create separate production and non-production database targets.
 3. Set the Neon region according to the production data architecture decision unless a new region decision is documented.
-4. Add Vercel environment variables in the intended scopes:
+4. Confirm the Vercel project is connected either through GitHub import or a local `.vercel/project.json` link. If using GitHub import, record `APEX_VERCEL_PROJECT_CONFIGURED_AT` only after confirming the project, repository, branch, and production domain in the Vercel dashboard.
+5. Add Vercel environment variables in the intended scopes:
    - Preview or staging: non-production `DATABASE_URL`, `APEX_DATA_SOURCE=database`.
    - Production: production `DATABASE_URL`, `APEX_DATA_SOURCE=database` only after rehearsal and smoke checks pass.
    - Operator auth: `AUTH_SECRET`, `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`.
    - Scheduled ingestion metadata: `NCBI_TOOL`, `NCBI_EMAIL`.
-5. Do not add local Codex sidecar variables to Vercel.
-6. Keep `APEX_OPERATOR_WRITES_ENABLED=false` and `APEX_SCHEDULED_INGESTION_WRITES_ENABLED=false` until the relevant non-production QA and approval evidence exists.
+6. Do not add local Codex sidecar variables to Vercel.
+7. Keep `APEX_OPERATOR_WRITES_ENABLED=false` and `APEX_SCHEDULED_INGESTION_WRITES_ENABLED=false` until the relevant non-production QA and approval evidence exists.
 
 ## Vercel Environment Packet
 
@@ -42,7 +43,7 @@ Use this copy-safe packet while entering Vercel project variables. Store real va
 
 Do not add these local-only Codex sidecar variables to Vercel: `APEX_CODEX_THREAD_ID`, `APEX_CODEX_REVIEW_TOKEN`, `APEX_CODEX_REVIEW_PORT`, `APEX_CODEX_REVIEW_ORIGINS`, `APEX_CODEX_REVIEW_TIMEOUT_MS`, or `APEX_CODEX_MODEL`.
 
-Do not record evidence variables such as `APEX_MIGRATION_REHEARSAL_PASSED_AT`, `APEX_OPERATOR_NONPROD_WRITE_QA_AT`, or `APEX_FULLY_LIVE_LAUNCH_APPROVED_AT` until the matching checklist item has actually been completed and reviewed.
+Do not record evidence variables such as `APEX_VERCEL_PROJECT_CONFIGURED_AT`, `APEX_MIGRATION_REHEARSAL_PASSED_AT`, `APEX_OPERATOR_NONPROD_WRITE_QA_AT`, or `APEX_FULLY_LIVE_LAUNCH_APPROVED_AT` until the matching checklist item has actually been completed and reviewed.
 
 ## Local Verification
 
