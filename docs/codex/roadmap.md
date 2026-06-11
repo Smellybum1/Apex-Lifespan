@@ -31,9 +31,10 @@ The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel
    Validate with: `git status -sb`, `git log -3 --oneline`, `npm run smoke:public-mvp -- https://apex-lifespan.vercel.app`.
    Completed 2026-06-11: `git status -sb` reported a clean `codex/queue-claim-sources...origin/codex/queue-claim-sources`; `git log -3 --oneline` reported `30d6830 Record public MVP launch`, `762f5cb Generate Prisma client during build`, and `9632d8f Record restored GitHub deploy path`; `npm run smoke:public-mvp -- https://apex-lifespan.vercel.app` passed homepage caveats, PubMed live preview, ClinicalTrials.gov live preview, and invalid-term guards.
 
-2. [ ] Decide the production data architecture.
+2. [x] Decide the production data architecture.
    Done when: the managed PostgreSQL provider, region, environment variable model, migration policy, backup expectations, and rollback expectations are documented.
    Validate with: docs diff review and an explicit decision note in this roadmap or handoff.
+   Completed 2026-06-11: selected Neon Postgres through the Vercel Marketplace, initial region `aws-us-east-1`, Vercel Preview/Production-scoped `DATABASE_URL` plus `APEX_DATA_SOURCE=database`, Prisma `migrate deploy` rehearsal before production, Neon point-in-time restore plus exported backup rehearsal, and app/data rollback expectations. Decision note: `docs/codex/production-data-architecture.md`.
 
 3. [ ] Provision production database and secrets.
    Done when: production/staging database URLs are configured in the hosting environment, secrets are not committed, Prisma can connect, and seed fallback is not accidentally masking production database failures.

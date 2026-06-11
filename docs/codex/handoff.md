@@ -16,6 +16,7 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 - Docker Compose PostgreSQL is running and healthy as of 2026-06-11; `npm run ingest:sources -- --db-status` reports `reachable=true`.
 - Public MVP/demo is live at `https://apex-lifespan.vercel.app` in seed mode.
 - Current roadmap: `docs/codex/roadmap.md` targets the fully live end product.
+- Production data architecture decision: use Neon Postgres through the Vercel Marketplace, initial region `aws-us-east-1`, Vercel-scoped `DATABASE_URL`, `APEX_DATA_SOURCE=database`, Prisma `migrate deploy`, and Neon restore/export backup rehearsal. Details: `docs/codex/production-data-architecture.md`.
 - Completed public-MVP roadmap archive: `docs/codex/archive/roadmap/2026-06-11-public-live-mvp.md`.
 - A Vercel clean-build failure on `main` was fixed on 2026-06-11 by running `scripts/generate-prisma-client.ts` before `next build` and `next typegen`.
 
@@ -64,5 +65,6 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 - Public MVP roadmap steps 11-13 completed: `npm run smoke:public-mvp -- https://apex-lifespan.vercel.app` passed homepage caveats, PubMed live preview, ClinicalTrials.gov live preview, and invalid-term guards; launch handoff is `docs/codex/public-mvp-launch-handoff.md`; successor roadmap is `docs/codex/roadmap.md`.
 - Vercel clean-build fix validation: with `DATABASE_URL` removed and a missing dotenv path, `npx tsx scripts/generate-prisma-client.ts` generated Prisma Client successfully using the build-time placeholder URL. `npm run lint`, `npm run typecheck`, and `npm run build` passed afterward.
 - Fully-live roadmap step 1 completed: clean synced `codex/queue-claim-sources` branch, latest commits `30d6830`, `762f5cb`, `9632d8f`, and `npm run smoke:public-mvp -- https://apex-lifespan.vercel.app` passed.
+- Fully-live roadmap step 2 completed: production data architecture documented in `docs/codex/production-data-architecture.md`; docs diff review and `git diff --check` used for validation.
 
 Historical source-candidate progress lives in `docs/codex/archive/handoff/2026-06-04-source-candidate-progress.md`; search it only for targeted evidence.
