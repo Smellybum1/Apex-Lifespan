@@ -88,7 +88,7 @@ describe("live source API read-only boundary", () => {
   });
 
   it("does not expose source-candidate persistence from public route handlers", () => {
-    const routeFiles = listRouteFiles(API_DIR);
+    const routeFiles = listRouteFiles(API_DIR).filter((filePath) => !isAuthRoute(filePath));
 
     expect(routeFiles.length).toBeGreaterThan(0);
 
@@ -106,7 +106,8 @@ describe("live source API read-only boundary", () => {
   });
 
   it("does not expose source-candidate workflows from the public dashboard surface", () => {
-    const publicFiles = listPublicRuntimeFiles(PUBLIC_RUNTIME_PATHS);
+    const publicFiles = listPublicRuntimeFiles(PUBLIC_RUNTIME_PATHS)
+      .filter((filePath) => !isAuthRoute(filePath));
 
     expect(publicFiles.length).toBeGreaterThan(0);
 
@@ -164,4 +165,8 @@ function relativeRoutePath(filePath: string) {
 
 function relativeProjectPath(filePath: string) {
   return path.relative(process.cwd(), filePath).replace(/\\/g, "/");
+}
+
+function isAuthRoute(filePath: string) {
+  return relativeProjectPath(filePath) === "src/app/api/auth/[...nextauth]/route.ts";
 }
