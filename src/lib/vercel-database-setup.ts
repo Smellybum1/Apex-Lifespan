@@ -20,6 +20,7 @@ export interface VercelDatabaseSetupPlan {
   nextAction: string;
   sanitizedDatabaseTarget?: string;
   shouldRun: boolean;
+  shouldSyncOperatorQaFixture: boolean;
   shouldSeedPreview: boolean;
   status: VercelDatabaseSetupStatus;
   targetEnvironment?: string;
@@ -72,6 +73,7 @@ export function buildVercelDatabaseSetupPlan(
       nextAction: "Fix the Vercel database environment before deploying database mode.",
       sanitizedDatabaseTarget: parsedDatabase.ok ? parsedDatabase.target : undefined,
       shouldRun: false,
+      shouldSyncOperatorQaFixture: false,
       shouldSeedPreview: false,
       status: "blocked",
       targetEnvironment: vercelEnv
@@ -79,10 +81,15 @@ export function buildVercelDatabaseSetupPlan(
   }
 
   const shouldSeedPreview = vercelEnv === "preview";
+  const shouldSyncOperatorQaFixture = shouldSeedPreview;
   const commands = ["npx prisma migrate deploy"];
 
   if (shouldSeedPreview) {
     commands.push("npx tsx prisma/seed.ts");
+  }
+
+  if (shouldSyncOperatorQaFixture) {
+    commands.push("npx tsx scripts/operator-qa-fixture.ts");
   }
 
   return {
@@ -93,6 +100,7 @@ export function buildVercelDatabaseSetupPlan(
       : "Run production migrations only; production evidence data import remains a separate human-reviewed step.",
     sanitizedDatabaseTarget: parsedDatabase.ok ? parsedDatabase.target : undefined,
     shouldRun: true,
+    shouldSyncOperatorQaFixture,
     shouldSeedPreview,
     status: "ready",
     targetEnvironment: vercelEnv
@@ -119,7 +127,10 @@ export function runVercelDatabaseSetup({
 
   for (const [command, args] of [
     ["npx", ["prisma", "migrate", "deploy"]],
-    ...(plan.shouldSeedPreview ? [["npx", ["tsx", "prisma/seed.ts"]] as const] : [])
+    ...(plan.shouldSeedPreview ? [["npx", ["tsx", "prisma/seed.ts"]] as const] : []),
+    ...(plan.shouldSyncOperatorQaFixture
+      ? [["npx", ["tsx", "scripts/operator-qa-fixture.ts"]] as const]
+      : [])
   ] as const) {
     const result = runner(command, args);
     commandResults.push(result);
@@ -154,6 +165,7 @@ function skippedPlan(reason: string): VercelDatabaseSetupPlan {
     commands: [],
     nextAction: "No Vercel database setup needed for this build.",
     shouldRun: false,
+    shouldSyncOperatorQaFixture: false,
     shouldSeedPreview: false,
     status: "skipped"
   };

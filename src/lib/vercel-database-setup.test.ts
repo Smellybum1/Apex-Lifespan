@@ -69,7 +69,12 @@ describe("Vercel database setup", () => {
     expect(result.status).toBe("ready");
     expect(result.executed).toBe(true);
     expect(result.shouldSeedPreview).toBe(true);
-    expect(calls).toEqual(["npx prisma migrate deploy", "npx tsx prisma/seed.ts"]);
+    expect(result.shouldSyncOperatorQaFixture).toBe(true);
+    expect(calls).toEqual([
+      "npx prisma migrate deploy",
+      "npx tsx prisma/seed.ts",
+      "npx tsx scripts/operator-qa-fixture.ts"
+    ]);
   });
 
   it("runs migrations without seed data for production database mode", () => {
@@ -89,6 +94,7 @@ describe("Vercel database setup", () => {
     expect(result.status).toBe("ready");
     expect(result.executed).toBe(true);
     expect(result.shouldSeedPreview).toBe(false);
+    expect(result.shouldSyncOperatorQaFixture).toBe(false);
     expect(calls).toEqual(["npx prisma migrate deploy"]);
   });
 });
