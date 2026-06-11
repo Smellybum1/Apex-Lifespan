@@ -13,7 +13,7 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 
 - Branch: `codex/queue-claim-sources`; latest pre-trim commit was `6889e65 Record local-only handoff state`.
 - GitHub push limit remains active. Do not push to GitHub; make local commits only until the user lifts this constraint.
-- Docker/PostgreSQL is not running as of 2026-06-11; `npm run ingest:sources -- --db-status` cannot reach `localhost:5432`.
+- Docker Compose PostgreSQL is running and healthy as of 2026-06-11; `npm run ingest:sources -- --db-status` reports `reachable=true`.
 - Current roadmap: `docs/codex/roadmap.md` targets the public live MVP/demo and includes the automatic rollover rule for the fully live end-product roadmap.
 
 ## Keep
@@ -48,5 +48,9 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 - `git log -3 --oneline`
 - `docker compose ps` failed because Docker Desktop was not running.
 - `npm run ingest:sources -- --db-status` failed because PostgreSQL was unreachable at `localhost:5432`.
+- Roadmap step 1 completed: `git status -sb` showed a clean branch ahead of origin by 3 commits, and `git log -3 --oneline` confirmed the latest local commits.
+- Roadmap step 2 completed after launching Docker Desktop: `docker compose ps`, `npm run db:migrate`, `npm run db:seed`, and `npm run ingest:sources -- --db-status` passed.
+- Roadmap step 3 is blocked pending product/deployment confirmation of seed-backed public demo mode versus managed production PostgreSQL.
+- Roadmap step 4 completed: seed-mode desktop/mobile browser review passed, public product-card brand copy changed from `Seed example` to `Demo profile`, `npm run db:seed` refreshed local data, and targeted dashboard/source-packet/seed-integrity tests passed.
 
 Historical source-candidate progress lives in `docs/codex/archive/handoff/2026-06-04-source-candidate-progress.md`; search it only for targeted evidence.

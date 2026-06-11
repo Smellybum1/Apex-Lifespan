@@ -19,27 +19,31 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
 ## Current Blockers
 
 - GitHub push limit is active; no GitHub pushes until the user lifts it or an alternate deployment path is selected.
-- Docker/PostgreSQL is not running locally, so source-candidate review and curation cannot continue today.
-- Last successful source-candidate snapshot had 49 pending candidates and 1 accepted candidate that still needs claim-link curation.
+- Product/deployment confirmation is still needed for seed-backed public demo mode versus managed production PostgreSQL.
+- Latest source-candidate snapshot has 49 pending candidates and 1 accepted candidate that still needs claim-link curation.
 
 ## Ordered Steps
 
-1. [ ] Reconfirm the baseline and publishing constraint.
+1. [x] Reconfirm the baseline and publishing constraint.
    Done when: worktree is clean, branch ahead/behind state is known, and the current no-push constraint is still captured in handoff.
    Validate with: `git status -sb`, `git log -3 --oneline`.
+   Completed 2026-06-11: `git status -sb` reported `codex/queue-claim-sources...origin/codex/queue-claim-sources [ahead 3]` with a clean worktree; `git log -3 --oneline` reported `9e7c02a Add public MVP roadmap`, `22d17b7 Trim workflow guardrails`, and `6889e65 Record local-only handoff state`; `docs/codex/handoff.md` still records the GitHub no-push constraint.
 
-2. [ ] Restore local data operations.
+2. [x] Restore local data operations.
    Done when: Docker Desktop is running, PostgreSQL is healthy, migrations apply cleanly, seed data verifies, and source-candidate DB preflight is reachable.
    Validate with: `docker compose ps`, `npm run db:migrate`, `npm run db:seed`, `npm run ingest:sources -- --db-status`.
+   Completed 2026-06-11: launched Docker Desktop, `docker compose ps` reported `apexlifespan-postgres-1` healthy on `localhost:5432`; `npm run db:migrate` reported the schema already in sync; `npm run db:seed` reported `Seed integrity verified`; `npm run ingest:sources -- --db-status` reported `reachable=true`.
 
 3. [ ] Freeze the public MVP data mode.
    Done when: the team has chosen `APEX_DATA_SOURCE=seed` for the first public demo or has explicitly chosen a managed production PostgreSQL database.
    Recommended decision: use `APEX_DATA_SOURCE=seed` for the public demo, keep source-candidate review local, and graduate to database-backed public data after curation readiness improves.
    Validate with: README or handoff note naming the selected mode.
+   Blocked 2026-06-11: needs product/deployment confirmation to use the recommended seed-backed public demo mode or choose a managed production PostgreSQL database.
 
-4. [ ] Audit demo content quality.
+4. [x] Audit demo content quality.
    Done when: first-screen claims, source packets, review-status labels, AU/TGA copy, and label-risk empty states are credible enough for a public demo and do not expose placeholder-looking copy in key paths.
    Validate with: targeted dashboard tests plus manual browser review.
+   Completed 2026-06-11: seed-mode browser review covered desktop and mobile screenshots (`output/playwright/public-mvp-step4-desktop.png`, `output/playwright/public-mvp-step4-mobile.png`); the dashboard showed first-screen claims, source-packet status, review-status labels, AU/TGA product-level caveats, and cautious live-preview idle copy. Replaced public product-card brand copy from internal `Seed example` to `Demo profile`. `npm run db:seed` and `npm run test -- src/components/evidence-dashboard.test.tsx src/lib/source-packet.test.ts src/lib/seed-integrity.test.ts` passed.
 
 5. [ ] Resolve the accepted PMID 42141930 curation decision.
    Done when: either the accepted candidate is claim-linked and structurally extracted in local DB, or the public MVP explicitly defers source-candidate curation from the public demo scope.

@@ -61,6 +61,8 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("Extraction complete");
     expect(html).toContain("Suggested searches");
     expect(html).toContain("scores rank review priority, not evidence quality");
+    expect(html).toContain("Demo profile");
+    expect(html).not.toContain("Seed example");
   });
 
   it("keeps source-packet extraction separate from human review status", () => {

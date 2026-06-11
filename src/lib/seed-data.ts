@@ -682,7 +682,7 @@ export const productSignals: ProductSignal[] = [
   {
     id: "seed-creatine-product",
     name: "Creatine monohydrate powder",
-    brand: "Seed example",
+    brand: "Demo profile",
     ingredients: ["Creatine monohydrate"],
     proprietaryBlend: false,
     certifications: ["NSF Certified for Sport"],
@@ -693,7 +693,7 @@ export const productSignals: ProductSignal[] = [
   {
     id: "seed-blend-product",
     name: "Longevity blend",
-    brand: "Seed example",
+    brand: "Demo profile",
     ingredients: ["Proprietary blend", "Resveratrol", "Fisetin", "Quercetin"],
     proprietaryBlend: true,
     certifications: [],
