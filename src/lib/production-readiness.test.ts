@@ -25,6 +25,23 @@ describe("production readiness report", () => {
     expect(report.overall).toBe("ready");
     expect(report.counts.blocked).toBe(0);
     expect(report.sanitizedDatabaseTarget).toBe("postgresql://db.example.com:5432/apex");
+    expect(report.worksheet.blocked).toEqual([]);
+    expect(report.worksheet.ready.map((item) => item.id)).toEqual([
+      "database-url",
+      "apex-data-source",
+      "prisma-migrations",
+      "migration-rehearsal",
+      "vercel-project-link",
+      "vercel-cli",
+      "operator-auth-secrets",
+      "local-only-sidecar-secrets",
+      "tracked-env-files",
+      "operator-write-flag",
+      "ncbi-metadata"
+    ]);
+    expect(report.worksheet.nextOperatorAction).toBe(
+      "Production provisioning evidence is ready; review launch readiness before migration."
+    );
     expect(JSON.stringify(report)).not.toContain("github-oauth-value");
     expect(JSON.stringify(report)).not.toContain("session-value");
     expect(JSON.stringify(report)).not.toContain("user:dbpass");
@@ -45,6 +62,20 @@ describe("production readiness report", () => {
     });
 
     expect(report.overall).toBe("blocked");
+    expect(report.worksheet.blocked.map((item) => item.id)).toEqual([
+      "database-url",
+      "apex-data-source",
+      "migration-rehearsal",
+      "vercel-project-link",
+      "operator-auth-secrets"
+    ]);
+    expect(report.worksheet.warnings.map((item) => item.id)).toEqual([
+      "vercel-cli",
+      "ncbi-metadata"
+    ]);
+    expect(report.worksheet.nextOperatorAction).toBe(
+      "Use a managed non-local PostgreSQL target before production migration rehearsal."
+    );
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -93,6 +124,9 @@ describe("production readiness report", () => {
     });
 
     expect(report.overall).toBe("blocked");
+    expect(report.worksheet.blocked.map((item) => item.id)).toEqual(
+      expect.arrayContaining(["local-only-sidecar-secrets", "tracked-env-files"])
+    );
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

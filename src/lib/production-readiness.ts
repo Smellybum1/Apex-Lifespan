@@ -25,6 +25,22 @@ export interface ProductionReadinessReport {
   latestMigration?: string;
   overall: "ready" | "blocked";
   sanitizedDatabaseTarget?: string;
+  worksheet: ProductionProvisioningWorksheet;
+}
+
+export interface ProductionProvisioningWorksheet {
+  blocked: ProductionProvisioningWorksheetItem[];
+  humanOwned: true;
+  nextOperatorAction: string;
+  ready: ProductionProvisioningWorksheetItem[];
+  warnings: ProductionProvisioningWorksheetItem[];
+}
+
+export interface ProductionProvisioningWorksheetItem {
+  evidenceKeys?: string[];
+  id: string;
+  label: string;
+  nextAction?: string;
 }
 
 const LOCAL_DATABASE_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -65,7 +81,8 @@ export function buildProductionReadinessReport(
     generatedAt: (context.generatedAt ?? new Date()).toISOString(),
     latestMigration,
     overall: counts.blocked > 0 ? "blocked" : "ready",
-    sanitizedDatabaseTarget: parsedDatabase.ok ? parsedDatabase.target : undefined
+    sanitizedDatabaseTarget: parsedDatabase.ok ? parsedDatabase.target : undefined,
+    worksheet: productionProvisioningWorksheet(checks)
   };
 }
 
@@ -311,6 +328,42 @@ function ncbiMetadataCheck(env: Record<string, string | undefined>): ProductionR
     detail: "NCBI_TOOL and/or NCBI_EMAIL are missing.",
     nextAction:
       "Configure NCBI metadata before enabling unattended PubMed ingestion jobs."
+  };
+}
+
+function productionProvisioningWorksheet(
+  checks: ProductionReadinessCheck[]
+): ProductionProvisioningWorksheet {
+  const blocked = checks
+    .filter((check) => check.status === "blocked")
+    .map(productionProvisioningWorksheetItem);
+  const warnings = checks
+    .filter((check) => check.status === "warning")
+    .map(productionProvisioningWorksheetItem);
+  const ready = checks
+    .filter((check) => check.status === "ready")
+    .map(productionProvisioningWorksheetItem);
+
+  return {
+    blocked,
+    humanOwned: true,
+    nextOperatorAction:
+      blocked[0]?.nextAction ??
+      warnings[0]?.nextAction ??
+      "Production provisioning evidence is ready; review launch readiness before migration.",
+    ready,
+    warnings
+  };
+}
+
+function productionProvisioningWorksheetItem(
+  check: ProductionReadinessCheck
+): ProductionProvisioningWorksheetItem {
+  return {
+    evidenceKeys: check.evidenceKeys,
+    id: check.id,
+    label: check.label,
+    nextAction: check.nextAction
   };
 }
 

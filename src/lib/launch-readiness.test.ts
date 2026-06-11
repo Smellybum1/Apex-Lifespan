@@ -202,18 +202,29 @@ function readinessReport(blockedIds: string[]) {
     generatedAt: "2026-06-11T00:00:00.000Z",
     overall: blockedIds.length > 0 ? "blocked" : "ready",
     worksheet: {
-      humanOwned: true,
+      blocked: blockedIds.map((id) => ({
+        id,
+        label: id,
+        nextAction: `${id} blocked.`
+      })),
+      humanOwned: true as const,
       missingExternalEvidence: blockedIds.map((id) => ({
         id,
         label: id,
         nextAction: `${id} blocked.`
       })),
+      nextOperatorAction:
+        blockedIds.length > 0
+          ? `${blockedIds[0]} blocked.`
+          : "Production provisioning evidence is ready; review launch readiness before migration.",
       nextEvidenceAction:
         blockedIds.length > 0
           ? `${blockedIds[0]} blocked.`
           : "All external operations evidence is recorded; review the launch readiness report.",
+      ready: blockedIds.length > 0 ? [] : [{ id: "ready-check", label: "Ready check" }],
       readyExternalEvidence: blockedIds.length > 0 ? [] : [{ id: "ready-check", label: "Ready check" }],
-      readyLocalArtifacts: []
+      readyLocalArtifacts: [],
+      warnings: []
     }
   };
 }
