@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:stop": "tsx scripts/stop-dev-server.ts",
-    "build": "tsx scripts/generate-prisma-client.ts && next build",
+    "build": "tsx scripts/generate-prisma-client.ts && tsx scripts/vercel-database-setup.ts && next build",
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
