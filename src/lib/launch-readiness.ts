@@ -57,6 +57,23 @@ export interface LaunchReadinessReport {
   generatedAt: string;
   nextAction: string;
   overall: "ready" | "blocked";
+  worksheet: LaunchReadinessWorksheet;
+}
+
+export interface LaunchReadinessWorksheet {
+  blockedGates: LaunchReadinessWorksheetItem[];
+  humanOwned: true;
+  nextLaunchAction: string;
+  readyGates: LaunchReadinessWorksheetItem[];
+  warningGates: LaunchReadinessWorksheetItem[];
+}
+
+export interface LaunchReadinessWorksheetItem {
+  blockerIds?: string[];
+  evidenceKeys?: string[];
+  id: string;
+  label: string;
+  nextAction?: string;
 }
 
 const PUBLIC_SMOKE_KEY = "APEX_PUBLIC_SMOKE_PASSED_AT";
@@ -129,15 +146,17 @@ export function buildLaunchReadinessReport(
   ];
   const counts = countStatuses(checks);
   const firstBlocked = checks.find((check) => check.status === "blocked");
+  const nextAction =
+    firstBlocked?.nextAction ??
+    "All launch readiness gates are ready; proceed with the launch checklist.";
 
   return {
     checks,
     counts,
     generatedAt: (context.generatedAt ?? new Date()).toISOString(),
-    nextAction:
-      firstBlocked?.nextAction ??
-      "All launch readiness gates are ready; proceed with the launch checklist.",
-    overall: counts.blocked > 0 ? "blocked" : "ready"
+    nextAction,
+    overall: counts.blocked > 0 ? "blocked" : "ready",
+    worksheet: launchReadinessWorksheet(checks, nextAction)
   };
 }
 
@@ -376,6 +395,37 @@ function countStatuses(checks: LaunchReadinessCheck[]) {
       warning: 0
     } satisfies Record<LaunchReadinessStatus, number>
   );
+}
+
+function launchReadinessWorksheet(
+  checks: LaunchReadinessCheck[],
+  nextAction: string
+): LaunchReadinessWorksheet {
+  return {
+    blockedGates: checks
+      .filter((check) => check.status === "blocked")
+      .map(launchReadinessWorksheetItem),
+    humanOwned: true,
+    nextLaunchAction: nextAction,
+    readyGates: checks
+      .filter((check) => check.status === "ready")
+      .map(launchReadinessWorksheetItem),
+    warningGates: checks
+      .filter((check) => check.status === "warning")
+      .map(launchReadinessWorksheetItem)
+  };
+}
+
+function launchReadinessWorksheetItem(
+  check: LaunchReadinessCheck
+): LaunchReadinessWorksheetItem {
+  return {
+    blockerIds: check.blockerIds,
+    evidenceKeys: check.evidenceKeys,
+    id: check.id,
+    label: check.label,
+    nextAction: check.nextAction
+  };
 }
 
 function readEnv(env: Record<string, string | undefined>, key: string) {

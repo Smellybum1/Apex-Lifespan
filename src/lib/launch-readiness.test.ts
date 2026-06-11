@@ -79,6 +79,25 @@ describe("launch readiness report", () => {
         })
       ])
     );
+    expect(report.worksheet.humanOwned).toBe(true);
+    expect(report.worksheet.readyGates.map((gate) => gate.id)).toEqual([
+      "fully-live-launch-checklist",
+      "public-smoke"
+    ]);
+    expect(report.worksheet.blockedGates.map((gate) => gate.id)).toEqual([
+      "production-readiness",
+      "operator-readiness",
+      "operations-readiness",
+      "scheduled-ingestion",
+      "promotion-readiness",
+      "evidence-coverage",
+      "admin-flow-smoke",
+      "launch-approval",
+      "post-launch-review"
+    ]);
+    expect(report.worksheet.nextLaunchAction).toBe(
+      "Resolve blocked production data and secrets checks before launch."
+    );
     expect(JSON.stringify(report)).not.toContain("2026-06-11T00:00:00Z");
   });
 
@@ -119,6 +138,11 @@ describe("launch readiness report", () => {
     expect(report.overall).toBe("ready");
     expect(report.counts.blocked).toBe(0);
     expect(report.nextAction).toBe(
+      "All launch readiness gates are ready; proceed with the launch checklist."
+    );
+    expect(report.worksheet.blockedGates).toEqual([]);
+    expect(report.worksheet.readyGates).toHaveLength(11);
+    expect(report.worksheet.nextLaunchAction).toBe(
       "All launch readiness gates are ready; proceed with the launch checklist."
     );
     expect(report.checks.map((check) => check.status)).toEqual(
