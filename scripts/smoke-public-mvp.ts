@@ -1,6 +1,9 @@
+import { pathToFileURL } from "node:url";
+
 const DEFAULT_TIMEOUT_MS = 15000;
 
 type JsonObject = Record<string, unknown>;
+type SmokeLogger = Pick<Console, "log">;
 
 type RouteSmoke = {
   path: string;
@@ -112,21 +115,34 @@ const routeSmokes: RouteSmoke[] = [
   }
 ];
 
-async function main() {
-  const baseUrl = readBaseUrl(process.argv.slice(2));
+export async function runPublicMvpSmoke(
+  rawBaseUrl: string,
+  logger: SmokeLogger = console
+) {
+  const baseUrl = readBaseUrl([rawBaseUrl]);
 
-  console.log(`Smoking public MVP at ${baseUrl.href}`);
+  logger.log(`Smoking public MVP at ${baseUrl.href}`);
   for (const smoke of pageSmokes) {
-    await smokePage(baseUrl, smoke);
+    await smokePage(baseUrl, smoke, logger);
   }
 
-  await smokeAnonymousOperatorBoundary(baseUrl);
+  await smokeAnonymousOperatorBoundary(baseUrl, logger);
 
   for (const smoke of routeSmokes) {
-    await smokeRoute(baseUrl, smoke);
+    await smokeRoute(baseUrl, smoke, logger);
   }
 
-  console.log("Public MVP smoke passed.");
+  logger.log("Public MVP smoke passed.");
+}
+
+async function main() {
+  const rawBaseUrl = process.argv.slice(2)[0]?.trim();
+
+  if (!rawBaseUrl) {
+    throw new Error("Usage: npm run smoke:public-mvp -- <public-or-local-base-url>");
+  }
+
+  await runPublicMvpSmoke(rawBaseUrl);
 }
 
 function readBaseUrl(args: string[]) {
@@ -149,7 +165,7 @@ function readBaseUrl(args: string[]) {
   return url;
 }
 
-async function smokePage(baseUrl: URL, smoke: PageSmoke) {
+async function smokePage(baseUrl: URL, smoke: PageSmoke, logger: SmokeLogger) {
   const response = await fetchWithTimeout(new URL(smoke.path, baseUrl));
 
   expectEqual(response.status, 200, `${smoke.label} status`);
@@ -171,10 +187,10 @@ async function smokePage(baseUrl: URL, smoke: PageSmoke) {
     }
   }
 
-  console.log(`[ok] ${smoke.label}`);
+  logger.log(`[ok] ${smoke.label}`);
 }
 
-async function smokeAnonymousOperatorBoundary(baseUrl: URL) {
+async function smokeAnonymousOperatorBoundary(baseUrl: URL, logger: SmokeLogger) {
   const label = "Operator anonymous boundary";
   const response = await fetchWithTimeout(new URL("/operator", baseUrl));
 
@@ -200,10 +216,10 @@ async function smokeAnonymousOperatorBoundary(baseUrl: URL) {
     }
   }
 
-  console.log(`[ok] ${label}`);
+  logger.log(`[ok] ${label}`);
 }
 
-async function smokeRoute(baseUrl: URL, smoke: RouteSmoke) {
+async function smokeRoute(baseUrl: URL, smoke: RouteSmoke, logger: SmokeLogger) {
   const response = await fetchWithTimeout(new URL(smoke.path, baseUrl));
 
   expectEqual(response.status, smoke.expectedStatus, `${smoke.label} status`);
@@ -213,7 +229,7 @@ async function smokeRoute(baseUrl: URL, smoke: RouteSmoke) {
   const body = await readJsonObject(response, smoke.label);
   smoke.validateJson(body);
 
-  console.log(`[ok] ${smoke.label}`);
+  logger.log(`[ok] ${smoke.label}`);
 }
 
 async function fetchWithTimeout(url: URL) {
@@ -275,8 +291,10 @@ function expectEqual(actual: unknown, expected: unknown, label: string) {
   }
 }
 
-main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`Public MVP smoke failed: ${message}`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Public MVP smoke failed: ${message}`);
+    process.exitCode = 1;
+  });
+}
