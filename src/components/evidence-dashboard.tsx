@@ -49,6 +49,10 @@ import {
   getPrimaryAustraliaStatus
 } from "@/lib/regulatory";
 import {
+  buildProductAustraliaRegulatoryVerifications,
+  type ProductAustraliaRegulatoryVerification
+} from "@/lib/australia-regulatory-verification";
+import {
   analyzeLabel,
   compositeScore,
   getClaimScoreRows,
@@ -187,6 +191,20 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const activeAustraliaStatus = activeIntervention
     ? getPrimaryAustraliaStatus(data.australiaRegulatoryStatuses, activeIntervention.id)
     : undefined;
+  const productAustraliaVerifications = useMemo(
+    () => buildProductAustraliaRegulatoryVerifications(data),
+    [data]
+  );
+  const productAustraliaVerificationById = useMemo(
+    () =>
+      new Map(
+        productAustraliaVerifications.map((verification) => [
+          verification.productId,
+          verification
+        ])
+      ),
+    [productAustraliaVerifications]
+  );
   const labelFindings = analyzeLabel(labelText);
   const reviewSummary = useMemo(() => summarizeReviewStatus(claims), [claims]);
   const sourcePacketSummary = useMemo(
@@ -344,7 +362,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             setLabelText={setLabelText}
             findings={labelFindings}
             productSignals={productSignals}
-            australiaRegulatoryStatuses={data.australiaRegulatoryStatuses}
+            productAustraliaVerificationById={productAustraliaVerificationById}
           />
         </section>
 
@@ -1345,16 +1363,16 @@ function EvidenceCards({
 }
 
 function LabelAnalyzer({
-  australiaRegulatoryStatuses,
   labelText,
   setLabelText,
   findings,
+  productAustraliaVerificationById,
   productSignals
 }: {
-  australiaRegulatoryStatuses: AustraliaRegulatoryStatus[];
   labelText: string;
   setLabelText: (value: string) => void;
   findings: ReturnType<typeof analyzeLabel>;
+  productAustraliaVerificationById: Map<string, ProductAustraliaRegulatoryVerification>;
   productSignals: ProductSignal[];
 }) {
   return (
@@ -1429,7 +1447,7 @@ function LabelAnalyzer({
               ) : null}
             </div>
             <ProductAustraliaRegulatoryChip
-              status={australiaRegulatoryStatuses.find((item) => item.productId === product.id)}
+              verification={productAustraliaVerificationById.get(product.id)}
             />
             <p className="mt-3 text-xs leading-5 text-slate-600">
               {product.certifications.length > 0
@@ -1452,44 +1470,73 @@ function LabelAnalyzer({
 }
 
 function ProductAustraliaRegulatoryChip({
-  status
+  verification
 }: {
-  status?: AustraliaRegulatoryStatus;
+  verification?: ProductAustraliaRegulatoryVerification;
 }) {
-  if (!status) {
+  if (!verification?.status) {
     return (
       <div className="mt-3">
-        <span className="inline-flex rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
-          AU status uncaptured
-        </span>
+        <div className="flex flex-wrap gap-2">
+          <span className="inline-flex rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+            AU status uncaptured
+          </span>
+          <span className="inline-flex rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+            AU confidence: {verification?.confidence ?? "Very low"}
+          </span>
+        </div>
         <p className="mt-2 text-xs leading-5 text-slate-600">
-          No product-level AUST/ARTG record has been captured for this product.
+          {verification?.nextAction ??
+            "No product-level AUST/ARTG record has been captured for this product."}
         </p>
       </div>
     );
   }
 
+  const { status } = verification;
+
   return (
     <div className="mt-3">
-      <span
-        className={cn(
-          "inline-flex rounded-md border px-2 py-1 text-xs font-semibold",
-          australiaRegulatoryTone(status.kind)
-        )}
-        title={status.evidenceRequirement}
-      >
-        AU: {status.kind} - {status.status}
-      </span>
+      <div className="flex flex-wrap gap-2">
+        <span
+          className={cn(
+            "inline-flex rounded-md border px-2 py-1 text-xs font-semibold",
+            australiaRegulatoryTone(status.kind)
+          )}
+          title={status.evidenceRequirement}
+        >
+          AU: {status.kind} - {status.status}
+        </span>
+        <span
+          className={cn(
+            "inline-flex rounded-md border px-2 py-1 text-xs font-semibold",
+            australiaVerificationStateTone(verification.state)
+          )}
+        >
+          {verification.stateLabel}
+        </span>
+        <span className="inline-flex rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+          AU confidence: {verification.confidence}
+        </span>
+      </div>
       <details className="mt-2 rounded-md border border-line bg-white px-3 py-2 text-xs text-slate-600">
         <summary className="cursor-pointer font-semibold text-ink">AU/TGA detail</summary>
         <dl className="mt-2 grid gap-2">
+          <div>
+            <dt className="font-semibold text-slate-500">Verification state</dt>
+            <dd className="mt-0.5 leading-5">{verification.stateLabel}</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-slate-500">Confidence</dt>
+            <dd className="mt-0.5 leading-5">{verification.confidence}</dd>
+          </div>
           <div>
             <dt className="font-semibold text-slate-500">Supply status</dt>
             <dd className="mt-0.5 leading-5">{status.supplySummary}</dd>
           </div>
           <div>
             <dt className="font-semibold text-slate-500">Evidence needed</dt>
-            <dd className="mt-0.5 leading-5">{status.evidenceRequirement}</dd>
+            <dd className="mt-0.5 leading-5">{verification.nextAction}</dd>
           </div>
           {status.austNumber ? (
             <div>
@@ -1520,6 +1567,19 @@ function ProductAustraliaRegulatoryChip({
       </details>
     </div>
   );
+}
+
+function australiaVerificationStateTone(state: ProductAustraliaRegulatoryVerification["state"]) {
+  switch (state) {
+    case "Verified":
+      return "border-spruce/30 bg-teal-50 text-spruce";
+    case "Stale":
+      return "border-amberline/30 bg-amber-50 text-amberline";
+    case "Unknown":
+      return "border-amberline/30 bg-amber-50 text-amberline";
+    case "Missing":
+      return "border-danger/30 bg-red-50 text-danger";
+  }
 }
 
 function TrialWatcher({

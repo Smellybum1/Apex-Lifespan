@@ -62,6 +62,8 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("Suggested searches");
     expect(html).toContain("scores rank review priority, not evidence quality");
     expect(html).toContain("Demo profile");
+    expect(html).toContain("Product-level status unknown");
+    expect(html).toContain("AU confidence: Very low");
     expect(html).not.toContain("Seed example");
   });
 

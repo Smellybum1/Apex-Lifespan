@@ -79,9 +79,10 @@ The public seed-backed MVP/demo is already live at `https://apex-lifespan.vercel
    In progress 2026-06-11: added read-only evidence coverage summary and `npm run coverage:review`. Current local report shows 7/7 structurally complete source packets, 0 human-reviewed claims, 7 unreviewed draft claims, and 1 intervention without claim coverage (`psyllium`). Validation passed: coverage test, source-packet tests, seed-integrity tests, `npm run typecheck`, `npm run build`, `npm run lint`, and `npm audit`.
    Remaining blocker 2026-06-11: actual coverage expansion requires human evidence review/curation before claims can become human-reviewed or new public evidence is added.
 
-10. [ ] Add product-level AU/TGA verification workflow.
+10. [x] Add product-level AU/TGA verification workflow.
     Done when: product-level ARTG/AUST evidence can be tracked separately from ingredient-level evidence, with confidence labels and stale/unknown states.
     Validate with: regulatory data tests, UI review of unknown/stale states, and no inference from generic intervention evidence.
+    Completed 2026-06-11: added `docs/codex/plans/2026-06-11-product-level-au-tga-verification.md`, read-only product-level verification helpers, `npm run regulatory:review`, and dashboard product chips that show product-level AU/TGA state plus confidence without adding write paths. Current local report shows 5 intervention-level statuses, 2 product-level statuses, 2 very-low-confidence unknown product statuses, no missing product statuses, and no stale statuses. Tests prove product-level missing/stale states are not satisfied by intervention-level AU/TGA records. Validation passed: `npm run test -- src/lib/australia-regulatory-verification.test.ts src/components/evidence-dashboard.test.tsx src/lib/regulatory.test.ts`, `npm run regulatory:review`, public read-only boundary tests, `npm run typecheck`, `npm run build`, `npm run lint`, `npm audit`, and `git diff --check`.
 
 11. [ ] Add observability, backups, privacy, and operations.
     Done when: uptime/error monitoring, deployment alerts, database backups/restore rehearsal, privacy/terms copy, and operator runbooks are in place.
