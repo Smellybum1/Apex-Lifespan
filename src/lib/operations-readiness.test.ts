@@ -20,6 +20,47 @@ describe("operations readiness report", () => {
 
     expect(report.overall).toBe("blocked");
     expect(report.counts.ready).toBe(5);
+    expect(report.worksheet.copySafeCommands).toEqual([
+      {
+        command: "npm run operations:readiness",
+        id: "operations-readiness",
+        label: "Refresh operations readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck local operations artifacts and external evidence variables without printing secret values."
+      },
+      {
+        command: "npm run smoke:public-mvp -- <base-url>",
+        id: "public-smoke",
+        label: "Smoke public routes and health",
+        mode: "read-only",
+        purpose:
+          "Verify public routes, security headers, anonymous operator boundary, live previews, and /api/health."
+      },
+      {
+        command: "npm run production:readiness",
+        id: "production-readiness",
+        label: "Refresh production readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck production database, migration, Vercel, and secret evidence before backup or rollback drills."
+      },
+      {
+        command: "npm run ingest:scheduled-dry-run",
+        id: "scheduled-ingestion-dry-run",
+        label: "Refresh scheduled ingestion dry run",
+        mode: "read-only",
+        purpose:
+          "Recheck hosted-cron, scheduled-ingestion alert, retry policy, and no-auto-promotion readiness."
+      },
+      {
+        command: "npm run launch:readiness",
+        id: "launch-readiness",
+        label: "Refresh aggregate launch readiness",
+        mode: "read-only",
+        purpose: "Recheck fully-live launch gates after operations evidence changes."
+      }
+    ]);
     expect(report.worksheet.readyLocalArtifacts.map((item) => item.id)).toEqual([
       "privacy-page",
       "terms-page",
@@ -59,6 +100,33 @@ describe("operations readiness report", () => {
         })
       ])
     );
+  });
+
+  it("emits only read-only commands for operations handoff", () => {
+    const report = buildOperationsReadinessReport({
+      env: {},
+      files: localFilesReady,
+      generatedAt: new Date("2026-06-11T00:00:00.000Z")
+    });
+    const blockedWriteTokens = [
+      "--apply",
+      "--queue-",
+      "--run-next",
+      "--accept-candidate",
+      "--reject-candidate",
+      "--link-candidate-claim",
+      "--extract-candidate-study"
+    ];
+
+    expect(report.worksheet.copySafeCommands).toHaveLength(5);
+    expect(report.worksheet.copySafeCommands.every((item) => item.mode === "read-only")).toBe(
+      true
+    );
+    expect(
+      report.worksheet.copySafeCommands.some((item) =>
+        blockedWriteTokens.some((token) => item.command.includes(token))
+      )
+    ).toBe(false);
   });
 
   it("reports ready when local artifacts and external proof placeholders are configured", () => {

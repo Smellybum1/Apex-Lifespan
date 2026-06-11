@@ -35,11 +35,20 @@ export interface OperationsReadinessReport {
 }
 
 export interface OperationsReadinessWorksheet {
+  copySafeCommands: OperationsReadinessCommand[];
   humanOwned: true;
   missingExternalEvidence: OperationsEvidenceWorksheetItem[];
   nextEvidenceAction: string;
   readyExternalEvidence: OperationsEvidenceWorksheetItem[];
   readyLocalArtifacts: OperationsEvidenceWorksheetItem[];
+}
+
+export interface OperationsReadinessCommand {
+  command: string;
+  id: string;
+  label: string;
+  mode: "read-only";
+  purpose: string;
 }
 
 export interface OperationsEvidenceWorksheetItem {
@@ -377,6 +386,7 @@ function operationsReadinessWorksheet(
     .map(operationsEvidenceWorksheetItem);
 
   return {
+    copySafeCommands: operationsReadinessCopySafeCommands(),
     humanOwned: true,
     missingExternalEvidence,
     nextEvidenceAction:
@@ -385,6 +395,50 @@ function operationsReadinessWorksheet(
     readyExternalEvidence,
     readyLocalArtifacts
   };
+}
+
+function operationsReadinessCopySafeCommands(): OperationsReadinessCommand[] {
+  return [
+    {
+      command: "npm run operations:readiness",
+      id: "operations-readiness",
+      label: "Refresh operations readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck local operations artifacts and external evidence variables without printing secret values."
+    },
+    {
+      command: "npm run smoke:public-mvp -- <base-url>",
+      id: "public-smoke",
+      label: "Smoke public routes and health",
+      mode: "read-only",
+      purpose:
+        "Verify public routes, security headers, anonymous operator boundary, live previews, and /api/health."
+    },
+    {
+      command: "npm run production:readiness",
+      id: "production-readiness",
+      label: "Refresh production readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck production database, migration, Vercel, and secret evidence before backup or rollback drills."
+    },
+    {
+      command: "npm run ingest:scheduled-dry-run",
+      id: "scheduled-ingestion-dry-run",
+      label: "Refresh scheduled ingestion dry run",
+      mode: "read-only",
+      purpose:
+        "Recheck hosted-cron, scheduled-ingestion alert, retry policy, and no-auto-promotion readiness."
+    },
+    {
+      command: "npm run launch:readiness",
+      id: "launch-readiness",
+      label: "Refresh aggregate launch readiness",
+      mode: "read-only",
+      purpose: "Recheck fully-live launch gates after operations evidence changes."
+    }
+  ];
 }
 
 function operationsEvidenceWorksheetItem(
