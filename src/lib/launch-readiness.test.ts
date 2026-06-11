@@ -289,6 +289,16 @@ function readinessReport(blockedIds: string[]) {
         label: id,
         nextAction: `${id} blocked.`
       })),
+      copySafeCommands: [
+        {
+          command: "npm run production:readiness",
+          id: "production-readiness",
+          label: "Refresh production readiness",
+          mode: "read-only",
+          purpose:
+            "Recheck production database, secrets, and evidence gates without printing secret values."
+        }
+      ],
       humanOwned: true as const,
       missingExternalEvidence: blockedIds.map((id) => ({
         id,

@@ -31,10 +31,19 @@ export interface ProductionReadinessReport {
 
 export interface ProductionProvisioningWorksheet {
   blocked: ProductionProvisioningWorksheetItem[];
+  copySafeCommands: ProductionProvisioningCommand[];
   humanOwned: true;
   nextOperatorAction: string;
   ready: ProductionProvisioningWorksheetItem[];
   warnings: ProductionProvisioningWorksheetItem[];
+}
+
+export interface ProductionProvisioningCommand {
+  command: string;
+  id: string;
+  label: string;
+  mode: "read-only" | "explicit-apply";
+  purpose: string;
 }
 
 export interface ProductionProvisioningWorksheetItem {
@@ -390,6 +399,7 @@ function productionProvisioningWorksheet(
 
   return {
     blocked,
+    copySafeCommands: productionProvisioningCopySafeCommands(),
     humanOwned: true,
     nextOperatorAction:
       blocked[0]?.nextAction ??
@@ -398,6 +408,47 @@ function productionProvisioningWorksheet(
     ready,
     warnings
   };
+}
+
+function productionProvisioningCopySafeCommands(): ProductionProvisioningCommand[] {
+  return [
+    {
+      command: "npm run production:readiness",
+      id: "production-readiness",
+      label: "Refresh production readiness",
+      mode: "read-only",
+      purpose: "Recheck production database, secrets, and evidence gates without printing secret values."
+    },
+    {
+      command: "npm run production:migration-rehearsal",
+      id: "migration-rehearsal-plan",
+      label: "Plan non-production migration rehearsal",
+      mode: "read-only",
+      purpose: "Dry-run the migration rehearsal plan before any managed database changes."
+    },
+    {
+      command: "npm run production:migration-rehearsal -- --apply",
+      id: "migration-rehearsal-apply",
+      label: "Apply non-production migration rehearsal",
+      mode: "explicit-apply",
+      purpose:
+        "Run only after confirming a non-production managed DATABASE_URL and APEX_MIGRATION_REHEARSAL_TARGET=non-production."
+    },
+    {
+      command: "npm run db:validate",
+      id: "database-schema-validate",
+      label: "Validate Prisma schema",
+      mode: "read-only",
+      purpose: "Validate the committed Prisma schema before and after managed environment setup."
+    },
+    {
+      command: "npm run launch:readiness",
+      id: "launch-readiness",
+      label: "Refresh aggregate launch readiness",
+      mode: "read-only",
+      purpose: "Recheck fully-live launch gates after production evidence changes."
+    }
+  ];
 }
 
 function productionProvisioningWorksheetItem(
