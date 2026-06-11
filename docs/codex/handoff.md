@@ -12,7 +12,7 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 ## Operator State
 
 - Branch: `codex/queue-claim-sources`; latest pre-trim commit was `6889e65 Record local-only handoff state`.
-- GitHub push limit remains active. Do not push to GitHub; make local commits only until the user lifts this constraint.
+- GitHub push limit was lifted on 2026-06-11. Push to GitHub when useful.
 - Docker Compose PostgreSQL is running and healthy as of 2026-06-11; `npm run ingest:sources -- --db-status` reports `reachable=true`.
 - Current roadmap: `docs/codex/roadmap.md` targets the public live MVP/demo and includes the automatic rollover rule for the fully live end-product roadmap.
 
@@ -54,10 +54,10 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 - Roadmap step 4 completed: seed-mode desktop/mobile browser review passed, public product-card brand copy changed from `Seed example` to `Demo profile`, `npm run db:seed` refreshed local data, and targeted dashboard/source-packet/seed-integrity tests passed.
 - Roadmap step 5 completed by explicit MVP deferral: `npm run ingest:sources -- --candidate-curation-handoff` still reports accepted `PMID 42141930` as `Claim link missing` with `publicSourcePacketReady=false`, so it stays local curation backlog and is not promoted into the public MVP.
 - Roadmap step 6 completed: public route/read-only boundary tests passed for live-source routes, dashboard live-preview fetches, public-safe errors, no-store/noindex headers, and source-candidate workflow separation.
-- Roadmap step 7 completed: README selects manual Vercel CLI deployment from the local checkout as the no-GitHub path and documents env, build/local smoke commands, public smoke targets, and rollback.
+- Roadmap step 7 completed: README selects manual Vercel CLI deployment from the local checkout as the no-GitHub path and documents env, build/local smoke commands, public smoke targets, and rollback. After GitHub push access was restored, the preferred path became GitHub import to Vercel after pushing this branch.
 - Roadmap step 8 completed: `.env.example` and README document public-demo `APEX_DATA_SOURCE=seed`; public deploy should omit `DATABASE_URL` and all local Codex sidecar variables.
 - Roadmap step 9 completed for the current local build: `npm run test`, `npm run lint`, `npm run dev:stop`, `npm run typecheck`, `npm run build`, and `npm audit` passed.
 - Roadmap step 10 completed for the current seed-mode production build: desktop/mobile screenshots and PubMed/ClinicalTrials.gov live-preview smokes passed, then `npm run dev:stop` stopped the production server.
-- Roadmap steps 11-13 are blocked until an authenticated manual Vercel deployment produces a public URL, launch handoff details, and final public smoke evidence; local checks found no `.vercel` project config and no visible `VERCEL*` environment variables. Use `npm run smoke:public-mvp -- <url>` for final public smoke once a URL exists; it passed against `http://127.0.0.1:3000` on a seed-mode production server. Launch handoff draft is `docs/codex/public-mvp-launch-handoff.md`.
+- Roadmap steps 11-13 are blocked until Vercel deployment produces a public URL, launch handoff details, and final public smoke evidence. Use `npm run smoke:public-mvp -- <url>` for final public smoke once a URL exists; it passed against `http://127.0.0.1:3000` on a seed-mode production server. Launch handoff draft is `docs/codex/public-mvp-launch-handoff.md`.
 
 Historical source-candidate progress lives in `docs/codex/archive/handoff/2026-06-04-source-candidate-progress.md`; search it only for targeted evidence.

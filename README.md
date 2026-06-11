@@ -34,7 +34,7 @@ Detailed local database, Windows DLL-lock, reset, and ingestion workflows live i
 
 Selected public MVP data mode: `APEX_DATA_SOURCE=seed`. The first public demo is seed-backed and read-only, with user-triggered PubMed and ClinicalTrials.gov preview routes enabled. Do not configure `DATABASE_URL` for the public MVP unless the deployment is deliberately switched to managed PostgreSQL.
 
-Selected no-GitHub deployment path while push access is limited: manual Vercel CLI deployment from the local checkout. Vercel's CLI deploys from the project root and `vercel --prod` creates a production deployment; rollback is available through `vercel rollback`. See Vercel's [deploy](https://vercel.com/docs/cli/deploy), [environment variable](https://vercel.com/docs/environment-variables), and [rollback](https://vercel.com/docs/cli/rollback) docs for the operator workflow.
+Selected deployment path now that GitHub push access is restored: push the reviewed branch to GitHub, merge or select the intended production branch, then import the GitHub repo into Vercel. Manual Vercel CLI deployment from the local checkout remains a fallback. See Vercel's [deploy](https://vercel.com/docs/cli/deploy), [environment variable](https://vercel.com/docs/environment-variables), and [rollback](https://vercel.com/docs/cli/rollback) docs for the operator workflow.
 
 Public MVP environment:
 
@@ -54,7 +54,7 @@ Local production smoke before deploy: set `APEX_DATA_SOURCE=seed`, then run:
 npm run start
 ```
 
-Vercel serves the deployed app runtime after `vercel --prod`; no custom public start command is required for the selected Vercel path.
+Vercel serves the deployed app runtime after GitHub import/deploy; no custom public start command is required for the selected Vercel path.
 
 Predeploy validation from this checkout:
 

@@ -18,8 +18,8 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
 
 ## Current Blockers
 
-- GitHub push limit is active; no GitHub pushes until the user lifts it.
-- Manual Vercel CLI deployment is selected for the no-GitHub public MVP path, but this local session does not have a Vercel project/authenticated deploy target or public URL to smoke test.
+- GitHub push limit was lifted on 2026-06-11; pushing to GitHub is allowed when useful.
+- Vercel import/deployment is still pending; no public URL exists to smoke test yet.
 - Source-candidate curation is deferred from public MVP scope; latest snapshot still has 49 pending candidates and 1 accepted candidate that remains local claim-link curation backlog.
 
 ## Ordered Steps
@@ -60,6 +60,7 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
    Required decision: if GitHub push remains blocked, choose a local-artifact/manual deploy path or wait for push access.
    Validate with: README or handoff note naming host, deployment mode, and rollback.
    Completed 2026-06-11: README selects manual Vercel CLI deployment from the local checkout as the no-GitHub path, names `APEX_DATA_SOURCE=seed`, documents build and local production-smoke commands, public smoke targets, and `vercel rollback <deployment-url>` as the rollback path.
+   Updated 2026-06-11: GitHub push access is restored, so the preferred public MVP deployment path is GitHub import to Vercel after pushing this branch.
 
 8. [x] Prepare production environment configuration.
    Done when: `.env.example` covers the public demo knobs, secrets are not committed, sidecar tokens remain local-only, and public deploy mode has a clear `APEX_DATA_SOURCE` value.
@@ -80,7 +81,7 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
     Done when: a public HTTPS URL renders the dashboard and both live preview routes respond with safe public behavior.
     Validate with: public URL smoke test, `/api/pubmed/search?term=creatine`, `/api/trials/search?term=creatine`, invalid-term checks, and response header checks for live routes.
     Prepared 2026-06-11: added `npm run smoke:public-mvp -- <url>` to verify the deployed homepage, live PubMed and ClinicalTrials.gov routes, invalid-term guards, no-store/noindex headers, and public demo caveats. The command passed against `http://127.0.0.1:3000` on a seed-mode production server.
-    Blocked 2026-06-11: manual Vercel CLI deployment is selected, but this local session has no `.vercel` project config, no visible `VERCEL*` environment variables, and no public HTTPS URL to smoke test yet.
+    Blocked 2026-06-11: GitHub push access is restored, but Vercel import/deployment has not produced a public HTTPS URL to smoke test yet.
 
 12. [ ] Publish launch handoff.
     Done when: README or handoff includes the public URL, selected data mode, known limitations, rollback path, and remaining fully-live gaps.

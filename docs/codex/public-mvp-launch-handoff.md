@@ -4,14 +4,14 @@ Status: draft until a public URL exists and final smoke passes.
 
 ## Public URL
 
-- URL: pending authenticated manual Vercel deployment.
-- Deployed from branch: `codex/queue-claim-sources`.
-- GitHub push status: no push while push limit remains active.
+- URL: pending Vercel deployment from GitHub.
+- Deployed from branch: pending GitHub production branch selection.
+- GitHub push status: restored on 2026-06-11.
 
 ## Selected Mode
 
 - Data mode: `APEX_DATA_SOURCE=seed`.
-- Deployment path: manual Vercel CLI deployment from the local checkout.
+- Deployment path: GitHub import to Vercel now that push access is restored. Manual Vercel CLI deployment remains a fallback.
 - Public database: none for MVP. Do not configure `DATABASE_URL` unless the release is deliberately switched to managed PostgreSQL.
 - Local-only controls: do not configure `APEX_CODEX_THREAD_ID`, `APEX_CODEX_REVIEW_TOKEN`, or other Codex sidecar variables in public deployment.
 
