@@ -44,6 +44,16 @@ const acceptedReference: Reference = {
   year: 2026
 };
 
+const candidateSafeKey = safeCandidateKey(candidate.dedupeKey);
+const candidateReadOnlyCommands = {
+  candidateReviewPacket: `npm run ingest:sources -- --candidate-review-packet ${candidateSafeKey}`,
+  curationDraft: `npm run ingest:sources -- --candidate-curation-draft ${candidateSafeKey}`,
+  curationStatus: `npm run ingest:sources -- --candidate-curation-status ${candidateSafeKey}`,
+  dryRunPromotion: `npm run promotion:dry-run -- ${candidateSafeKey}`,
+  referenceMatches: `npm run ingest:sources -- --candidate-reference-matches ${candidateSafeKey}`,
+  siblings: `npm run ingest:sources -- --candidate-siblings ${candidateSafeKey}`
+};
+
 describe("source candidate promotion assessment", () => {
   it("blocks missing candidates", async () => {
     getSourceCandidateCurationStatusMock.mockResolvedValue(null);
@@ -95,6 +105,7 @@ describe("source candidate promotion assessment", () => {
           "Rerun promotion dry-run after claim link and extraction are complete."
         ],
         publicSourcePacketReady: false,
+        readOnlyCommands: candidateReadOnlyCommands,
         studyExtraction: {
           existingStudyIds: [],
           nextAction:
@@ -167,6 +178,7 @@ describe("source candidate promotion assessment", () => {
         humanReviewRequired: true,
         nextHumanActions: ["Human review the ready public packet before any explicit promotion."],
         publicSourcePacketReady: true,
+        readOnlyCommands: candidateReadOnlyCommands,
         studyExtraction: {
           existingStudyIds: ["study-pubmed-42141930"],
           nextAction: "Structured study extraction is present for the accepted reference.",
@@ -246,3 +258,7 @@ describe("source candidate promotion readiness snapshot", () => {
     expect(listSourceCandidateCurationHandoffMock).toHaveBeenCalledWith({ limit: 2 });
   });
 });
+
+function safeCandidateKey(dedupeKey: string) {
+  return `b64:${Buffer.from(dedupeKey, "utf8").toString("base64url")}`;
+}

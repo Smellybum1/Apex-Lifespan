@@ -47,6 +47,14 @@ export interface SourceCandidatePromotionWorksheet {
   humanReviewRequired: true;
   nextHumanActions: string[];
   publicSourcePacketReady: boolean;
+  readOnlyCommands: {
+    candidateReviewPacket: string;
+    curationDraft: string;
+    curationStatus: string;
+    dryRunPromotion: string;
+    referenceMatches: string;
+    siblings: string;
+  };
   studyExtraction: {
     existingStudyIds: string[];
     nextAction: string;
@@ -207,6 +215,7 @@ function sourceCandidatePromotionBlockers(
 function sourceCandidatePromotionWorksheet(
   status: SourceCandidateCurationStatus
 ): SourceCandidatePromotionWorksheet {
+  const safeKey = safeCandidateKey(status.candidate.dedupeKey);
   const targetClaimId = status.candidate.claimId;
   const targetReferenceId = status.acceptedReferenceId;
   const existingClaimIds = status.claimLinks.map((link) => link.claimId);
@@ -246,6 +255,14 @@ function sourceCandidatePromotionWorksheet(
     humanReviewRequired: true,
     nextHumanActions,
     publicSourcePacketReady: status.publicSourcePacketReady,
+    readOnlyCommands: {
+      candidateReviewPacket: `npm run ingest:sources -- --candidate-review-packet ${safeKey}`,
+      curationDraft: `npm run ingest:sources -- --candidate-curation-draft ${safeKey}`,
+      curationStatus: `npm run ingest:sources -- --candidate-curation-status ${safeKey}`,
+      dryRunPromotion: `npm run promotion:dry-run -- ${safeKey}`,
+      referenceMatches: `npm run ingest:sources -- --candidate-reference-matches ${safeKey}`,
+      siblings: `npm run ingest:sources -- --candidate-siblings ${safeKey}`
+    },
     studyExtraction: {
       existingStudyIds,
       nextAction: studyExtractionNextAction,
@@ -253,6 +270,10 @@ function sourceCandidatePromotionWorksheet(
       targetReferenceId
     }
   };
+}
+
+function safeCandidateKey(dedupeKey: string) {
+  return `b64:${Buffer.from(dedupeKey, "utf8").toString("base64url")}`;
 }
 
 function blockedPromotion(

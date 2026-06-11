@@ -55,4 +55,4 @@ Prefer emitted `key=b64:...` values on Windows when passing a `<dedupe-key>`.
 - `Extraction pending`: accepted reference is claim-linked but lacks structured study extraction.
 - `Public source packet ready`: accepted reference is claim-linked and structurally extracted.
 
-Before any public promotion, use `docs/codex/curation-promotion-checklist.md` and confirm `npm run promotion:dry-run -- <dedupe-key>` reports no blockers.
+Before any public promotion, use `docs/codex/curation-promotion-checklist.md` and confirm `npm run promotion:dry-run -- <dedupe-key>` reports no blockers. The dry run emits read-only follow-up commands under `worksheet.readOnlyCommands`.
