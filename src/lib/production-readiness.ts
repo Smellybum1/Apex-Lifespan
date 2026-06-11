@@ -13,6 +13,7 @@ export interface ProductionReadinessContext {
   env: Record<string, string | undefined>;
   generatedAt?: Date;
   migrationDirectories: string[];
+  productionProvisioningChecklistExists: boolean;
   trackedEnvFiles: string[];
   vercelCliAvailable: boolean;
   vercelProjectLinked: boolean;
@@ -64,6 +65,7 @@ export function buildProductionReadinessReport(
     databaseUrlCheck(databaseUrl, parsedDatabase),
     dataSourceCheck(readEnv(context.env, "APEX_DATA_SOURCE")),
     migrationCheck(latestMigration),
+    productionProvisioningChecklistCheck(context.productionProvisioningChecklistExists),
     migrationRehearsalCheck(readEnv(context.env, "APEX_MIGRATION_REHEARSAL_PASSED_AT")),
     vercelProjectCheck(context.vercelProjectLinked),
     vercelCliCheck(context.vercelCliAvailable),
@@ -164,6 +166,26 @@ function migrationCheck(latestMigration: string | undefined): ProductionReadines
     status: "blocked",
     detail: "No committed Prisma migration directories were found.",
     nextAction: "Create and review committed Prisma migrations before deploy-style migration rehearsal."
+  };
+}
+
+function productionProvisioningChecklistCheck(exists: boolean): ProductionReadinessCheck {
+  if (exists) {
+    return {
+      id: "production-provisioning-checklist",
+      label: "Production provisioning checklist",
+      status: "ready",
+      detail: "docs/codex/production-provisioning-checklist.md is present."
+    };
+  }
+
+  return {
+    id: "production-provisioning-checklist",
+    label: "Production provisioning checklist",
+    status: "blocked",
+    detail: "docs/codex/production-provisioning-checklist.md is missing.",
+    nextAction:
+      "Restore the operator-owned production provisioning checklist before running fully-live database setup."
   };
 }
 

@@ -33,6 +33,9 @@ async function main() {
     production: buildProductionReadinessReport({
       env: process.env,
       migrationDirectories: readMigrationDirectories(),
+      productionProvisioningChecklistExists: existsSync(
+        path.join(process.cwd(), "docs", "codex", "production-provisioning-checklist.md")
+      ),
       trackedEnvFiles: readTrackedEnvFiles(),
       vercelCliAvailable: commandAvailable("vercel"),
       vercelProjectLinked: existsSync(path.join(process.cwd(), ".vercel", "project.json"))

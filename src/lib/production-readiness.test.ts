@@ -17,6 +17,7 @@ describe("production readiness report", () => {
       },
       generatedAt: new Date("2026-06-11T00:00:00.000Z"),
       migrationDirectories: ["20260602032000_init", "20260611131000_operator_auth_foundation"],
+      productionProvisioningChecklistExists: true,
       trackedEnvFiles: [],
       vercelCliAvailable: true,
       vercelProjectLinked: true
@@ -30,6 +31,7 @@ describe("production readiness report", () => {
       "database-url",
       "apex-data-source",
       "prisma-migrations",
+      "production-provisioning-checklist",
       "migration-rehearsal",
       "vercel-project-link",
       "vercel-cli",
@@ -56,6 +58,7 @@ describe("production readiness report", () => {
       },
       generatedAt: new Date("2026-06-11T00:00:00.000Z"),
       migrationDirectories: ["20260602032000_init"],
+      productionProvisioningChecklistExists: true,
       trackedEnvFiles: [],
       vercelCliAvailable: false,
       vercelProjectLinked: false
@@ -118,6 +121,7 @@ describe("production readiness report", () => {
       },
       generatedAt: new Date("2026-06-11T00:00:00.000Z"),
       migrationDirectories: ["20260602032000_init"],
+      productionProvisioningChecklistExists: true,
       trackedEnvFiles: [".env.production"],
       vercelCliAvailable: true,
       vercelProjectLinked: true
@@ -141,5 +145,35 @@ describe("production readiness report", () => {
     );
     expect(JSON.stringify(report)).not.toContain("local-token");
     expect(JSON.stringify(report)).not.toContain("password");
+  });
+
+  it("blocks when the production provisioning checklist artifact is missing", () => {
+    const report = buildProductionReadinessReport({
+      env: {
+        APEX_DATA_SOURCE: "database",
+        APEX_MIGRATION_REHEARSAL_PASSED_AT: "2026-06-11T00:00:00Z",
+        AUTH_GITHUB_ID: "github-id",
+        AUTH_GITHUB_SECRET: "github-secret",
+        AUTH_SECRET: "auth-secret",
+        DATABASE_URL: "postgresql://user:password@db.example.com/apex"
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      migrationDirectories: ["20260602032000_init"],
+      productionProvisioningChecklistExists: false,
+      trackedEnvFiles: [],
+      vercelCliAvailable: true,
+      vercelProjectLinked: true
+    });
+
+    expect(report.overall).toBe("blocked");
+    expect(report.worksheet.blocked).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "production-provisioning-checklist",
+          nextAction:
+            "Restore the operator-owned production provisioning checklist before running fully-live database setup."
+        })
+      ])
+    );
   });
 });

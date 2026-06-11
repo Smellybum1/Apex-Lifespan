@@ -45,6 +45,8 @@ Keep `APEX_CODEX_THREAD_ID`, `APEX_CODEX_REVIEW_TOKEN`, and other Codex sidecar 
 
 ## Provisioning Checklist
 
+Detailed operator checklist: `docs/codex/production-provisioning-checklist.md`.
+
 1. Install or link Neon in the Vercel Marketplace for the Apex Lifespan project.
 2. Create production and non-production database targets.
 3. Set Vercel Preview and Production environment variables with environment-specific `DATABASE_URL` values.

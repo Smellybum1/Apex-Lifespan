@@ -13,6 +13,7 @@ Use this checklist only for the fully live production launch. The seed-backed pu
 
 ## Production Data
 
+- Review `docs/codex/production-provisioning-checklist.md`.
 - Create or verify the managed Neon production database and a non-production rehearsal database.
 - Configure Vercel `DATABASE_URL` for the intended environments without committing secrets.
 - Set `APEX_DATA_SOURCE=database` only after database connectivity and migrations are ready.
