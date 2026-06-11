@@ -66,26 +66,31 @@ Recommended MVP path: ship seed-backed first with live preview routes enabled. T
    Validate with: env diff review and `git diff --check`.
    Partially prepared 2026-06-11: `.env.example` documents local `auto`, recommended public MVP/demo `seed`, and managed-production `database` values for `APEX_DATA_SOURCE`; sidecar variables remain commented and explicitly local-only. Blocked for completion until steps 3 and 7 select the public data mode and deployment path.
 
-9. [ ] Run full local release validation.
+9. [x] Run full local release validation.
    Done when: core checks pass from a clean worktree after stopping the dev server.
    Validate with: `npm run test`, `npm run lint`, `npm run dev:stop`, `npm run typecheck`, `npm run build`, `npm audit`.
+   Completed 2026-06-11 for the current local production build: clean worktree, no dev server running, `npm run test` passed 21 files/336 tests, `npm run lint` passed, `npm run dev:stop` found no listener, `npm run typecheck` passed, `npm run build` passed, and `npm audit` found 0 vulnerabilities. Rerun if deployment config or code changes before public deploy.
 
-10. [ ] Run browser QA on the production build.
+10. [x] Run browser QA on the production build.
     Done when: desktop and mobile views render without obvious layout overlap, live preview controls are usable, empty/error states are cautious, and first-viewport content communicates the product clearly.
     Validate with: local production build smoke and screenshots.
+    Completed 2026-06-11 in seed-mode production server smoke: desktop and mobile screenshots saved at `output/playwright/public-mvp-step10-prod-desktop.png` and `output/playwright/public-mvp-step10-prod-mobile.png`; PubMed and ClinicalTrials.gov preview controls both returned live results with review-priority/research-lead caveats, captured at `output/playwright/public-mvp-step10-prod-pubmed-preview.png` and `output/playwright/public-mvp-step10-prod-trials-preview.png`. Stopped the production server afterward with `npm run dev:stop`.
 
 11. [ ] Deploy the public MVP/demo.
     Done when: a public HTTPS URL renders the dashboard and both live preview routes respond with safe public behavior.
     Validate with: public URL smoke test, `/api/pubmed/search?term=creatine`, `/api/trials/search?term=creatine`, invalid-term checks, and response header checks for live routes.
+    Blocked 2026-06-11: no public deployment path is selected while GitHub push limit remains active, so there is no public HTTPS URL to smoke test yet.
 
 12. [ ] Publish launch handoff.
     Done when: README or handoff includes the public URL, selected data mode, known limitations, rollback path, and remaining fully-live gaps.
     Validate with: docs diff review and `git diff --check`.
+    Blocked 2026-06-11: depends on step 11 producing a public URL and step 7 naming the selected deployment mode and rollback path.
 
 13. [ ] Rollover this roadmap.
     Done when: every step above is complete, this file is archived, and a new `docs/codex/roadmap.md` is created for the fully live end product.
     Archive path: `docs/codex/archive/roadmap/YYYY-MM-DD-public-live-mvp.md`.
     Required successor title: `# Roadmap: Fully Live End Product`.
+    Blocked 2026-06-11: public MVP roadmap cannot roll over until the blocked product/deployment/curation decisions are resolved and steps 3, 5, 7, 8, 11, and 12 are complete or explicitly deferred.
 
 ## Automatic Rollover Rule
 

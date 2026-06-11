@@ -56,5 +56,8 @@ Refreshed on 2026-06-11 while trimming workflow guardrails for easier iteration.
 - Roadmap step 6 completed: public route/read-only boundary tests passed for live-source routes, dashboard live-preview fetches, public-safe errors, no-store/noindex headers, and source-candidate workflow separation.
 - Roadmap step 7 is blocked pending deployment-path choice while GitHub push limit remains active: wait for push access, choose a local-artifact/manual deploy path, or name a host with credentials.
 - Roadmap step 8 is partially prepared: `.env.example` now documents public-demo `APEX_DATA_SOURCE` choices and keeps Codex sidecar variables local-only, but completion depends on steps 3 and 7.
+- Roadmap step 9 completed for the current local build: `npm run test`, `npm run lint`, `npm run dev:stop`, `npm run typecheck`, `npm run build`, and `npm audit` passed.
+- Roadmap step 10 completed for the current seed-mode production build: desktop/mobile screenshots and PubMed/ClinicalTrials.gov live-preview smokes passed, then `npm run dev:stop` stopped the production server.
+- Roadmap steps 11-13 are blocked until deployment decisions produce a public URL, launch handoff details, and completion of or explicit deferral for the remaining public MVP blockers.
 
 Historical source-candidate progress lives in `docs/codex/archive/handoff/2026-06-04-source-candidate-progress.md`; search it only for targeted evidence.
