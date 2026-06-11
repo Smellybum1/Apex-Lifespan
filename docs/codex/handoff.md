@@ -1,6 +1,6 @@
 # Thread Handoff
 
-Refreshed on 2026-06-12 while separating seed-demo smoke from fully-live database smoke evidence. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
+Refreshed on 2026-06-12 while tightening strict fully-live smoke seed-mode rejection. Verify local state with `git status -sb` and `git log -1 --oneline` before edits.
 
 ## Startup
 
@@ -164,5 +164,6 @@ Refreshed on 2026-06-12 while separating seed-demo smoke from fully-live databas
 - June 12 refresh slice: live public seed-mode smoke still passes at `https://apex-lifespan.vercel.app`, covering homepage, legal pages, anonymous `/operator`, `/api/health`, PubMed and ClinicalTrials.gov live previews, and invalid-term guards. Compact launch readiness still has 2 ready gates and 10 blockers, led by production database/Vercel evidence. Supporting summaries still show production readiness 5 ready / 5 blocked / 2 warnings, operator readiness 12 ready / 5 blocked, operations readiness 5 ready / 8 blocked, and coverage 7 complete packets / 0 human-reviewed claims / 1 intervention gap. Refreshed commands: public smoke, launch summary, production summary, operator summary, operations summary, and coverage summary.
 - Fully-live smoke tightening slice: `npm run smoke:public-mvp -- <fully-live-url> --require-database` now fails unless the homepage shows `Database-backed`; the default smoke still accepts seed mode for the public demo. The launch checklist and `npm run launch:readiness` command packet now use the strict smoke command for fully-live public QA. Validation passed: targeted smoke/launch-readiness tests, full tests, launch summary, default live smoke, `npm run lint`, `npm run typecheck`, `npm run build`, `npm audit`, and `git diff --check`; strict live smoke against `https://apex-lifespan.vercel.app` failed as expected because the current public demo remains seed-backed.
 - Fully-live smoke evidence slice: launch readiness now requires `APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT` for the public smoke gate. The old generic `APEX_PUBLIC_SMOKE_PASSED_AT` is intentionally not enough for fully-live launch evidence. Validation passed: launch-readiness/env-template tests, full tests, launch summary, aggregate launch readiness, lint, typecheck, build, audit, and `git diff --check`; the launch report now surfaces the database smoke evidence key.
+- Strict smoke seed-text slice: fully-live public smoke now fails if the homepage contains seed-mode text such as `Seed fallback` or `Seed mode forced by APEX_DATA_SOURCE`, even if `Database-backed` is also present. Validation passed: smoke tests, full tests, default live smoke, lint, typecheck, build, audit, and `git diff --check`; strict live smoke still fails as expected while production remains seed-backed.
 
 Historical source-candidate progress lives in `docs/codex/archive/handoff/2026-06-04-source-candidate-progress.md`; search it only for targeted evidence.

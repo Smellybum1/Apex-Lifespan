@@ -45,6 +45,20 @@ describe("public MVP smoke", () => {
     ).rejects.toThrow("Homepage must show Database-backed data source for fully-live smoke.");
   });
 
+  it("rejects seed-mode text during fully-live smoke even when database-backed text is present", async () => {
+    const baseUrl = await listenWithPages({
+      homeDataSourceBadge: "Database-backed",
+      homeExtraHtml: "Seed mode forced by APEX_DATA_SOURCE.",
+      operatorHtml: "Operator access required"
+    });
+
+    await expect(
+      runPublicMvpSmoke(baseUrl, quietLogger, { requireDatabase: true })
+    ).rejects.toThrow(
+      "Homepage must not show seed-mode text during fully-live smoke: Seed mode forced by APEX_DATA_SOURCE"
+    );
+  });
+
   it("fails when anonymous users can see authenticated operator content", async () => {
     const baseUrl = await listenWithPages({
       homeDataSourceBadge: "Seed fallback",
@@ -70,9 +84,11 @@ describe("public MVP smoke", () => {
 
 async function listenWithPages({
   homeDataSourceBadge,
+  homeExtraHtml = "",
   operatorHtml
 }: {
   homeDataSourceBadge: "Database-backed" | "Seed fallback";
+  homeExtraHtml?: string;
   operatorHtml: string;
 }) {
   const server = createServer((request, response) => {
@@ -81,7 +97,7 @@ async function listenWithPages({
     if (url.pathname === "/") {
       writeHtml(
         response,
-        `Apex Lifespan AU TGA ${homeDataSourceBadge} Unreviewed AI draft Source packet Live PubMed results are unreviewed citation leads Registry records are research leads, not proof of benefit href="/privacy" href="/terms"`
+        `Apex Lifespan AU TGA ${homeDataSourceBadge} ${homeExtraHtml} Unreviewed AI draft Source packet Live PubMed results are unreviewed citation leads Registry records are research leads, not proof of benefit href="/privacy" href="/terms"`
       );
       return;
     }

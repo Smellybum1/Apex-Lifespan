@@ -8,6 +8,12 @@ type PublicMvpSmokeOptions = {
   requireDatabase?: boolean;
 };
 
+const DATABASE_REQUIRED_FORBIDDEN_HOME_TEXT = [
+  "Seed fallback",
+  "Seed mode forced by APEX_DATA_SOURCE",
+  "using seed data"
+];
+
 type RouteSmoke = {
   path: string;
   label: string;
@@ -234,8 +240,16 @@ async function smokePage(
     }
   }
 
-  if (smoke.path === "/" && options.requireDatabase && !html.includes("Database-backed")) {
-    throw new Error("Homepage must show Database-backed data source for fully-live smoke.");
+  if (smoke.path === "/" && options.requireDatabase) {
+    if (!html.includes("Database-backed")) {
+      throw new Error("Homepage must show Database-backed data source for fully-live smoke.");
+    }
+
+    for (const text of DATABASE_REQUIRED_FORBIDDEN_HOME_TEXT) {
+      if (html.includes(text)) {
+        throw new Error(`Homepage must not show seed-mode text during fully-live smoke: ${text}`);
+      }
+    }
   }
 
   logger.log(`[ok] ${smoke.label}`);
