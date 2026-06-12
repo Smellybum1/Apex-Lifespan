@@ -84,6 +84,10 @@ export function buildVercelDatabaseSetupPlan(
   const shouldSyncOperatorQaFixture = shouldSeedPreview;
   const commands = ["npx prisma migrate deploy"];
 
+  if (shouldSyncOperatorQaFixture) {
+    commands.push("npx tsx scripts/operator-qa-fixture.ts");
+  }
+
   if (shouldSeedPreview) {
     commands.push("npx tsx prisma/seed.ts");
   }
@@ -127,6 +131,9 @@ export function runVercelDatabaseSetup({
 
   for (const [command, args] of [
     ["npx", ["prisma", "migrate", "deploy"]],
+    ...(plan.shouldSyncOperatorQaFixture
+      ? [["npx", ["tsx", "scripts/operator-qa-fixture.ts"]] as const]
+      : []),
     ...(plan.shouldSeedPreview ? [["npx", ["tsx", "prisma/seed.ts"]] as const] : []),
     ...(plan.shouldSyncOperatorQaFixture
       ? [["npx", ["tsx", "scripts/operator-qa-fixture.ts"]] as const]

@@ -72,6 +72,7 @@ describe("Vercel database setup", () => {
     expect(result.shouldSyncOperatorQaFixture).toBe(true);
     expect(calls).toEqual([
       "npx prisma migrate deploy",
+      "npx tsx scripts/operator-qa-fixture.ts",
       "npx tsx prisma/seed.ts",
       "npx tsx scripts/operator-qa-fixture.ts"
     ]);
