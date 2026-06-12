@@ -1,0 +1,73 @@
+name: Uptime Monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uptime-monitor
+  cancel-in-progress: false
+
+jobs:
+  healthcheck:
+    name: Check public health endpoint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      HEALTH_URL: https://apex-lifespan.vercel.app/api/health
+    steps:
+      - name: Verify /api/health
+        shell: bash
+        run: |
+          node <<'NODE'
+          (async () => {
+            const url = process.env.HEALTH_URL;
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15000);
+
+            try {
+              const response = await fetch(url, {
+                headers: {
+                  "User-Agent": "apex-lifespan-uptime-monitor"
+                },
+                signal: controller.signal
+              });
+              const body = await response.text();
+
+              if (!response.ok) {
+                throw new Error(`Expected HTTP 2xx from ${url}, received ${response.status}.`);
+              }
+
+              let payload;
+              try {
+                payload = JSON.parse(body);
+              } catch {
+                throw new Error("Health endpoint did not return JSON.");
+              }
+
+              const expected = {
+                service: "apex-lifespan",
+                status: "ok",
+                surface: "public-read-only"
+              };
+              const mismatches = Object.entries(expected)
+                .filter(([key, value]) => payload[key] !== value)
+                .map(([key, value]) => `${key}=${JSON.stringify(payload[key])}, expected ${value}`);
+
+              if (mismatches.length > 0) {
+                throw new Error(`Unexpected health payload: ${mismatches.join("; ")}.`);
+              }
+
+              console.log(`Health check passed for ${url}.`);
+            } finally {
+              clearTimeout(timeout);
+            }
+          })().catch((error) => {
+            console.error(error instanceof Error ? error.message : String(error));
+            process.exit(1);
+          });
+          NODE
