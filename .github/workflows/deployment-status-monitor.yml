@@ -1,0 +1,113 @@
+name: Deployment Status Monitor
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: read
+
+concurrency:
+  group: deployment-status-monitor
+  cancel-in-progress: false
+
+jobs:
+  vercel-status:
+    name: Check Vercel deployment status
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Verify Vercel commit status
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          node <<'NODE'
+          const repository = process.env.TARGET_REPOSITORY;
+          const sha = process.env.TARGET_SHA;
+          const token = process.env.GITHUB_TOKEN;
+          const maxAttempts = 30;
+          const delayMs = 30000;
+
+          (async () => {
+            let latestStatus = null;
+
+            for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+              const status = await readCombinedStatus(repository, sha, token);
+              latestStatus = newestVercelStatus(status.statuses ?? []);
+
+              if (latestStatus?.state === "success") {
+                console.log(
+                  `Vercel deployment status is success for ${sha}: ${latestStatus.target_url}`
+                );
+                return;
+              }
+
+              if (latestStatus && ["error", "failure"].includes(latestStatus.state)) {
+                throw new Error(
+                  `Vercel deployment status is ${latestStatus.state} for ${sha}: ${latestStatus.target_url}`
+                );
+              }
+
+              const stateLabel = latestStatus?.state ?? "missing";
+              console.log(
+                `Vercel deployment status is ${stateLabel} for ${sha}; attempt ${attempt}/${maxAttempts}.`
+              );
+
+              if (attempt < maxAttempts) {
+                await delay(delayMs);
+              }
+            }
+
+            throw new Error(
+              `Timed out waiting for Vercel deployment success for ${sha}; latest state was ${
+                latestStatus?.state ?? "missing"
+              }.`
+            );
+          })().catch((error) => {
+            console.error(error instanceof Error ? error.message : String(error));
+            process.exit(1);
+          });
+
+          async function readCombinedStatus(repository, sha, token) {
+            const headers = {
+              Accept: "application/vnd.github+json",
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "apex-lifespan-deployment-status-monitor"
+            };
+
+            if (token) {
+              headers.Authorization = `Bearer ${token}`;
+            }
+
+            const response = await fetch(
+              `https://api.github.com/repos/${repository}/commits/${sha}/status`,
+              {
+                headers
+              }
+            );
+
+            if (!response.ok) {
+              throw new Error(`GitHub status API returned HTTP ${response.status}.`);
+            }
+
+            return response.json();
+          }
+
+          function newestVercelStatus(statuses) {
+            return statuses
+              .filter((status) => status.context === "Vercel")
+              .sort((left, right) => new Date(right.updated_at) - new Date(left.updated_at))[0];
+          }
+
+          function delay(ms) {
+            return new Promise((resolve) => setTimeout(resolve, ms));
+          }
+          NODE
