@@ -1,6 +1,6 @@
 # Operations Runbook
 
-Last updated: 2026-06-11
+Last updated: 2026-06-12
 
 ## Scope
 
@@ -20,9 +20,12 @@ Run this before launch evidence review:
 
 ```bash
 npm run operations:readiness
+npm run operations:readiness -- --env-file <operations-env-file> --summary
 ```
 
 The report is read-only. It checks that the local privacy page, terms page, public `/api/health` endpoint, this runbook, and `docs/codex/operations-drill-checklist.md` exist, then reports whether external operations proof has been recorded through evidence variables. It prints variable names and sanitized URLs only; do not store monitoring tokens, API keys, or database credentials in the report.
+
+Use the `--env-file` form for an approved ignored local evidence file such as `.env.vercel.preview.local`; do not paste secret values into shell history or committed docs.
 
 External proof variables:
 
@@ -54,6 +57,16 @@ Recommended minimum alert destinations:
 - Operator email or team inbox for uptime failures.
 - Private operator channel for ingestion failures and curation queue drift.
 
+Latest alert test evidence:
+
+- Timestamp: `2026-06-12T06:54:22Z`.
+- GitHub Actions repository execution was enabled for `Smellybum1/Apex-Lifespan` before the successful test run.
+- Workflow: `Launch Alert Test`, added on `main` at `8a9f642`.
+- Evidence run: `https://github.com/Smellybum1/Apex-Lifespan/actions/runs/27399894930`.
+- Result: completed with the expected intentional `failure` conclusion to trigger the launch-safe alert path.
+- Scope: no checkout, deployment, database write, ingestion write, source promotion, or operator write.
+- Note: two earlier dispatches were created while GitHub Actions was disabled and remained queued; GitHub returned server errors when asked to force-cancel them, so they are not used as alert evidence.
+
 ## Database Backups
 
 Required before database mode launch:
@@ -64,6 +77,13 @@ Required before database mode launch:
 - `npm run db:migrate:deploy` rehearsed against non-production before production.
 - Rollback note that separates Vercel deployment rollback from database restore.
 
+Current managed backup/PITR coverage evidence:
+
+- Vercel project `apex-lifespan` has the Neon Marketplace resource `neon-fuchsia-village` connected.
+- Neon dashboard evidence shows project history retention set to 6 hours.
+- Restore ownership sits with the Vercel/Neon project owner through the Neon Console.
+- `APEX_DATABASE_BACKUPS_CONFIGURED=true` records only managed PITR coverage; restore rehearsal and rollback drill evidence remain separate launch blockers.
+
 Restore rehearsal evidence should include:
 
 - Source database name and restore target name.
@@ -71,6 +91,17 @@ Restore rehearsal evidence should include:
 - Migration version before and after restore.
 - Public smoke result against the restored target.
 - Operator who verified the result.
+
+Latest restore rehearsal evidence:
+
+- Timestamp: `2026-06-12T06:30:14.1738788Z`.
+- Source database: Preview Neon `neondb`.
+- Restore target: temporary Neon database `apex_restore_rehearsal_20260612062621`.
+- Migration validation: `npm run db:migrate:deploy` applied all 4 committed migrations to the target.
+- Data validation: copied 18 application tables with row-count parity, including 5 interventions, 7 claims, 9 references, 5 studies, 4 safety alerts, 2 products, and 7 AU regulatory status rows.
+- App data smoke: restored target returned `dataSource: database` through the dashboard data path.
+- Cleanup: temporary restore database was dropped; no `apex_restore_rehearsal_*` databases remained after cleanup.
+- Operator: Codex, using the approved local evidence file and non-production Preview Neon target.
 
 ## Deployment Rollback
 
@@ -87,6 +118,17 @@ Minimum drill before launch:
 - Confirm a rollback deployment can be selected in Vercel.
 - Confirm the database restore process is documented and assigned.
 - Run public smoke after the rollback rehearsal.
+
+Latest rollback drill evidence:
+
+- Timestamp: `2026-06-12T06:33:48.8062715Z`.
+- Current production deployment: `https://apex-lifespan-8jobww3fi-tom-chanpheng-s-projects.vercel.app`, id `dpl_BCYNTeCWeGMbTFsfsEu7hToKxLBz`, Ready.
+- App rollback target: previous Ready production deployment `https://apex-lifespan-9msbgyge0-tom-chanpheng-s-projects.vercel.app`, id `dpl_AaFPxRc6F4p2HYtw1iTd6qWso2iW`.
+- Rollback command shape confirmed without execution: `vercel rollback <deployment id/url>`.
+- Rollback status check: no deployment rollback in progress.
+- Data rollback path: use Neon point-in-time restore or the latest verified export; the non-production restore rehearsal passed and the temporary restore target was cleaned up.
+- Public smoke after the rehearsal passed against `https://apex-lifespan.vercel.app`.
+- No production traffic rollback or database restore was executed during this drill.
 
 ## Privacy And Terms
 

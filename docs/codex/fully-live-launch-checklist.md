@@ -46,6 +46,8 @@ Use this checklist only for the fully live production launch. The seed-backed pu
 - Run `npm run ingest:scheduled-dry-run` and confirm rate limits, retry policy, and `noAutoPromotion=true`.
 - Review `docs/codex/scheduled-ingestion-retry-policy.md` and record `APEX_INGESTION_RETRY_POLICY_APPROVED_AT` only after failed-job handling is understood.
 - Set `APEX_SCHEDULED_INGESTION_CRON_APPROVED=true` only after hosted cron and alert evidence are reviewed.
+- For approved ignored evidence files, use `npm run ingest:scheduled-dry-run -- --env-file <operations-env-file> --summary`.
+- For any hosted-run apply rehearsal, use `npm run ingest:scheduled-run -- --env-file <operations-env-file> --require-hosted-run-readiness` and confirm the output still reports `automaticRetries=false` and `noAutoPromotion=true`.
 
 ## Operations Evidence
 
@@ -66,6 +68,7 @@ Use this checklist only for the fully live production launch. The seed-backed pu
 - Run `npm audit`.
 - Run `npm run smoke:public-mvp -- <fully-live-url> --require-database` against the fully live production URL and record `APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT`.
 - Smoke the authenticated operator flow in production and record `APEX_ADMIN_FLOW_SMOKE_PASSED_AT`.
+- After the authenticated smoke has actually passed, preview the local evidence write with `npm run launch:evidence -- --env-file <ignored-evidence-env-file> --evidence admin-flow-smoke --url <fully-live-url>/operator --note "<manual smoke note>" --summary`; add `--write` only after the note is reviewed.
 - Run desktop and mobile browser QA in production database mode.
 - Run accessibility and performance checks in production database mode.
 
@@ -75,4 +78,6 @@ Use this checklist only for the fully live production launch. The seed-backed pu
 - Record `APEX_FULLY_LIVE_LAUNCH_APPROVED_AT` only after the ready report is reviewed.
 - Confirm `docs/codex/post-launch-review-template.md` is ready for the 24-48 hour review.
 - Schedule the 24-48 hour post-launch review and record `APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT`.
+- Preview post-launch review evidence with `npm run launch:evidence -- --env-file <ignored-evidence-env-file> --evidence post-launch-review --review-window "<24-48 hour review window>" --note "<schedule note>" --summary`; add `--write` only after the review is scheduled.
+- Preview final approval evidence with `npm run launch:evidence -- --env-file <ignored-evidence-env-file> --evidence launch-approval --approved-by <approver> --note "<approval note>" --summary`; add `--write` only after explicit approval and readiness review.
 - Track post-launch issues in the handoff or the next roadmap after rollover.

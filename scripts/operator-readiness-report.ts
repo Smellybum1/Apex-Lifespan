@@ -3,11 +3,14 @@ import {
   summarizeOperatorReadinessCheck,
   summarizeOperatorReadinessReport
 } from "@/lib/operator/readiness";
+import { loadEnvFile, mergeEnv } from "@/lib/env-file";
 
 function main() {
   const args = readOperatorReadinessArgs(process.argv.slice(2));
+  const envFile = args.envFilePath ? loadEnvFile(args.envFilePath) : undefined;
+  const env = mergeEnv(process.env, envFile?.env);
   const context = {
-    env: process.env
+    env
   };
 
   if (args.checkId) {
@@ -22,7 +25,7 @@ function main() {
   }
 
   const report = buildOperatorReadinessReport({
-    env: process.env
+    env
   });
 
   console.log(
@@ -32,6 +35,7 @@ function main() {
 
 interface OperatorReadinessCliArgs {
   checkId?: string;
+  envFilePath?: string;
   summary: boolean;
 }
 
@@ -68,6 +72,29 @@ function readOperatorReadinessArgs(args: string[]): OperatorReadinessCliArgs {
       }
 
       parsed.checkId = value;
+      continue;
+    }
+
+    if (arg === "--env-file") {
+      const value = args[index + 1]?.trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--env-file=")) {
+      const value = arg.slice("--env-file=".length).trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
       continue;
     }
 

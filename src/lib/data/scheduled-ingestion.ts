@@ -768,6 +768,14 @@ function scheduledIngestionCopySafeCommands(): ScheduledIngestionCommand[] {
         "Print compact scheduler counts, readiness gates, warnings, and next action without dumping full queue details."
     },
     {
+      command: "npm run ingest:scheduled-dry-run -- --env-file <operations-env-file> --summary",
+      id: "scheduled-ingestion-env-file-summary",
+      label: "Summarize scheduled ingestion from env file",
+      mode: "read-only",
+      purpose:
+        "Recheck scheduler evidence from an approved ignored env file without printing secret values."
+    },
+    {
       command: "npm run ingest:sources -- --db-status",
       id: "source-candidate-db-status",
       label: "Check source-candidate database",
@@ -803,11 +811,12 @@ function scheduledIngestionCopySafeCommands(): ScheduledIngestionCommand[] {
       purpose: "Inspect the next human review groups without changing candidate decisions."
     },
     {
-      command: "npm run launch:readiness",
+      command: "npm run launch:readiness -- --env-file <operations-env-file> --summary",
       id: "launch-readiness",
       label: "Refresh aggregate launch readiness",
       mode: "read-only",
-      purpose: "Recheck fully-live launch gates after scheduled-ingestion evidence changes."
+      purpose:
+        "Recheck fully-live launch gates after scheduled-ingestion evidence changes without printing secret values."
     }
   ];
 }

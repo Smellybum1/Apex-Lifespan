@@ -8,12 +8,14 @@ import {
   summarizeProductionReadinessReport,
   type ProductionReadinessContext
 } from "@/lib/production-readiness";
+import { loadEnvFile, mergeEnv } from "@/lib/env-file";
 
 const PRIVATE_ENV_FILES = [".env", ".env.local", ".env.production", ".env.production.local"];
 
 function main() {
   const args = readProductionReadinessArgs(process.argv.slice(2));
-  const context = readProductionReadinessContext();
+  const envFile = args.envFilePath ? loadEnvFile(args.envFilePath) : undefined;
+  const context = readProductionReadinessContext(envFile?.env);
 
   if (args.checkId) {
     const packet = summarizeProductionReadinessCheck(context, args.checkId);
@@ -33,9 +35,11 @@ function main() {
   );
 }
 
-function readProductionReadinessContext(): ProductionReadinessContext {
+function readProductionReadinessContext(
+  envFileValues?: Record<string, string | undefined>
+): ProductionReadinessContext {
   return {
-    env: process.env,
+    env: mergeEnv(process.env, envFileValues),
     migrationDirectories: readMigrationDirectories(),
     productionProvisioningChecklistExists: existsSync(
       path.join(process.cwd(), "docs", "codex", "production-provisioning-checklist.md")
@@ -48,6 +52,7 @@ function readProductionReadinessContext(): ProductionReadinessContext {
 
 interface ProductionReadinessCliArgs {
   checkId?: string;
+  envFilePath?: string;
   summary: boolean;
 }
 
@@ -84,6 +89,29 @@ function readProductionReadinessArgs(args: string[]): ProductionReadinessCliArgs
       }
 
       parsed.checkId = value;
+      continue;
+    }
+
+    if (arg === "--env-file") {
+      const value = args[index + 1]?.trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--env-file=")) {
+      const value = arg.slice("--env-file=".length).trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
       continue;
     }
 

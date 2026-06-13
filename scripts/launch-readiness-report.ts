@@ -11,53 +11,132 @@ import {
 import { buildOperationsReadinessReport } from "@/lib/operations-readiness";
 import { buildOperatorReadinessReport } from "@/lib/operator/readiness";
 import { buildProductionReadinessReport } from "@/lib/production-readiness";
+import { loadEnvFile, mergeEnv } from "@/lib/env-file";
 
 const PRIVATE_ENV_FILES = [".env", ".env.local", ".env.production", ".env.production.local"];
 
 async function main() {
-  const mode = readLaunchReadinessMode(process.argv.slice(2));
-  const initialEnv = { ...process.env };
-  const [scheduledIngestion, promotion, evidenceCoverage] = await Promise.all([
-    readScheduledIngestionEvidence(),
-    readPromotionEvidence(),
-    readEvidenceCoverage()
-  ]);
+  const args = readLaunchReadinessArgs(process.argv.slice(2));
+  const envFile = args.envFilePath ? loadEnvFile(args.envFilePath) : undefined;
+  const initialEnv = mergeEnv(process.env, envFile?.env);
 
-  const report = buildLaunchReadinessReport({
-    env: initialEnv,
-    evidenceCoverage,
-    files: readLaunchReadinessFiles(),
-    operations: buildOperationsReadinessReport({ env: initialEnv }),
-    operator: buildOperatorReadinessReport({ env: initialEnv }),
-    production: buildProductionReadinessReport({
+  await withProcessEnv(initialEnv, async () => {
+    const [scheduledIngestion, promotion, evidenceCoverage] = await Promise.all([
+      readScheduledIngestionEvidence(),
+      readPromotionEvidence(),
+      readEvidenceCoverage()
+    ]);
+
+    const report = buildLaunchReadinessReport({
       env: initialEnv,
-      migrationDirectories: readMigrationDirectories(),
-      productionProvisioningChecklistExists: existsSync(
-        path.join(process.cwd(), "docs", "codex", "production-provisioning-checklist.md")
-      ),
-      trackedEnvFiles: readTrackedEnvFiles(),
-      vercelCliAvailable: commandAvailable("vercel"),
-      vercelProjectLinked: existsSync(path.join(process.cwd(), ".vercel", "project.json"))
-    }),
-    promotion,
-    scheduledIngestion
-  });
+      evidenceCoverage,
+      files: readLaunchReadinessFiles(),
+      operations: buildOperationsReadinessReport({ env: initialEnv }),
+      operator: buildOperatorReadinessReport({ env: initialEnv }),
+      production: buildProductionReadinessReport({
+        env: initialEnv,
+        migrationDirectories: readMigrationDirectories(),
+        productionProvisioningChecklistExists: existsSync(
+          path.join(process.cwd(), "docs", "codex", "production-provisioning-checklist.md")
+        ),
+        trackedEnvFiles: readTrackedEnvFiles(),
+        vercelCliAvailable: commandAvailable("vercel"),
+        vercelProjectLinked: existsSync(path.join(process.cwd(), ".vercel", "project.json"))
+      }),
+      promotion,
+      scheduledIngestion
+    });
 
-  console.log(
-    JSON.stringify(mode === "summary" ? summarizeLaunchReadinessReport(report) : report, null, 2)
-  );
+    console.log(
+      JSON.stringify(
+        args.summary ? summarizeLaunchReadinessReport(report) : report,
+        null,
+        2
+      )
+    );
+  });
 }
 
-function readLaunchReadinessMode(args: string[]) {
-  for (const arg of args) {
+interface LaunchReadinessCliArgs {
+  envFilePath?: string;
+  summary: boolean;
+}
+
+function readLaunchReadinessArgs(args: string[]): LaunchReadinessCliArgs {
+  const parsed: LaunchReadinessCliArgs = {
+    summary: false
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
     if (arg === "--summary") {
-      return "summary" as const;
+      parsed.summary = true;
+      continue;
+    }
+
+    if (arg === "--env-file") {
+      const value = args[index + 1]?.trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--env-file=")) {
+      const value = arg.slice("--env-file=".length).trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
+      continue;
     }
 
     throw new Error(`Unknown launch readiness argument: ${arg}`);
   }
 
-  return "full" as const;
+  return parsed;
+}
+
+async function withProcessEnv<T>(
+  env: Record<string, string | undefined>,
+  callback: () => Promise<T>
+): Promise<T> {
+  const previousEnv = { ...process.env };
+
+  try {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in env)) {
+        delete process.env[key];
+      }
+    }
+
+    for (const [key, value] of Object.entries(env)) {
+      if (typeof value === "string") {
+        process.env[key] = value;
+      } else {
+        delete process.env[key];
+      }
+    }
+
+    return await callback();
+  } finally {
+    for (const key of Object.keys(process.env)) {
+      if (!(key in previousEnv)) {
+        delete process.env[key];
+      }
+    }
+
+    for (const [key, value] of Object.entries(previousEnv)) {
+      process.env[key] = value;
+    }
+  }
 }
 
 function readLaunchReadinessFiles() {

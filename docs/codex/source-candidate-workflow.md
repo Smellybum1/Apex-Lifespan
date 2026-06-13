@@ -43,6 +43,14 @@ npm run ingest:sources -- --candidate-curation-status <dedupe-key>
 npm run ingest:sources -- --candidate-curation-draft <dedupe-key>
 ```
 
+For approved ignored Preview/operations env files, add `--env-file <env-file>` before the inspection or write flags, for example:
+
+```bash
+npm run ingest:sources -- --env-file .env.vercel.preview.local --candidate-review-overview --candidate-review-overview-limit 10
+npm run ingest:sources -- --env-file .env.vercel.preview.local --candidate-review-packet <dedupe-key>
+npm run ingest:sources -- --env-file .env.vercel.preview.local --candidate-curation-handoff
+```
+
 Prefer emitted `key=b64:...` values on Windows when passing a `<dedupe-key>`.
 
 ## Curation Readiness

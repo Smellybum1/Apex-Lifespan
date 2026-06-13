@@ -42,12 +42,29 @@ describe("operations readiness report", () => {
           "Print operations readiness counts, ready artifacts, missing evidence, and next action without dumping all checks."
       },
       {
+        command: "npm run operations:readiness -- --env-file <operations-env-file> --summary",
+        id: "operations-readiness-env-file-summary",
+        label: "Refresh operations summary from env file",
+        mode: "read-only",
+        purpose:
+          "Recheck operations evidence from an approved ignored env file without printing secret values."
+      },
+      {
         command: "npm run operations:readiness -- --evidence <evidence-id>",
         id: "operations-evidence-review",
         label: "Focus one operations evidence item",
         mode: "read-only",
         purpose:
           "Print one operations evidence check with its required key and next action for human setup."
+      },
+      {
+        command:
+          "npm run operations:readiness -- --env-file <operations-env-file> --evidence <evidence-id>",
+        id: "operations-evidence-env-file-review",
+        label: "Focus operations evidence from env file",
+        mode: "read-only",
+        purpose:
+          "Inspect one operations evidence check using approved env-file evidence without printing values."
       },
       {
         command: "npm run smoke:public-mvp -- <base-url>",
@@ -79,6 +96,14 @@ describe("operations readiness report", () => {
         label: "Refresh aggregate launch readiness",
         mode: "read-only",
         purpose: "Recheck fully-live launch gates after operations evidence changes."
+      },
+      {
+        command: "npm run launch:readiness -- --env-file <operations-env-file> --summary",
+        id: "launch-readiness-env-file-summary",
+        label: "Refresh aggregate launch summary from env file",
+        mode: "read-only",
+        purpose:
+          "Recheck launch gates with approved operations evidence without printing secret values."
       }
     ]);
     expect(report.worksheet.readyLocalArtifacts.map((item) => item.id)).toEqual([
@@ -203,7 +228,7 @@ describe("operations readiness report", () => {
       "--extract-candidate-study"
     ];
 
-    expect(report.worksheet.copySafeCommands).toHaveLength(7);
+    expect(report.worksheet.copySafeCommands).toHaveLength(10);
     expect(report.worksheet.copySafeCommands.every((item) => item.mode === "read-only")).toBe(
       true
     );

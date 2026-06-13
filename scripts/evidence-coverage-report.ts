@@ -1,39 +1,46 @@
-import { getEvidenceDashboardData } from "@/lib/data/dashboard";
-import {
-  summarizeEvidenceCoverage,
-  summarizeEvidenceCoverageClaimReview,
-  summarizeEvidenceCoverageReviewReport
-} from "@/lib/evidence-coverage";
+import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
 
 async function main() {
   const args = readCoverageReviewArgs(process.argv.slice(2));
-  const data = await getEvidenceDashboardData();
+  const envFile = args.envFilePath ? loadEnvFile(args.envFilePath) : undefined;
+  const env = mergeEnv(process.env, envFile?.env);
 
-  if (args.claimId) {
-    const summary = summarizeEvidenceCoverageClaimReview(data, args.claimId);
+  await withProcessEnv(env, async () => {
+    const { getEvidenceDashboardData } = await import("@/lib/data/dashboard");
+    const {
+      summarizeEvidenceCoverage,
+      summarizeEvidenceCoverageClaimReview,
+      summarizeEvidenceCoverageReviewReport
+    } = await import("@/lib/evidence-coverage");
+    const data = await getEvidenceDashboardData();
 
-    if (!summary.found) {
-      process.exitCode = 1;
+    if (args.claimId) {
+      const summary = summarizeEvidenceCoverageClaimReview(data, args.claimId);
+
+      if (!summary.found) {
+        process.exitCode = 1;
+      }
+
+      console.log(JSON.stringify(summary, null, 2));
+      return;
     }
 
-    console.log(JSON.stringify(summary, null, 2));
-    return;
-  }
+    const summary = summarizeEvidenceCoverage(data);
 
-  const summary = summarizeEvidenceCoverage(data);
-
-  console.log(
-    JSON.stringify(
-      args.compactSummary ? summarizeEvidenceCoverageReviewReport(summary) : summary,
-      null,
-      2
-    )
-  );
+    console.log(
+      JSON.stringify(
+        args.compactSummary ? summarizeEvidenceCoverageReviewReport(summary) : summary,
+        null,
+        2
+      )
+    );
+  });
 }
 
 interface CoverageReviewCliArgs {
   claimId?: string;
   compactSummary: boolean;
+  envFilePath?: string;
 }
 
 function readCoverageReviewArgs(args: string[]): CoverageReviewCliArgs {
@@ -69,6 +76,29 @@ function readCoverageReviewArgs(args: string[]): CoverageReviewCliArgs {
       }
 
       parsed.claimId = value;
+      continue;
+    }
+
+    if (arg === "--env-file") {
+      const value = args[index + 1]?.trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--env-file=")) {
+      const value = arg.slice("--env-file=".length).trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
       continue;
     }
 

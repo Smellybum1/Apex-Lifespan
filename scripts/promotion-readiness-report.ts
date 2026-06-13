@@ -1,24 +1,31 @@
-import {
-  buildSourceCandidatePromotionReadinessReport,
-  summarizeSourceCandidatePromotionReadinessReport
-} from "@/lib/operator/curation-promotion";
+import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
 
 async function main() {
   const args = readPromotionReadinessArgs(process.argv.slice(2));
-  const report = await buildSourceCandidatePromotionReadinessReport({
-    limit: args.limit
-  });
+  const envFile = args.envFilePath ? loadEnvFile(args.envFilePath) : undefined;
+  const env = mergeEnv(process.env, envFile?.env);
 
-  console.log(
-    JSON.stringify(
-      args.summary ? summarizeSourceCandidatePromotionReadinessReport(report) : report,
-      null,
-      2
-    )
-  );
+  await withProcessEnv(env, async () => {
+    const {
+      buildSourceCandidatePromotionReadinessReport,
+      summarizeSourceCandidatePromotionReadinessReport
+    } = await import("@/lib/operator/curation-promotion");
+    const report = await buildSourceCandidatePromotionReadinessReport({
+      limit: args.limit
+    });
+
+    console.log(
+      JSON.stringify(
+        args.summary ? summarizeSourceCandidatePromotionReadinessReport(report) : report,
+        null,
+        2
+      )
+    );
+  });
 }
 
 interface PromotionReadinessCliArgs {
+  envFilePath?: string;
   limit: number;
   summary: boolean;
 }
@@ -45,6 +52,29 @@ function readPromotionReadinessArgs(args: string[]): PromotionReadinessCliArgs {
 
     if (arg.startsWith("--limit=")) {
       parsed.limit = parseLimit(arg.slice("--limit=".length));
+      continue;
+    }
+
+    if (arg === "--env-file") {
+      const value = args[index + 1]?.trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--env-file=")) {
+      const value = arg.slice("--env-file=".length).trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
       continue;
     }
 

@@ -1,6 +1,6 @@
 # Scheduled Ingestion Retry Policy
 
-Last updated: 2026-06-11
+Last updated: 2026-06-12
 
 Use this policy before approving scheduled ingestion retries for the fully live product. It keeps retries explicit, bounded, and separate from source-candidate review or public evidence promotion.
 
@@ -34,7 +34,14 @@ After recording approval, rerun:
 
 ```bash
 npm run ingest:scheduled-dry-run
+npm run ingest:scheduled-dry-run -- --env-file <operations-env-file> --summary
 npm run launch:readiness
 ```
 
 Do not store raw failed-job errors, source API keys, database URLs, private operator notes, or unpublished source text in commits or public routes.
+
+## Latest Approval Evidence
+
+- Approval timestamp recorded locally: `2026-06-12T07:05:06Z`.
+- Basis: non-production dry run reported zero recent failed jobs and no duplicate source identities before approval.
+- Apply rehearsal remained manual-reviewed: automatic retries stayed disabled, the scheduler processed only queued source-candidate work, and no public evidence promotion occurred.

@@ -3,14 +3,17 @@ import {
   summarizeOperationsEvidenceReview,
   summarizeOperationsReadinessReport
 } from "@/lib/operations-readiness";
+import { loadEnvFile, mergeEnv } from "@/lib/env-file";
 
 function main() {
   const args = readOperationsReadinessArgs(process.argv.slice(2));
+  const envFile = args.envFilePath ? loadEnvFile(args.envFilePath) : undefined;
+  const env = mergeEnv(process.env, envFile?.env);
 
   if (args.evidenceId) {
     const packet = summarizeOperationsEvidenceReview(
       {
-        env: process.env
+        env
       },
       args.evidenceId
     );
@@ -24,7 +27,7 @@ function main() {
   }
 
   const report = buildOperationsReadinessReport({
-    env: process.env
+    env
   });
 
   console.log(
@@ -33,6 +36,7 @@ function main() {
 }
 
 interface OperationsReadinessCliArgs {
+  envFilePath?: string;
   evidenceId?: string;
   summary: boolean;
 }
@@ -70,6 +74,29 @@ function readOperationsReadinessArgs(args: string[]): OperationsReadinessCliArgs
       }
 
       parsed.evidenceId = value;
+      continue;
+    }
+
+    if (arg === "--env-file") {
+      const value = args[index + 1]?.trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--env-file=")) {
+      const value = arg.slice("--env-file=".length).trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
       continue;
     }
 

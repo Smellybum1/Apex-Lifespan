@@ -76,6 +76,14 @@ describe("operator readiness report", () => {
           "Print one operator readiness check with its evidence keys and next action for auth or QA setup."
       },
       {
+        command: "npm run operator:readiness -- --env-file <non-production-env-file> --summary",
+        id: "operator-readiness-env-file-summary",
+        label: "Refresh operator summary from env file",
+        mode: "read-only",
+        purpose:
+          "Check approved non-production operator evidence without printing secret values or enabling writes."
+      },
+      {
         command: "npm run operator:smoke -- <base-url>",
         id: "operator-smoke-closed",
         label: "Smoke anonymous operator boundary",
@@ -110,6 +118,14 @@ describe("operator readiness report", () => {
         label: "Refresh aggregate launch readiness",
         mode: "read-only",
         purpose: "Recheck fully-live launch gates after operator evidence changes."
+      },
+      {
+        command: "npm run launch:readiness -- --env-file <non-production-env-file> --summary",
+        id: "launch-readiness-env-file-summary",
+        label: "Refresh aggregate launch summary from env file",
+        mode: "read-only",
+        purpose:
+          "Recheck launch gates with approved non-production evidence without printing secret values."
       }
     ]);
     expect(

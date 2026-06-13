@@ -1,6 +1,6 @@
 # Scheduled Source Ingestion Design
 
-Status: selected design for roadmap step 8. First implementation slice is dry-run only.
+Status: selected design for roadmap step 8. Non-production hosted-readiness rehearsal passed on 2026-06-12.
 
 ## Decision
 
@@ -31,6 +31,7 @@ Use:
 
 ```bash
 npm run ingest:scheduled-dry-run
+npm run ingest:scheduled-dry-run -- --env-file <operations-env-file> --summary
 ```
 
 The dry run reads ingestion-job status and prints the scheduler plan without queueing, running, or promoting anything.
@@ -60,6 +61,7 @@ Use:
 
 ```bash
 npm run ingest:scheduled-run
+npm run ingest:scheduled-run -- --env-file <operations-env-file> --require-hosted-run-readiness
 ```
 
 The guarded run still plans first. It runs queued source-candidate jobs only when all of these are true:
@@ -71,6 +73,8 @@ The guarded run still plans first. It runs queued source-candidate jobs only whe
 
 The runner uses the same source caps as the policy review, does not retry failed jobs automatically, and does not promote candidates into public evidence.
 
+The `--env-file` form is for approved ignored evidence files only. It loads the env file before importing the Prisma-backed scheduler so managed database credentials do not need to be pasted into the shell. The `--require-hosted-run-readiness` flag is apply-only and requires hosted cron evidence plus retry-policy readiness before any queued job is processed.
+
 ## Future Production Schedule
 
 After production database, secrets, monitoring, and alerts are configured, attach the scheduler to a hosted cron. The cron target should run with `APEX_DATA_SOURCE=database`, database credentials, NCBI metadata, and write access only to ingestion-job/source-candidate tables.
@@ -78,3 +82,12 @@ After production database, secrets, monitoring, and alerts are configured, attac
 The scheduler library now has an opt-in hosted-run readiness gate for a future cron route. Hosted-run mode must require hosted cron evidence plus retry-policy readiness before processing queued jobs. The local CLI runner remains unchanged and still fails closed unless `APEX_SCHEDULED_INGESTION_WRITES_ENABLED=true`, NCBI metadata is configured, and no ingestion job is already running.
 
 The current implementation does not expose a hosted HTTP write endpoint. Add one only after the readiness report is clean and operator approval is recorded.
+
+## Latest Non-Production Evidence
+
+- Timestamp: `2026-06-12T07:05:06Z` retry-policy approval recorded locally.
+- Target: Preview Neon managed database through the approved ignored env file.
+- Dry-run readiness: no blocked checks, hosted cron ready, hosted-run gate ready, retry policy ready, zero recent failures, zero running jobs, zero duplicate source identities, and `noAutoPromotion=true`.
+- Apply rehearsal: `npm run ingest:scheduled-run -- --env-file .env.vercel.preview.local --require-hosted-run-readiness` processed one queued PubMed job `cmq9nhdcy000iey85ehxzdqz7`.
+- Result: 3 records found and 3 source-candidate rows changed; post-run queue and failed-job checks both reported zero.
+- Review state: the new candidates remain pending human review with no claim link, study extraction, source-packet promotion, public evidence promotion, or public route exposure.

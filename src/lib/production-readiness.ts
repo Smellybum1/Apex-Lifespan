@@ -578,11 +578,27 @@ function productionProvisioningCopySafeCommands(): ProductionProvisioningCommand
         "Print one production readiness check with its evidence keys and next action for dashboard setup."
     },
     {
+      command: "npm run production:readiness -- --env-file <non-production-env-file> --summary",
+      id: "production-readiness-env-file-summary",
+      label: "Refresh production summary from env file",
+      mode: "read-only",
+      purpose:
+        "Check an approved non-production env file without printing secret values or changing databases."
+    },
+    {
       command: "npm run production:migration-rehearsal",
       id: "migration-rehearsal-plan",
       label: "Plan non-production migration rehearsal",
       mode: "read-only",
       purpose: "Dry-run the migration rehearsal plan before any managed database changes."
+    },
+    {
+      command: "npm run production:migration-rehearsal -- --env-file <non-production-env-file>",
+      id: "migration-rehearsal-env-file-plan",
+      label: "Plan migration rehearsal from env file",
+      mode: "read-only",
+      purpose:
+        "Dry-run the rehearsal against an approved non-production env file without applying migrations."
     },
     {
       command: "npm run production:migration-rehearsal -- --apply",
@@ -591,6 +607,15 @@ function productionProvisioningCopySafeCommands(): ProductionProvisioningCommand
       mode: "explicit-apply",
       purpose:
         "Run only after confirming a non-production managed DATABASE_URL and APEX_MIGRATION_REHEARSAL_TARGET=non-production."
+    },
+    {
+      command:
+        "npm run production:migration-rehearsal -- --env-file <non-production-env-file> --apply",
+      id: "migration-rehearsal-env-file-apply",
+      label: "Apply migration rehearsal from env file",
+      mode: "explicit-apply",
+      purpose:
+        "Run only after reviewing an approved non-production env file and confirming its database target is not production."
     },
     {
       command: "npm run db:validate",

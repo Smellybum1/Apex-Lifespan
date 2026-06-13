@@ -25,6 +25,18 @@ describe("public MVP smoke", () => {
     await expect(runPublicMvpSmoke(baseUrl, quietLogger)).resolves.toBeUndefined();
   });
 
+  it("passes against a fully human-reviewed database-backed public surface", async () => {
+    const baseUrl = await listenWithPages({
+      homeDataSourceBadge: "Database-backed",
+      homeReviewStatus: "Human-reviewed",
+      operatorHtml: "Operator access required"
+    });
+
+    await expect(
+      runPublicMvpSmoke(baseUrl, quietLogger, { requireDatabase: true })
+    ).resolves.toBeUndefined();
+  });
+
   it("passes against a seed-backed public demo unless database mode is explicitly required", async () => {
     const baseUrl = await listenWithPages({
       homeDataSourceBadge: "Seed fallback",
@@ -85,10 +97,12 @@ describe("public MVP smoke", () => {
 async function listenWithPages({
   homeDataSourceBadge,
   homeExtraHtml = "",
+  homeReviewStatus = "Unreviewed AI draft",
   operatorHtml
 }: {
   homeDataSourceBadge: "Database-backed" | "Seed fallback";
   homeExtraHtml?: string;
+  homeReviewStatus?: "Human-reviewed" | "Unreviewed AI draft";
   operatorHtml: string;
 }) {
   const server = createServer((request, response) => {
@@ -97,7 +111,7 @@ async function listenWithPages({
     if (url.pathname === "/") {
       writeHtml(
         response,
-        `Apex Lifespan AU TGA ${homeDataSourceBadge} ${homeExtraHtml} Unreviewed AI draft Source packet Live PubMed results are unreviewed citation leads Registry records are research leads, not proof of benefit href="/privacy" href="/terms"`
+        `Apex Lifespan AU TGA ${homeDataSourceBadge} ${homeExtraHtml} ${homeReviewStatus} Source packet Live PubMed results are unreviewed citation leads Registry records are research leads, not proof of benefit href="/privacy" href="/terms"`
       );
       return;
     }

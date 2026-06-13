@@ -39,7 +39,6 @@ const pageSmokes: PageSmoke[] = [
       "Apex Lifespan",
       "AU",
       "TGA",
-      "Unreviewed AI draft",
       "Source packet",
       "Live PubMed results are unreviewed citation leads",
       "Registry records are research leads, not proof of benefit",
@@ -50,6 +49,10 @@ const pageSmokes: PageSmoke[] = [
       {
         label: "data source badge",
         values: ["Seed fallback", "Database-backed"]
+      },
+      {
+        label: "review status",
+        values: ["Unreviewed AI draft", "Human-reviewed"]
       }
     ]
   },

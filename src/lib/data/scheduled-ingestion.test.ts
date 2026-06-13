@@ -150,6 +150,15 @@ describe("scheduled source ingestion dry run", () => {
               "Print compact scheduler counts, readiness gates, warnings, and next action without dumping full queue details."
           },
           {
+            command:
+              "npm run ingest:scheduled-dry-run -- --env-file <operations-env-file> --summary",
+            id: "scheduled-ingestion-env-file-summary",
+            label: "Summarize scheduled ingestion from env file",
+            mode: "read-only",
+            purpose:
+              "Recheck scheduler evidence from an approved ignored env file without printing secret values."
+          },
+          {
             command: "npm run ingest:sources -- --db-status",
             id: "source-candidate-db-status",
             label: "Check source-candidate database",
@@ -186,11 +195,12 @@ describe("scheduled source ingestion dry run", () => {
             purpose: "Inspect the next human review groups without changing candidate decisions."
           },
           {
-            command: "npm run launch:readiness",
+            command: "npm run launch:readiness -- --env-file <operations-env-file> --summary",
             id: "launch-readiness",
             label: "Refresh aggregate launch readiness",
             mode: "read-only",
-            purpose: "Recheck fully-live launch gates after scheduled-ingestion evidence changes."
+            purpose:
+              "Recheck fully-live launch gates after scheduled-ingestion evidence changes without printing secret values."
           }
         ],
         humanOwned: true,
@@ -277,9 +287,10 @@ describe("scheduled source ingestion dry run", () => {
 
     const plan = await planScheduledSourceIngestionDryRun();
 
-    expect(plan.worksheet.copySafeCommands).toHaveLength(8);
+    expect(plan.worksheet.copySafeCommands).toHaveLength(9);
     expect(plan.worksheet.copySafeCommands.map((item) => item.mode)).toEqual([
       "dry-run",
+      "read-only",
       "read-only",
       "read-only",
       "read-only",

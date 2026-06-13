@@ -1,6 +1,6 @@
 # Operations Drill Checklist
 
-Last updated: 2026-06-11
+Last updated: 2026-06-12
 
 ## Purpose
 
@@ -58,6 +58,7 @@ Do not paste secrets, monitor tokens, database URLs, OAuth secrets, raw alert pa
    - Send or trigger a launch-safe alert test.
    - Confirm the operator receives it and knows the next action.
    - Record the test timestamp in `APEX_ALERT_TESTED_AT`.
+   - Current launch-safe implementation: the manual-only GitHub Actions `Launch Alert Test` workflow intentionally fails and performs no app, database, ingestion, source-promotion, or operator writes.
 
 ## Final Local Check
 
@@ -65,7 +66,9 @@ Run:
 
 ```bash
 npm run operations:readiness
+npm run operations:readiness -- --env-file <operations-env-file> --summary
 npm run launch:readiness
+npm run launch:readiness -- --env-file <operations-env-file> --summary
 ```
 
 The operations report should show the local artifacts ready and no missing external operations evidence. If it remains blocked, use the first `nextEvidenceAction` as the next operator task.
