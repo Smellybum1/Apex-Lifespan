@@ -8,9 +8,15 @@ const githubProviderConfigured = Boolean(
   process.env.AUTH_GITHUB_ID && process.env.AUTH_GITHUB_SECRET
 );
 
+const githubProvider = GitHub({
+  // Operator users are pre-bootstrapped by email before their first OAuth login.
+  // GitHub email linking lets that first login attach to the existing operator user.
+  allowDangerousEmailAccountLinking: true
+});
+
 const authConfig = {
   adapter: PrismaAdapter(prisma),
-  providers: githubProviderConfigured ? [GitHub] : [],
+  providers: githubProviderConfigured ? [githubProvider] : [],
   session: {
     strategy: "database"
   },

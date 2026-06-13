@@ -21,6 +21,12 @@ const approvedEnv: OperatorBrowserWriteControlEnv = {
   APEX_OPERATOR_WRITES_ENABLED: "true"
 };
 
+const approvedImportEnv: OperatorBrowserWriteControlEnv = {
+  ...approvedEnv,
+  APEX_ONBOARDING_DATABASE_IMPORT_ENABLED: "true",
+  APEX_ONBOARDING_DATABASE_IMPORT_REVIEWED_AT: "2026-06-13T01:00:00Z"
+};
+
 describe("operator browser write control gate", () => {
   it("keeps browser writes locked by default", () => {
     const state = getOperatorBrowserWriteControlState(activeAdmin, "claim-link", {});
@@ -81,5 +87,42 @@ describe("operator browser write control gate", () => {
 
     expect(state.enabled).toBe(true);
     expect(state.permission).toBe("evidence:promote");
+  });
+
+  it("maps onboarding drafts to the admin-only onboarding draft permission", () => {
+    const state = getOperatorBrowserWriteControlState(
+      activeAdmin,
+      "onboarding-draft",
+      approvedEnv
+    );
+
+    expect(state.enabled).toBe(true);
+    expect(state.permission).toBe("onboarding:draft");
+  });
+
+  it("keeps onboarding database import behind its own reviewed gate", () => {
+    const locked = getOperatorBrowserWriteControlState(
+      activeAdmin,
+      "onboarding-import",
+      approvedEnv
+    );
+
+    expect(locked.enabled).toBe(false);
+    expect(locked.blockers).toEqual([
+      "APEX_ONBOARDING_DATABASE_IMPORT_ENABLED=true is required.",
+      "APEX_ONBOARDING_DATABASE_IMPORT_REVIEWED_AT is required."
+    ]);
+    expect(locked.permission).toBe("onboarding:import");
+
+    const ready = getOperatorBrowserWriteControlState(
+      activeAdmin,
+      "onboarding-import",
+      approvedImportEnv
+    );
+
+    expect(ready.enabled).toBe(true);
+    expect(ready.blockers).toEqual([]);
+    expect(ready.evidenceKeys).toContain("APEX_ONBOARDING_DATABASE_IMPORT_ENABLED");
+    expect(ready.evidenceKeys).toContain("APEX_ONBOARDING_DATABASE_IMPORT_REVIEWED_AT");
   });
 });

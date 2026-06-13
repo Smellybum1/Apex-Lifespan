@@ -6,6 +6,8 @@ export type OperatorPermission =
   | "curation:claim-link"
   | "curation:study-extraction"
   | "evidence:promote"
+  | "onboarding:draft"
+  | "onboarding:import"
   | "operator:manage";
 
 export interface OperatorPrincipal {
@@ -42,6 +44,8 @@ const PERMISSION_MIN_ROLE: Record<OperatorPermission, OperatorRole> = {
   "curation:claim-link": OperatorRole.ADMIN,
   "curation:study-extraction": OperatorRole.ADMIN,
   "evidence:promote": OperatorRole.ADMIN,
+  "onboarding:draft": OperatorRole.ADMIN,
+  "onboarding:import": OperatorRole.ADMIN,
   "operator:manage": OperatorRole.OWNER
 };
 
@@ -50,6 +54,8 @@ const WRITE_PERMISSIONS = new Set<OperatorPermission>([
   "curation:claim-link",
   "curation:study-extraction",
   "evidence:promote",
+  "onboarding:draft",
+  "onboarding:import",
   "operator:manage"
 ]);
 

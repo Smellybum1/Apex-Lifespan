@@ -9,6 +9,18 @@ import {
   promoteSourceCandidatePublicEvidenceAsOperator,
   reviewSourceCandidateAsOperator
 } from "@/lib/operator/source-candidate-actions";
+import {
+  importSupplementOnboardingDraftAsOperator,
+  saveSupplementOnboardingDraftAsOperator
+} from "@/lib/operator/supplement-onboarding-drafts";
+import {
+  SUPPLEMENT_ONBOARDING_CATEGORIES,
+  SUPPLEMENT_ONBOARDING_CLAIM_TEMPLATES,
+  SUPPLEMENT_ONBOARDING_OUTCOMES,
+  type SupplementOnboardingClaimTemplateId,
+  type SupplementOnboardingProductInput
+} from "@/lib/supplement-onboarding";
+import type { InterventionCategory, OutcomeArea } from "@/lib/types";
 
 export async function reviewCandidateFromBrowserForm(
   principal: OperatorPrincipal,
@@ -78,6 +90,7 @@ export async function extractCandidateStudyFromBrowserForm(
     principal,
     {
       adverseEvents: requiredFormString(formData, "adverseEvents"),
+      abstract: optionalFormString(formData, "abstract"),
       dedupeKey: requiredFormString(formData, "dedupeKey"),
       dose: optionalFormString(formData, "dose"),
       duration: optionalFormString(formData, "duration"),
@@ -109,6 +122,67 @@ export async function promoteCandidateFromBrowserForm(
     {
       dedupeKey: requiredFormString(formData, "dedupeKey"),
       promotionNote: requiredFormString(formData, "promotionNote")
+    },
+    env
+  );
+}
+
+export async function saveOnboardingDraftFromBrowserForm(
+  principal: OperatorPrincipal,
+  formData: FormData,
+  env?: OperatorBrowserWriteControlEnv
+) {
+  requireBrowserControl(principal, "onboarding-draft", env);
+
+  const customClaimText = optionalFormString(formData, "customClaimText");
+  const customClaimOutcome = optionalOutcome(optionalFormString(formData, "customClaimOutcome"));
+
+  if (customClaimText && !customClaimOutcome) {
+    throw new Error("customClaimOutcome is required when customClaimText is set.");
+  }
+
+  return saveSupplementOnboardingDraftAsOperator(
+    principal,
+    {
+      category: optionalCategory(optionalFormString(formData, "category")),
+      claimTemplateIds: formData
+        .getAll("claimTemplateIds")
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .map(claimTemplateId),
+      claims:
+        customClaimText && customClaimOutcome
+          ? [
+              {
+                claimText: customClaimText,
+                outcome: customClaimOutcome
+              }
+            ]
+          : [],
+      commonForms: splitLinesOrCommas(optionalFormString(formData, "commonForms")),
+      name: requiredFormString(formData, "name"),
+      note: optionalFormString(formData, "note"),
+      product: productInputFromFormData(formData),
+      region: optionalFormString(formData, "region") ?? "AU",
+      synonyms: splitLinesOrCommas(optionalFormString(formData, "synonyms"))
+    },
+    env
+  );
+}
+
+export async function importOnboardingDraftFromBrowserForm(
+  principal: OperatorPrincipal,
+  formData: FormData,
+  env?: OperatorBrowserWriteControlEnv
+) {
+  requireBrowserControl(principal, "onboarding-import", env);
+
+  return importSupplementOnboardingDraftAsOperator(
+    principal,
+    {
+      draftId: requiredFormString(formData, "draftId"),
+      importNote: requiredFormString(formData, "importNote")
     },
     env
   );
@@ -156,4 +230,60 @@ function optionalFormNumber(formData: FormData, key: string) {
   }
 
   return parsed;
+}
+
+function splitLinesOrCommas(value: string | undefined) {
+  return (value ?? "")
+    .split(/\r?\n|,/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function productInputFromFormData(
+  formData: FormData
+): SupplementOnboardingProductInput | undefined {
+  const product = {
+    artgId: optionalFormString(formData, "productArtgId"),
+    austNumber: optionalFormString(formData, "productAustNumber"),
+    brand: optionalFormString(formData, "productBrand"),
+    name: optionalFormString(formData, "productName"),
+    sourceUrl: optionalFormString(formData, "productSourceUrl"),
+    sponsor: optionalFormString(formData, "productSponsor")
+  };
+
+  return Object.values(product).some(Boolean) ? product : undefined;
+}
+
+function optionalCategory(value: string | undefined): InterventionCategory | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  if (SUPPLEMENT_ONBOARDING_CATEGORIES.includes(value as InterventionCategory)) {
+    return value as InterventionCategory;
+  }
+
+  throw new Error("category is not supported.");
+}
+
+function optionalOutcome(value: string | undefined): OutcomeArea | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  if (SUPPLEMENT_ONBOARDING_OUTCOMES.includes(value as OutcomeArea)) {
+    return value as OutcomeArea;
+  }
+
+  throw new Error("customClaimOutcome is not supported.");
+}
+
+function claimTemplateId(value: string): SupplementOnboardingClaimTemplateId {
+  if (
+    SUPPLEMENT_ONBOARDING_CLAIM_TEMPLATES.some((template) => template.id === value)
+  ) {
+    return value as SupplementOnboardingClaimTemplateId;
+  }
+
+  throw new Error(`Unknown supplement onboarding claim template: ${value}.`);
 }

@@ -1,6 +1,9 @@
 import {
+  buildSourceCandidateStudyExtractionPrefillFields,
   getSourceCandidateCurationStatus,
   listSourceCandidateCurationHandoff,
+  type SourceCandidateCurationPrefillConfidence,
+  type SourceCandidateCurationReviewConfidence,
   type SourceCandidateCurationStatus
 } from "@/lib/data/source-candidates";
 import type {
@@ -72,6 +75,12 @@ export interface SourceCandidatePromotionEvidenceItem {
 }
 
 export interface SourceCandidatePromotionReadinessRow {
+  actionPreview: {
+    browserAction: string;
+    dryRunCommand: string;
+    promotionEffect: string;
+    requiredPermission: "evidence:promote";
+  };
   blockers: string[];
   candidate: {
     acceptedReferenceId?: string;
@@ -82,6 +91,12 @@ export interface SourceCandidatePromotionReadinessRow {
     reviewStatus: ReviewStatus;
     source: SourceCandidate["source"];
     title: string;
+  };
+  extractionPrefill: {
+    curationDraftCommand: string;
+    fieldSuggestions: SourceCandidatePromotionExtractionPrefillField[];
+    fullTextStatus: string;
+    sourceTextStatus: string;
   };
   nextAction: string;
   publicSourcePacketReady: boolean;
@@ -94,6 +109,18 @@ export interface SourceCandidatePromotionReadinessSnapshot {
   readyCount: number;
   rows: SourceCandidatePromotionReadinessRow[];
   total: number;
+}
+
+export interface SourceCandidatePromotionExtractionPrefillField {
+  confidence: SourceCandidateCurationPrefillConfidence;
+  confidenceLabel: string;
+  confidenceRationale: string;
+  field: string;
+  label: string;
+  note: string;
+  reviewConfidence: SourceCandidateCurationReviewConfidence;
+  value: string;
+  writeFlag?: string;
 }
 
 export interface SourceCandidatePromotionReadinessReport {
@@ -242,8 +269,21 @@ function sourceCandidatePromotionReadinessRow(
   status: SourceCandidateCurationStatus
 ): SourceCandidatePromotionReadinessRow {
   const blockers = sourceCandidatePromotionBlockers(status);
+  const safeKey = safeCandidateKey(status.candidate.dedupeKey);
 
   return {
+    actionPreview: {
+      browserAction:
+        blockers.length === 0
+          ? `Promote accepted candidate ${status.candidate.externalId} with an explicit human promotion note.`
+          : "Resolve promotion blockers before the browser promotion action is usable.",
+      dryRunCommand: `npm run promotion:dry-run -- ${safeKey}`,
+      promotionEffect:
+        blockers.length === 0
+          ? `Would expose reference ${status.acceptedReferenceId} and ${status.studies.length} structured extraction(s) on claim ${status.candidate.claimId}.`
+          : "No public packet write preview until accepted reference, claim link, structured extraction, and packet readiness are complete.",
+      requiredPermission: "evidence:promote"
+    },
     blockers,
     candidate: {
       acceptedReferenceId: status.candidate.acceptedReferenceId,
@@ -255,11 +295,78 @@ function sourceCandidatePromotionReadinessRow(
       source: status.candidate.source,
       title: status.candidate.title
     },
+    extractionPrefill: sourceCandidateExtractionPrefillPreview(status, safeKey),
     nextAction: blockers[0] ?? "Ready for explicit human promotion review.",
     publicSourcePacketReady: status.publicSourcePacketReady,
     ready: blockers.length === 0,
     status: status.status
   };
+}
+
+function sourceCandidateExtractionPrefillPreview(
+  status: SourceCandidateCurationStatus,
+  safeKey: string
+): SourceCandidatePromotionReadinessRow["extractionPrefill"] {
+  const abstractText = metadataString(status.candidate.metadata, "abstractText");
+  const briefSummary = metadataString(status.candidate.metadata, "briefSummary");
+  const fieldSuggestions = buildSourceCandidateStudyExtractionPrefillFields(
+    status.candidate
+  )
+    .filter((field) => OPERATOR_EXTRACTION_PREFILL_FIELDS.has(field.field))
+    .map((field) => ({
+      confidence: field.confidence,
+      confidenceLabel: field.confidenceLabel,
+      confidenceRationale: field.confidenceRationale,
+      field: field.field,
+      label: extractionPrefillLabel(field.field),
+      note: field.note,
+      reviewConfidence: field.reviewConfidence,
+      value: field.value,
+      writeFlag: field.writeFlag
+    }));
+  const sourceTextStatus = abstractText
+    ? "PubMed abstract text captured for the curation draft."
+    : briefSummary
+      ? "ClinicalTrials.gov registry brief summary captured for the curation draft."
+      : "No abstract or registry summary captured in candidate metadata.";
+
+  return {
+    curationDraftCommand: `npm run ingest:sources -- --candidate-curation-draft ${safeKey}`,
+    fieldSuggestions,
+    fullTextStatus:
+      "Full text is not automatically captured; operators must verify the source packet before writing extraction fields.",
+    sourceTextStatus
+  };
+}
+
+const OPERATOR_EXTRACTION_PREFILL_FIELDS = new Set([
+  "abstract",
+  "sampleSize",
+  "population",
+  "interventionName",
+  "outcomes",
+  "adverseEvents",
+  "fundingConflicts",
+  "riskOfBias",
+  "duration",
+  "mainResults"
+]);
+
+function extractionPrefillLabel(field: string) {
+  const labels: Record<string, string> = {
+    abstract: "Abstract/source summary",
+    adverseEvents: "Adverse events",
+    duration: "Duration",
+    fundingConflicts: "Funding/conflicts",
+    interventionName: "Intervention",
+    mainResults: "Main results",
+    outcomes: "Outcomes",
+    population: "Population",
+    riskOfBias: "Risk of bias",
+    sampleSize: "Sample size"
+  };
+
+  return labels[field] ?? field;
 }
 
 function sourceCandidatePromotionReadinessWorksheet(
@@ -302,12 +409,28 @@ function sourceCandidatePromotionReadinessCopySafeCommands(): SourceCandidatePro
         "Print accepted-candidate promotion counts, blockers, ready rows, and next action without dumping the full snapshot."
     },
     {
+      command: "npm run promotion:readiness -- --env-file <non-production-env-file> --summary",
+      id: "promotion-readiness-env-file-summary",
+      label: "Refresh compact promotion summary from env file",
+      mode: "read-only",
+      purpose:
+        "Print accepted-candidate promotion readiness from an approved non-production env file without dumping secret values."
+    },
+    {
       command: "npm run promotion:dry-run -- --pmid <pmid>",
       id: "promotion-dry-run",
       label: "Dry-run one accepted PMID",
       mode: "read-only",
       purpose:
         "Inspect one accepted PubMed candidate's claim link, extraction, and public packet readiness."
+    },
+    {
+      command: "npm run promotion:dry-run -- --env-file <non-production-env-file> --pmid <pmid>",
+      id: "promotion-dry-run-env-file",
+      label: "Dry-run one accepted PMID from env file",
+      mode: "read-only",
+      purpose:
+        "Inspect one accepted PubMed candidate's promotion blockers from an approved non-production env file without writing public evidence."
     },
     {
       command: "npm run ingest:sources -- --candidate-curation-handoff",
@@ -530,6 +653,11 @@ function sourceCandidatePromotionRequiredEvidence({
 
 function safeCandidateKey(dedupeKey: string) {
   return `b64:${Buffer.from(dedupeKey, "utf8").toString("base64url")}`;
+}
+
+function metadataString(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function blockedPromotion(

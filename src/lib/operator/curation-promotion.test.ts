@@ -13,6 +13,37 @@ import {
 import type { Reference, SourceCandidate } from "@/lib/types";
 
 vi.mock("@/lib/data/source-candidates", () => ({
+  buildSourceCandidateStudyExtractionPrefillFields: (sourceCandidate: SourceCandidate) => [
+    {
+      confidence: sourceCandidate.metadata.abstractText
+        ? "candidate-metadata"
+        : "manual-required",
+      confidenceLabel: sourceCandidate.metadata.abstractText ? "Strong" : "Missing",
+      confidenceRationale: sourceCandidate.metadata.abstractText
+        ? "Value comes directly from captured source metadata or source-text preview, but still needs operator verification."
+        : "No abstract value was available in candidate metadata; human extraction is required.",
+      field: "abstract",
+      note:
+        "Captured abstract or registry summary can seed the optional study abstract field, but operators must verify source context before writing.",
+      reviewConfidence: sourceCandidate.metadata.abstractText ? "strong" : "missing",
+      value: sourceCandidate.metadata.abstractText
+        ? `PubMed abstract: ${sourceCandidate.metadata.abstractText}`
+        : "Human-reviewed abstract required.",
+      writeFlag: "--study-abstract"
+    },
+    {
+      confidence: "manual-required",
+      confidenceLabel: "Missing",
+      confidenceRationale:
+        "No sampleSize value was available in candidate metadata; human extraction is required.",
+      field: "sampleSize",
+      note:
+        "Enrollment/sample-size metadata may describe planned rather than analyzed sample; verify actual analyzed sample before writing.",
+      reviewConfidence: "missing",
+      value: "Human-reviewed sampleSize required.",
+      writeFlag: "--study-sample-size"
+    }
+  ],
   getSourceCandidateCurationStatus: vi.fn(),
   listSourceCandidateCurationHandoff: vi.fn()
 }));
@@ -26,7 +57,9 @@ const candidate: SourceCandidate = {
   decision: "Accepted",
   dedupeKey: "pubmed|au|creatine-strength|42141930|creatine|creatine-strength",
   externalId: "42141930",
-  metadata: {},
+  metadata: {
+    abstractText: "Creatine abstract for extraction prefill."
+  },
   query: "creatine strength",
   region: "AU",
   reviewStatus: "Human reviewed",
@@ -317,6 +350,33 @@ describe("source candidate promotion readiness snapshot", () => {
       readyCount: 1,
       rows: [
         {
+          actionPreview: expect.objectContaining({
+            dryRunCommand: `npm run promotion:dry-run -- ${candidateSafeKey}`,
+            promotionEffect:
+              "No public packet write preview until accepted reference, claim link, structured extraction, and packet readiness are complete.",
+            requiredPermission: "evidence:promote"
+          }),
+          extractionPrefill: {
+            curationDraftCommand:
+              `npm run ingest:sources -- --candidate-curation-draft ${candidateSafeKey}`,
+            fieldSuggestions: expect.arrayContaining([
+              expect.objectContaining({
+                confidence: "candidate-metadata",
+                confidenceLabel: "Strong",
+                confidenceRationale:
+                  "Value comes directly from captured source metadata or source-text preview, but still needs operator verification.",
+                field: "abstract",
+                label: "Abstract/source summary",
+                reviewConfidence: "strong",
+                value: "PubMed abstract: Creatine abstract for extraction prefill.",
+                writeFlag: "--study-abstract"
+              })
+            ]),
+            fullTextStatus:
+              "Full text is not automatically captured; operators must verify the source packet before writing extraction fields.",
+            sourceTextStatus:
+              "PubMed abstract text captured for the curation draft."
+          },
           blockers: [
             "Accepted reference must be linked to the candidate claim.",
             "Accepted reference must have a structured study extraction.",
@@ -327,6 +387,13 @@ describe("source candidate promotion readiness snapshot", () => {
           status: "Claim link missing"
         },
         {
+          actionPreview: expect.objectContaining({
+            browserAction:
+              "Promote accepted candidate 42141930 with an explicit human promotion note.",
+            promotionEffect:
+              "Would expose reference ref-pubmed-42141930 and 1 structured extraction(s) on claim creatine-strength.",
+            requiredPermission: "evidence:promote"
+          }),
           blockers: [],
           nextAction: "Ready for explicit human promotion review.",
           ready: true,
@@ -400,12 +467,29 @@ describe("source candidate promotion readiness snapshot", () => {
               "Print accepted-candidate promotion counts, blockers, ready rows, and next action without dumping the full snapshot."
           },
           {
+            command: "npm run promotion:readiness -- --env-file <non-production-env-file> --summary",
+            id: "promotion-readiness-env-file-summary",
+            label: "Refresh compact promotion summary from env file",
+            mode: "read-only",
+            purpose:
+              "Print accepted-candidate promotion readiness from an approved non-production env file without dumping secret values."
+          },
+          {
             command: "npm run promotion:dry-run -- --pmid <pmid>",
             id: "promotion-dry-run",
             label: "Dry-run one accepted PMID",
             mode: "read-only",
             purpose:
               "Inspect one accepted PubMed candidate's claim link, extraction, and public packet readiness."
+          },
+          {
+            command:
+              "npm run promotion:dry-run -- --env-file <non-production-env-file> --pmid <pmid>",
+            id: "promotion-dry-run-env-file",
+            label: "Dry-run one accepted PMID from env file",
+            mode: "read-only",
+            purpose:
+              "Inspect one accepted PubMed candidate's promotion blockers from an approved non-production env file without writing public evidence."
           },
           {
             command: "npm run ingest:sources -- --candidate-curation-handoff",
