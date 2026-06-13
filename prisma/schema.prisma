@@ -168,6 +168,64 @@ enum OperatorStatus {
   DISABLED
 }
 
+enum SupplementOnboardingDraftStatus {
+  DRAFT
+  READY_FOR_REVIEW
+  ARCHIVED
+}
+
+enum SourcePacketStatus {
+  NOT_LINKED
+  EXTRACTION_PENDING
+  COMPLETE
+  MISSING_SOURCES
+  NEEDS_UPDATE
+  RETIRED
+}
+
+enum ClaimStudyRelation {
+  SUPPORTS
+  CONTRADICTS
+  MIXED
+  BACKGROUND
+  SAFETY_REGULATORY
+  UNREVIEWED_LEAD
+}
+
+enum ScoreChangeKind {
+  NEW_RCT
+  NEW_META_ANALYSIS
+  TRIAL_RESULT_POSTED
+  REGULATORY_WARNING
+  SAFETY_SIGNAL
+  CONTRADICTORY_EVIDENCE
+  BETTER_DOSE_FORM_EVIDENCE
+  PRODUCT_QUALITY_CONCERN
+  MANUAL_REVIEW
+  OTHER
+}
+
+enum ReviewEventType {
+  UNREVIEWED_EXTRACTION
+  CITATION_CHECKED
+  HUMAN_REVIEWED
+  NEEDS_UPDATE
+  RETIRED
+  SUPERSEDED
+  SOURCE_PACKET_UPDATED
+  CLAIM_SCORE_UPDATED
+}
+
+enum PublicChangelogKind {
+  EVIDENCE_CARD
+  SCORING
+  SOURCE_SEARCH
+  SAFETY_REGULATORY
+  PRODUCT_LABEL_ANALYZER
+  OPERATIONS
+  METHODOLOGY
+}
+
 model Intervention {
   id                        String               @id @default(cuid())
   slug                      String               @unique
@@ -193,6 +251,8 @@ model Intervention {
   sourceCandidates            SourceCandidate[]
   ingestionJobs               IngestionJob[]
   australiaRegulatoryStatuses AustraliaRegulatoryStatus[]
+  sourcePackets               SourcePacket[]
+  publicChangelogEntries      PublicChangelogEntry[]
 
   @@index([category])
   @@index([name])
@@ -235,6 +295,12 @@ model Claim {
   references       ClaimReference[]
   sourceCandidates SourceCandidate[]
   ingestionJobs    IngestionJob[]
+  sourcePackets    SourcePacket[]
+  studyLinks       ClaimStudy[]
+  scoreSnapshots   ClaimScoreSnapshot[]
+  scoreHistory     ClaimScoreHistory[]
+  reviewEvents     ReviewEvent[]
+  changelogEntries PublicChangelogEntry[]
 
   @@unique([interventionId, outcome, claimText])
   @@index([outcome])
@@ -257,6 +323,10 @@ model Reference {
   sourceDocuments             SourceDocument[]
   acceptedSourceCandidates    SourceCandidate[]
   australiaRegulatoryStatuses AustraliaRegulatoryStatus[]
+  sourcePacketLinks           SourcePacketReference[]
+  reviewEvents                ReviewEvent[]
+  scoreHistoryEvents          ClaimScoreHistory[]
+  changelogEntries            PublicChangelogEntry[]
 
   @@unique([url])
   @@index([source])
@@ -303,6 +373,8 @@ model Study {
   updatedAt         DateTime  @updatedAt
 
   reference Reference? @relation(fields: [referenceId], references: [id], onDelete: SetNull)
+  claimLinks ClaimStudy[]
+  reviewEvents ReviewEvent[]
 
   @@index([sourceType])
   @@index([pmid])
@@ -509,6 +581,186 @@ model IngestionJob {
   @@index([claimId])
 }
 
+model SourcePacket {
+  id             String             @id @default(cuid())
+  claimId        String
+  interventionId String?
+  status         SourcePacketStatus @default(EXTRACTION_PENDING)
+  reviewStatus   ReviewStatus       @default(UNREVIEWED_AI_DRAFT)
+  citationStatus String?
+  extractionNote String?
+  reviewerNotes  String?
+  current        Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  claim        Claim                   @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  intervention Intervention?            @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+  references   SourcePacketReference[]
+  reviewEvents ReviewEvent[]
+
+  @@index([claimId])
+  @@index([interventionId])
+  @@index([status])
+  @@index([reviewStatus])
+  @@index([current])
+}
+
+model SourcePacketReference {
+  sourcePacketId String
+  referenceId    String
+  extractionStatus String?
+  citationStatus   String?
+  note             String?
+  createdAt        DateTime @default(now())
+
+  sourcePacket SourcePacket @relation(fields: [sourcePacketId], references: [id], onDelete: Cascade)
+  reference    Reference    @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+
+  @@id([sourcePacketId, referenceId])
+  @@index([referenceId])
+}
+
+model ClaimStudy {
+  claimId         String
+  studyId         String
+  relation        ClaimStudyRelation @default(UNREVIEWED_LEAD)
+  relevanceScore  Int                @default(5)
+  note            String?
+  humanReviewedAt DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  claim Claim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  study Study @relation(fields: [studyId], references: [id], onDelete: Cascade)
+
+  @@id([claimId, studyId])
+  @@index([studyId])
+  @@index([relation])
+}
+
+model ClaimScoreSnapshot {
+  id                      String       @id @default(cuid())
+  claimId                 String
+  scoreVersion            String       @default("v1")
+  evidenceDirectnessScore Int
+  evidenceRigorScore      Int
+  effectSizeScore         Int
+  safetyScore             Int
+  regulatoryRiskScore     Int
+  productQualityScore     Int
+  hypePenalty             Int
+  measurabilityScore      Int
+  compositeScore          Decimal      @db.Decimal(4, 2)
+  finalLabel              EvidenceLabel
+  reviewStatus            ReviewStatus @default(UNREVIEWED_AI_DRAFT)
+  rationale               String?
+  computedAt              DateTime     @default(now())
+  createdAt               DateTime     @default(now())
+
+  claim              Claim               @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  previousForHistory ClaimScoreHistory[] @relation("PreviousScoreSnapshot")
+  newForHistory      ClaimScoreHistory[] @relation("NewScoreSnapshot")
+
+  @@index([claimId])
+  @@index([scoreVersion])
+  @@index([computedAt])
+  @@index([finalLabel])
+  @@index([reviewStatus])
+}
+
+model ClaimScoreHistory {
+  id                 String          @id @default(cuid())
+  claimId            String
+  previousSnapshotId String?
+  newSnapshotId      String?
+  oldCompositeScore  Decimal?        @db.Decimal(4, 2)
+  newCompositeScore  Decimal?        @db.Decimal(4, 2)
+  oldLabel           EvidenceLabel?
+  newLabel           EvidenceLabel?
+  reason             ScoreChangeKind
+  rationale          String
+  referenceId        String?
+  changedByUserId    String?
+  createdAt          DateTime        @default(now())
+
+  claim            Claim               @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  previousSnapshot ClaimScoreSnapshot? @relation("PreviousScoreSnapshot", fields: [previousSnapshotId], references: [id], onDelete: SetNull)
+  newSnapshot      ClaimScoreSnapshot? @relation("NewScoreSnapshot", fields: [newSnapshotId], references: [id], onDelete: SetNull)
+  reference        Reference?          @relation(fields: [referenceId], references: [id], onDelete: SetNull)
+  changedByUser    User?               @relation(fields: [changedByUserId], references: [id], onDelete: SetNull)
+  changelogEntries PublicChangelogEntry[]
+
+  @@index([claimId])
+  @@index([reason])
+  @@index([referenceId])
+  @@index([changedByUserId])
+  @@index([createdAt])
+}
+
+model ReviewEvent {
+  id             String          @id @default(cuid())
+  eventType      ReviewEventType
+  reviewStatus   ReviewStatus?
+  entityType     String
+  entityId       String?
+  claimId        String?
+  sourcePacketId String?
+  referenceId    String?
+  studyId        String?
+  actorUserId    String?
+  actorEmail     String?
+  note           String?
+  metadata       Json?
+  createdAt      DateTime        @default(now())
+
+  claim        Claim?        @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  sourcePacket SourcePacket? @relation(fields: [sourcePacketId], references: [id], onDelete: SetNull)
+  reference    Reference?    @relation(fields: [referenceId], references: [id], onDelete: SetNull)
+  study        Study?        @relation(fields: [studyId], references: [id], onDelete: SetNull)
+  actorUser    User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([eventType])
+  @@index([reviewStatus])
+  @@index([entityType, entityId])
+  @@index([claimId])
+  @@index([sourcePacketId])
+  @@index([referenceId])
+  @@index([studyId])
+  @@index([actorUserId])
+  @@index([createdAt])
+}
+
+model PublicChangelogEntry {
+  id             String              @id @default(cuid())
+  slug           String              @unique
+  date           DateTime
+  kind           PublicChangelogKind
+  title          String
+  publicImpact   String
+  details        Json
+  claimId        String?
+  interventionId String?
+  scoreHistoryId String?
+  referenceId    String?
+  publishedAt    DateTime?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  claim        Claim?              @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  intervention Intervention?       @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+  scoreHistory ClaimScoreHistory?  @relation(fields: [scoreHistoryId], references: [id], onDelete: SetNull)
+  reference    Reference?          @relation(fields: [referenceId], references: [id], onDelete: SetNull)
+
+  @@index([date])
+  @@index([kind])
+  @@index([claimId])
+  @@index([interventionId])
+  @@index([scoreHistoryId])
+  @@index([referenceId])
+  @@index([publishedAt])
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
@@ -522,6 +774,9 @@ model User {
   sessions            Session[]
   operatorProfile     OperatorProfile?
   operatorAuditEvents OperatorAuditEvent[]
+  supplementOnboardingDrafts SupplementOnboardingDraft[]
+  reviewEvents        ReviewEvent[]
+  scoreHistoryChanges ClaimScoreHistory[]
 }
 
 model Account {
@@ -601,4 +856,29 @@ model OperatorAuditEvent {
   @@index([action])
   @@index([targetType, targetId])
   @@index([createdAt])
+}
+
+model SupplementOnboardingDraft {
+  id                  String                          @id @default(cuid())
+  slug                String                          @unique
+  name                String
+  category            InterventionCategory?
+  region              String                          @default("AU")
+  status              SupplementOnboardingDraftStatus @default(DRAFT)
+  input               Json
+  plan                Json
+  guardrailWarnings   String[]
+  blockingReviewItems String[]
+  createdByUserId     String?
+  createdByEmail      String
+  createdAt           DateTime                        @default(now())
+  updatedAt           DateTime                        @updatedAt
+
+  createdByUser User? @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([createdByUserId])
+  @@index([createdByEmail])
+  @@index([category])
+  @@index([updatedAt])
 }
