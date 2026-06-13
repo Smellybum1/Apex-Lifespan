@@ -24,6 +24,8 @@ describe("source candidate mapping", () => {
             publicationTypes: ["Journal Article", "Review"],
             doi: "10.1186/s12970-017-0173-z",
             hasAbstract: true,
+            abstractText:
+              "Creatine can support strength and lean mass when paired with training.",
             authors: ["Kreider RB"],
             relevanceScore: 80,
             relevanceReasons: ["Title matches query", "Review-level source"],
@@ -64,7 +66,9 @@ describe("source candidate mapping", () => {
           publicationDate: "2017 Jun 13",
           publicationTypes: ["Journal Article", "Review"],
           doi: "10.1186/s12970-017-0173-z",
-          authors: ["Kreider RB"]
+          authors: ["Kreider RB"],
+          abstractText:
+            "Creatine can support strength and lean mass when paired with training."
         }
       }
     ]);
@@ -87,12 +91,19 @@ describe("source candidate mapping", () => {
             conditions: ["Aging"],
             interventions: ["DIETARY_SUPPLEMENT: Creatine"],
             primaryOutcomes: ["Whole-body lean mass"],
+            briefSummary: "Registry summary for creatine and resistance training.",
             lastUpdateDate: "2024-09-23",
             startDate: "2024-09",
             completionDate: "Unknown",
             hasResults: false,
             resultsFirstPostDate: null,
             sponsor: "Example University",
+            trialRelevanceDetail:
+              "The query intervention appears in the registered intervention metadata; still confirm dose, form, comparator, and outcome.",
+            trialRelevanceLabel: "Direct match",
+            trialResultDetail:
+              "The record is not completed with posted results in the captured metadata; treat as an unreviewed registry lead.",
+            trialResultLabel: "Unreviewed lead",
             triageScore: 80,
             triageReasons: ["Matches query context", "Active trial signal"],
             url: "https://clinicaltrials.gov/study/NCT06606704"
@@ -127,7 +138,8 @@ describe("source candidate mapping", () => {
       upstreamSource: "ClinicalTrials.gov API v2",
       status: "Recruiting",
       hasResults: false,
-      primaryOutcomes: ["Whole-body lean mass"]
+      primaryOutcomes: ["Whole-body lean mass"],
+      briefSummary: "Registry summary for creatine and resistance training."
     });
   });
 

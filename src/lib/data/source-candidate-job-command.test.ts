@@ -22,6 +22,9 @@ const DUPLICATE_IDENTITY_CAUTION =
 describe("commandUsage", () => {
   it("describes source-candidate review guardrails", () => {
     expect(commandUsage()).toContain(
+      "--env-file <path>                 Load an approved local env file before Prisma-backed source-candidate inspection."
+    );
+    expect(commandUsage()).toContain(
       "--candidate-detail <dedupe-key>   Print one source-candidate detail record with review/curation hints."
     );
     expect(commandUsage()).toContain(
@@ -3242,11 +3245,42 @@ describe("runSourceCandidateJobCommand", () => {
           }
         ],
         pmid: "28615996",
+        prefillFields: [
+          {
+            confidence: "candidate-metadata",
+            field: "sampleSize",
+            note:
+              "Enrollment/sample-size metadata may describe planned rather than analyzed sample; verify actual analyzed sample before writing.",
+            value: "120 actual",
+            writeFlag: "--study-sample-size"
+          },
+          {
+            confidence: "derived",
+            field: "riskOfBias",
+            note:
+              "Risk of bias requires protocol/results/full-text review; this is only a starting note.",
+            value:
+              "Review-level source; assess search strategy, inclusion criteria, bias appraisal, and funding/conflicts.",
+            writeFlag: "--study-risk-of-bias"
+          },
+          {
+            confidence: "manual-required",
+            field: "comparator",
+            note:
+              "Comparator is not currently a Study write field, but it should inform claim-level extraction.",
+            value:
+              "Not available in candidate metadata; review full text or registry arms before describing comparator."
+          }
+        ],
         referenceId: "ref-creatine-position-stand",
         source: "PubMed",
         sourceTypeSuggestion: "SYSTEMATIC_REVIEW",
         title: "Creatine position stand",
+        uncertaintyNotes: [
+          "Prefill values are decision support only; do not write extraction fields without checking the source packet."
+        ],
         url: "https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        whatWouldChangeScore: "Reviewed extraction fields would improve scoring.",
         year: 2017
       }
     });
@@ -3339,17 +3373,24 @@ describe("runSourceCandidateJobCommand", () => {
         '  doi="10.1186/s12970-017-0173-z"',
         "  abstractAvailable=true",
         '  manualFields="sampleSize, population, interventionName, outcomes, adverseEvents, fundingConflicts, riskOfBias"',
+        "  prefillFields:",
+        '    sampleSize="120 actual" confidence=candidate-metadata writeFlag=--study-sample-size note="Enrollment/sample-size metadata may describe planned rather than analyzed sample; verify actual analyzed sample before writing."',
+        '    riskOfBias="Review-level source; assess search strategy, inclusion criteria, bias appraisal, and funding/conflicts." confidence=derived writeFlag=--study-risk-of-bias note="Risk of bias requires protocol/results/full-text review; this is only a starting note."',
+        '    comparator="Not available in candidate metadata; review full text or registry arms before describing comparator." confidence=manual-required note="Comparator is not currently a Study write field, but it should inform claim-level extraction."',
+        "  uncertaintyNotes:",
+        '    - "Prefill values are decision support only; do not write extraction fields without checking the source packet."',
+        '  whatWouldChangeScore="Reviewed extraction fields would improve scoring."',
         `  commandTemplate=${JSON.stringify(
           [
             `--extract-candidate-study ${safeKey}`,
             "--study-source-type systematic-review",
-            '--study-sample-size "Human-entered sample size."',
+            '--study-sample-size "120 actual"',
             '--study-population "Human-reviewed population."',
             '--study-intervention-name "Human-reviewed intervention."',
             '--study-outcome "Human-reviewed outcome."',
             '--study-adverse-events "Human-reviewed adverse event summary."',
             '--study-funding-conflicts "Human-reviewed funding/conflict note."',
-            '--study-risk-of-bias "Human-reviewed risk-of-bias assessment."'
+            '--study-risk-of-bias "Review-level source; assess search strategy, inclusion criteria, bias appraisal, and funding/conflicts."'
           ].join(" ")
         )}`,
         "  metadataFields:",

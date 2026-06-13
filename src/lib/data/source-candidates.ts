@@ -168,6 +168,38 @@ export interface SourceCandidateCurationDraftMetadataField {
   value: string;
 }
 
+export type SourceCandidateCurationPrefillConfidence =
+  | "candidate-metadata"
+  | "derived"
+  | "manual-required";
+
+export type SourceCandidateCurationReviewConfidence =
+  | "strong"
+  | "inferred"
+  | "weak"
+  | "missing";
+
+export interface SourceCandidateCurationPrefillField {
+  confidence: SourceCandidateCurationPrefillConfidence;
+  confidenceLabel: string;
+  confidenceRationale: string;
+  field: string;
+  note: string;
+  reviewConfidence: SourceCandidateCurationReviewConfidence;
+  value: string;
+  writeFlag?: string;
+}
+
+export interface SourceCandidateCurationReviewCue {
+  confidence: SourceCandidateCurationPrefillConfidence;
+  confidenceLabel: string;
+  confidenceRationale: string;
+  label: string;
+  note: string;
+  reviewConfidence: SourceCandidateCurationReviewConfidence;
+  value: string;
+}
+
 export interface SourceCandidateCurationStudyExtractionDraft {
   abstractAvailable?: boolean;
   alreadyExtracted: boolean;
@@ -176,11 +208,15 @@ export interface SourceCandidateCurationStudyExtractionDraft {
   metadataFields: SourceCandidateCurationDraftMetadataField[];
   nctId?: string;
   pmid?: string;
+  prefillFields: SourceCandidateCurationPrefillField[];
   referenceId: string;
+  reviewCues: SourceCandidateCurationReviewCue[];
   source: SourceCandidateSource;
   sourceTypeSuggestion: string;
   title: string;
+  uncertaintyNotes: string[];
   url: string;
+  whatWouldChangeScore: string;
   year?: number;
 }
 
@@ -1739,13 +1775,595 @@ function sourceCandidateStudyExtractionDraft(
       candidate.source === "PubMed"
         ? normalisePubMedId(candidate.externalId)
         : undefined,
+    prefillFields: buildSourceCandidateStudyExtractionPrefillFields(candidate),
     referenceId: status.acceptedReferenceId,
+    reviewCues: sourceCandidateStudyExtractionReviewCues(candidate),
     source: candidate.source,
     sourceTypeSuggestion: sourceCandidateStudyTypeSuggestion(candidate),
     title: candidate.title,
+    uncertaintyNotes: sourceCandidateStudyExtractionUncertaintyNotes(candidate),
     url: candidate.url,
+    whatWouldChangeScore:
+      "Reviewed extraction of sample size, population, comparator, duration, outcomes, safety/adverse events, funding/conflicts, and risk of bias would support stronger claim scoring and public wording decisions.",
     year: candidate.publishedYear
   };
+}
+
+export function buildSourceCandidateStudyExtractionPrefillFields(
+  candidate: SourceCandidate
+): SourceCandidateCurationPrefillField[] {
+  return [
+    prefillField({
+      confidence: sourceTextPrefill(candidate) ? "candidate-metadata" : undefined,
+      field: "abstract",
+      value: sourceTextPrefill(candidate),
+      note:
+        "Captured abstract or registry summary can seed the optional study abstract field, but operators must verify source context before writing.",
+      writeFlag: "--study-abstract"
+    }),
+    prefillField({
+      field: "sampleSize",
+      value: metadataDisplayValue(candidate.metadata, "enrollment"),
+      note: "Enrollment/sample-size metadata may describe planned rather than analyzed sample; verify actual analyzed sample before writing.",
+      writeFlag: "--study-sample-size"
+    }),
+    prefillField({
+      field: "population",
+      value: joinedMetadataPrefix(candidate.metadata, "conditions", "Conditions"),
+      note: "Condition/population metadata may be broad; verify population, inclusion criteria, and health status before writing.",
+      writeFlag: "--study-population"
+    }),
+    prefillField({
+      field: "interventionName",
+      value: joinedMetadataPrefix(candidate.metadata, "interventions", "Interventions"),
+      note: "Intervention metadata may omit formulation and comparator context; verify before writing.",
+      writeFlag: "--study-intervention-name"
+    }),
+    prefillField({
+      field: "outcomes",
+      value: joinedMetadata(candidate.metadata, "primaryOutcomes"),
+      note: "Outcome metadata may omit endpoint hierarchy and claim relevance; verify before writing.",
+      writeFlag: "--study-outcome"
+    }),
+    prefillField({
+      field: "adverseEvents",
+      value: adverseEventPrefill(candidate),
+      note: "Adverse-event reporting is not fully captured by candidate metadata; review results or full text before writing.",
+      confidence: adverseEventPrefill(candidate) ? "derived" : undefined,
+      writeFlag: "--study-adverse-events"
+    }),
+    prefillField({
+      field: "fundingConflicts",
+      value: sponsorPrefill(candidate),
+      note: "Sponsor metadata is not a full funding/conflict-of-interest assessment.",
+      writeFlag: "--study-funding-conflicts"
+    }),
+    prefillField({
+      field: "riskOfBias",
+      value: riskOfBiasPrefill(candidate),
+      note: "Risk of bias requires protocol/results/full-text review; this is only a starting note.",
+      confidence: riskOfBiasPrefill(candidate) ? "derived" : undefined,
+      writeFlag: "--study-risk-of-bias"
+    }),
+    prefillField({
+      field: "duration",
+      value: durationPrefill(candidate),
+      note: "Duration inferred only from registry date metadata; verify actual intervention and follow-up duration.",
+      confidence: durationPrefill(candidate) ? "derived" : undefined,
+      writeFlag: "--study-duration"
+    }),
+    prefillField({
+      field: "mainResults",
+      value: mainResultsPrefill(candidate),
+      note: "Results summary is not extracted automatically; verify registry results or full text before writing.",
+      confidence: mainResultsPrefill(candidate) ? "derived" : undefined,
+      writeFlag: "--study-main-results"
+    }),
+    prefillField({
+      field: "comparator",
+      value: "Not available in candidate metadata; review full text or registry arms before describing comparator.",
+      note: "Comparator is not currently a Study write field, but it should inform claim-level extraction.",
+      confidence: "manual-required"
+    })
+  ];
+}
+
+function sourceCandidateStudyExtractionReviewCues(
+  candidate: SourceCandidate
+): SourceCandidateCurationReviewCue[] {
+  return [
+    reviewCue({
+      confidence: "candidate-metadata",
+      label: "sourceTraceability",
+      note: "Use identifiers to verify the accepted reference is the same source record before extraction.",
+      value: sourceTraceabilityCue(candidate)
+    }),
+    reviewCue({
+      confidence: "derived",
+      label: "studyDesign",
+      note: "Study-design suggestion is derived from source type and publication metadata; verify during extraction.",
+      value: sourceCandidateStudyTypeSuggestion(candidate)
+    }),
+    reviewCue({
+      confidence: "derived",
+      label: "titleQueryOverlap",
+      note: "Title/query overlap is a relevance cue only; it is not evidence quality or claim support.",
+      value: titleQueryOverlapCue(candidate)
+    }),
+    reviewCue({
+      confidence: "candidate-metadata",
+      label: "abstractStatus",
+      note: "Abstract availability only tells the operator where to start; full-text or registry review may still be required.",
+      value: abstractStatusCue(candidate)
+    }),
+    reviewCue({
+      confidence: sourceTextPrefill(candidate)
+        ? "candidate-metadata"
+        : "manual-required",
+      label: "sourceTextPreview",
+      note:
+        "Captured source text can guide extraction targets, but it is not a reviewed extraction or source-quality decision.",
+      value:
+        sourceTextPreviewCue(candidate) ??
+        "No PubMed abstract text or ClinicalTrials.gov brief summary captured in candidate metadata."
+    }),
+    reviewCue({
+      confidence: "manual-required",
+      label: "fullTextStatus",
+      note:
+        "Full-text article content is not automatically captured by onboarding automation.",
+      value:
+        "Full text not captured; review the linked source or an approved source packet before writing extraction fields."
+    }),
+    reviewCue({
+      confidence: "candidate-metadata",
+      label: "publicationContext",
+      note: "Journal, date, and publication-type metadata can help prioritize review but do not replace full source appraisal.",
+      value: publicationContextCue(candidate)
+    }),
+    reviewCue({
+      confidence: "candidate-metadata",
+      label: "registryStatus",
+      note: "Registry state and result-posting cues can differ from published evidence; verify current record and publications.",
+      value: registryStatusCue(candidate)
+    }),
+    reviewCue({
+      confidence: "candidate-metadata",
+      label: "outcomeReviewTargets",
+      note: "Outcome metadata should guide extraction targets, but endpoint hierarchy and claim relevance need review.",
+      value: joinedMetadata(candidate.metadata, "primaryOutcomes")
+    })
+  ].filter((cue): cue is SourceCandidateCurationReviewCue => Boolean(cue));
+}
+
+function reviewCue({
+  confidence,
+  label,
+  note,
+  value
+}: {
+  confidence: SourceCandidateCurationPrefillConfidence;
+  label: string;
+  note: string;
+  value?: string;
+}): SourceCandidateCurationReviewCue | undefined {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return undefined;
+  }
+
+  return {
+    confidence,
+    ...sourceCandidateReviewConfidenceMetadata({
+      confidence,
+      field: label,
+      hasValue: true
+    }),
+    label,
+    note,
+    value: trimmed
+  };
+}
+
+function prefillField({
+  field,
+  value,
+  note,
+  writeFlag,
+  confidence
+}: {
+  confidence?: SourceCandidateCurationPrefillConfidence;
+  field: string;
+  note: string;
+  value?: string;
+  writeFlag?: string;
+}): SourceCandidateCurationPrefillField {
+  const trimmed = value?.trim();
+  const resolvedConfidence = confidence ?? (trimmed ? "candidate-metadata" : "manual-required");
+
+  return {
+    confidence: resolvedConfidence,
+    ...sourceCandidateReviewConfidenceMetadata({
+      confidence: resolvedConfidence,
+      field,
+      hasValue: Boolean(trimmed)
+    }),
+    field,
+    note,
+    value: trimmed || `Human-reviewed ${field} required.`,
+    writeFlag
+  };
+}
+
+function sourceCandidateReviewConfidenceMetadata({
+  confidence,
+  field,
+  hasValue
+}: {
+  confidence: SourceCandidateCurationPrefillConfidence;
+  field: string;
+  hasValue: boolean;
+}): {
+  confidenceLabel: string;
+  confidenceRationale: string;
+  reviewConfidence: SourceCandidateCurationReviewConfidence;
+} {
+  const reviewConfidence = sourceCandidateReviewConfidence({
+    confidence,
+    field,
+    hasValue
+  });
+
+  return {
+    confidenceLabel: sourceCandidateReviewConfidenceLabel(reviewConfidence),
+    confidenceRationale: sourceCandidateReviewConfidenceRationale({
+      confidence,
+      field,
+      hasValue,
+      reviewConfidence
+    }),
+    reviewConfidence
+  };
+}
+
+function sourceCandidateReviewConfidence({
+  confidence,
+  field,
+  hasValue
+}: {
+  confidence: SourceCandidateCurationPrefillConfidence;
+  field: string;
+  hasValue: boolean;
+}): SourceCandidateCurationReviewConfidence {
+  if (!hasValue || confidence === "manual-required") {
+    return "missing";
+  }
+
+  if (confidence === "derived") {
+    return "inferred";
+  }
+
+  if (
+    field === "abstract" ||
+    field === "sourceTraceability" ||
+    field === "abstractStatus" ||
+    field === "sourceTextPreview"
+  ) {
+    return "strong";
+  }
+
+  return "weak";
+}
+
+function sourceCandidateReviewConfidenceLabel(
+  reviewConfidence: SourceCandidateCurationReviewConfidence
+) {
+  const labels: Record<SourceCandidateCurationReviewConfidence, string> = {
+    inferred: "Inferred",
+    missing: "Missing",
+    strong: "Strong",
+    weak: "Weak"
+  };
+
+  return labels[reviewConfidence];
+}
+
+function sourceCandidateReviewConfidenceRationale({
+  confidence,
+  field,
+  hasValue,
+  reviewConfidence
+}: {
+  confidence: SourceCandidateCurationPrefillConfidence;
+  field: string;
+  hasValue: boolean;
+  reviewConfidence: SourceCandidateCurationReviewConfidence;
+}) {
+  if (!hasValue) {
+    return `No ${field} value was available in candidate metadata; human extraction is required.`;
+  }
+
+  if (reviewConfidence === "strong") {
+    return "Value comes directly from captured source metadata or source-text preview, but still needs operator verification.";
+  }
+
+  if (reviewConfidence === "inferred") {
+    return "Value is inferred from source metadata or registry signals and must be checked against the source before writing.";
+  }
+
+  if (reviewConfidence === "weak") {
+    return "Value comes from broad candidate metadata and may not match the analyzed study field exactly.";
+  }
+
+  return `This ${field} field remains manual despite ${confidence} provenance.`;
+}
+
+function sourceCandidateStudyExtractionUncertaintyNotes(candidate: SourceCandidate) {
+  const notes = [
+    "Prefill values are decision support only; do not write extraction fields without checking the source packet.",
+    "Candidate metadata may omit comparator, analyzed sample, adverse events, funding conflicts, and risk-of-bias details."
+  ];
+  const sourceText = sourceTextPrefill(candidate);
+
+  if (sourceText) {
+    notes.push(
+      "Captured source text is limited to abstract or registry-summary metadata; it is not a full-text review."
+    );
+  } else {
+    notes.push(
+      "No abstract or registry-summary text was captured in candidate metadata; source-text review remains manual."
+    );
+  }
+
+  if (candidate.source === "PubMed" && !candidate.abstractAvailable) {
+    notes.push("PubMed abstract was not available from candidate metadata.");
+  }
+
+  if (candidate.source === "ClinicalTrials.gov") {
+    notes.push("Registry records can describe planned methods or posted results; verify publication and results status separately.");
+  }
+
+  return notes;
+}
+
+function joinedMetadata(metadata: Record<string, unknown>, key: string) {
+  const values = metadataStringArray(metadata, key);
+  return values.length > 0 ? values.join("; ") : undefined;
+}
+
+function joinedMetadataPrefix(
+  metadata: Record<string, unknown>,
+  key: string,
+  prefix: string
+) {
+  const value = joinedMetadata(metadata, key);
+  return value ? `${prefix}: ${value}` : undefined;
+}
+
+function adverseEventPrefill(candidate: SourceCandidate) {
+  const hasResults = metadataDisplayValue(candidate.metadata, "hasResults");
+  const resultsFirstPostDate = metadataDisplayValue(
+    candidate.metadata,
+    "resultsFirstPostDate"
+  );
+
+  if (hasResults === "true") {
+    return resultsFirstPostDate
+      ? `Results posted ${resultsFirstPostDate}; review adverse-event results before writing.`
+      : "Results posted; review adverse-event results before writing.";
+  }
+
+  if (hasResults === "false") {
+    return "No posted results signal in candidate metadata; adverse events require source review.";
+  }
+
+  return undefined;
+}
+
+function sponsorPrefill(candidate: SourceCandidate) {
+  const sponsor = metadataDisplayValue(candidate.metadata, "sponsor");
+  return sponsor ? `Sponsor: ${sponsor}` : undefined;
+}
+
+function riskOfBiasPrefill(candidate: SourceCandidate) {
+  if (candidate.source === "ClinicalTrials.gov") {
+    return "Clinical trial registry record; risk of bias requires protocol, randomization, blinding, attrition, and results review.";
+  }
+
+  if (sourceCandidateStudyTypeSuggestion(candidate) === "SYSTEMATIC_REVIEW") {
+    return "Review-level source; assess search strategy, inclusion criteria, bias appraisal, and funding/conflicts.";
+  }
+
+  return undefined;
+}
+
+function durationPrefill(candidate: SourceCandidate) {
+  const startDate = metadataDisplayValue(candidate.metadata, "startDate");
+  const completionDate = metadataDisplayValue(candidate.metadata, "completionDate");
+
+  if (startDate && completionDate) {
+    return `Study dates: ${startDate} to ${completionDate}`;
+  }
+
+  if (completionDate) {
+    return `Completion date: ${completionDate}`;
+  }
+
+  if (startDate) {
+    return `Start date: ${startDate}`;
+  }
+
+  return undefined;
+}
+
+function mainResultsPrefill(candidate: SourceCandidate) {
+  const hasResults = metadataDisplayValue(candidate.metadata, "hasResults");
+  const resultsFirstPostDate = metadataDisplayValue(
+    candidate.metadata,
+    "resultsFirstPostDate"
+  );
+
+  if (hasResults === "true") {
+    return resultsFirstPostDate
+      ? `Results posted ${resultsFirstPostDate}; extract actual effect results after review.`
+      : "Results posted; extract actual effect results after review.";
+  }
+
+  if (hasResults === "false") {
+    return "No posted results signal in candidate metadata.";
+  }
+
+  return undefined;
+}
+
+function sourceTextPrefill(candidate: SourceCandidate) {
+  const abstractText = metadataString(candidate.metadata, "abstractText");
+
+  if (abstractText) {
+    return `PubMed abstract: ${truncateReviewCueText(abstractText, 1200)}`;
+  }
+
+  const briefSummary = metadataString(candidate.metadata, "briefSummary");
+
+  if (briefSummary) {
+    return `ClinicalTrials.gov brief summary: ${truncateReviewCueText(
+      briefSummary,
+      1200
+    )}`;
+  }
+
+  return undefined;
+}
+
+function sourceTextPreviewCue(candidate: SourceCandidate) {
+  const abstractText = metadataString(candidate.metadata, "abstractText");
+
+  if (abstractText) {
+    return `PubMed abstract preview: ${truncateReviewCueText(abstractText)}`;
+  }
+
+  const briefSummary = metadataString(candidate.metadata, "briefSummary");
+
+  if (briefSummary) {
+    return `ClinicalTrials.gov brief summary preview: ${truncateReviewCueText(
+      briefSummary
+    )}`;
+  }
+
+  return undefined;
+}
+
+function truncateReviewCueText(value: string, maxLength = 600) {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
+}
+
+function sourceTraceabilityCue(candidate: SourceCandidate) {
+  const identifiers = [
+    candidate.source === "PubMed"
+      ? `PMID: ${normalisePubMedId(candidate.externalId) ?? candidate.externalId}`
+      : undefined,
+    candidate.source === "ClinicalTrials.gov"
+      ? `NCT ID: ${normaliseNctId(candidate.externalId) ?? candidate.externalId}`
+      : undefined,
+    metadataString(candidate.metadata, "doi")
+      ? `DOI: ${metadataString(candidate.metadata, "doi")}`
+      : undefined,
+    candidate.url ? `URL: ${candidate.url}` : undefined
+  ].filter((value): value is string => Boolean(value));
+
+  return identifiers.join("; ");
+}
+
+function titleQueryOverlapCue(candidate: SourceCandidate) {
+  const titleTokens = reviewCueTokens(candidate.title);
+  const queryTokens = reviewCueTokens(candidate.query);
+
+  if (queryTokens.length === 0) {
+    return undefined;
+  }
+
+  const titleTokenSet = new Set(titleTokens);
+  const overlap = queryTokens.filter((token) => titleTokenSet.has(token));
+
+  return `Title/query overlap ${overlap.length}/${queryTokens.length}: ${
+    overlap.length > 0 ? overlap.join(", ") : "none"
+  }.`;
+}
+
+function abstractStatusCue(candidate: SourceCandidate) {
+  if (metadataString(candidate.metadata, "abstractText")) {
+    return "PubMed abstract text captured in source-candidate metadata.";
+  }
+
+  if (metadataString(candidate.metadata, "briefSummary")) {
+    return "ClinicalTrials.gov registry brief summary captured in source-candidate metadata.";
+  }
+
+  if (candidate.abstractAvailable === true) {
+    return `${candidate.source} abstract flagged as available in candidate metadata.`;
+  }
+
+  if (candidate.abstractAvailable === false) {
+    return `${candidate.source} abstract was not flagged as available in candidate metadata.`;
+  }
+
+  return "Abstract availability was not captured in candidate metadata.";
+}
+
+function publicationContextCue(candidate: SourceCandidate) {
+  const publicationTypes = joinedMetadata(candidate.metadata, "publicationTypes");
+  const journal = metadataString(candidate.metadata, "journal");
+  const publicationDate = metadataString(candidate.metadata, "publicationDate");
+  const parts = [
+    journal ? `Journal: ${journal}` : undefined,
+    publicationDate ? `Publication date: ${publicationDate}` : undefined,
+    publicationTypes ? `Publication types: ${publicationTypes}` : undefined
+  ].filter((value): value is string => Boolean(value));
+
+  return parts.length > 0 ? parts.join("; ") : undefined;
+}
+
+function registryStatusCue(candidate: SourceCandidate) {
+  if (candidate.source !== "ClinicalTrials.gov") {
+    return undefined;
+  }
+
+  const status = metadataDisplayValue(candidate.metadata, "status");
+  const phase = metadataDisplayValue(candidate.metadata, "phase");
+  const hasResults = metadataDisplayValue(candidate.metadata, "hasResults");
+  const resultsFirstPostDate = metadataDisplayValue(
+    candidate.metadata,
+    "resultsFirstPostDate"
+  );
+  const lastUpdateDate = metadataDisplayValue(candidate.metadata, "lastUpdateDate");
+  const parts = [
+    status ? `Status: ${status}` : undefined,
+    phase ? `Phase: ${phase}` : undefined,
+    hasResults ? `Has posted results: ${hasResults}` : undefined,
+    resultsFirstPostDate ? `Results first posted: ${resultsFirstPostDate}` : undefined,
+    lastUpdateDate ? `Last update: ${lastUpdateDate}` : undefined
+  ].filter((value): value is string => Boolean(value));
+
+  return parts.length > 0 ? parts.join("; ") : undefined;
+}
+
+function reviewCueTokens(value: string) {
+  return Array.from(
+    new Set(
+      value
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .split(/\s+/)
+        .filter((token) => token.length > 2)
+    )
+  ).sort((left, right) => left.localeCompare(right));
 }
 
 function isDraftableAcceptedReferenceStatus(status: SourceCandidateCurationStatus) {

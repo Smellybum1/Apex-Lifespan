@@ -2711,6 +2711,7 @@ export function commandUsage() {
     "Usage: npm run ingest:sources -- [options]",
     "",
     "Options:",
+    "  --env-file <path>                 Load an approved local env file before Prisma-backed source-candidate inspection.",
     "  --job-id <id>                     Run one specific ingestion job.",
     "  --run-next                        Run queued PubMed/ClinicalTrials.gov jobs.",
     "  --limit <count>                   With --run-next, run up to count queued jobs (default 1, max 25).",
@@ -3441,6 +3442,49 @@ function formatSourceCandidateCurationDraft(
     lines.push(
       `  manualFields=${quote(draft.studyExtractionDraft.manualFields.join(", "))}`
     );
+
+    const prefillFields = draft.studyExtractionDraft.prefillFields ?? [];
+    const reviewCues = draft.studyExtractionDraft.reviewCues ?? [];
+    const uncertaintyNotes = draft.studyExtractionDraft.uncertaintyNotes ?? [];
+
+    if (prefillFields.length > 0) {
+      lines.push("  prefillFields:");
+      lines.push(
+        ...prefillFields.map(
+          (field) =>
+            `    ${field.field}=${quote(field.value)} confidence=${field.confidence}` +
+            `${field.writeFlag ? ` writeFlag=${field.writeFlag}` : ""}` +
+            ` note=${quote(field.note)}`
+        )
+      );
+    }
+
+    if (reviewCues.length > 0) {
+      lines.push("  reviewCues:");
+      lines.push(
+        ...reviewCues.map(
+          (cue) =>
+            `    ${cue.label}=${quote(cue.value)} confidence=${cue.confidence}` +
+            ` note=${quote(cue.note)}`
+        )
+      );
+    }
+
+    if (uncertaintyNotes.length > 0) {
+      lines.push("  uncertaintyNotes:");
+      lines.push(
+        ...uncertaintyNotes.map(
+          (note) => `    - ${quote(note)}`
+        )
+      );
+    }
+
+    lines.push(
+      `  whatWouldChangeScore=${quote(
+        draft.studyExtractionDraft.whatWouldChangeScore ??
+          "Reviewed extraction fields would support stronger claim scoring and public wording decisions."
+      )}`
+    );
     lines.push(
       `  commandTemplate=${quote(
         formatSourceCandidateStudyExtractionCommandTemplate(
@@ -3500,28 +3544,97 @@ function formatSourceCandidateStudyExtractionCommandTemplate(
   candidate: SourceCandidate,
   draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>
 ) {
+  const abstract = studyExtractionPrefillCommandValue(draft, "abstract");
+  const duration = studyExtractionPrefillCommandValue(draft, "duration");
+  const mainResults = studyExtractionPrefillCommandValue(draft, "mainResults");
+
   return [
     `--extract-candidate-study ${safeCandidateKey(candidate.dedupeKey)}`,
     `--study-source-type ${formatStudySourceTypeCommandValue(
       draft.sourceTypeSuggestion
     )}`,
-    `--study-sample-size ${commandTextArgument("Human-entered sample size.")}`,
-    `--study-population ${commandTextArgument("Human-reviewed population.")}`,
-    `--study-intervention-name ${commandTextArgument(
-      "Human-reviewed intervention."
+    `--study-sample-size ${commandTextArgument(
+      studyExtractionPrefillCommandValue(
+        draft,
+        "sampleSize",
+        "Human-entered sample size."
+      )
     )}`,
-    `--study-outcome ${commandTextArgument("Human-reviewed outcome.")}`,
+    `--study-population ${commandTextArgument(
+      studyExtractionPrefillCommandValue(
+        draft,
+        "population",
+        "Human-reviewed population."
+      )
+    )}`,
+    `--study-intervention-name ${commandTextArgument(
+      studyExtractionPrefillCommandValue(
+        draft,
+        "interventionName",
+        "Human-reviewed intervention."
+      )
+    )}`,
+    `--study-outcome ${commandTextArgument(
+      studyExtractionPrefillCommandValue(
+        draft,
+        "outcomes",
+        "Human-reviewed outcome."
+      )
+    )}`,
     `--study-adverse-events ${commandTextArgument(
-      "Human-reviewed adverse event summary."
+      studyExtractionPrefillCommandValue(
+        draft,
+        "adverseEvents",
+        "Human-reviewed adverse event summary."
+      )
     )}`,
     `--study-funding-conflicts ${commandTextArgument(
-      "Human-reviewed funding/conflict note."
+      studyExtractionPrefillCommandValue(
+        draft,
+        "fundingConflicts",
+        "Human-reviewed funding/conflict note."
+      )
     )}`,
     `--study-risk-of-bias ${commandTextArgument(
-      "Human-reviewed risk-of-bias assessment."
+      studyExtractionPrefillCommandValue(
+        draft,
+        "riskOfBias",
+        "Human-reviewed risk-of-bias assessment."
+      )
     )}`,
+    ...(duration ? [`--study-duration ${commandTextArgument(duration)}`] : []),
+    ...(mainResults
+      ? [`--study-main-results ${commandTextArgument(mainResults)}`]
+      : []),
+    ...(abstract ? [`--study-abstract ${commandTextArgument(abstract)}`] : []),
     ...(draft.alreadyExtracted ? ["--update-existing-study"] : [])
   ].join(" ");
+}
+
+function studyExtractionPrefillCommandValue(
+  draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>,
+  field: string,
+  fallback: string
+): string;
+function studyExtractionPrefillCommandValue(
+  draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>,
+  field: string,
+  fallback?: string
+): string | undefined;
+function studyExtractionPrefillCommandValue(
+  draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>,
+  field: string,
+  fallback?: string
+) {
+  const prefill = (draft.prefillFields ?? []).find(
+    (candidate) => candidate.field === field
+  );
+
+  if (!prefill || prefill.confidence === "manual-required") {
+    return fallback;
+  }
+
+  return prefill.value;
 }
 
 function formatStudySourceTypeCommandValue(sourceTypeSuggestion: string) {

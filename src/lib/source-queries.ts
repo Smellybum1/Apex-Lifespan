@@ -1,9 +1,35 @@
-import type { Claim, Intervention, OutcomeArea } from "@/lib/types";
+import type { Claim, Intervention, InterventionCategory, OutcomeArea } from "@/lib/types";
 
 export interface SourceSearchQueries {
   label: string;
+  plans: SourceSearchQueryPlanItem[];
   pubMedTerm: string;
   trialTerm: string;
+}
+
+export type SourceSearchQueryPlanKind =
+  | "category-context"
+  | "human-trial"
+  | "outcome-context"
+  | "regulatory-review"
+  | "review-level"
+  | "safety"
+  | "trial-registry";
+
+export type SourceSearchQueryBundleId =
+  | "category-context"
+  | "core-evidence"
+  | "outcome-context";
+
+export interface SourceSearchQueryPlanItem {
+  bundleId: SourceSearchQueryBundleId;
+  bundleLabel: string;
+  executable: boolean;
+  kind: SourceSearchQueryPlanKind;
+  priority: number;
+  rationale: string;
+  source: "AU/TGA review" | "ClinicalTrials.gov" | "PubMed";
+  term: string;
 }
 
 const outcomeSearchTerms: Record<OutcomeArea, string> = {
@@ -24,6 +50,146 @@ const outcomeSearchTerms: Record<OutcomeArea, string> = {
   "Fertility/hormones": "fertility hormones",
   "Biological aging clocks": "biological aging clocks",
   "Safety/adverse effects": "safety adverse effects"
+};
+
+const outcomeSupplementalContexts: Partial<
+  Record<OutcomeArea, { rationale: string; term: string }>
+> = {
+  "Cardiovascular events": {
+    rationale:
+      "Add event-specific cardiovascular terms so candidate discovery does not stop at surrogate biomarker literature.",
+    term: "major adverse cardiovascular events atrial fibrillation bleeding randomized meta-analysis"
+  },
+  "LDL/ApoB/lipids": {
+    rationale:
+      "Add lipid-specific biomarker terms for LDL, ApoB, triglycerides, and placebo-controlled human evidence.",
+    term: "LDL cholesterol ApoB triglycerides placebo randomized controlled trial"
+  },
+  "Blood pressure": {
+    rationale:
+      "Add blood-pressure measurement terms for systolic, diastolic, and ambulatory outcomes.",
+    term: "systolic diastolic ambulatory blood pressure placebo randomized trial"
+  },
+  "Glucose/insulin/HbA1c": {
+    rationale:
+      "Add glycemic-marker terms for HbA1c, insulin resistance, fasting glucose, and controlled trials.",
+    term: "HbA1c insulin resistance fasting glucose placebo randomized trial"
+  },
+  Inflammation: {
+    rationale:
+      "Add inflammatory biomarker terms so the search distinguishes mechanistic markers from clinical endpoints.",
+    term: "CRP IL-6 TNF alpha inflammatory biomarkers placebo human trial"
+  },
+  Cognition: {
+    rationale:
+      "Add cognition-measure terms for memory, attention, and neuropsychological testing.",
+    term: "memory attention cognitive performance neuropsychological test randomized trial"
+  },
+  Sleep: {
+    rationale:
+      "Add sleep-measure terms for sleep quality, insomnia, and placebo-controlled trials.",
+    term: "sleep quality insomnia sleep continuity placebo randomized trial"
+  },
+  "Mood/stress": {
+    rationale:
+      "Add mood and stress scale terms for anxiety, perceived stress, and placebo-controlled trials.",
+    term: "anxiety perceived stress mood scale placebo randomized trial"
+  },
+  "Muscle/strength": {
+    rationale:
+      "Add performance-measure terms for resistance training, strength, lean mass, and placebo-controlled evidence.",
+    term: "resistance training strength lean mass placebo randomized trial"
+  },
+  "VO2 max/endurance": {
+    rationale:
+      "Add endurance-measure terms for VO2 max, time trial, fatigue, and controlled human evidence.",
+    term: "VO2 max endurance time trial fatigue placebo randomized trial"
+  },
+  "Joint/tendon/skin": {
+    rationale:
+      "Add tissue-specific outcome terms while avoiding preparation or self-administration language.",
+    term: "tendon ligament skin healing pain function clinical trial"
+  },
+  "Eye health": {
+    rationale:
+      "Add eye-health measurement terms for visual acuity, macular outcomes, and controlled evidence.",
+    term: "visual acuity macular retinal placebo randomized trial"
+  },
+  "Immune/respiratory": {
+    rationale:
+      "Add immune and respiratory endpoint terms for infection, symptom duration, and controlled trials.",
+    term: "respiratory infection symptom duration immune function placebo randomized trial"
+  },
+  "Fertility/hormones": {
+    rationale:
+      "Add endocrine-marker terms while preserving clinician-context sensitivity.",
+    term: "testosterone estrogen fertility hormone biomarker placebo randomized trial"
+  },
+  "Biological aging clocks": {
+    rationale:
+      "Add biological-aging marker terms while keeping surrogate endpoints distinct from lifespan claims.",
+    term: "epigenetic clock biological age methylation biomarker clinical trial"
+  }
+};
+
+const categorySupplementalContexts: Partial<
+  Record<InterventionCategory, { rationale: string; term: string }>
+> = {
+  "Vitamin/mineral": {
+    rationale:
+      "Add deficiency, low-status, upper-limit, and toxicity context for vitamin/mineral claims.",
+    term: "deficiency low status upper intake level toxicity biomarker review"
+  },
+  "Fatty acid": {
+    rationale:
+      "Add fatty-acid product-form and caveat terms for EPA/DHA, bleeding, atrial fibrillation, and triglycerides.",
+    term: "EPA DHA formulation atrial fibrillation bleeding triglycerides product quality"
+  },
+  "Amino acid": {
+    rationale:
+      "Add training-status and renal-safety context for amino-acid performance claims.",
+    term: "trained adults exercise performance renal safety tolerability"
+  },
+  "Botanical/herbal": {
+    rationale:
+      "Add standardized-extract, liver-risk, interaction, adulteration, and product-quality terms.",
+    term: "standardized extract liver injury drug interactions adulteration product quality"
+  },
+  "Fiber/prebiotic/probiotic": {
+    rationale:
+      "Add strain/fiber specificity and GI-tolerability terms for gut-related products.",
+    term: "strain specific fiber prebiotic probiotic gastrointestinal tolerability microbiome"
+  },
+  "Ergogenic/performance supplement": {
+    rationale:
+      "Add sport-performance, adulteration, stimulant, and safety-screening context.",
+    term: "exercise performance trained adults adulteration stimulant safety review"
+  },
+  Nootropic: {
+    rationale:
+      "Add stimulant, sedative, psychiatric, and medication-interaction context for cognitive claims.",
+    term: "stimulant sedative psychiatric adverse events medication interaction cognition"
+  },
+  "Hormonal/endocrine intervention": {
+    rationale:
+      "Add endocrine, fertility, pregnancy, and lab-marker safety context.",
+    term: "endocrine hormone fertility pregnancy lab biomarker adverse events"
+  },
+  "Peptide/biologic": {
+    rationale:
+      "Add clinical-trial, adverse-event, and regulatory context without sourcing or self-use language.",
+    term: "clinical trial adverse events regulatory safety review"
+  },
+  "Drug/geroprotector watchlist": {
+    rationale:
+      "Add prescription-context, contraindication, adverse-event, and human-trial review terms.",
+    term: "contraindications adverse events drug interaction human clinical trial review"
+  },
+  "Food/beverage": {
+    rationale:
+      "Add food-matrix, extract, caffeine, sugar, allergen, and product-quality context.",
+    term: "food matrix extract caffeine sugar allergen product quality clinical trial"
+  }
 };
 
 const CLAIM_CONTEXT_TOKEN_LIMIT = 8;
@@ -98,21 +264,175 @@ export function buildSourceSearchQueries({
   intervention
 }: {
   claim?: Pick<Claim, "claimText" | "outcome">;
-  intervention?: Pick<Intervention, "name" | "synonyms">;
+  intervention?: Pick<Intervention, "name" | "synonyms"> &
+    Partial<Pick<Intervention, "category">>;
 }): SourceSearchQueries {
   const interventionTerm = intervention?.name ?? intervention?.synonyms[0] ?? "healthspan intervention";
   const outcomeTerm = claim ? outcomeSearchTerms[claim.outcome] : "human evidence";
   const claimContextTerm = claim ? claimContextSearchTerm(claim.claimText) : "";
   const label = claim && intervention ? `${intervention.name} - ${claim.outcome}` : "Active claim";
   const clinicalContextTerm = normaliseSearchTerm(`${outcomeTerm} ${claimContextTerm}`);
+  const pubMedTerm = normaliseSearchTerm(
+    `${interventionTerm} ${clinicalContextTerm} randomized trial systematic review`
+  );
+  const trialTerm = normaliseSearchTerm(`${interventionTerm} ${clinicalContextTerm}`);
 
   return {
     label,
-    pubMedTerm: normaliseSearchTerm(
-      `${interventionTerm} ${clinicalContextTerm} randomized trial systematic review`
-    ),
-    trialTerm: normaliseSearchTerm(`${interventionTerm} ${clinicalContextTerm}`)
+    plans: sourceSearchQueryPlans({
+      category: intervention?.category,
+      clinicalContextTerm,
+      claimContextTerm,
+      claimOutcome: claim?.outcome,
+      interventionTerm,
+      pubMedTerm,
+      trialTerm
+    }),
+    pubMedTerm,
+    trialTerm
   };
+}
+
+function sourceSearchQueryPlans({
+  category,
+  clinicalContextTerm,
+  claimContextTerm,
+  claimOutcome,
+  interventionTerm,
+  pubMedTerm,
+  trialTerm
+}: {
+  category?: InterventionCategory;
+  clinicalContextTerm: string;
+  claimContextTerm: string;
+  claimOutcome?: OutcomeArea;
+  interventionTerm: string;
+  pubMedTerm: string;
+  trialTerm: string;
+}): SourceSearchQueryPlanItem[] {
+  const safetyContextTerm = normaliseSearchTerm(
+    `safety adverse effects interactions ${claimContextTerm}`
+  );
+
+  return [
+    {
+      bundleId: "core-evidence",
+      bundleLabel: "Core evidence sweep",
+      executable: true,
+      kind: "review-level",
+      priority: 10,
+      rationale:
+        "Start with reviews/meta-analyses to understand overall evidence direction and uncertainty.",
+      source: "PubMed",
+      term: normaliseSearchTerm(
+        `${interventionTerm} ${clinicalContextTerm} systematic review meta-analysis`
+      )
+    },
+    {
+      bundleId: "core-evidence",
+      bundleLabel: "Core evidence sweep",
+      executable: true,
+      kind: "human-trial",
+      priority: 20,
+      rationale:
+        "Find human randomized or controlled trials relevant to the claim outcome.",
+      source: "PubMed",
+      term: pubMedTerm
+    },
+    {
+      bundleId: "core-evidence",
+      bundleLabel: "Core evidence sweep",
+      executable: true,
+      kind: "trial-registry",
+      priority: 30,
+      rationale:
+        "Check active, completed, and unpublished trial records before treating published evidence as complete.",
+      source: "ClinicalTrials.gov",
+      term: trialTerm
+    },
+    {
+      bundleId: "core-evidence",
+      bundleLabel: "Core evidence sweep",
+      executable: true,
+      kind: "safety",
+      priority: 40,
+      rationale:
+        "Search safety, tolerability, adverse-event, and interaction context separately from benefit evidence.",
+      source: "PubMed",
+      term: normaliseSearchTerm(
+        `${interventionTerm} ${safetyContextTerm} contraindications`
+      )
+    },
+    {
+      bundleId: "core-evidence",
+      bundleLabel: "Core evidence sweep",
+      executable: true,
+      kind: "regulatory-review",
+      priority: 50,
+      rationale:
+        "Use the AU/TGA workflow to keep product-level status separate from ingredient evidence.",
+      source: "AU/TGA review",
+      term: normaliseSearchTerm(
+        `${interventionTerm} TGA ARTG AUST product status safety alert Australia`
+      )
+    },
+    ...supplementalOutcomePlans({ claimOutcome, interventionTerm }),
+    ...supplementalCategoryPlans({ category, interventionTerm })
+  ];
+}
+
+function supplementalOutcomePlans({
+  claimOutcome,
+  interventionTerm
+}: {
+  claimOutcome?: OutcomeArea;
+  interventionTerm: string;
+}): SourceSearchQueryPlanItem[] {
+  const context = claimOutcome ? outcomeSupplementalContexts[claimOutcome] : undefined;
+
+  if (!context) {
+    return [];
+  }
+
+  return [
+    {
+      bundleId: "outcome-context",
+      bundleLabel: "Outcome-specific evidence bundle",
+      executable: true,
+      kind: "outcome-context",
+      priority: 60,
+      rationale: context.rationale,
+      source: "PubMed",
+      term: normaliseSearchTerm(`${interventionTerm} ${context.term}`)
+    }
+  ];
+}
+
+function supplementalCategoryPlans({
+  category,
+  interventionTerm
+}: {
+  category?: InterventionCategory;
+  interventionTerm: string;
+}): SourceSearchQueryPlanItem[] {
+  const context = category ? categorySupplementalContexts[category] : undefined;
+
+  if (!context) {
+    return [];
+  }
+
+  return [
+    {
+      bundleId: "category-context",
+      bundleLabel: "Category-specific safety/context bundle",
+      executable: true,
+      kind: "category-context",
+      priority: 70,
+      rationale: context.rationale,
+      source: "PubMed",
+      term: normaliseSearchTerm(`${interventionTerm} ${context.term}`)
+    }
+  ];
 }
 
 function claimContextSearchTerm(value: string) {

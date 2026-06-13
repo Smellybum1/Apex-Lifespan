@@ -36,7 +36,7 @@ export async function ingestPubMedSourceCandidates({
   retmax,
   ...context
 }: PubMedSourceCandidateIngestionInput): Promise<SourceCandidateIngestionResult> {
-  const result = await searchPubMed(term, retmax);
+  const result = await searchPubMed(term, retmax, { includeAbstractText: true });
   const candidates = buildPubMedSourceCandidates(result, context);
   const upsert = await upsertSourceCandidateDrafts(candidates);
 

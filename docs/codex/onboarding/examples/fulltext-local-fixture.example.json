@@ -1,0 +1,38 @@
+{
+  "capturedAt": "2026-06-12T00:00:00.000Z",
+  "derivedExtractionTargets": [
+    {
+      "confidence": "Strong",
+      "field": "population",
+      "note": "Synthetic parser-shape field only.",
+      "quoteLocator": "synthetic-fixture:population",
+      "value": "Adults in a reviewed synthetic trial fixture"
+    },
+    {
+      "confidence": "Strong",
+      "field": "intervention",
+      "note": "Synthetic parser-shape field only.",
+      "quoteLocator": "synthetic-fixture:intervention",
+      "value": "Reviewed supplement exposure"
+    },
+    {
+      "confidence": "Inferred",
+      "field": "duration",
+      "note": "Synthetic parser-shape field only.",
+      "quoteLocator": "synthetic-fixture:duration",
+      "value": "12 weeks"
+    },
+    {
+      "confidence": "Weak",
+      "field": "mainResults",
+      "note": "Synthetic parser-shape field only; not evidence support.",
+      "quoteLocator": "synthetic-fixture:results",
+      "value": "Directionally favorable synthetic outcome note requiring human review"
+    }
+  ],
+  "reviewerNote": "Synthetic local fixture for derived-field parser rehearsal only. It is not a source approval, connector approval, full-text capture, evidence review, or public export.",
+  "sourceId": "synthetic-reviewed-open-access-source",
+  "sourceUrl": "https://example.test/full-text-fixture",
+  "textExcerpt": "This synthetic excerpt is intentionally short and exists only to exercise parser-shape validation. It is not copied from a real article and must not be used as evidence.",
+  "title": "Synthetic reviewed fixture for parser-shape rehearsal"
+}

@@ -51,7 +51,8 @@ export function buildPubMedSourceCandidates(
         publicationDate: article.publicationDate,
         publicationTypes: article.publicationTypes,
         doi: article.doi,
-        authors: article.authors
+        authors: article.authors,
+        ...(article.abstractText ? { abstractText: article.abstractText } : {})
       }
     };
   });
@@ -97,6 +98,7 @@ export function buildClinicalTrialSourceCandidates(
         conditions: study.conditions,
         interventions: study.interventions,
         primaryOutcomes: study.primaryOutcomes,
+        ...(study.briefSummary ? { briefSummary: study.briefSummary } : {}),
         hasResults: study.hasResults,
         resultsFirstPostDate: study.resultsFirstPostDate,
         sponsor: study.sponsor,
