@@ -1,0 +1,63 @@
+name: Apex feedback
+description: Report an evidence, scoring, safety, regulatory, product-demo, or UX issue.
+title: "[Feedback]: "
+labels:
+  - feedback
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Apex Lifespan. This project is educational and claim-scoped. Do not include private health information, urgent medical questions, peptide sourcing, compounding, injection, cycling, dosing, or self-administration requests.
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feedback category
+      options:
+        - Citation or source metadata
+        - Missing evidence or regulatory source
+        - Score, label, or evidence-depth wording
+        - Product Label Analyzer demo or product-quality issue
+        - Accessibility, mobile layout, or navigation
+        - Safety or peptide guardrail
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: page-url
+    attributes:
+      label: Page URL
+      description: Link to the public page, intervention detail page, or screenshot context.
+      placeholder: https://apex-lifespan.vercel.app/
+    validations:
+      required: true
+  - type: input
+    id: claim
+    attributes:
+      label: Intervention or scoped claim
+      placeholder: Creatine monohydrate - Muscle/strength
+    validations:
+      required: false
+  - type: textarea
+    id: issue
+    attributes:
+      label: What seems wrong or unclear?
+      description: Describe the issue without including private health information.
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Supporting sources or screenshots
+      description: Add citation links, regulator links, screenshots, or reproduction steps.
+    validations:
+      required: false
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Safety boundaries
+      options:
+        - label: I am not requesting medical advice, diagnosis, treatment, dosing, or emergency help.
+          required: true
+        - label: I am not requesting peptide sourcing, compounding, reconstitution, injection, cycling, or self-administration instructions.
+          required: true

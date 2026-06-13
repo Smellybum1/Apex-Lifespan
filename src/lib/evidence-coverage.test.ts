@@ -125,6 +125,24 @@ describe("evidence coverage summary", () => {
           reviewStatus: "Unreviewed AI draft"
         },
         {
+          claimId: "psyllium-ldl-lipids",
+          confidenceLevel: "Moderate",
+          extractedReferences: 1,
+          finalLabel: "Useful for Specific Use Case",
+          interventionId: "psyllium",
+          nextAction: "Human review the complete source packet before upgrading review status.",
+          outcome: "LDL/ApoB/lipids",
+          packetStatus: "complete",
+          priority: 160,
+          priorityReasons: [
+            "Unreviewed draft claim",
+            "Complete source packet ready for human review",
+            "Moderate confidence draft"
+          ],
+          referenceCount: 1,
+          reviewStatus: "Unreviewed AI draft"
+        },
+        {
           claimId: "creatine-lifespan",
           confidenceLevel: "Very low",
           extractedReferences: 1,
@@ -159,7 +177,7 @@ describe("evidence coverage summary", () => {
           reviewStatus: "Unreviewed AI draft"
         }
       ],
-      completeSourcePackets: 7,
+      completeSourcePackets: 8,
       humanReviewedClaims: 0,
       incompleteClaims: claims.map((claim) => ({
         claimId: claim.id,
@@ -167,16 +185,9 @@ describe("evidence coverage summary", () => {
         packetStatus: "complete",
         reviewStatus: "Unreviewed AI draft"
       })),
-      interventionGaps: [
-        {
-          interventionId: "psyllium",
-          interventionName: "Psyllium",
-          nextAction:
-            "Add at least one scoped claim with curated source links before treating this intervention as covered."
-        }
-      ],
-      interventionsWithClaims: 4,
-      interventionsWithoutClaims: ["psyllium"],
+      interventionGaps: [],
+      interventionsWithClaims: 5,
+      interventionsWithoutClaims: [],
       reviewSamplingPlan: {
         batchSize: 3,
         items: [
@@ -277,20 +288,13 @@ describe("evidence coverage summary", () => {
         ],
         nextAction:
           "Human review this sampled batch first; do not update review status until the cited packet and extraction are checked.",
-        readyClaims: 7
+        readyClaims: 8
       },
-      totalClaims: 7,
+      totalClaims: 8,
       totalInterventions: 5,
-      unreviewedClaims: 7,
+      unreviewedClaims: 8,
       worksheet: {
-        coverageGaps: [
-          {
-            interventionId: "psyllium",
-            interventionName: "Psyllium",
-            nextAction:
-              "Add at least one scoped claim with curated source links before treating this intervention as covered."
-          }
-        ],
+        coverageGaps: [],
         copySafeCommands: [
           {
             command: "npm run coverage:review",
@@ -307,6 +311,14 @@ describe("evidence coverage summary", () => {
             mode: "read-only",
             purpose:
               "Print coverage counts, sampled review claims, ready review claims, gaps, and next action without dumping the full review report."
+          },
+          {
+            command: "npm run coverage:review -- --env-file <non-production-env-file> --summary",
+            id: "coverage-review-env-file-summary",
+            label: "Refresh compact coverage summary from env file",
+            mode: "read-only",
+            purpose:
+              "Print coverage counts from an approved non-production env file without dumping secrets or changing review status."
           },
           {
             command: "npm run coverage:review -- --claim <claim-id>",
@@ -429,26 +441,19 @@ describe("evidence coverage summary", () => {
 
     expect(summary).toEqual({
       counts: {
-        completeSourcePackets: 7,
-        coverageGaps: 1,
+        completeSourcePackets: 8,
+        coverageGaps: 0,
         humanReviewedClaims: 0,
-        incompleteClaims: 7,
-        interventionsWithClaims: 4,
-        interventionsWithoutClaims: 1,
+        incompleteClaims: 8,
+        interventionsWithClaims: 5,
+        interventionsWithoutClaims: 0,
         readyReviewBatch: 3,
-        readySourcePackets: 7,
-        totalClaims: 7,
+        readySourcePackets: 8,
+        totalClaims: 8,
         totalInterventions: 5,
-        unreviewedClaims: 7
+        unreviewedClaims: 8
       },
-      coverageGaps: [
-        {
-          interventionId: "psyllium",
-          interventionName: "Psyllium",
-          nextAction:
-            "Add at least one scoped claim with curated source links before treating this intervention as covered."
-        }
-      ],
+      coverageGaps: [],
       humanOwned: true,
       nextAction:
         "Human review this sampled batch first; do not update review status until the cited packet and extraction are checked.",
@@ -533,7 +538,7 @@ describe("evidence coverage summary", () => {
       "--apply"
     ];
 
-    expect(summary.worksheet.copySafeCommands).toHaveLength(8);
+    expect(summary.worksheet.copySafeCommands).toHaveLength(9);
     expect(summary.worksheet.copySafeCommands.every((item) => item.mode === "read-only")).toBe(
       true
     );

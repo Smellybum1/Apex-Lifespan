@@ -32,6 +32,10 @@ describe("searchClinicalTrials", () => {
               conditionsModule: {
                 conditions: ["Hypertriglyceridemia"]
               },
+              descriptionModule: {
+                briefSummary:
+                  "A registry summary for omega-3 cardiovascular outcomes."
+              },
               armsInterventionsModule: {
                 interventions: [{ type: "DRUG", name: "Omega-3 fatty acids" }]
               },
@@ -62,12 +66,20 @@ describe("searchClinicalTrials", () => {
         conditions: ["Hypertriglyceridemia"],
         interventions: ["DRUG: Omega-3 fatty acids"],
         primaryOutcomes: ["Triglyceride change"],
+        briefSummary:
+          "A registry summary for omega-3 cardiovascular outcomes.",
         lastUpdateDate: "2025-03-01",
         startDate: "2024-01",
         completionDate: "2025-02",
         hasResults: true,
         resultsFirstPostDate: "2025-04-01",
         sponsor: "Example University",
+        trialRelevanceDetail:
+          "The query intervention appears in the registered intervention metadata; still confirm dose, form, comparator, and outcome.",
+        trialRelevanceLabel: "Direct match",
+        trialResultDetail:
+          "ClinicalTrials.gov indicates posted results or a results section is available; inspect the record before interpreting outcomes.",
+        trialResultLabel: "Results posted",
         triageScore: 100,
         triageReasons: [
           "Matches query context",
@@ -106,6 +118,79 @@ describe("searchClinicalTrials", () => {
     });
   });
 
+  it("classifies trial relevance and result-state labels from registry metadata", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        studies: [
+          {
+            protocolSection: {
+              identificationModule: {
+                nctId: "NCTCOMBO",
+                briefTitle: "Creatine combination product trial"
+              },
+              statusModule: {
+                overallStatus: "COMPLETED"
+              },
+              designModule: {
+                studyType: "INTERVENTIONAL"
+              },
+              armsInterventionsModule: {
+                interventions: [{ type: "DIETARY_SUPPLEMENT", name: "Creatine plus vitamin D" }]
+              }
+            }
+          },
+          {
+            protocolSection: {
+              identificationModule: {
+                nctId: "NCTOUTCOME",
+                briefTitle: "Exercise strength outcome trial"
+              },
+              statusModule: {
+                overallStatus: "RECRUITING"
+              },
+              armsInterventionsModule: {
+                interventions: [{ type: "BEHAVIORAL", name: "Resistance training" }]
+              },
+              outcomesModule: {
+                primaryOutcomes: [{ measure: "Creatine kinase change" }]
+              }
+            }
+          },
+          {
+            protocolSection: {
+              identificationModule: {
+                nctId: "NCTCHILD",
+                briefTitle: "Creatine trial in children"
+              },
+              statusModule: {
+                overallStatus: "TERMINATED"
+              },
+              conditionsModule: {
+                conditions: ["Children with rare muscle disease"]
+              },
+              armsInterventionsModule: {
+                interventions: [{ type: "DIETARY_SUPPLEMENT", name: "Creatine" }]
+              }
+            }
+          }
+        ]
+      })
+    );
+
+    const result = await searchClinicalTrials("creatine");
+
+    expect(result.studies.map((study) => study.trialRelevanceLabel)).toEqual([
+      "Combination product",
+      "Related outcome only",
+      "Wrong population"
+    ]);
+    expect(result.studies.map((study) => study.trialResultLabel)).toEqual([
+      "Completed, no results posted",
+      "Unreviewed lead",
+      "Terminated/unknown"
+    ]);
+  });
+
   it("trims ClinicalTrials.gov identifiers and labels before public preview mapping", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       jsonResponse({
@@ -131,6 +216,9 @@ describe("searchClinicalTrials", () => {
               conditionsModule: {
                 conditions: [" Creatine response ", "   "]
               },
+              descriptionModule: {
+                briefSummary: " Creatine response summary. "
+              },
               armsInterventionsModule: {
                 interventions: [{ type: " DRUG ", name: " Creatine monohydrate " }]
               },
@@ -155,6 +243,7 @@ describe("searchClinicalTrials", () => {
       conditions: ["Creatine response"],
       interventions: ["DRUG: Creatine monohydrate"],
       primaryOutcomes: ["Strength change"],
+      briefSummary: "Creatine response summary.",
       lastUpdateDate: "2025-03-01",
       startDate: "2025-01",
       completionDate: "2025-02",

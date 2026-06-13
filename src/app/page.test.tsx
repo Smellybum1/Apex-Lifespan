@@ -56,6 +56,8 @@ describe("Home page data boundary", () => {
     expect(html).toContain("Evidence data temporarily unavailable");
     expect(html).toContain("Database-backed evidence unavailable");
     expect(html).toContain('href="/privacy"');
+    expect(html).toContain('href="/methodology"');
+    expect(html).toContain('href="/changelog"');
     expect(html).toContain('href="/terms"');
     expect(html).not.toContain("postgresql://");
     expect(html).not.toContain("secret");
@@ -68,5 +70,7 @@ describe("Home page data boundary", () => {
 
     expect(html).toContain("Apex Lifespan");
     expect(html).toContain("No seed fallback is shown while database mode is required.");
+    expect(html).toContain('href="/methodology"');
+    expect(html).toContain('href="/changelog"');
   });
 });

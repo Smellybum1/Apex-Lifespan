@@ -49,6 +49,7 @@ import type {
   ProductSignal,
   Reference,
   SafetyAlert,
+  SourceTypeTaxonomy,
   Study,
   TrialWatchItem
 } from "@/lib/types";
@@ -360,6 +361,7 @@ function mapStudy(study: DbStudy): Study {
     year: study.year ?? 0,
     source: study.source,
     studyType: studyTypeMap[study.sourceType],
+    sourceTypeTaxonomy: sourceTypeTaxonomyFromDbStudy(study),
     sampleSize: study.sampleSize,
     population: study.population,
     intervention: study.interventionName,
@@ -369,6 +371,60 @@ function mapStudy(study: DbStudy): Study {
     riskOfBias: study.riskOfBias,
     referenceId: study.referenceId ?? ""
   };
+}
+
+function sourceTypeTaxonomyFromDbStudy(study: DbStudy): SourceTypeTaxonomy | undefined {
+  if (study.sourceType === DbStudyType.META_ANALYSIS) {
+    return "meta-analysis";
+  }
+
+  if (study.sourceType === DbStudyType.RANDOMIZED_CONTROLLED_TRIAL) {
+    return "RCT";
+  }
+
+  if (study.sourceType === DbStudyType.OBSERVATIONAL_COHORT) {
+    return "observational study";
+  }
+
+  if (study.sourceType === DbStudyType.CASE_REPORT) {
+    return "case report";
+  }
+
+  if (study.sourceType === DbStudyType.ANIMAL_STUDY) {
+    return "animal study";
+  }
+
+  if (study.sourceType === DbStudyType.IN_VITRO_MECHANISTIC) {
+    return "in vitro/mechanistic";
+  }
+
+  if (study.sourceType === DbStudyType.REGULATORY_SAFETY_WARNING) {
+    return "regulatory warning";
+  }
+
+  if (study.sourceType !== DbStudyType.SYSTEMATIC_REVIEW) {
+    return undefined;
+  }
+
+  const sourceText = `${study.title} ${study.source}`.toLowerCase();
+
+  if (sourceText.includes("position stand")) {
+    return "position stand";
+  }
+
+  if (
+    sourceText.includes("fact sheet") ||
+    sourceText.includes("office of dietary supplements") ||
+    sourceText.includes("health professional")
+  ) {
+    return "narrative review";
+  }
+
+  if (sourceText.includes("guideline")) {
+    return "guideline";
+  }
+
+  return "systematic review";
 }
 
 function mapTrial(trial: DbTrial): TrialWatchItem {

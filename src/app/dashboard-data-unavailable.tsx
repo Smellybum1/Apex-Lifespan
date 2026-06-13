@@ -26,6 +26,18 @@ export function DashboardDataUnavailable() {
                 Privacy
               </a>
               <a
+                href="/methodology"
+                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:border-signal hover:text-signal"
+              >
+                Methodology
+              </a>
+              <a
+                href="/changelog"
+                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:border-signal hover:text-signal"
+              >
+                Changelog
+              </a>
+              <a
                 href="/terms"
                 className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:border-signal hover:text-signal"
               >

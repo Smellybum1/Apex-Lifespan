@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildClaimSourcePacket,
+  summarizeEvidenceDepth,
   summarizeClaimSourcePackets
 } from "@/lib/source-packet";
 import { claims, references, studies } from "@/lib/seed-data";
@@ -35,6 +36,23 @@ describe("buildClaimSourcePacket", () => {
       pendingReferences: 0,
       missingReferences: 0
     });
+    expect(packet.evidenceDepth).toMatchObject({
+      sourcePackets: 1,
+      reviewPositionStandSources: 1,
+      directHumanTrials: 0,
+      systematicReviews: 0,
+      totalExtractedStudies: 1
+    });
+    expect(packet.evidenceDepth.badges.map((badge) => badge.label)).toEqual(
+      expect.arrayContaining([
+        "1 source packet",
+        "1 review/position-stand source extracted",
+        "0 individual human trial rows extracted"
+      ])
+    );
+    expect(
+      packet.evidenceDepth.badges.find((badge) => badge.kind === "human-trials-none")?.detail
+    ).toContain("This does not mean no human trials exist");
   });
 
   it("keeps current seed claim source packets fully extracted", () => {
@@ -69,27 +87,34 @@ describe("buildClaimSourcePacket", () => {
         studies
       })
     ).toEqual({
-      completeClaims: 7,
+      completeClaims: 8,
       extractionPendingClaims: 0,
-      extractedReferences: 8,
+      extractedReferences: 9,
       missingReferences: 0,
       missingSourceClaims: 0,
       pendingReferences: 0,
-      totalClaims: 7,
-      totalReferences: 8,
+      totalClaims: 8,
+      totalReferences: 9,
       unlinkedClaims: 0
     });
   });
 
-  it("links omega-3 and TGA seed references to structured extraction rows", () => {
+  it("links omega-3, psyllium, and TGA seed references to structured extraction rows", () => {
     const claim = claims.find((item) => item.id === "omega-3-triglycerides");
+    const psylliumClaim = claims.find((item) => item.id === "psyllium-ldl-lipids");
     const bpcClaim = claims.find((item) => item.id === "bpc-157-injury-healing");
 
     expect(claim).toBeDefined();
+    expect(psylliumClaim).toBeDefined();
     expect(bpcClaim).toBeDefined();
 
     const omegaPacket = buildClaimSourcePacket({
       claim: claim as Claim,
+      referencesById,
+      studies
+    });
+    const psylliumPacket = buildClaimSourcePacket({
+      claim: psylliumClaim as Claim,
       referencesById,
       studies
     });
@@ -101,6 +126,10 @@ describe("buildClaimSourcePacket", () => {
 
     expect(omegaPacket.studies.map((study) => study.id)).toEqual(["study-omega-3-ods"]);
     expect(omegaPacket.completeness.status).toBe("complete");
+    expect(psylliumPacket.studies.map((study) => study.id)).toEqual([
+      "study-brown-dietary-fiber-1999"
+    ]);
+    expect(psylliumPacket.completeness.status).toBe("complete");
     expect(bpcPacket.studies.map((study) => study.id).sort()).toEqual([
       "study-fda-bpc-157",
       "study-tga-unapproved-peptides"
@@ -112,6 +141,19 @@ describe("buildClaimSourcePacket", () => {
       pendingReferences: 0,
       missingReferences: 0
     });
+    expect(bpcPacket.evidenceDepth).toMatchObject({
+      directHumanTrials: 0,
+      regulatorySafetyWarnings: 2,
+      totalExtractedStudies: 2
+    });
+    expect(bpcPacket.evidenceDepth.badges.map((badge) => badge.label)).toEqual(
+      expect.arrayContaining([
+        "1 source packet",
+        "2 regulatory warning sources",
+        "0 individual human trial rows extracted",
+        "2 regulatory-only sources"
+      ])
+    );
   });
 
   it("keeps linked references visible when study extraction is pending", () => {
@@ -142,6 +184,10 @@ describe("buildClaimSourcePacket", () => {
       pendingReferences: 1,
       missingReferences: 0
     });
+    expect(packet.evidenceDepth.badges.map((badge) => badge.label)).toEqual([
+      "1 source packet",
+      "0 individual human trial rows extracted"
+    ]);
   });
 
   it("dedupes claim reference ids and reports missing references", () => {
@@ -194,6 +240,160 @@ describe("buildClaimSourcePacket", () => {
       pendingReferences: 0,
       missingReferences: 0
     });
+    expect(packet.evidenceDepth.badges.map((badge) => badge.label)).toEqual([
+      "0 source packets",
+      "0 individual human trial rows extracted"
+    ]);
+  });
+
+  it("summarizes higher-depth human evidence without the no-human-trials badge", () => {
+    const packet = buildClaimSourcePacket({
+      claim: { keyReferenceIds: ["rct-ref-1", "rct-ref-2", "meta-ref"] },
+      referencesById: new Map(
+        ["rct-ref-1", "rct-ref-2", "meta-ref"].map((id) => [
+          id,
+          {
+            id,
+            title: `Reference ${id}`,
+            source: "PubMed",
+            url: "https://pubmed.ncbi.nlm.nih.gov/"
+          }
+        ])
+      ),
+      studies: [
+        studyFixture({
+          id: "study-rct-1",
+          referenceId: "rct-ref-1",
+          studyType: "Randomized controlled trial"
+        }),
+        studyFixture({
+          id: "study-rct-2",
+          referenceId: "rct-ref-2",
+          studyType: "Randomized controlled trial"
+        }),
+        studyFixture({
+          id: "study-meta",
+          referenceId: "meta-ref",
+          studyType: "Meta-analysis"
+        })
+      ]
+    });
+
+    const labels = packet.evidenceDepth.badges.map((badge) => badge.label);
+
+    expect(packet.evidenceDepth).toMatchObject({
+      directHumanTrials: 2,
+      metaAnalyses: 1,
+      randomizedControlledTrials: 2
+    });
+    expect(labels).toEqual(
+      expect.arrayContaining([
+        "1 source packet",
+        "2 RCT rows extracted",
+        "1 meta-analysis extracted"
+      ])
+    );
+    expect(labels).not.toContain("0 individual human trial rows extracted");
+  });
+
+  it("distinguishes verified systematic reviews from review and position-stand sources", () => {
+    const systematicSummary = summarizeEvidenceDepth({
+      completeness: {
+        status: "complete",
+        label: "Extraction complete",
+        detail: "Fixture detail.",
+        nextStep: "Fixture next step.",
+        totalReferences: 1,
+        extractedReferences: 1,
+        pendingReferences: 0,
+        missingReferences: 0
+      },
+      studies: [
+        studyFixture({
+          id: "study-systematic-review",
+          referenceId: "systematic-review-ref",
+          studyType: "Systematic review"
+        })
+      ]
+    });
+    const positionStandSummary = summarizeEvidenceDepth({
+      completeness: {
+        status: "complete",
+        label: "Extraction complete",
+        detail: "Fixture detail.",
+        nextStep: "Fixture next step.",
+        totalReferences: 1,
+        extractedReferences: 1,
+        pendingReferences: 0,
+        missingReferences: 0
+      },
+      studies: [
+        studyFixture({
+          id: "study-position-stand",
+          referenceId: "position-stand-ref",
+          sourceTypeTaxonomy: "position stand",
+          studyType: "Systematic review"
+        })
+      ]
+    });
+
+    expect(systematicSummary).toMatchObject({
+      reviewPositionStandSources: 0,
+      systematicReviews: 1
+    });
+    expect(systematicSummary.badges.map((badge) => badge.label)).toEqual(
+      expect.arrayContaining(["1 systematic review extracted"])
+    );
+    expect(systematicSummary.badges.map((badge) => badge.label)).not.toContain(
+      "1 review/position-stand source extracted"
+    );
+    expect(positionStandSummary).toMatchObject({
+      reviewPositionStandSources: 1,
+      systematicReviews: 0
+    });
+    expect(positionStandSummary.badges.map((badge) => badge.label)).toEqual(
+      expect.arrayContaining(["1 review/position-stand source extracted"])
+    );
+  });
+
+  it("labels animal and mechanistic-only packets as indirect evidence", () => {
+    const summary = summarizeEvidenceDepth({
+      completeness: {
+        status: "complete",
+        label: "Extraction complete",
+        detail: "Fixture detail.",
+        nextStep: "Fixture next step.",
+        totalReferences: 2,
+        extractedReferences: 2,
+        pendingReferences: 0,
+        missingReferences: 0
+      },
+      studies: [
+        studyFixture({
+          id: "study-animal",
+          referenceId: "animal-ref",
+          studyType: "Animal study"
+        }),
+        studyFixture({
+          id: "study-mechanistic",
+          referenceId: "mechanistic-ref",
+          studyType: "In vitro/mechanistic"
+        })
+      ]
+    });
+
+    expect(summary).toMatchObject({
+      animalMechanisticStudies: 2,
+      directHumanTrials: 0,
+      totalExtractedStudies: 2
+    });
+    expect(summary.badges.map((badge) => badge.label)).toEqual(
+      expect.arrayContaining([
+        "1 source packet",
+        "0 individual human trial rows extracted",
+        "Animal/mechanistic only"
+      ])
+    );
   });
 
   it("summarizes mixed source packet completeness states", () => {
@@ -252,3 +452,32 @@ describe("buildClaimSourcePacket", () => {
     });
   });
 });
+
+function studyFixture({
+  id,
+  referenceId,
+  sourceTypeTaxonomy,
+  studyType
+}: {
+  id: string;
+  referenceId: string;
+  sourceTypeTaxonomy?: Study["sourceTypeTaxonomy"];
+  studyType: Study["studyType"];
+}): Study {
+  return {
+    id,
+    adverseEvents: "Not assessed in this fixture.",
+    fundingConflicts: "Not assessed in this fixture.",
+    intervention: "Example intervention",
+    outcomes: ["Example outcome"],
+    population: "Adults",
+    referenceId,
+    riskOfBias: "Fixture only.",
+    sampleSize: "Fixture sample",
+    source: "PubMed",
+    sourceTypeTaxonomy,
+    studyType,
+    title: `Fixture ${studyType}`,
+    year: 2026
+  };
+}

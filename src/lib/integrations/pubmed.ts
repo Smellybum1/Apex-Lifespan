@@ -1,4 +1,5 @@
 export interface PubMedArticleSummary {
+  abstractText?: string;
   pmid: string;
   title: string | null;
   journal: string | null;
@@ -21,6 +22,10 @@ export interface PubMedSearchResult {
   articles: PubMedArticleSummary[];
 }
 
+export interface PubMedSearchOptions {
+  includeAbstractText?: boolean;
+}
+
 type PubMedSummaryRecord = Record<string, unknown>;
 
 const PUBMED_EUTILS_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
@@ -32,7 +37,11 @@ const LIVE_SOURCE_FETCH_INIT = {
   cache: "no-store"
 } satisfies RequestInit;
 
-export async function searchPubMed(term: string, retmax = 10): Promise<PubMedSearchResult> {
+export async function searchPubMed(
+  term: string,
+  retmax = 10,
+  options: PubMedSearchOptions = {}
+): Promise<PubMedSearchResult> {
   const url = new URL(`${PUBMED_EUTILS_BASE_URL}/esearch.fcgi`);
   const safeRetmax = normaliseRetmax(retmax);
   url.searchParams.set("db", "pubmed");
@@ -56,13 +65,21 @@ export async function searchPubMed(term: string, retmax = 10): Promise<PubMedSea
 
   const ids = readStringArray(searchResult.idlist).slice(0, safeRetmax);
   const summaryById = await fetchPubMedSummaries(ids, term);
+  const abstractById = options.includeAbstractText
+    ? await fetchPubMedAbstractTexts(ids)
+    : new Map<string, string>();
 
   return {
     query: term,
     ids,
     count: readNonNegativeInteger(searchResult.count),
     source: PUBMED_SOURCE,
-    articles: ids.map((id) => summaryById.get(id) ?? createPubMedArticleFallback(id))
+    articles: ids.map((id) =>
+      withPubMedAbstractText(
+        summaryById.get(id) ?? createPubMedArticleFallback(id),
+        abstractById.get(id)
+      )
+    )
   };
 }
 
@@ -106,6 +123,46 @@ async function fetchPubMedSummaries(
   }
 }
 
+async function fetchPubMedAbstractTexts(ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) {
+    return new Map();
+  }
+
+  const url = new URL(`${PUBMED_EUTILS_BASE_URL}/efetch.fcgi`);
+  url.searchParams.set("db", "pubmed");
+  url.searchParams.set("retmode", "xml");
+  url.searchParams.set("id", ids.join(","));
+
+  try {
+    const response = await fetch(url, {
+      ...LIVE_SOURCE_FETCH_INIT,
+      headers: {
+        accept: "application/xml"
+      }
+    });
+
+    if (!response.ok) {
+      return new Map();
+    }
+
+    return parsePubMedAbstractXml(await response.text());
+  } catch {
+    return new Map();
+  }
+}
+
+function withPubMedAbstractText(
+  article: PubMedArticleSummary,
+  abstractText: string | undefined
+): PubMedArticleSummary {
+  return abstractText
+    ? {
+        ...article,
+        abstractText
+      }
+    : article;
+}
+
 function mapPubMedSummary(
   pmid: string,
   record: PubMedSummaryRecord,
@@ -130,6 +187,61 @@ function mapPubMedSummary(
     relevanceScore: triage.score,
     relevanceReasons: triage.reasons
   };
+}
+
+function parsePubMedAbstractXml(xml: string): Map<string, string> {
+  const abstractsById = new Map<string, string>();
+  const articleMatches = xml.match(/<PubmedArticle\b[\s\S]*?<\/PubmedArticle>/g) ?? [];
+
+  for (const articleXml of articleMatches) {
+    const pmid = decodeXmlText(articleXml.match(/<PMID\b[^>]*>([\s\S]*?)<\/PMID>/)?.[1]);
+
+    if (!pmid) {
+      continue;
+    }
+
+    const abstractParts = Array.from(
+      articleXml.matchAll(/<AbstractText\b([^>]*)>([\s\S]*?)<\/AbstractText>/g)
+    )
+      .map((match) => {
+        const label = decodeXmlText((match[1] ?? "").match(/\bLabel="([^"]+)"/)?.[1]);
+        const text = decodeXmlText(stripXmlTags(match[2]));
+
+        if (!text) {
+          return undefined;
+        }
+
+        return label ? `${label}: ${text}` : text;
+      })
+      .filter((part): part is string => Boolean(part));
+    const abstractText = normaliseAbstractText(abstractParts.join(" "));
+
+    if (abstractText) {
+      abstractsById.set(pmid, abstractText);
+    }
+  }
+
+  return abstractsById;
+}
+
+function stripXmlTags(value: string | undefined) {
+  return (value ?? "").replace(/<[^>]+>/g, " ");
+}
+
+function decodeXmlText(value: string | undefined) {
+  return (value ?? "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normaliseAbstractText(value: string) {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  return trimmed.length > 0 ? trimmed.slice(0, 4000) : undefined;
 }
 
 function createPubMedArticleFallback(pmid: string): PubMedArticleSummary {

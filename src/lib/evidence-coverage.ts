@@ -398,6 +398,14 @@ function evidenceCoverageCopySafeCommands(): EvidenceCoverageCommand[] {
         "Print coverage counts, sampled review claims, ready review claims, gaps, and next action without dumping the full review report."
     },
     {
+      command: "npm run coverage:review -- --env-file <non-production-env-file> --summary",
+      id: "coverage-review-env-file-summary",
+      label: "Refresh compact coverage summary from env file",
+      mode: "read-only",
+      purpose:
+        "Print coverage counts from an approved non-production env file without dumping secrets or changing review status."
+    },
+    {
       command: "npm run coverage:review -- --claim <claim-id>",
       id: "coverage-claim-review",
       label: "Focus one claim review packet",

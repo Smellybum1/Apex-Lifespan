@@ -32,6 +32,14 @@ export const references: Reference[] = [
     url: "https://ods.od.nih.gov/factsheets/Omega3FattyAcids-HealthProfessional/"
   },
   {
+    id: "brown-dietary-fiber-1999",
+    title: "Cholesterol-lowering effects of dietary fiber: a meta-analysis",
+    source: "American Journal of Clinical Nutrition via PubMed",
+    identifier: "PMID: 9925120; DOI: 10.1093/ajcn/69.1.30",
+    year: 1999,
+    url: "https://pubmed.ncbi.nlm.nih.gov/9925120/"
+  },
+  {
     id: "fda-bpc-157-category-2",
     title:
       "Certain Bulk Drug Substances for Use in Compounding that May Present Significant Safety Risks",
@@ -148,8 +156,8 @@ export const interventions: Intervention[] = [
       "Generally product-quality and tolerability focused; spacing from some medications can matter.",
     interactionSummary: "May affect absorption timing for some medicines and supplements.",
     evidenceSummary:
-      "Seed placeholder for lipid, glucose, gut, and satiety claims.",
-    lastReviewed: "2026-06-02"
+      "Seed evidence currently supports only a scoped lipid-biomarker claim; glucose, gut, satiety, and outcome claims still need separate packets.",
+    lastReviewed: "2026-06-12"
   }
 ];
 
@@ -170,6 +178,11 @@ export const claims: Claim[] = [
     safetyNotes: "Renal disease or abnormal renal markers require clinician review.",
     applicabilityNotes:
       "Do not extrapolate this score to direct lifespan extension or all cognitive claims.",
+    doesNotProve: [
+      "Does not prove direct lifespan extension.",
+      "Does not prove all cognitive claims.",
+      "Does not apply automatically to people with kidney disease or abnormal renal markers."
+    ],
     keyReferenceIds: ["issn-creatine-2017"],
     scores: {
       evidenceDirectness: 9,
@@ -203,6 +216,11 @@ export const claims: Claim[] = [
     confidenceLevel: "Very low",
     safetyNotes: "Do not use performance safety confidence to validate longevity claims.",
     applicabilityNotes: "Keep separate from strength and lean mass evidence.",
+    doesNotProve: [
+      "Does not prove direct lifespan extension.",
+      "Does not show that strength or lean-mass evidence transfers to mortality outcomes.",
+      "Does not establish dose, duration, or population selection for longevity use."
+    ],
     keyReferenceIds: ["issn-creatine-2017"],
     scores: {
       evidenceDirectness: 1,
@@ -237,6 +255,11 @@ export const claims: Claim[] = [
     safetyNotes: "Excess intake can cause harm; total intake and labs matter.",
     applicabilityNotes:
       "Already-sufficient adults should not inherit the deficiency-correction score.",
+    doesNotProve: [
+      "Does not prove high-dose vitamin D improves longevity in already-sufficient adults.",
+      "Does not replace biomarker-guided review of vitamin D status.",
+      "Does not remove excess-intake safety concerns."
+    ],
     keyReferenceIds: ["ods-vitamin-d"],
     scores: {
       evidenceDirectness: 8,
@@ -270,6 +293,11 @@ export const claims: Claim[] = [
     confidenceLevel: "Low",
     safetyNotes: "High-dose unsupervised use is a safety-monitoring issue.",
     applicabilityNotes: "Do not conflate deficiency correction with longevity extension.",
+    doesNotProve: [
+      "Does not prove longevity benefit in already-sufficient adults.",
+      "Does not justify high-dose use without biomarker and safety context.",
+      "Does not transfer deficiency-correction evidence into an anti-aging claim."
+    ],
     keyReferenceIds: ["ods-vitamin-d"],
     scores: {
       evidenceDirectness: 3,
@@ -305,6 +333,11 @@ export const claims: Claim[] = [
       "Higher-dose contexts require review for atrial fibrillation signals and bleeding context.",
     applicabilityNotes:
       "Separate triglyceride effects from cardiovascular event and longevity claims.",
+    doesNotProve: [
+      "Does not prove cardiovascular event prevention.",
+      "Does not prove direct lifespan extension.",
+      "Does not remove atrial-fibrillation or bleeding-context caveats at higher-dose exposures."
+    ],
     keyReferenceIds: ["ods-omega-3"],
     scores: {
       evidenceDirectness: 8,
@@ -339,6 +372,11 @@ export const claims: Claim[] = [
     safetyNotes: "Atrial fibrillation signals at higher-dose contexts should be visible.",
     applicabilityNotes:
       "Product type, baseline risk, dose, and endpoint selection materially affect interpretation.",
+    doesNotProve: [
+      "Does not prove all omega-3 supplement products reduce cardiovascular events.",
+      "Does not prove direct lifespan extension.",
+      "Does not erase formulation, dose, baseline-risk, atrial-fibrillation, or bleeding-context caveats."
+    ],
     keyReferenceIds: ["ods-omega-3"],
     scores: {
       evidenceDirectness: 6,
@@ -358,6 +396,48 @@ export const claims: Claim[] = [
       "Clearer formulation-specific outcome trials and updated safety signal estimates."
   },
   {
+    id: "psyllium-ldl-lipids",
+    interventionId: "psyllium",
+    outcome: "LDL/ApoB/lipids",
+    claimText: "Small LDL-cholesterol support as a soluble-fiber lipid biomarker adjunct.",
+    populationStudied: "Adults in controlled soluble-fiber lipid trials, including psyllium arms.",
+    doseFormStudied: "Psyllium or other soluble fiber forms; product and amount need study-level matching.",
+    durationStudied: "Varied across controlled dietary-fiber trials.",
+    comparator: "Control diets, placebo, or usual dietary context depending on study.",
+    evidenceGrade: "Meta-analysis supports a small lipid-biomarker effect, not event or lifespan proof.",
+    effectSize:
+      "Small total and LDL cholesterol reductions in practical intake ranges; triglycerides and HDL were not significant in the cited meta-analysis.",
+    clinicalRelevance:
+      "Relevant only as lipid biomarker support; do not treat as cardiovascular-event or longevity evidence.",
+    confidenceLevel: "Moderate",
+    safetyNotes:
+      "Product tolerability and medication-absorption timing require review; do not infer product-level safety or AU/TGA status.",
+    applicabilityNotes:
+      "Keep separate from glucose, gut, satiety, cardiovascular-event, and lifespan claims until those source packets are curated.",
+    doesNotProve: [
+      "Does not prove cardiovascular event prevention.",
+      "Does not prove direct lifespan extension.",
+      "Does not establish glucose, gut, satiety, or product-level AU/TGA claims."
+    ],
+    keyReferenceIds: ["brown-dietary-fiber-1999"],
+    scores: {
+      evidenceDirectness: 7,
+      evidenceRigor: 7,
+      effectSize: 4,
+      safety: 6,
+      regulatoryRisk: 2,
+      productQuality: 4,
+      hypePenalty: 3,
+      measurability: 9
+    },
+    finalLabel: "Useful for Specific Use Case",
+    momentum: "Stable",
+    reviewStatus: "Unreviewed AI draft",
+    lastUpdated: "2026-06-12",
+    whatWouldChangeScore:
+      "Newer psyllium-specific RCT meta-analyses, baseline LDL subgroup detail, product-level safety/tolerability review, or direct outcome trials."
+  },
+  {
     id: "bpc-157-injury-healing",
     interventionId: "bpc-157",
     outcome: "Joint/tendon/skin",
@@ -375,6 +455,11 @@ export const claims: Claim[] = [
       "Regulatory and safety uncertainty require clinician oversight; route and preparation guidance are not provided.",
     applicabilityNotes:
       "Animal or mechanistic rationale cannot be promoted as human clinical proof.",
+    doesNotProve: [
+      "Does not prove safe or effective human use.",
+      "Does not establish approved therapeutic use or product quality.",
+      "Does not provide route, preparation, sourcing, cycling, or self-administration guidance."
+    ],
     keyReferenceIds: ["tga-safety-alerts", "fda-bpc-157-category-2"],
     scores: {
       evidenceDirectness: 1,
@@ -403,6 +488,7 @@ export const studies: Study[] = [
     year: 2017,
     source: "Journal of the International Society of Sports Nutrition via PubMed",
     studyType: "Systematic review",
+    sourceTypeTaxonomy: "position stand",
     sampleSize: "Review/position stand",
     population: "Exercise, sport, and medical nutrition contexts",
     intervention: "Creatine supplementation",
@@ -418,6 +504,7 @@ export const studies: Study[] = [
     year: 2025,
     source: "NIH Office of Dietary Supplements",
     studyType: "Systematic review",
+    sourceTypeTaxonomy: "narrative review",
     sampleSize: "Evidence summary",
     population: "General health professional reference",
     intervention: "Vitamin D",
@@ -433,6 +520,7 @@ export const studies: Study[] = [
     year: 2025,
     source: "NIH Office of Dietary Supplements",
     studyType: "Systematic review",
+    sourceTypeTaxonomy: "narrative review",
     sampleSize: "Evidence summary",
     population: "General health professional reference",
     intervention: "EPA/DHA omega-3 fatty acids",
@@ -444,12 +532,31 @@ export const studies: Study[] = [
     referenceId: "ods-omega-3"
   },
   {
+    id: "study-brown-dietary-fiber-1999",
+    title: "Cholesterol-lowering effects of dietary fiber: a meta-analysis",
+    year: 1999,
+    source: "American Journal of Clinical Nutrition via PubMed",
+    studyType: "Meta-analysis",
+    sourceTypeTaxonomy: "meta-analysis",
+    sampleSize: "67 controlled trials",
+    population: "Participants in controlled soluble-fiber blood-lipid trials.",
+    intervention: "Major dietary soluble fibers including psyllium.",
+    outcomes: ["Total cholesterol", "LDL cholesterol", "Triglycerides", "HDL cholesterol"],
+    adverseEvents:
+      "Adverse-event detail is not the focus of the seed extraction; product tolerability and medication timing still need review.",
+    fundingConflicts: "Check source record for details.",
+    riskOfBias:
+      "Meta-analysis of controlled trials; the abstract characterizes the practical-range lipid effect as small.",
+    referenceId: "brown-dietary-fiber-1999"
+  },
+  {
     id: "study-fda-bpc-157",
     title:
       "Certain bulk drug substances for use in compounding that may present significant safety risks",
     year: 2023,
     source: "FDA",
     studyType: "Regulatory safety warning",
+    sourceTypeTaxonomy: "regulatory warning",
     sampleSize: "Regulatory safety listing",
     population: "Compounding and public safety context",
     intervention: "BPC-157",
@@ -465,6 +572,7 @@ export const studies: Study[] = [
     year: 2026,
     source: "TGA",
     studyType: "Regulatory safety warning",
+    sourceTypeTaxonomy: "regulatory warning",
     sampleSize: "Regulatory safety-alert monitoring",
     population: "Australian public, suppliers, and health professional regulatory context",
     intervention: "Unapproved peptide products including BPC-157",

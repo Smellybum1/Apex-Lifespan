@@ -55,8 +55,9 @@ export function getClaimScoreRows(claim: Claim) {
     { label: "Rigor", value: claim.scores.evidenceRigor },
     { label: "Impact", value: claim.scores.effectSize },
     { label: "Safety", value: claim.scores.safety },
-    { label: "Measurable", value: claim.scores.measurability },
-    { label: "Hype control", value: 10 - claim.scores.hypePenalty }
+    { label: "Measurability", value: claim.scores.measurability },
+    { label: "Low regulatory risk", value: 10 - claim.scores.regulatoryRisk },
+    { label: "Low hype risk", value: 10 - claim.scores.hypePenalty }
   ];
 }
 

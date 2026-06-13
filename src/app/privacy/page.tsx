@@ -31,7 +31,7 @@ export default function PrivacyPage() {
           />
           <LegalBlock
             title="Browser Storage"
-            body="The optional Ask Codex panel can store a local sidecar URL and operator token in the browser on the device that entered them. This is intended for local operator review only; public deployments should not publish shared operator tokens."
+            body="The optional Operator mode panel can store a local sidecar URL and operator token in the browser on the device that entered them. This is intended for local operator review only; public deployments should not publish shared operator tokens."
           />
           <LegalBlock
             title="Hosting Logs"

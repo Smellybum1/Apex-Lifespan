@@ -574,6 +574,7 @@ async function assertDatabaseSeedIntegrity() {
     seedCollection("Reference", ids(references), ids(dbReferences), [
       "issn-",
       "ods-",
+      "brown-",
       "fda-",
       "tga-",
       "ncbi-",
@@ -584,6 +585,7 @@ async function assertDatabaseSeedIntegrity() {
       "creatine-",
       "vitamin-d-",
       "omega-3-",
+      "psyllium-",
       "bpc-157-"
     ]),
     seedCollection(
@@ -594,7 +596,7 @@ async function assertDatabaseSeedIntegrity() {
       dbClaimReferences.map((reference) =>
         claimReferenceKey(reference.claimId, reference.referenceId)
       ),
-      ["creatine-", "vitamin-d-", "omega-3-", "bpc-157-"]
+      ["creatine-", "vitamin-d-", "omega-3-", "psyllium-", "bpc-157-"]
     ),
     seedCollection("Study", ids(studies), ids(dbStudies), ["study-"]),
     seedCollection("Trial", ids(trialWatchItems), ids(dbTrials), ["trial-", "pubmed-"]),

@@ -57,6 +57,19 @@ export type SourceCandidateSource = "PubMed" | "ClinicalTrials.gov";
 
 export type SourceCandidateDecision = "Pending review" | "Accepted" | "Rejected";
 
+export type SourceTypeTaxonomy =
+  | "RCT"
+  | "meta-analysis"
+  | "systematic review"
+  | "narrative review"
+  | "position stand"
+  | "guideline"
+  | "observational study"
+  | "case report"
+  | "animal study"
+  | "in vitro/mechanistic"
+  | "regulatory warning";
+
 export type AustraliaRegulatoryKind =
   | "AUST L"
   | "AUST L(A)"
@@ -116,6 +129,7 @@ export interface Claim {
   confidenceLevel: ConfidenceLevel;
   safetyNotes: string;
   applicabilityNotes: string;
+  doesNotProve?: string[];
   keyReferenceIds: string[];
   scores: ScoreSet;
   finalLabel: EvidenceLabel;
@@ -140,6 +154,7 @@ export interface Study {
     | "In vitro/mechanistic"
     | "Clinical trial record"
     | "Regulatory safety warning";
+  sourceTypeTaxonomy?: SourceTypeTaxonomy;
   sampleSize: string;
   population: string;
   intervention: string;
