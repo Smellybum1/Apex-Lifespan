@@ -55,6 +55,11 @@ describe("EvidenceDashboard", () => {
     const html = renderToStaticMarkup(<EvidenceDashboard data={seedDashboardData()} />);
 
     expect(html).toContain("Apex Lifespan");
+    expect(html).toContain("Prototype / seed dataset");
+    expect(html).toContain("Current scores are based on a small");
+    expect(html).toContain("curated seed dataset and live source-search previews");
+    expect(html).toContain("Scores are review aids, not");
+    expect(html).toContain("medical advice");
     expect(html).toContain("Creatine monohydrate");
     expect(html).toContain("Muscle/strength");
     expect(html).toContain("Active card source packet");

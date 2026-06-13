@@ -425,6 +425,20 @@ function Header({ data }: { data: EvidenceDashboardData }) {
             General public evidence dashboard. Draft evidence must stay citation-linked, uncertainty-aware,
             and separate from individualized medical advice.
           </p>
+          <div
+            aria-label="Prototype and seed dataset status"
+            className="mt-3 max-w-4xl border-l-4 border-signal bg-mist px-3 py-2"
+            role="note"
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-signal">
+              Prototype / seed dataset
+            </p>
+            <p className="mt-1 text-sm leading-6 text-slate-700">
+              Apex Lifespan is in early public prototype. Current scores are based on a small
+              curated seed dataset and live source-search previews. Scores are review aids, not
+              medical advice.
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-medium">
           <span className="rounded-md border border-spruce/25 bg-teal-50 px-2 py-1 text-spruce">
