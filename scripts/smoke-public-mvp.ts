@@ -4,6 +4,15 @@ const DEFAULT_TIMEOUT_MS = 15000;
 
 type JsonObject = Record<string, unknown>;
 type SmokeLogger = Pick<Console, "log">;
+type PublicMvpSmokeOptions = {
+  requireDatabase?: boolean;
+};
+
+const DATABASE_REQUIRED_FORBIDDEN_HOME_TEXT = [
+  "Seed fallback",
+  "Seed mode forced by APEX_DATA_SOURCE",
+  "using seed data"
+];
 
 type RouteSmoke = {
   path: string;
@@ -30,7 +39,6 @@ const pageSmokes: PageSmoke[] = [
       "Apex Lifespan",
       "AU",
       "TGA",
-      "Unreviewed AI draft",
       "Source packet",
       "Live PubMed results are unreviewed citation leads",
       "Registry records are research leads, not proof of benefit",
@@ -41,6 +49,10 @@ const pageSmokes: PageSmoke[] = [
       {
         label: "data source badge",
         values: ["Seed fallback", "Database-backed"]
+      },
+      {
+        label: "review status",
+        values: ["Unreviewed AI draft", "Human-reviewed"]
       }
     ]
   },
@@ -129,13 +141,16 @@ const routeSmokes: RouteSmoke[] = [
 
 export async function runPublicMvpSmoke(
   rawBaseUrl: string,
-  logger: SmokeLogger = console
+  logger: SmokeLogger = console,
+  options: PublicMvpSmokeOptions = {}
 ) {
-  const baseUrl = readBaseUrl([rawBaseUrl]);
+  const baseUrl = readBaseUrl(rawBaseUrl);
 
-  logger.log(`Smoking public MVP at ${baseUrl.href}`);
+  logger.log(
+    `Smoking public MVP at ${baseUrl.href}${options.requireDatabase ? " (database required)" : ""}`
+  );
   for (const smoke of pageSmokes) {
-    await smokePage(baseUrl, smoke, logger);
+    await smokePage(baseUrl, smoke, logger, options);
   }
 
   await smokeAnonymousOperatorBoundary(baseUrl, logger);
@@ -148,21 +163,46 @@ export async function runPublicMvpSmoke(
 }
 
 async function main() {
-  const rawBaseUrl = process.argv.slice(2)[0]?.trim();
+  const args = parseSmokeArgs(process.argv.slice(2));
 
-  if (!rawBaseUrl) {
-    throw new Error("Usage: npm run smoke:public-mvp -- <public-or-local-base-url>");
-  }
-
-  await runPublicMvpSmoke(rawBaseUrl);
+  await runPublicMvpSmoke(args.baseUrl, console, {
+    requireDatabase: args.requireDatabase
+  });
 }
 
-function readBaseUrl(args: string[]) {
-  const rawUrl = args[0]?.trim();
+function parseSmokeArgs(args: string[]) {
+  const positional: string[] = [];
+  let requireDatabase = false;
 
-  if (!rawUrl) {
-    throw new Error("Usage: npm run smoke:public-mvp -- <public-or-local-base-url>");
+  for (const arg of args) {
+    if (arg === "--require-database") {
+      requireDatabase = true;
+      continue;
+    }
+
+    if (arg.startsWith("--")) {
+      throw new Error(
+        `Unknown public smoke option: ${arg}. Usage: npm run smoke:public-mvp -- <public-or-local-base-url> [--require-database]`
+      );
+    }
+
+    positional.push(arg);
   }
+
+  if (positional.length !== 1) {
+    throw new Error(
+      "Usage: npm run smoke:public-mvp -- <public-or-local-base-url> [--require-database]"
+    );
+  }
+
+  return {
+    baseUrl: positional[0],
+    requireDatabase
+  };
+}
+
+function readBaseUrl(rawUrlInput: string) {
+  const rawUrl = rawUrlInput.trim();
 
   const url = new URL(rawUrl);
 
@@ -177,7 +217,12 @@ function readBaseUrl(args: string[]) {
   return url;
 }
 
-async function smokePage(baseUrl: URL, smoke: PageSmoke, logger: SmokeLogger) {
+async function smokePage(
+  baseUrl: URL,
+  smoke: PageSmoke,
+  logger: SmokeLogger,
+  options: PublicMvpSmokeOptions
+) {
   const response = await fetchWithTimeout(new URL(smoke.path, baseUrl));
 
   expectEqual(response.status, 200, `${smoke.label} status`);
@@ -196,6 +241,18 @@ async function smokePage(baseUrl: URL, smoke: PageSmoke, logger: SmokeLogger) {
       throw new Error(
         `${smoke.label} is missing expected ${requirement.label}: ${requirement.values.join(" or ")}`
       );
+    }
+  }
+
+  if (smoke.path === "/" && options.requireDatabase) {
+    if (!html.includes("Database-backed")) {
+      throw new Error("Homepage must show Database-backed data source for fully-live smoke.");
+    }
+
+    for (const text of DATABASE_REQUIRED_FORBIDDEN_HOME_TEXT) {
+      if (html.includes(text)) {
+        throw new Error(`Homepage must not show seed-mode text during fully-live smoke: ${text}`);
+      }
     }
   }
 
