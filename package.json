@@ -21,6 +21,7 @@
     "operator:readiness": "tsx scripts/operator-readiness-report.ts",
     "production:readiness": "tsx scripts/production-readiness-report.ts",
     "production:connectivity": "tsx scripts/production-connectivity-check.ts",
+    "production:provision:verify": "tsx scripts/production-provision-verify.ts",
     "production:migration-rehearsal": "tsx scripts/production-migration-rehearsal.ts",
     "launch:readiness": "tsx scripts/launch-readiness-report.ts",
     "operator:bootstrap": "tsx scripts/operator-bootstrap.ts",

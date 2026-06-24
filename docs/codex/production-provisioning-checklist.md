@@ -12,8 +12,9 @@ Use this checklist when moving from the seed-backed public demo to managed datab
 4. Run `npm run production:connectivity` to confirm the managed URL shape and database mode without probing.
 5. Run `npm run production:connectivity -- --probe` to confirm Prisma can reach the managed database.
 6. Run `npm run production:migration-rehearsal`, review the dry run, then `npm run production:migration-rehearsal -- --apply`.
-7. Record `APEX_MIGRATION_REHEARSAL_PASSED_AT` only after reviewing the non-production rehearsal output.
-8. Re-run `npm run production:readiness` and `npm run launch:readiness` before enabling Production database mode.
+7. Or chain steps 4-6 with `npm run production:provision:verify -- --apply` once the non-production env vars are exported.
+8. Record `APEX_MIGRATION_REHEARSAL_PASSED_AT` only after reviewing the non-production rehearsal output.
+9. Re-run `npm run production:readiness` and `npm run launch:readiness` before enabling Production database mode.
 
 ## Preconditions
 
@@ -66,6 +67,7 @@ npm run production:connectivity -- --probe
 npm run production:readiness
 npm run production:migration-rehearsal
 npm run production:migration-rehearsal -- --apply
+npm run production:provision:verify -- --apply
 npm run launch:readiness
 ```
 
