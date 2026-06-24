@@ -1,8 +1,20 @@
 # Production Provisioning Checklist
 
-Last updated: 2026-06-11
+Last updated: 2026-06-24
 
 Use this checklist when moving from the seed-backed public demo to managed database-backed production. Keep secrets in Vercel/Neon only; do not commit database URLs, OAuth secrets, Auth.js secrets, or exported data.
+
+## Step 3 Execution Order
+
+1. Link Neon from the Vercel Marketplace and create separate production and non-production database targets.
+2. Enter Preview/staging and Production variables from the environment packet below. Start with Preview/staging only.
+3. Export the non-production `DATABASE_URL` and `APEX_DATA_SOURCE=database` into a local shell or `.env.local` that is not committed.
+4. Run `npm run production:connectivity` to confirm the managed URL shape and database mode without probing.
+5. Run `npm run production:connectivity -- --probe` to confirm Prisma can reach the managed database.
+6. Run `npm run production:migration-rehearsal`, review the dry run, then `npm run production:migration-rehearsal -- --apply`.
+7. Or chain steps 4-6 with `npm run production:provision:verify -- --apply` once the non-production env vars are exported.
+8. Record `APEX_MIGRATION_REHEARSAL_PASSED_AT` only after reviewing the non-production rehearsal output.
+9. Re-run `npm run production:readiness` and `npm run launch:readiness` before enabling Production database mode.
 
 ## Preconditions
 
@@ -50,9 +62,12 @@ Do not record evidence variables such as `APEX_VERCEL_PROJECT_CONFIGURED_AT`, `A
 Run these from the local checkout after environment setup is available:
 
 ```bash
+npm run production:connectivity
+npm run production:connectivity -- --probe
 npm run production:readiness
 npm run production:migration-rehearsal
 npm run production:migration-rehearsal -- --apply
+npm run production:provision:verify -- --apply
 npm run launch:readiness
 ```
 
