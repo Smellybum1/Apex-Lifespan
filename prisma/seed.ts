@@ -1,5 +1,6 @@
 import {
   AustraliaRegulatoryKind as PrismaAustraliaRegulatoryKind,
+  ClaimStudyRelation as PrismaClaimStudyRelation,
   ConfidenceLevel as PrismaConfidenceLevel,
   EvidenceLabel as PrismaEvidenceLabel,
   EvidenceMomentum as PrismaEvidenceMomentum,
@@ -7,9 +8,11 @@ import {
   InterventionCategory as PrismaInterventionCategory,
   OutcomeArea as PrismaOutcomeArea,
   PrismaClient,
+  ReviewStatus as PrismaReviewStatus,
   SafetyAlertType as PrismaSafetyAlertType,
   SafetySeverity as PrismaSafetySeverity,
   SourceKind as PrismaSourceKind,
+  SourcePacketStatus as PrismaSourcePacketStatus,
   StudyType as PrismaStudyType,
   TrialStatus as PrismaTrialStatus
 } from "@prisma/client";
@@ -27,6 +30,15 @@ import {
   assertSeedIntegrity,
   type SeedIntegrityCollection
 } from "../src/lib/seed-integrity";
+import {
+  assertSeedNormalizedEvidenceRows,
+  buildSeedNormalizedEvidenceRows,
+  rehydrateSeedNormalizedEvidenceRowsFromPersistedRows,
+  seedClaimStudyKey,
+  seedSourcePacketReferenceKey,
+  type SeedClaimStudyRelation,
+  type SeedSourcePacketStatus
+} from "../src/lib/seed-normalized-evidence";
 import type {
   AustraliaRegulatoryKind,
   Claim,
@@ -34,6 +46,7 @@ import type {
   EvidenceMomentum,
   InterventionCategory,
   OutcomeArea,
+  ReviewStatus,
   SafetyAlert,
   Study,
   TrialWatchItem
@@ -144,6 +157,23 @@ const trialStatusMap: Record<TrialWatchItem["status"], PrismaTrialStatus> = {
   "Results pending": PrismaTrialStatus.RESULTS_PENDING
 };
 
+const reviewStatusMap: Record<ReviewStatus, PrismaReviewStatus> = {
+  "AI reviewed": PrismaReviewStatus.AI_REVIEWED,
+  "Human reviewed": PrismaReviewStatus.HUMAN_REVIEWED,
+  "Unreviewed AI draft": PrismaReviewStatus.UNREVIEWED_AI_DRAFT
+};
+
+const sourcePacketStatusMap: Record<SeedSourcePacketStatus, PrismaSourcePacketStatus> = {
+  COMPLETE: PrismaSourcePacketStatus.COMPLETE,
+  EXTRACTION_PENDING: PrismaSourcePacketStatus.EXTRACTION_PENDING,
+  NOT_LINKED: PrismaSourcePacketStatus.NOT_LINKED
+};
+
+const claimStudyRelationMap: Record<SeedClaimStudyRelation, PrismaClaimStudyRelation> = {
+  SAFETY_REGULATORY: PrismaClaimStudyRelation.SAFETY_REGULATORY,
+  SUPPORTS: PrismaClaimStudyRelation.SUPPORTS
+};
+
 const australiaRegulatoryKindMap: Record<AustraliaRegulatoryKind, PrismaAustraliaRegulatoryKind> = {
   "AUST L": PrismaAustraliaRegulatoryKind.AUST_L,
   "AUST L(A)": PrismaAustraliaRegulatoryKind.AUST_LA,
@@ -191,6 +221,10 @@ function dateOrNull(value?: string) {
   return value ? new Date(`${value}T00:00:00.000Z`) : null;
 }
 
+function dateOrSeedFallback(value?: string) {
+  return dateOrNull(value) ?? new Date("2026-06-13T00:00:00.000Z");
+}
+
 const seedIngestionJobs = [
   {
     source: PrismaSourceKind.PUBMED,
@@ -214,7 +248,19 @@ const seedIngestionJobs = [
   }
 ];
 
+const seedNormalizedEvidenceRows = buildSeedNormalizedEvidenceRows({
+  claims,
+  studies
+});
+
 async function main() {
+  assertSeedNormalizedEvidenceRows({
+    claims,
+    references,
+    rows: seedNormalizedEvidenceRows,
+    studies
+  });
+
   for (const intervention of interventions) {
     await prisma.intervention.upsert({
       where: { id: intervention.id },
@@ -315,7 +361,7 @@ async function main() {
         measurabilityScore: claim.scores.measurability,
         finalLabel: evidenceLabelMap[claim.finalLabel],
         momentum: momentumMap[claim.momentum],
-        reviewStatus: "UNREVIEWED_AI_DRAFT",
+        reviewStatus: reviewStatusMap[claim.reviewStatus],
         whatWouldChangeScore: claim.whatWouldChangeScore,
         lastReviewedAt: dateOrNull(claim.lastUpdated)
       },
@@ -344,7 +390,7 @@ async function main() {
         measurabilityScore: claim.scores.measurability,
         finalLabel: evidenceLabelMap[claim.finalLabel],
         momentum: momentumMap[claim.momentum],
-        reviewStatus: "UNREVIEWED_AI_DRAFT",
+        reviewStatus: reviewStatusMap[claim.reviewStatus],
         whatWouldChangeScore: claim.whatWouldChangeScore,
         lastReviewedAt: dateOrNull(claim.lastUpdated)
       }
@@ -404,6 +450,120 @@ async function main() {
         adverseEvents: study.adverseEvents,
         fundingConflicts: study.fundingConflicts,
         riskOfBias: study.riskOfBias
+      }
+    });
+  }
+
+  for (const sourcePacket of seedNormalizedEvidenceRows.sourcePackets) {
+    await prisma.sourcePacket.upsert({
+      where: { id: sourcePacket.id },
+      update: {
+        claimId: sourcePacket.claimId,
+        interventionId: sourcePacket.interventionId,
+        status: sourcePacketStatusMap[sourcePacket.status],
+        reviewStatus: reviewStatusMap[sourcePacket.reviewStatus],
+        citationStatus: sourcePacket.citationStatus,
+        extractionNote: sourcePacket.extractionNote,
+        current: sourcePacket.current
+      },
+      create: {
+        id: sourcePacket.id,
+        claimId: sourcePacket.claimId,
+        interventionId: sourcePacket.interventionId,
+        status: sourcePacketStatusMap[sourcePacket.status],
+        reviewStatus: reviewStatusMap[sourcePacket.reviewStatus],
+        citationStatus: sourcePacket.citationStatus,
+        extractionNote: sourcePacket.extractionNote,
+        current: sourcePacket.current
+      }
+    });
+  }
+
+  for (const sourcePacketReference of seedNormalizedEvidenceRows.sourcePacketReferences) {
+    await prisma.sourcePacketReference.upsert({
+      where: {
+        sourcePacketId_referenceId: {
+          sourcePacketId: sourcePacketReference.sourcePacketId,
+          referenceId: sourcePacketReference.referenceId
+        }
+      },
+      update: {
+        extractionStatus: sourcePacketReference.extractionStatus,
+        citationStatus: sourcePacketReference.citationStatus,
+        note: sourcePacketReference.note
+      },
+      create: {
+        sourcePacketId: sourcePacketReference.sourcePacketId,
+        referenceId: sourcePacketReference.referenceId,
+        extractionStatus: sourcePacketReference.extractionStatus,
+        citationStatus: sourcePacketReference.citationStatus,
+        note: sourcePacketReference.note
+      }
+    });
+  }
+
+  for (const claimStudy of seedNormalizedEvidenceRows.claimStudies) {
+    await prisma.claimStudy.upsert({
+      where: {
+        claimId_studyId: {
+          claimId: claimStudy.claimId,
+          studyId: claimStudy.studyId
+        }
+      },
+      update: {
+        relation: claimStudyRelationMap[claimStudy.relation],
+        relevanceScore: claimStudy.relevanceScore,
+        note: claimStudy.note
+      },
+      create: {
+        claimId: claimStudy.claimId,
+        studyId: claimStudy.studyId,
+        relation: claimStudyRelationMap[claimStudy.relation],
+        relevanceScore: claimStudy.relevanceScore,
+        note: claimStudy.note
+      }
+    });
+  }
+
+  for (const scoreSnapshot of seedNormalizedEvidenceRows.scoreSnapshots) {
+    const computedAt = dateOrSeedFallback(scoreSnapshot.computedAt);
+
+    await prisma.claimScoreSnapshot.upsert({
+      where: { id: scoreSnapshot.id },
+      update: {
+        claimId: scoreSnapshot.claimId,
+        scoreVersion: scoreSnapshot.scoreVersion,
+        evidenceDirectnessScore: scoreSnapshot.scores.evidenceDirectness,
+        evidenceRigorScore: scoreSnapshot.scores.evidenceRigor,
+        effectSizeScore: scoreSnapshot.scores.effectSize,
+        safetyScore: scoreSnapshot.scores.safety,
+        regulatoryRiskScore: scoreSnapshot.scores.regulatoryRisk,
+        productQualityScore: scoreSnapshot.scores.productQuality,
+        hypePenalty: scoreSnapshot.scores.hypePenalty,
+        measurabilityScore: scoreSnapshot.scores.measurability,
+        compositeScore: scoreSnapshot.compositeScore,
+        finalLabel: evidenceLabelMap[scoreSnapshot.finalLabel],
+        reviewStatus: reviewStatusMap[scoreSnapshot.reviewStatus],
+        rationale: scoreSnapshot.rationale,
+        computedAt
+      },
+      create: {
+        id: scoreSnapshot.id,
+        claimId: scoreSnapshot.claimId,
+        scoreVersion: scoreSnapshot.scoreVersion,
+        evidenceDirectnessScore: scoreSnapshot.scores.evidenceDirectness,
+        evidenceRigorScore: scoreSnapshot.scores.evidenceRigor,
+        effectSizeScore: scoreSnapshot.scores.effectSize,
+        safetyScore: scoreSnapshot.scores.safety,
+        regulatoryRiskScore: scoreSnapshot.scores.regulatoryRisk,
+        productQualityScore: scoreSnapshot.scores.productQuality,
+        hypePenalty: scoreSnapshot.scores.hypePenalty,
+        measurabilityScore: scoreSnapshot.scores.measurability,
+        compositeScore: scoreSnapshot.compositeScore,
+        finalLabel: evidenceLabelMap[scoreSnapshot.finalLabel],
+        reviewStatus: reviewStatusMap[scoreSnapshot.reviewStatus],
+        rationale: scoreSnapshot.rationale,
+        computedAt
       }
     });
   }
@@ -552,6 +712,10 @@ async function assertDatabaseSeedIntegrity() {
     dbClaims,
     dbClaimReferences,
     dbStudies,
+    dbSourcePackets,
+    dbSourcePacketReferences,
+    dbClaimStudies,
+    dbScoreSnapshots,
     dbTrials,
     dbSafetyAlerts,
     dbProducts,
@@ -563,12 +727,77 @@ async function assertDatabaseSeedIntegrity() {
     prisma.claim.findMany({ select: { id: true } }),
     prisma.claimReference.findMany({ select: { claimId: true, referenceId: true } }),
     prisma.study.findMany({ select: { id: true } }),
+    prisma.sourcePacket.findMany({
+      select: {
+        citationStatus: true,
+        claimId: true,
+        current: true,
+        extractionNote: true,
+        id: true,
+        interventionId: true,
+        reviewStatus: true,
+        status: true
+      }
+    }),
+    prisma.sourcePacketReference.findMany({
+      select: {
+        citationStatus: true,
+        extractionStatus: true,
+        note: true,
+        referenceId: true,
+        sourcePacketId: true
+      }
+    }),
+    prisma.claimStudy.findMany({
+      select: {
+        claimId: true,
+        note: true,
+        relation: true,
+        relevanceScore: true,
+        studyId: true
+      }
+    }),
+    prisma.claimScoreSnapshot.findMany({
+      select: {
+        claimId: true,
+        compositeScore: true,
+        computedAt: true,
+        effectSizeScore: true,
+        evidenceDirectnessScore: true,
+        evidenceRigorScore: true,
+        finalLabel: true,
+        hypePenalty: true,
+        id: true,
+        measurabilityScore: true,
+        productQualityScore: true,
+        rationale: true,
+        regulatoryRiskScore: true,
+        reviewStatus: true,
+        safetyScore: true,
+        scoreVersion: true
+      }
+    }),
     prisma.trial.findMany({ select: { id: true } }),
     prisma.safetyAlert.findMany({ select: { id: true } }),
     prisma.product.findMany({ select: { id: true } }),
     prisma.australiaRegulatoryStatus.findMany({ select: { id: true } }),
     prisma.ingestionJob.findMany({ select: { source: true, query: true, region: true } })
   ]);
+
+  assertSeedNormalizedEvidenceRows({
+    claims,
+    references,
+    rows: rehydrateSeedNormalizedEvidenceRowsFromPersistedRows({
+      expectedRows: seedNormalizedEvidenceRows,
+      persistedRows: {
+        claimStudies: dbClaimStudies,
+        scoreSnapshots: dbScoreSnapshots,
+        sourcePacketReferences: dbSourcePacketReferences,
+        sourcePackets: dbSourcePackets
+      }
+    }),
+    studies
+  });
 
   assertSeedIntegrity([
     seedCollection("Reference", ids(references), ids(dbReferences), [
@@ -599,6 +828,29 @@ async function assertDatabaseSeedIntegrity() {
       ["creatine-", "vitamin-d-", "omega-3-", "psyllium-", "bpc-157-"]
     ),
     seedCollection("Study", ids(studies), ids(dbStudies), ["study-"]),
+    seedCollection(
+      "SourcePacket",
+      seedNormalizedEvidenceRows.sourcePackets.map((packet) => packet.id),
+      ids(dbSourcePackets),
+      ["seed-source-packet-"]
+    ),
+    seedCollection(
+      "SourcePacketReference",
+      seedNormalizedEvidenceRows.sourcePacketReferences.map(seedSourcePacketReferenceKey),
+      dbSourcePacketReferences.map(seedSourcePacketReferenceKey),
+      ["seed-source-packet-"]
+    ),
+    seedCollection(
+      "ClaimStudy",
+      seedNormalizedEvidenceRows.claimStudies.map(seedClaimStudyKey),
+      dbClaimStudies.map(seedClaimStudyKey)
+    ),
+    seedCollection(
+      "ClaimScoreSnapshot",
+      seedNormalizedEvidenceRows.scoreSnapshots.map((snapshot) => snapshot.id),
+      ids(dbScoreSnapshots),
+      ["seed-score-snapshot-"]
+    ),
     seedCollection("Trial", ids(trialWatchItems), ids(dbTrials), ["trial-", "pubmed-"]),
     seedCollection("SafetyAlert", ids(safetyAlerts), ids(dbSafetyAlerts), [
       "tga-",

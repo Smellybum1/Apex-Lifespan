@@ -7,6 +7,7 @@ import type {
 
 export type ProductAustraliaRegulatoryVerificationState =
   | "Verified"
+  | "Captured"
   | "Unknown"
   | "Stale"
   | "Missing";
@@ -20,6 +21,35 @@ export interface ProductAustraliaRegulatoryVerification {
   productName: string;
   state: ProductAustraliaRegulatoryVerificationState;
   stateLabel: string;
+  status?: AustraliaRegulatoryStatus;
+}
+
+type AustraliaAustKind = Extract<AustraliaRegulatoryStatus["kind"], "AUST L" | "AUST L(A)" | "AUST R">;
+
+export interface AustraliaRegulatoryLabelIdentifier {
+  identifier: string;
+  kind: AustraliaAustKind;
+  label: string;
+}
+
+export type ParsedAustraliaRegulatoryIdentifierMatchState =
+  | "local-product-match"
+  | "local-intervention-only-match"
+  | "unmatched-parsed-identifier";
+
+export interface ParsedAustraliaRegulatoryIdentifierVerification {
+  confidence: ConfidenceLevel;
+  identifier: string;
+  interventionStatusIds: string[];
+  kind: AustraliaAustKind;
+  label: string;
+  matchState: ParsedAustraliaRegulatoryIdentifierMatchState;
+  matchStateLabel: string;
+  nextAction: string;
+  productBrand?: string;
+  productId?: string;
+  productName?: string;
+  productVerification?: ProductAustraliaRegulatoryVerification;
   status?: AustraliaRegulatoryStatus;
 }
 
@@ -115,6 +145,95 @@ export function buildProductAustraliaRegulatoryVerifications(
     .sort((left, right) => left.productId.localeCompare(right.productId));
 }
 
+export function buildParsedAustraliaRegulatoryIdentifierVerifications(
+  identifiers: AustraliaRegulatoryLabelIdentifier[],
+  data: Pick<EvidenceDashboardData, "australiaRegulatoryStatuses" | "productSignals">,
+  {
+    now = new Date(),
+    staleAfterDays = DEFAULT_STALE_AFTER_DAYS
+  }: {
+    now?: Date;
+    staleAfterDays?: number;
+  } = {}
+): ParsedAustraliaRegulatoryIdentifierVerification[] {
+  const productVerifications = buildProductAustraliaRegulatoryVerifications(data, {
+    now,
+    staleAfterDays
+  });
+  const productVerificationByStatusId = new Map(
+    productVerifications.flatMap((verification) =>
+      verification.status ? [[verification.status.id, verification] as const] : []
+    )
+  );
+
+  return identifiers.map((identifier) => {
+    const productStatus = data.australiaRegulatoryStatuses
+      .filter((status) => status.productId && statusMatchesAustIdentifier(status, identifier))
+      .sort(compareRegulatoryStatusTargets)[0];
+    const interventionStatuses = data.australiaRegulatoryStatuses
+      .filter(
+        (status) =>
+          status.interventionId &&
+          !status.productId &&
+          statusMatchesAustIdentifier(status, identifier)
+      )
+      .sort(compareRegulatoryStatusTargets);
+
+    if (productStatus) {
+      const productVerification = productVerificationByStatusId.get(productStatus.id);
+
+      return {
+        confidence: productVerification?.confidence ?? "Low",
+        identifier: identifier.identifier,
+        interventionStatusIds: interventionStatuses.map((status) => status.id),
+        kind: identifier.kind,
+        label: identifier.label,
+        matchState: "local-product-match",
+        matchStateLabel: "Local product record matched",
+        nextAction:
+          productVerification?.nextAction ??
+          "Review the matched local product-level ARTG/AUST record before relying on this Australian regulatory status.",
+        ...(productStatus.productId ? { productId: productStatus.productId } : {}),
+        ...(productVerification
+          ? {
+              productBrand: productVerification.productBrand,
+              productName: productVerification.productName,
+              productVerification
+            }
+          : {}),
+        status: productStatus
+      };
+    }
+
+    if (interventionStatuses.length > 0) {
+      return {
+        confidence: "Very low",
+        identifier: identifier.identifier,
+        interventionStatusIds: interventionStatuses.map((status) => status.id),
+        kind: identifier.kind,
+        label: identifier.label,
+        matchState: "local-intervention-only-match",
+        matchStateLabel: "Only intervention-level status matched",
+        nextAction:
+          "Do not treat this as product verification. Capture the exact product, sponsor, formulation, and product-level ARTG/AUST record before showing Australian regulatory confidence.",
+        status: interventionStatuses[0]
+      };
+    }
+
+    return {
+      confidence: "Very low",
+      identifier: identifier.identifier,
+      interventionStatusIds: [],
+      kind: identifier.kind,
+      label: identifier.label,
+      matchState: "unmatched-parsed-identifier",
+      matchStateLabel: "Parsed only; no local product record",
+      nextAction:
+        "Parsed from label text only. Add a reviewed product-level ARTG/AUST record before showing Australian regulatory confidence."
+    };
+  });
+}
+
 function buildProductAustraliaRegulatoryVerification({
   product,
   status,
@@ -195,7 +314,11 @@ function productVerificationState(
     return "Unknown";
   }
 
-  return "Verified";
+  if (isAustraliaAustKind(status.kind) && hasProductIdentifier(status)) {
+    return "Verified";
+  }
+
+  return "Captured";
 }
 
 function productVerificationConfidence(
@@ -230,6 +353,63 @@ function hasProductIdentifier(status: AustraliaRegulatoryStatus) {
   return Boolean(status.austNumber || status.artgId);
 }
 
+function statusMatchesAustIdentifier(
+  status: AustraliaRegulatoryStatus,
+  identifier: AustraliaRegulatoryLabelIdentifier
+) {
+  const statusIdentifier = parseStatusAustIdentifier(status);
+
+  return (
+    statusIdentifier?.kind === identifier.kind &&
+    statusIdentifier.identifier === normalizeAustIdentifier(identifier.identifier)
+  );
+}
+
+function parseStatusAustIdentifier(status: AustraliaRegulatoryStatus) {
+  if (!status.austNumber || !isAustraliaAustKind(status.kind)) {
+    return null;
+  }
+
+  const identifier = normalizeAustIdentifier(status.austNumber);
+
+  if (!identifier) {
+    return null;
+  }
+
+  const kindMatch = status.austNumber.match(/\bAUST\s+(L(?:\(A\))?|R)\b/i);
+  const kind = kindMatch
+    ? (`AUST ${kindMatch[1]?.toUpperCase()}` as AustraliaRegulatoryStatus["kind"])
+    : status.kind;
+
+  if (!isAustraliaAustKind(kind)) {
+    return null;
+  }
+
+  return {
+    identifier,
+    kind
+  };
+}
+
+function isAustraliaAustKind(kind: AustraliaRegulatoryStatus["kind"]): kind is AustraliaAustKind {
+  return kind === "AUST L" || kind === "AUST L(A)" || kind === "AUST R";
+}
+
+function normalizeAustIdentifier(value: string) {
+  return value.replace(/\D+/g, "");
+}
+
+function compareRegulatoryStatusTargets(
+  left: AustraliaRegulatoryStatus,
+  right: AustraliaRegulatoryStatus
+) {
+  return regulatoryStatusTargetKey(left).localeCompare(regulatoryStatusTargetKey(right));
+}
+
+function regulatoryStatusTargetKey(status: AustraliaRegulatoryStatus) {
+  return `${status.productId ?? status.interventionId ?? ""}:${status.id}`;
+}
+
 function productVerificationNextAction(
   status: AustraliaRegulatoryStatus,
   state: ProductAustraliaRegulatoryVerificationState
@@ -242,6 +422,10 @@ function productVerificationNextAction(
     return status.evidenceRequirement;
   }
 
+  if (state === "Captured") {
+    return "Keep the captured product-level source linked, but do not treat this status as verified Australian market authorisation or product efficacy evidence.";
+  }
+
   return "Keep the product-level ARTG/AUST source linked and re-check it on the verification schedule.";
 }
 
@@ -249,6 +433,8 @@ function productVerificationStateLabel(state: ProductAustraliaRegulatoryVerifica
   switch (state) {
     case "Missing":
       return "Product-level status missing";
+    case "Captured":
+      return "Product-level status captured";
     case "Stale":
       return "Product-level status stale";
     case "Unknown":

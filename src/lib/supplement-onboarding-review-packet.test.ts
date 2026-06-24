@@ -308,7 +308,7 @@ describe("supplement onboarding review packet", () => {
     expect(report.packets[0].promotionDiff).toMatchObject({
       blockers: [
         "Add structured extraction for the pending references before treating this packet as complete.",
-        "Claim packet must be human-reviewed before promotion review."
+        "Claim packet must be AI reviewed or Human reviewed before promotion review."
       ],
       readyForPromotionReview: false,
       uncertaintyLabels: {

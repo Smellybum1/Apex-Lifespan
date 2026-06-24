@@ -26,7 +26,7 @@ describe("operator onboarding wizard", () => {
         "Status: review required",
         "Recommended path: manual seed copy",
         expect.stringContaining("Seed copy: review required."),
-        expect.stringContaining("Database import: future gated."),
+        expect.stringContaining("Database import: not yet enabled."),
         "No auto-write: true",
         "No database write: true",
         "No public evidence rows written: true",

@@ -205,7 +205,7 @@ describe("OperatorPage role-gated rendering", () => {
     expect(html).toContain("Saved supplement drafts");
     expect(html).toContain("Magnesium glycinate");
     expect(html).toContain("Manual seed copy");
-    expect(html).toContain("Database import: future gated");
+    expect(html).toContain("Database import: not yet enabled");
     expect(html).toContain("Operator import action:");
     expect(html).toContain("permission: onboarding:import");
     expect(html).toContain("Import locked:");
@@ -340,10 +340,14 @@ function lockedControl(control: OperatorBrowserWriteControl) {
   const permissionByControl = {
     "candidate-review": "candidate:review",
     "claim-link": "curation:claim-link",
+    "claim-packet-review": "evidence:promote",
     "onboarding-draft": "onboarding:draft",
     "onboarding-import": "onboarding:import",
+    "public-changelog-publication": "evidence:promote",
     "public-promotion": "evidence:promote",
-    "study-extraction": "curation:study-extraction"
+    "source-discovery": "candidate:review",
+    "study-extraction": "curation:study-extraction",
+    "trial-alert": "curation:study-extraction"
   } as const;
 
   return {
@@ -359,6 +363,22 @@ function reviewQueueSnapshot() {
     pendingCount: 1,
     rows: [
       {
+        aiReview: {
+          approvalBlockers: ["Codex did not produce an accept/reject decision; inspect this source before applying."],
+          approvalEnabled: false,
+          approvalNote:
+            "Codex AI-reviewed candidate decision: Needs Codex inspection. No extraction rows or public evidence promotion are approved by this action.",
+          decision: "Needs Codex inspection" as const,
+          label: "AI review needs Codex inspection",
+          noAutoDecision: true as const,
+          noAutoExtraction: true as const,
+          noAutoPromotion: true as const,
+          rationale: ["High conviction source still needs operator claim-fit review."],
+          reviewFocus: [
+            "Confirm source identity, external ID, title/query relevance, and claim fit before applying.",
+            "Accepting only reviews the source candidate; it does not write extraction rows or promote public evidence."
+          ]
+        },
         autopilot: {
           curationDraftCommand:
             'npm run ingest:sources -- --candidate-curation-draft "pubmed:creatine:42141930"',
@@ -377,8 +397,36 @@ function reviewQueueSnapshot() {
           sourceConvictionScore: 87,
           sourceReputationLabel: "high-repute"
         },
+        claimFit: {
+          claimId: "creatine-strength",
+          confidence: "claim-scoped" as const,
+          interventionId: "creatine",
+          label: "Claim-scoped candidate",
+          query: "creatine",
+          rationale: ["Candidate query and title match the creatine strength claim context."],
+          reviewCue: "Confirm the candidate supports the exact scoped claim before any review action."
+        },
+        confidencePolicy: {
+          actionLabel: "Inspect before candidate decision",
+          autoDecisionDisabledReason:
+            "Candidate decisions remain operator-owned and require explicit review.",
+          disposition: "needs-codex-inspection" as const,
+          explicitApprovalRequired: false as const,
+          label: "High" as const,
+          noAutoAccept: true as const,
+          noAutoDecision: true as const,
+          noAutoReject: true as const,
+          rationale: ["High conviction source still cannot be auto-accepted."],
+          score: 87,
+          thresholds: {
+            highConfidenceAcceptAtLeast: 75 as const,
+            veryLowConfidenceRejectBelow: 35 as const
+          },
+          version: "2026-06-14"
+        },
         curationStatus: "Claim link missing" as const,
         dedupeKey: "pubmed:creatine:42141930",
+        decision: "Pending review" as const,
         nextAction: "Link accepted reference to candidate claim.",
         packetPreview: {
           candidateReviewPacketCommand:
@@ -395,6 +443,13 @@ function reviewQueueSnapshot() {
             'npm run ingest:sources -- --candidate-siblings "pubmed:creatine:42141930"'
         },
         publicSourcePacketReady: false,
+        reviewStage: {
+          actionLabel: "Link claim",
+          kind: "claim-link" as const,
+          label: "Claim link missing",
+          priority: 80
+        },
+        reviewStatus: "Unreviewed AI draft" as const,
         source: "PubMed" as const,
         title: "Creatine and resistance training",
         triageReasons: ["High title overlap"],
@@ -534,9 +589,9 @@ function savedDraftSnapshot() {
             nextAction:
               "Keep saved operator drafts private for now; a future database import action must be separately implemented, operator-gated, audited, and reviewed before it can create intervention or claim rows.",
             noImportCommand: true as const,
-            requiredFutureGate:
+            requiredFutureApproval:
               "Explicit authenticated operator database-import implementation and review.",
-            status: "future-gated" as const,
+            status: "not-yet-enabled" as const,
             supportedNow: false as const
           },
           nextAction:

@@ -64,6 +64,7 @@ enum EvidenceMomentum {
 
 enum ReviewStatus {
   UNREVIEWED_AI_DRAFT
+  AI_REVIEWED
   HUMAN_REVIEWED
 }
 
@@ -92,6 +93,21 @@ enum TrialStatus {
   COMPLETED
   TERMINATED
   RESULTS_PENDING
+}
+
+enum TrialAlertKind {
+  RESULTS_REVIEW_NEEDED
+  MISSING_RESULTS_FOLLOW_UP
+  MONITOR_ACTIVE_TRIAL
+  REGISTRY_STATUS_REVIEW
+  LOW_PRIORITY_LEAD
+}
+
+enum TrialAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  DISMISSED
 }
 
 enum SafetyAlertType {
@@ -208,6 +224,7 @@ enum ScoreChangeKind {
 enum ReviewEventType {
   UNREVIEWED_EXTRACTION
   CITATION_CHECKED
+  AI_REVIEWED
   HUMAN_REVIEWED
   NEEDS_UPDATE
   RETIRED
@@ -252,6 +269,7 @@ model Intervention {
   ingestionJobs               IngestionJob[]
   australiaRegulatoryStatuses AustraliaRegulatoryStatus[]
   sourcePackets               SourcePacket[]
+  trialAlerts                 TrialAlert[]
   publicChangelogEntries      PublicChangelogEntry[]
 
   @@index([category])
@@ -301,6 +319,7 @@ model Claim {
   scoreHistory     ClaimScoreHistory[]
   reviewEvents     ReviewEvent[]
   changelogEntries PublicChangelogEntry[]
+  trialAlerts      TrialAlert[]
 
   @@unique([interventionId, outcome, claimText])
   @@index([outcome])
@@ -327,6 +346,7 @@ model Reference {
   reviewEvents                ReviewEvent[]
   scoreHistoryEvents          ClaimScoreHistory[]
   changelogEntries            PublicChangelogEntry[]
+  trialAlerts                 TrialAlert[]
 
   @@unique([url])
   @@index([source])
@@ -402,9 +422,50 @@ model Trial {
   updatedAt      DateTime         @updatedAt
 
   intervention Intervention? @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+  alerts       TrialAlert[]
 
   @@index([status])
   @@index([evidenceImpact])
+}
+
+model TrialAlert {
+  id                String           @id @default(cuid())
+  kind              TrialAlertKind
+  status            TrialAlertStatus @default(OPEN)
+  title             String
+  detail            String
+  noAutoPromotion   Boolean          @default(true)
+  trialId           String?
+  nctId             String?
+  interventionId    String?
+  claimId           String?
+  sourceCandidateId String?
+  referenceId       String?
+  scoreHistoryId    String?
+  detectedAt        DateTime         @default(now())
+  reviewedAt        DateTime?
+  reviewerNotes     String?
+  metadata          Json?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  trial           Trial?             @relation(fields: [trialId], references: [id], onDelete: SetNull)
+  intervention    Intervention?      @relation(fields: [interventionId], references: [id], onDelete: SetNull)
+  claim           Claim?             @relation(fields: [claimId], references: [id], onDelete: SetNull)
+  sourceCandidate SourceCandidate?   @relation(fields: [sourceCandidateId], references: [id], onDelete: SetNull)
+  reference       Reference?         @relation(fields: [referenceId], references: [id], onDelete: SetNull)
+  scoreHistory    ClaimScoreHistory? @relation(fields: [scoreHistoryId], references: [id], onDelete: SetNull)
+
+  @@index([kind])
+  @@index([status])
+  @@index([trialId])
+  @@index([nctId])
+  @@index([interventionId])
+  @@index([claimId])
+  @@index([sourceCandidateId])
+  @@index([referenceId])
+  @@index([scoreHistoryId])
+  @@index([detectedAt])
 }
 
 model Product {
@@ -540,6 +601,7 @@ model SourceCandidate {
   claim             Claim?        @relation(fields: [claimId], references: [id], onDelete: SetNull)
   ingestionJob      IngestionJob? @relation(fields: [ingestionJobId], references: [id], onDelete: SetNull)
   acceptedReference Reference?    @relation(fields: [acceptedReferenceId], references: [id], onDelete: SetNull)
+  trialAlerts       TrialAlert[]
 
   @@index([source])
   @@index([externalId])
@@ -690,6 +752,7 @@ model ClaimScoreHistory {
   reference        Reference?          @relation(fields: [referenceId], references: [id], onDelete: SetNull)
   changedByUser    User?               @relation(fields: [changedByUserId], references: [id], onDelete: SetNull)
   changelogEntries PublicChangelogEntry[]
+  trialAlerts      TrialAlert[]
 
   @@index([claimId])
   @@index([reason])

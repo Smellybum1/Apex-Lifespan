@@ -47,7 +47,7 @@ export default function FeedbackPage() {
           <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-700">
             Report evidence, citation, scoring, safety, regulatory, accessibility, or product-demo
             issues. Feedback is triaged into the public backlog; it does not create medical advice,
-            source promotion, or operator write approval.
+            source promotion, or operator write control.
           </p>
           <p className="mt-2 text-xs font-semibold text-slate-500">
             Last updated: June 13, 2026. Next scheduled review: June 14, 2026 post-launch review.

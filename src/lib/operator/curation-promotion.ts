@@ -206,7 +206,7 @@ export async function assessSourceCandidatePublicPromotion(
     blockers: [],
     candidate,
     dryRun: true,
-    nextAction: "Ready for explicit human promotion review.",
+    nextAction: "Ready for AI-reviewed promotion; human confirmation remains optional.",
     publicPacket: {
       claimId: status.candidate.claimId as string,
       referenceId: status.acceptedReferenceId as string,
@@ -275,7 +275,7 @@ function sourceCandidatePromotionReadinessRow(
     actionPreview: {
       browserAction:
         blockers.length === 0
-          ? `Promote accepted candidate ${status.candidate.externalId} with an explicit human promotion note.`
+          ? `Promote accepted candidate ${status.candidate.externalId} with an AI-reviewed or human-confirmed promotion note.`
           : "Resolve promotion blockers before the browser promotion action is usable.",
       dryRunCommand: `npm run promotion:dry-run -- ${safeKey}`,
       promotionEffect:
@@ -296,7 +296,7 @@ function sourceCandidatePromotionReadinessRow(
       title: status.candidate.title
     },
     extractionPrefill: sourceCandidateExtractionPrefillPreview(status, safeKey),
-    nextAction: blockers[0] ?? "Ready for explicit human promotion review.",
+    nextAction: blockers[0] ?? "Ready for AI-reviewed promotion; human confirmation remains optional.",
     publicSourcePacketReady: status.publicSourcePacketReady,
     ready: blockers.length === 0,
     status: status.status
@@ -445,7 +445,7 @@ function sourceCandidatePromotionReadinessCopySafeCommands(): SourceCandidatePro
       id: "candidate-review-overview",
       label: "Review pending candidate overview",
       mode: "read-only",
-      purpose: "Inspect pending source-candidate groups before any human review decisions."
+      purpose: "Inspect pending source-candidate groups before applying Codex/operator review decisions."
     },
     {
       command: "npm run launch:readiness",
@@ -477,11 +477,11 @@ function sourceCandidatePromotionBlockers(
   const blockers: string[] = [];
 
   if (status.candidate.decision !== "Accepted") {
-    blockers.push("Candidate must be accepted by a human reviewer.");
+    blockers.push("Candidate must be accepted through Codex/operator review.");
   }
 
-  if (status.candidate.reviewStatus !== "Human reviewed") {
-    blockers.push("Candidate review status must be Human reviewed.");
+  if (!reviewStatusIsReviewed(status.candidate.reviewStatus)) {
+    blockers.push("Candidate review status must be AI reviewed or Human reviewed.");
   }
 
   if (!status.candidate.claimId) {
@@ -515,6 +515,10 @@ function sourceCandidatePromotionBlockers(
   return blockers;
 }
 
+function reviewStatusIsReviewed(reviewStatus: ReviewStatus) {
+  return reviewStatus === "AI reviewed" || reviewStatus === "Human reviewed";
+}
+
 function sourceCandidatePromotionWorksheet(
   status: SourceCandidateCurationStatus
 ): SourceCandidatePromotionWorksheet {
@@ -528,10 +532,10 @@ function sourceCandidatePromotionWorksheet(
 
   const claimLinkNextAction = claimLinkReady
     ? "Accepted reference is linked to the candidate claim."
-    : "Human link the accepted reference to the candidate claim before promotion review.";
+    : "Link the accepted reference to the candidate claim before promotion review.";
   const studyExtractionNextAction = studyExtractionReady
     ? "Structured study extraction is present for the accepted reference."
-    : "Human add structured study extraction for the accepted reference before promotion review.";
+    : "Add structured study extraction for the accepted reference before promotion review.";
   const nextHumanActions = [
     ...(claimLinkReady ? [] : [claimLinkNextAction]),
     ...(studyExtractionReady ? [] : [studyExtractionNextAction]),
@@ -541,7 +545,7 @@ function sourceCandidatePromotionWorksheet(
   ];
 
   if (nextHumanActions.length === 0) {
-    nextHumanActions.push("Human review the ready public packet before any explicit promotion.");
+    nextHumanActions.push("Codex may promote the ready public packet as AI reviewed; human confirmation is optional.");
   }
 
   return {
@@ -608,17 +612,17 @@ function sourceCandidatePromotionRequiredEvidence({
       nextAction:
         status.candidate.decision === "Accepted"
           ? "Candidate is accepted."
-          : "Accept the candidate only after human review and a matching curated reference.",
+          : "Accept the candidate only after Codex/operator review and a matching curated reference.",
       ready: status.candidate.decision === "Accepted"
     },
     {
-      id: "candidate-human-reviewed",
-      label: "Candidate human review",
+      id: "candidate-reviewed",
+      label: "Candidate review",
       nextAction:
-        status.candidate.reviewStatus === "Human reviewed"
-          ? "Candidate review status is Human reviewed."
-          : "Record a human review decision before promotion review.",
-      ready: status.candidate.reviewStatus === "Human reviewed"
+        reviewStatusIsReviewed(status.candidate.reviewStatus)
+          ? `Candidate review status is ${status.candidate.reviewStatus}.`
+          : "Record an AI or human review decision before promotion review.",
+      ready: reviewStatusIsReviewed(status.candidate.reviewStatus)
     },
     {
       id: "accepted-reference-traceable",

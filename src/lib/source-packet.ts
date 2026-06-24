@@ -80,7 +80,7 @@ export function buildClaimSourcePacket({
   referencesById,
   studies
 }: {
-  claim: Pick<Claim, "keyReferenceIds">;
+  claim: Pick<Claim, "keyReferenceIds" | "keyStudyIds">;
   referencesById: Map<string, Reference>;
   studies: Study[];
 }): ClaimSourcePacket {
@@ -89,11 +89,17 @@ export function buildClaimSourcePacket({
   const references = referenceIds
     .map((referenceId) => referencesById.get(referenceId))
     .filter((reference): reference is Reference => Boolean(reference));
-  const studiesForClaim = studies.filter((study) => referenceIdSet.has(study.referenceId));
+  const studyIdSet = new Set(claim.keyStudyIds ?? []);
+  const studiesForClaim =
+    studyIdSet.size > 0
+      ? studies.filter(
+          (study) => studyIdSet.has(study.id) && referenceIdSet.has(study.referenceId)
+        )
+      : studies.filter((study) => referenceIdSet.has(study.referenceId));
   const extractedReferenceIds = new Set(
     studiesForClaim
       .map((study) => study.referenceId)
-      .filter((referenceId) => referencesById.has(referenceId))
+      .filter((referenceId) => referenceIdSet.has(referenceId) && referencesById.has(referenceId))
   );
   const pendingReferences = references.filter(
     (reference) => !extractedReferenceIds.has(reference.id)
@@ -330,7 +336,7 @@ export function summarizeClaimSourcePackets({
   referencesById,
   studies
 }: {
-  claims: Array<Pick<Claim, "keyReferenceIds">>;
+  claims: Array<Pick<Claim, "keyReferenceIds" | "keyStudyIds">>;
   referencesById: Map<string, Reference>;
   studies: Study[];
 }): ClaimSourcePacketSummary {

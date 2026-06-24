@@ -39,16 +39,17 @@ On Windows, stop the dev server with `npm run dev:stop` before running Prisma-ge
 
 ## Local Codex Review Sidecar
 
-The dashboard `Ask Codex` button can send its approved review packet to a local sidecar. This is operator-only and is intentionally outside `src/app/api/` so public routes stay read-only.
+The dashboard `Ask Codex` button can send approved read-only packets to a local sidecar. This is operator-only and is intentionally outside `src/app/api/` so public routes stay read-only.
 
 Setup:
 
-1. Set `APEX_CODEX_THREAD_ID` to the Codex thread/session ID to resume.
-2. Set `APEX_CODEX_REVIEW_TOKEN` to a private local token.
-3. Start the sidecar: `npm run codex:review-sidecar`.
-4. Open the dashboard, enter the sidecar URL and token, then choose `Approve and send`.
+1. Set `APEX_CODEX_THREAD_ID` to the Codex thread/session ID to resume in `.env.local` or the shell.
+2. Set `APEX_CODEX_REVIEW_TOKEN` to a private local token in `.env.local` or the shell.
+3. Check local readiness without printing secrets: `npm run codex:review-sidecar:check`.
+4. Start the sidecar: `npm run codex:review-sidecar`.
+5. Open the dashboard, enter the sidecar URL and token, then choose `Approve and send`.
 
-The sidecar listens on `127.0.0.1`, defaults to port `3217`, requires the token in `X-Apex-Codex-Token`, and resumes Codex with a read-only sandbox and approvals disabled. Use `APEX_CODEX_REVIEW_ORIGINS` to add local dashboard origins when using a different Next.js port.
+The sidecar loads `.env.local` and `.env`, listens on `127.0.0.1`, defaults to port `3217`, requires the token in `X-Apex-Codex-Token`, and resumes Codex with a read-only sandbox and approvals disabled. Dashboard packets post to `/codex/review`. Use `APEX_CODEX_REVIEW_ORIGINS` to add local dashboard origins when using a different Next.js port.
 
 ## Local Source-Candidate Ingestion
 

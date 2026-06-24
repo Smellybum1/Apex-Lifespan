@@ -31,6 +31,12 @@ describe("commandUsage", () => {
       "--candidate-reference-matches <dedupe-key> Print accepted-reference matches and review/curation hints."
     );
     expect(commandUsage()).toContain(
+      "--prepare-candidate-reference <dedupe-key> Preview a curated Reference row for a candidate."
+    );
+    expect(commandUsage()).toContain(
+      "--write-candidate-reference      With --prepare-candidate-reference, create the matching local Reference row."
+    );
+    expect(commandUsage()).toContain(
       "--candidate-review-flags        Print read-only flagged pending review groups with review/curation hints."
     );
     expect(commandUsage()).toContain(
@@ -219,6 +225,36 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     });
   });
 
+  it("parses source-candidate reference prep preview and explicit write mode", () => {
+    const encodedKey = safeCandidateKey("pubmed|au|creatine|28615996");
+
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--prepare-candidate-reference",
+        encodedKey
+      ])
+    ).toEqual({
+      help: false,
+      limit: 1,
+      prepareCandidateReferenceDedupeKey: "pubmed|au|creatine|28615996",
+      summary: false
+    });
+
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--prepare-candidate-reference",
+        "pubmed|au|creatine|28615996",
+        "--write-candidate-reference"
+      ])
+    ).toEqual({
+      help: false,
+      limit: 1,
+      prepareCandidateReferenceDedupeKey: "pubmed|au|creatine|28615996",
+      summary: false,
+      writeCandidateReference: true
+    });
+  });
+
   it("parses read-only source-candidate review packet mode", () => {
     const encodedKey = safeCandidateKey("pubmed|au|creatine|28615996");
 
@@ -236,6 +272,12 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     expect(
       parseSourceCandidateJobCommandArgs(["--candidate-review-packet", encodedKey])
         .candidateReviewPacketDedupeKey
+    ).toBe("pubmed|au|creatine|28615996");
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--candidate-review-packet",
+        `key=${encodedKey}`
+      ]).candidateReviewPacketDedupeKey
     ).toBe("pubmed|au|creatine|28615996");
   });
 
@@ -1373,6 +1415,55 @@ describe("parseSourceCandidateJobCommandArgs", () => {
         "2"
       ])
     ).toThrow("--candidate-reference-matches cannot be combined with run options.");
+  });
+
+  it("does not combine source-candidate reference prep with review or downstream modes", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(["--write-candidate-reference"])
+    ).toThrow("--write-candidate-reference requires --prepare-candidate-reference.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--prepare-candidate-reference",
+        "pubmed|au|creatine|28615996",
+        "--summary"
+      ])
+    ).toThrow("--prepare-candidate-reference cannot be combined with --summary.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--prepare-candidate-reference",
+        "pubmed|au|creatine|28615996",
+        "--accept-candidate",
+        "pubmed|au|creatine|28615996",
+        "--accepted-reference-id",
+        "ref-creatine-position-stand"
+      ])
+    ).toThrow("--prepare-candidate-reference cannot be combined with review options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(studyCommandArgs([
+        "--prepare-candidate-reference",
+        "pubmed|au|creatine|28615996"
+      ]))
+    ).toThrow(
+      "--prepare-candidate-reference cannot be combined with --extract-candidate-study."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--prepare-candidate-reference",
+        "pubmed|au|creatine|28615996",
+        "--queue-pubmed",
+        "creatine"
+      ])
+    ).toThrow("--prepare-candidate-reference cannot be combined with queue options.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--prepare-candidate-reference",
+        "pubmed|au|creatine|28615996",
+        "--candidate-claim-id",
+        "creatine-strength"
+      ])
+    ).toThrow(
+      "Candidate-list filters cannot be combined with --prepare-candidate-reference."
+    );
   });
 
   it("does not combine source-candidate review packet mode with other command modes", () => {
@@ -2740,13 +2831,13 @@ describe("runSourceCandidateJobCommand", () => {
           `duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}"`,
           "duplicateIdentityMixedDecision=true",
           'duplicateIdentityNextAction="Review duplicate identity rows together before changing any candidate decision."',
-          "humanReviewedWritesRequireOperator=true",
+          "codexAiReviewedWritesAllowed=true",
           "acceptRequiresMatchingCuratedReference=true",
           "acceptedReferenceMatches=1",
           "acceptReferenceReady=true",
-          "reviewDecisionRequiresHumanNote=true",
-          `acceptTemplate="--accept-candidate ${safeCandidateKey("pubmed|au|creatine|28615996")} --accepted-reference-id <reference-id> --review-note \\"Human-reviewed rationale.\\""`,
-          `rejectTemplate="--reject-candidate ${safeCandidateKey("pubmed|au|creatine|28615996")} --review-note \\"Human-reviewed rationale.\\""`
+          "reviewDecisionRequiresAuditNote=true",
+          `acceptTemplate="--accept-candidate ${safeCandidateKey("pubmed|au|creatine|28615996")} --accepted-reference-id <reference-id> --review-note \\"AI-reviewed rationale.\\""`,
+          `rejectTemplate="--reject-candidate ${safeCandidateKey("pubmed|au|creatine|28615996")} --review-note \\"AI-reviewed rationale.\\""`
         ].join("\n"),
         [
           "Source-candidate detail",
@@ -3156,7 +3247,7 @@ describe("runSourceCandidateJobCommand", () => {
         "writeReady=false",
         'blockedUntil="Accepted candidate review decision required before curation writes."',
         "acceptRequiresMatchingCuratedReference=true",
-        "reviewDecisionRequiresHumanNote=true",
+        "reviewDecisionRequiresAuditNote=true",
         "claimLinks=0",
         "studies=0"
       ].join("\n")
@@ -3356,7 +3447,7 @@ describe("runSourceCandidateJobCommand", () => {
         "  writeReady=true",
         '  note="Accepted PubMed candidate 28615996: Creatine position stand"',
         `  commandTemplate=${JSON.stringify(
-          `--link-candidate-claim ${safeKey} --claim-link-relevance 5 --claim-link-note "Human-reviewed claim-link rationale."`
+          `--link-candidate-claim ${safeKey} --claim-link-relevance 5 --claim-link-note "AI-reviewed claim-link rationale."`
         )}`,
         "studyExtractionDraft:",
         "  reference=ref-creatine-position-stand",
@@ -3385,11 +3476,11 @@ describe("runSourceCandidateJobCommand", () => {
             `--extract-candidate-study ${safeKey}`,
             "--study-source-type systematic-review",
             '--study-sample-size "120 actual"',
-            '--study-population "Human-reviewed population."',
-            '--study-intervention-name "Human-reviewed intervention."',
-            '--study-outcome "Human-reviewed outcome."',
-            '--study-adverse-events "Human-reviewed adverse event summary."',
-            '--study-funding-conflicts "Human-reviewed funding/conflict note."',
+            '--study-population "AI-reviewed population."',
+            '--study-intervention-name "AI-reviewed intervention."',
+            '--study-outcome "AI-reviewed outcome."',
+            '--study-adverse-events "AI-reviewed adverse event summary."',
+            '--study-funding-conflicts "AI-reviewed funding/conflict note."',
             '--study-risk-of-bias "Review-level source; assess search strategy, inclusion criteria, bias appraisal, and funding/conflicts."'
           ].join(" ")
         )}`,
@@ -3439,7 +3530,7 @@ describe("runSourceCandidateJobCommand", () => {
         'nextAction="Accept with a matching curated reference before curation handoff."',
         "publicSourcePacketReady=false",
         "acceptRequiresMatchingCuratedReference=true",
-        "reviewDecisionRequiresHumanNote=true",
+        "reviewDecisionRequiresAuditNote=true",
         "claimLinkDraft: unavailable",
         "studyExtractionDraft: unavailable"
       ].join("\n")
@@ -4105,6 +4196,100 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stderr).toHaveBeenCalledWith(
       'Source candidate not found: "missing-candidate"'
+    );
+  });
+
+  it("previews candidate reference preparation without downstream writes", async () => {
+    const stdout = vi.fn();
+    const prepareCandidateReference = vi.fn().mockResolvedValue({
+      candidate: sourceCandidate(),
+      created: false,
+      existing: false,
+      reference: {
+        id: "ref-pubmed-28615996",
+        title: "Creatine position stand",
+        source: "PubMed",
+        identifier: "PMID: 28615996",
+        year: 2017,
+        url: "https://pubmed.ncbi.nlm.nih.gov/28615996/"
+      },
+      write: false
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--prepare-candidate-reference", "pubmed|au|creatine|28615996"],
+        { stdout },
+        { prepareCandidateReference, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(prepareCandidateReference).toHaveBeenCalledWith({
+      dedupeKey: "pubmed|au|creatine|28615996",
+      write: undefined
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      expect.stringContaining("safeReadOnly=true\nwrite=false")
+    );
+    expect(stdout).toHaveBeenCalledWith(
+      expect.stringContaining("candidateDecisionWrite=false")
+    );
+    expect(stdout).toHaveBeenCalledWith(
+      expect.stringContaining("publicEvidenceWrite=false")
+    );
+    expect(stdout).toHaveBeenCalledWith(
+      expect.stringContaining("- reference=\"ref-pubmed-28615996\"")
+    );
+    expect(stdout).toHaveBeenCalledWith(
+      expect.stringContaining(
+        `writeCommand="--prepare-candidate-reference ${safeCandidateKey("pubmed|au|creatine|28615996")} --write-candidate-reference"`
+      )
+    );
+  });
+
+  it("creates a candidate reference only when the explicit write flag is present", async () => {
+    const stdout = vi.fn();
+    const prepareCandidateReference = vi.fn().mockResolvedValue({
+      candidate: sourceCandidate(),
+      created: true,
+      existing: false,
+      reference: {
+        id: "ref-pubmed-28615996",
+        title: "Creatine position stand",
+        source: "PubMed",
+        identifier: "PMID: 28615996",
+        year: 2017,
+        url: "https://pubmed.ncbi.nlm.nih.gov/28615996/"
+      },
+      write: true
+    });
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--prepare-candidate-reference",
+          "pubmed|au|creatine|28615996",
+          "--write-candidate-reference"
+        ],
+        { stdout },
+        { prepareCandidateReference }
+      )
+    ).resolves.toBe(0);
+
+    expect(prepareCandidateReference).toHaveBeenCalledWith({
+      dedupeKey: "pubmed|au|creatine|28615996",
+      write: true
+    });
+    expect(stdout).toHaveBeenCalledWith(
+      expect.stringContaining("safeReadOnly=false\nwrite=true")
+    );
+    expect(stdout).toHaveBeenCalledWith(expect.stringContaining('status="created"'));
+    expect(stdout).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'nextAction="Inspect accepted-reference matches before any candidate decision."'
+      )
     );
   });
 

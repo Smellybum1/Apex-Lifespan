@@ -74,6 +74,9 @@ describe("searchClinicalTrials", () => {
         hasResults: true,
         resultsFirstPostDate: "2025-04-01",
         sponsor: "Example University",
+        trialAlertDetail:
+          "Posted registry results are an operator review alert. Do not change public scores until outcomes are extracted, citation-linked, and human-reviewed.",
+        trialAlertLabel: "Results review needed",
         trialRelevanceDetail:
           "The query intervention appears in the registered intervention metadata; still confirm dose, form, comparator, and outcome.",
         trialRelevanceLabel: "Direct match",
@@ -189,6 +192,48 @@ describe("searchClinicalTrials", () => {
       "Unreviewed lead",
       "Terminated/unknown"
     ]);
+    expect(result.studies.map((study) => study.trialAlertLabel)).toEqual([
+      "Missing results follow-up",
+      "Low-priority lead",
+      "Registry status review"
+    ]);
+    expect(result.studies[0]?.trialAlertDetail).toContain(
+      "rather than evidence for or against the claim"
+    );
+  });
+
+  it("marks active direct-match registry rows as monitoring alerts without score promotion", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        studies: [
+          {
+            protocolSection: {
+              identificationModule: {
+                nctId: "NCTACTIVE",
+                briefTitle: "Creatine active adult training trial"
+              },
+              statusModule: {
+                overallStatus: "ACTIVE_NOT_RECRUITING"
+              },
+              armsInterventionsModule: {
+                interventions: [{ type: "DIETARY_SUPPLEMENT", name: "Creatine" }]
+              }
+            }
+          }
+        ]
+      })
+    );
+
+    const result = await searchClinicalTrials("creatine");
+
+    expect(result.studies[0]).toMatchObject({
+      trialAlertLabel: "Monitor active trial",
+      trialRelevanceLabel: "Direct match",
+      trialResultLabel: "Unreviewed lead"
+    });
+    expect(result.studies[0]?.trialAlertDetail).toContain(
+      "do not promote it into evidence automatically"
+    );
   });
 
   it("trims ClinicalTrials.gov identifiers and labels before public preview mapping", async () => {

@@ -5,7 +5,14 @@ import type { ReactNode } from "react";
 
 import { DashboardDataUnavailable } from "@/app/dashboard-data-unavailable";
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
+import { buildEvidenceHumanReviewQueue } from "@/lib/evidence-coverage";
 import { australiaRegulatoryKindDescription, australiaRegulatoryTone } from "@/lib/regulatory";
+import {
+  formatSafetyAlertRegionLabel,
+  safetyDomainForAlertType,
+  summarizeRegionalSafetyRegulatoryCoverage,
+  summarizeSafetyDomainCoverage
+} from "@/lib/safety-domains";
 import {
   buildClaimSourcePacket,
   type ClaimSourcePacket,
@@ -21,6 +28,8 @@ import {
 import type {
   AustraliaRegulatoryStatus,
   Claim,
+  ClaimScoreHistoryEntry,
+  ClaimScoreSnapshot,
   EvidenceDashboardData,
   Intervention,
   ProductSignal,
@@ -37,6 +46,11 @@ export const metadata: Metadata = {
   title: "Intervention Detail | Apex Lifespan",
   description: "Claim-specific evidence, source packets, safety context, and score history."
 };
+
+const HUMAN_REVIEWED_TOOLTIP =
+  "Human reviewed means a human reviewer checked the source packet against the scoped claim. It does not mean clinical guideline endorsement.";
+const PENDING_HUMAN_REVIEW_TOOLTIP =
+  "Pending human review means a human reviewer has not yet confirmed the source packet against the scoped claim. AI-reviewed packets remain draft review aids.";
 
 type InterventionDetailPageProps = {
   params: Promise<{ slug: string }>;
@@ -68,6 +82,11 @@ export default async function InterventionDetailPage({ params }: InterventionDet
       studies: data.studies
     })
   }));
+  const confidenceQueueItemsByClaimId = new Map(
+    buildEvidenceHumanReviewQueue(data).items.map((item) => [item.claimId, item])
+  );
+  const scoreHistoryByClaimId = latestScoreHistoryByClaimId(data.scoreHistory ?? []);
+  const scoreSnapshotsByClaimId = latestScoreSnapshotsByClaimId(data.scoreSnapshots ?? []);
   const safetyAlerts = data.safetyAlerts.filter(
     (alert) => alert.interventionId === intervention.id
   );
@@ -78,6 +97,13 @@ export default async function InterventionDetailPage({ params }: InterventionDet
     (status) => status.interventionId === intervention.id
   );
   const productSignals = productSignalsForIntervention(data.productSignals, intervention);
+  const localScopeSummary = [
+    `${claims.length} scoped claim${claims.length === 1 ? "" : "s"}`,
+    `${sourcePackets.length} source-packet view${sourcePackets.length === 1 ? "" : "s"}`,
+    `${safetyAlerts.length} local safety alert${safetyAlerts.length === 1 ? "" : "s"}`,
+    `${australiaStatuses.length} AU/TGA row${australiaStatuses.length === 1 ? "" : "s"}`,
+    `${productSignals.length} product-signal row${productSignals.length === 1 ? "" : "s"}`
+  ].join(", ");
 
   return (
     <main className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
@@ -113,6 +139,11 @@ export default async function InterventionDetailPage({ params }: InterventionDet
               </span>
             </div>
           </div>
+          <p className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+            Local page scope: {localScopeSummary}. Counts show captured local data only; absent
+            rows are review gaps, not medical advice, regulatory clearance, or product
+            recommendations.
+          </p>
           {isPeptideOrTherapeutic(intervention, claims) ? (
             <p className="mt-4 rounded-md border border-amberline/30 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-950">
               Peptide and therapeutic-intervention cards emphasize regulatory status, approved
@@ -137,6 +168,9 @@ export default async function InterventionDetailPage({ params }: InterventionDet
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
               {claims.map((claim) => {
                 const score = compositeScore(claim.scores);
+                const confidenceItem = confidenceQueueItemsByClaimId.get(claim.id);
+                const weightedScore = confidenceItem?.confidenceWeightedScore ?? score;
+                const aiConfidenceScore = confidenceItem?.aiConfidenceScore ?? 100;
 
                 return (
                   <article
@@ -146,9 +180,14 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                     <p className="text-xs font-semibold uppercase tracking-wide">
                       {shortOutcome(claim.outcome)}
                     </p>
-                    <p className="mt-2 text-xs font-semibold">{compositeLabel(claim)}</p>
-                    <p className="mt-2 text-2xl font-semibold">{score.toFixed(1)}</p>
-                    <p className="mt-1 text-xs font-semibold">{scoreBand(score)}</p>
+                    <p className="mt-2 text-xs font-semibold">
+                      Confidence-weighted {compositeLabel(claim)}
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold">{weightedScore.toFixed(1)}</p>
+                    <p className="mt-1 text-xs font-semibold">{scoreBand(weightedScore)}</p>
+                    <p className="mt-2 text-xs leading-5">
+                      Raw {score.toFixed(1)} x AI confidence {aiConfidenceScore}/100
+                    </p>
                     <p className="mt-2 text-xs leading-5">
                       {classificationLabel(claim)}: {claim.finalLabel}
                     </p>
@@ -158,12 +197,19 @@ export default async function InterventionDetailPage({ params }: InterventionDet
               })}
             </div>
           ) : (
-            <EmptyState>No scored claim rows are attached to this intervention yet.</EmptyState>
+            <EmptyState>
+              No scored claim rows are attached to this intervention yet. This is a local data gap,
+              not evidence that no scoped claim or evidence exists.
+            </EmptyState>
           )}
         </Section>
 
-        <Section title="Claim Cards">
+        <Section title="Evidence Cards">
           <div className="grid gap-3">
+            <p className="rounded-md border border-line bg-mist px-3 py-2 text-sm leading-6 text-slate-600">
+              These cards carry dashboard evidence-card detail for this supplement, including
+              scoped claims, component scores, source packet status, boundaries, and references.
+            </p>
             {claims.map((claim) => (
               <ClaimCard
                 claim={claim}
@@ -177,6 +223,7 @@ export default async function InterventionDetailPage({ params }: InterventionDet
 
         <Section title="Source Packets">
           <div className="grid gap-3">
+            <SourcePacketCoverageSummary sourcePackets={sourcePackets} />
             {sourcePackets.map(({ claim, packet }) => (
               <SourcePacketCard
                 claim={claim}
@@ -191,9 +238,12 @@ export default async function InterventionDetailPage({ params }: InterventionDet
         <Section title="Safety Alerts">
           {safetyAlerts.length > 0 ? (
             <div className="grid gap-3">
-              {safetyAlerts.map((alert) => (
-                <SafetyAlertCard alert={alert} key={alert.id} />
-              ))}
+              <SafetyDomainCoveragePanel safetyAlerts={safetyAlerts} />
+              <div className="grid gap-3">
+                {safetyAlerts.map((alert) => (
+                  <SafetyAlertCard alert={alert} key={alert.id} />
+                ))}
+              </div>
             </div>
           ) : (
             <EmptyState>
@@ -211,12 +261,19 @@ export default async function InterventionDetailPage({ params }: InterventionDet
               ))}
             </div>
           ) : (
-            <EmptyState>No local trial watcher records are attached to this intervention.</EmptyState>
+            <EmptyState>
+              No local trial watcher records are attached to this intervention. Check current trial
+              registries before treating this as no active or relevant trials.
+            </EmptyState>
           )}
         </Section>
 
         <Section title="AU/TGA And Product Context">
           <div className="grid gap-3">
+            <RegionalSafetyRegulatoryCoveragePanel
+              australiaStatuses={australiaStatuses}
+              safetyAlerts={safetyAlerts}
+            />
             {australiaStatuses.length > 0 ? (
               australiaStatuses.map((status) => (
                 <AustraliaStatusCard key={status.id} status={status} />
@@ -234,7 +291,10 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                 ))}
               </div>
             ) : (
-              <EmptyState>No matching local product-signal row is attached to this intervention.</EmptyState>
+              <EmptyState>
+                No matching local product-signal row is attached to this intervention. This does not
+                imply product authorization, product quality, or a product recommendation.
+              </EmptyState>
             )}
           </div>
         </Section>
@@ -242,10 +302,19 @@ export default async function InterventionDetailPage({ params }: InterventionDet
         <Section title="Score History">
           {claims.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
+              <table className="w-full min-w-[900px] border-separate border-spacing-0 text-sm">
                 <thead>
                   <tr>
-                    {["Claim", "Current score", "Band", "Label", "Snapshot date"].map((heading) => (
+                    {[
+                      "Claim",
+                      "Current score",
+                      "Previous",
+                      "Band",
+                      "Label",
+                      "Reason",
+                      "Provenance",
+                      "Date"
+                    ].map((heading) => (
                       <th
                         className="border-b border-line bg-mist px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600"
                         key={heading}
@@ -257,7 +326,16 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                 </thead>
                 <tbody>
                   {claims.map((claim) => {
-                    const score = compositeScore(claim.scores);
+                    const history = scoreHistoryByClaimId.get(claim.id);
+                    const snapshot = scoreSnapshotsByClaimId.get(claim.id);
+                    const score =
+                      history?.newCompositeScore ??
+                      snapshot?.compositeScore ??
+                      compositeScore(claim.scores);
+                    const finalLabel = history?.newLabel ?? snapshot?.finalLabel ?? claim.finalLabel;
+                    const snapshotDate = history?.createdAt ?? snapshot?.computedAt ?? claim.lastUpdated;
+                    const previousScore = history?.oldCompositeScore;
+                    const reason = history?.reason ?? "Current score snapshot";
 
                     return (
                       <tr key={claim.id}>
@@ -268,20 +346,33 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                           {score.toFixed(1)}
                         </td>
                         <td className="border-b border-line px-3 py-3 text-slate-700">
+                          {previousScore === undefined ? "n/a" : previousScore.toFixed(1)}
+                        </td>
+                        <td className="border-b border-line px-3 py-3 text-slate-700">
                           {scoreBand(score)}
                         </td>
                         <td className="border-b border-line px-3 py-3">
                           <span
                             className={cn(
                               "rounded-md border px-2 py-1 text-xs font-semibold",
-                              labelTone(claim.finalLabel)
+                              labelTone(finalLabel)
                             )}
                           >
-                            {claim.finalLabel}
+                            {finalLabel}
                           </span>
                         </td>
                         <td className="border-b border-line px-3 py-3 text-slate-700">
-                          {claim.lastUpdated}
+                          {reason}
+                        </td>
+                        <td className="max-w-[22rem] border-b border-line px-3 py-3 text-xs leading-5 text-slate-700">
+                          <ScoreProvenanceCell
+                            history={history}
+                            referencesById={referencesById}
+                            snapshot={snapshot}
+                          />
+                        </td>
+                        <td className="border-b border-line px-3 py-3 text-slate-700">
+                          {snapshotDate}
                         </td>
                       </tr>
                     );
@@ -289,13 +380,16 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                 </tbody>
               </table>
               <p className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
-                Score history currently shows the latest captured score snapshot for each scoped
-                claim. Decimal scores are provisional review heuristics, not clinical
-                recommendations.
+                Score history shows the latest captured score-change row when available, otherwise
+                the latest score snapshot for each scoped claim. Decimal scores are provisional
+                review heuristics, not clinical recommendations.
               </p>
             </div>
           ) : (
-            <EmptyState>No score snapshots are attached to this intervention yet.</EmptyState>
+            <EmptyState>
+              No score snapshots are attached to this intervention yet. Current scoring may still
+              come from seed claim rows rather than stored score-history records.
+            </EmptyState>
           )}
         </Section>
 
@@ -311,7 +405,10 @@ export default async function InterventionDetailPage({ params }: InterventionDet
               ))}
             </div>
           ) : (
-            <EmptyState>No score-change criteria are attached to this intervention yet.</EmptyState>
+            <EmptyState>
+              No score-change criteria are attached to this intervention yet. This means no local
+              improvement criteria were captured, not that the score is final.
+            </EmptyState>
           )}
         </Section>
       </div>
@@ -351,6 +448,10 @@ function reviewStatusLabel(status: Claim["reviewStatus"]) {
   return isHumanReviewed(status) ? "Human reviewed" : "Pending human review";
 }
 
+function reviewStatusTooltip(status: Claim["reviewStatus"]) {
+  return isHumanReviewed(status) ? HUMAN_REVIEWED_TOOLTIP : PENDING_HUMAN_REVIEW_TOOLTIP;
+}
+
 function classificationLabel(claim: Claim) {
   return isHumanReviewed(claim.reviewStatus)
     ? "Human-reviewed classification"
@@ -379,6 +480,8 @@ function ClaimCard({
   referencesById: Map<string, Reference>;
 }) {
   const score = compositeScore(claim.scores);
+  const statusLabel = reviewStatusLabel(claim.reviewStatus);
+  const statusTooltip = reviewStatusTooltip(claim.reviewStatus);
 
   return (
     <article className="rounded-lg border border-line bg-white p-3">
@@ -396,8 +499,12 @@ function ClaimCard({
         <span className={cn("rounded-md border px-2 py-1 font-semibold", labelTone(claim.finalLabel))}>
           {classificationLabel(claim)}: {claim.finalLabel}
         </span>
-        <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 font-semibold text-slate-700">
-          {reviewStatusLabel(claim.reviewStatus)}
+        <span
+          aria-label={`${statusLabel}: ${statusTooltip}`}
+          className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 font-semibold text-slate-700"
+          title={statusTooltip}
+        >
+          {statusLabel}
         </span>
         <span className="rounded-md border border-line bg-mist px-2 py-1 text-slate-600">
           Confidence: {claim.confidenceLevel}
@@ -498,6 +605,70 @@ function scoreComponentDetail(label: string) {
   }
 }
 
+function SourcePacketCoverageSummary({
+  sourcePackets
+}: {
+  sourcePackets: Array<{ claim: Claim; packet: ClaimSourcePacket }>;
+}) {
+  const completePackets = sourcePackets.filter(
+    ({ packet }) => packet.completeness.status === "complete"
+  );
+  const gapPackets = sourcePackets.filter(
+    ({ packet }) => packet.completeness.status !== "complete"
+  );
+  const totalReferences = sourcePackets.reduce(
+    (count, { packet }) => count + packet.completeness.totalReferences,
+    0
+  );
+  const extractedReferences = sourcePackets.reduce(
+    (count, { packet }) => count + packet.completeness.extractedReferences,
+    0
+  );
+
+  return (
+    <section className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Source coverage for this intervention</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Local source-packet coverage only; incomplete packets are evidence-intake gaps, not
+            evidence that no source exists.
+          </p>
+          {totalReferences > 0 ? (
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              {extractedReferences}/{totalReferences} linked reference
+              {totalReferences === 1 ? "" : "s"} have structured extraction on this page.
+            </p>
+          ) : null}
+        </div>
+        <span className="w-fit rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+          {completePackets.length}/{sourcePackets.length} complete
+        </span>
+      </div>
+      {gapPackets.length > 0 ? (
+        <div className="mt-3 rounded-md border border-amberline/25 bg-amber-50 p-2 text-xs leading-5 text-amber-950">
+          <p className="font-semibold">
+            {gapPackets.length} claim{gapPackets.length === 1 ? " needs" : "s need"} source work
+          </p>
+          <ul className="mt-1 list-disc space-y-1 pl-4">
+            {gapPackets.map(({ claim, packet }) => (
+              <li key={claim.id}>
+                {shortOutcome(claim.outcome)}: {packet.completeness.label}.{" "}
+                {packet.completeness.nextStep}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-spruce/25 bg-teal-50 p-2 text-xs leading-5 text-spruce">
+          Every scoped claim on this page has a complete local source packet. Human review,
+          AU/TGA product status, safety clearance, and medical advice remain separate.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function SourcePacketCard({
   claim,
   packet,
@@ -508,11 +679,17 @@ function SourcePacketCard({
   referencesById: Map<string, Reference>;
 }) {
   return (
-    <article className="rounded-lg border border-line bg-white p-3">
+    <article
+      className="scroll-mt-4 rounded-lg border border-line bg-white p-3"
+      id={`source-packet-${claim.id}`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-ink">{shortOutcome(claim.outcome)}</h3>
           <p className="mt-1 text-xs leading-5 text-slate-600">{packet.completeness.detail}</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {reviewStatusLabel(claim.reviewStatus)} · last updated {claim.lastUpdated}
+          </p>
         </div>
         <span className="rounded-md border border-signal/25 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
           {packet.completeness.extractedReferences}/{packet.completeness.totalReferences} refs extracted
@@ -635,19 +812,159 @@ function ReferenceCard({
   );
 }
 
+function RegionalSafetyRegulatoryCoveragePanel({
+  australiaStatuses,
+  safetyAlerts
+}: {
+  australiaStatuses: AustraliaRegulatoryStatus[];
+  safetyAlerts: SafetyAlert[];
+}) {
+  const coverage = summarizeRegionalSafetyRegulatoryCoverage({
+    australiaRegulatoryStatuses: australiaStatuses,
+    safetyAlerts
+  });
+
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">
+            Regional safety and AU/TGA scope for this intervention
+          </h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Captured local safety and AU/TGA records only; absent rows are review gaps, not
+            clearance or product authorization.
+          </p>
+        </div>
+        <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+          {coverage.length} review scopes
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {coverage.map((region) => (
+          <div key={region.region} className="rounded-md border border-line bg-white p-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold text-ink">{region.region}</p>
+                <p className="mt-1 text-xs text-slate-600">{region.reviewScopeLabel}</p>
+              </div>
+              <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-700">
+                {region.scopeLabel}
+              </span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              {region.statusLabel}
+              {region.status === "not-yet-captured"
+                ? ": no reviewed local safety or AU/TGA record is currently linked to this intervention in this review region."
+                : "."}
+            </p>
+            <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+              <Detail label="Safety alerts" value={formatRegionalSafetyAlertValue(region)} />
+              <Detail
+                label="Highest safety severity"
+                value={region.highestSafetySeverityLabel}
+              />
+              <Detail label="AU/TGA records" value={formatRegionalAustraliaStatusValue(region)} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatRegionalSafetyAlertValue(
+  region: ReturnType<typeof summarizeRegionalSafetyRegulatoryCoverage>[number]
+) {
+  return `${region.safetyAlertCount}${
+    region.safetyAlertTypes.length > 0 ? `: ${region.safetyAlertTypes.join(", ")}` : ""
+  }`;
+}
+
+function formatRegionalAustraliaStatusValue(
+  region: ReturnType<typeof summarizeRegionalSafetyRegulatoryCoverage>[number]
+) {
+  return `${region.australiaRegulatoryStatusCount}${
+    region.australiaRegulatoryKinds.length > 0
+      ? `: ${region.australiaRegulatoryKinds.join(", ")}`
+      : ""
+  }`;
+}
+
+function SafetyDomainCoveragePanel({ safetyAlerts }: { safetyAlerts: SafetyAlert[] }) {
+  const coverage = summarizeSafetyDomainCoverage(safetyAlerts);
+
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">
+            Safety-domain coverage for this intervention
+          </h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Reviewed local alerts by safety domain; gaps mean no reviewed alert is currently
+            attached to this intervention.
+          </p>
+        </div>
+        <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+          {safetyAlerts.length} alert{safetyAlerts.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        {coverage.map((domain) => (
+          <div key={domain.id} className="rounded-md border border-line bg-white p-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-ink">{domain.label}</span>
+              <span
+                className={cn(
+                  "rounded-md border px-2 py-1 text-xs font-semibold",
+                  domain.status === "reviewed-alerts-captured"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-amber-200 bg-amber-50 text-amber-700"
+                )}
+              >
+                {domain.statusLabel}
+              </span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              {domain.alertCount > 0
+                ? `${domain.alertCount} reviewed alert${
+                    domain.alertCount === 1 ? "" : "s"
+                  } across ${domain.regions.join(", ")}.`
+                : "No reviewed local alert captured for this domain on this intervention."}
+            </p>
+            {domain.alertTypes.length > 0 ? (
+              <p className="mt-1 text-xs font-semibold text-slate-700">
+                {domain.alertTypes.join(", ")}
+              </p>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SafetyAlertCard({ alert }: { alert: SafetyAlert }) {
+  const domain = safetyDomainForAlertType(alert.alertType);
+
   return (
     <article className="rounded-lg border border-line bg-white p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-ink">{alert.alertType}</h3>
           <p className="mt-1 text-xs text-slate-600">
-            {alert.source} - {alert.region} - {alert.date}
+            {alert.source} - {formatSafetyAlertRegionLabel(alert.region)} - {alert.date}
           </p>
         </div>
-        <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", severityTone(alert.severity))}>
-          {alert.severity}
-        </span>
+        <div className="flex flex-wrap justify-end gap-2">
+          <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-700">
+            {domain.label}
+          </span>
+          <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", severityTone(alert.severity))}>
+            {alert.severity}
+          </span>
+        </div>
       </div>
       <p className="mt-3 text-sm leading-6 text-slate-700">{alert.summary}</p>
       <a
@@ -806,6 +1123,60 @@ function SourceLink({ reference }: { reference: Reference }) {
   );
 }
 
+function ScoreProvenanceCell({
+  history,
+  referencesById,
+  snapshot
+}: {
+  history?: ClaimScoreHistoryEntry;
+  referencesById: Map<string, Reference>;
+  snapshot?: ClaimScoreSnapshot;
+}) {
+  if (history) {
+    const reference = history.referenceId
+      ? referencesById.get(history.referenceId)
+      : undefined;
+
+    return (
+      <div className="space-y-1">
+        <p>{history.rationale}</p>
+        {history.referenceId ? (
+          <p>
+            Linked reference:{" "}
+            {reference ? (
+              <a
+                className="font-semibold text-signal hover:underline"
+                href={reference.url}
+                rel="noreferrer"
+                target="_blank"
+              >
+                {formatReferenceLabel(reference)}
+              </a>
+            ) : (
+              history.referenceId
+            )}
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (snapshot?.rationale) {
+    return (
+      <div className="space-y-1">
+        <p>{snapshot.rationale}</p>
+        <p>Snapshot: {snapshot.id}</p>
+      </div>
+    );
+  }
+
+  return <p>No normalized score provenance row yet.</p>;
+}
+
+function formatReferenceLabel(reference: Reference) {
+  return `${reference.source}${reference.identifier ? ` - ${reference.identifier}` : ""}`;
+}
+
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-line bg-mist p-3">
@@ -830,6 +1201,32 @@ function productSignalsForIntervention(
 
     return terms.some((term) => haystack.includes(term));
   });
+}
+
+function latestScoreHistoryByClaimId(historyRows: ClaimScoreHistoryEntry[]) {
+  const byClaimId = new Map<string, ClaimScoreHistoryEntry>();
+
+  for (const row of historyRows) {
+    if (!byClaimId.has(row.claimId)) {
+      byClaimId.set(row.claimId, row);
+    }
+  }
+
+  return byClaimId;
+}
+
+function latestScoreSnapshotsByClaimId(snapshots: ClaimScoreSnapshot[]) {
+  const snapshotsByClaimId = new Map<string, ClaimScoreSnapshot>();
+
+  for (const snapshot of snapshots) {
+    const current = snapshotsByClaimId.get(snapshot.claimId);
+
+    if (!current || snapshot.computedAt > current.computedAt) {
+      snapshotsByClaimId.set(snapshot.claimId, snapshot);
+    }
+  }
+
+  return snapshotsByClaimId;
 }
 
 function isPeptideOrTherapeutic(intervention: Intervention, claims: Claim[]) {

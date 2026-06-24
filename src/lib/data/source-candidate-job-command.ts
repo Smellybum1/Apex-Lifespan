@@ -30,6 +30,7 @@ import {
   listSourceCandidateReviewOverview,
   listSourceCandidateReviewQueue,
   listSourceCandidateSiblings,
+  prepareSourceCandidateReference,
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
   summarizeSourceCandidateCurationHandoff,
@@ -48,6 +49,8 @@ import {
   type SourceCandidateCurationStatus,
   type SourceCandidateCurationStatusKind,
   type SourceCandidateIdentityGroup,
+  type SourceCandidateReferencePrep,
+  type SourceCandidateReferencePrepInput,
   type SourceCandidateReviewOverview,
   type SourceCandidateStudyExtractionSourceType,
   type SourceCandidateSiblingOptions,
@@ -123,6 +126,7 @@ export interface SourceCandidateJobCommandOptions
   queueQuery?: string;
   queueSource?: SourceCandidateSource;
   region?: string;
+  prepareCandidateReferenceDedupeKey?: string;
   reviewCandidateDedupeKey?: string;
   reviewDecision?: ReviewedSourceCandidateDecision;
   reviewNote?: string;
@@ -142,6 +146,7 @@ export interface SourceCandidateJobCommandOptions
   studySourceType?: SourceCandidateStudyExtractionSourceType;
   studyUpdateExisting?: boolean;
   summary: boolean;
+  writeCandidateReference?: boolean;
 }
 
 export interface SourceCandidateJobCommandIo {
@@ -200,6 +205,9 @@ export interface SourceCandidateJobCommandRunners {
     dedupeKey: string,
     options: SourceCandidateSiblingOptions
   ) => Promise<SourceCandidateSiblings | null>;
+  prepareCandidateReference?: (
+    input: SourceCandidateReferencePrepInput
+  ) => Promise<SourceCandidateReferencePrep | null>;
   linkCandidateClaim?: (
     input: LinkAcceptedSourceCandidateClaimInput
   ) => Promise<LinkedSourceCandidateClaim>;
@@ -313,6 +321,8 @@ export async function runSourceCandidateJobCommand(
   const listReferenceMatches =
     runners.listReferenceMatches ?? listSourceCandidateAcceptedReferenceMatches;
   const listSiblings = runners.listSiblings ?? listSourceCandidateSiblings;
+  const prepareCandidateReference =
+    runners.prepareCandidateReference ?? prepareSourceCandidateReference;
   const linkCandidateClaim =
     runners.linkCandidateClaim ?? linkAcceptedSourceCandidateClaim;
   const queueJob = runners.queueJob ?? queueSourceCandidateIngestionJob;
@@ -445,6 +455,25 @@ export async function runSourceCandidateJobCommand(
       });
 
       stdout(formatSourceCandidateReviewOverview(overview));
+      return 0;
+    }
+
+    if (options.prepareCandidateReferenceDedupeKey) {
+      const prep = await prepareCandidateReference({
+        dedupeKey: options.prepareCandidateReferenceDedupeKey,
+        write: options.writeCandidateReference
+      });
+
+      if (!prep) {
+        stderr(
+          `Source candidate not found: ${quote(
+            options.prepareCandidateReferenceDedupeKey
+          )}`
+        );
+        return 1;
+      }
+
+      stdout(formatSourceCandidateReferencePrep(prep));
       return 0;
     }
 
@@ -901,6 +930,7 @@ export function parseSourceCandidateJobCommandArgs(
   let jobsStatusProvided = false;
   let reviewNoteProvided = false;
   let sourceLimitProvided = false;
+  let writeCandidateReferenceProvided = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -990,6 +1020,22 @@ export function parseSourceCandidateJobCommandArgs(
         arg
       );
       index += 1;
+      continue;
+    }
+
+    if (arg === "--prepare-candidate-reference") {
+      options.prepareCandidateReferenceDedupeKey = readCandidateKeyValue(
+        args,
+        index,
+        arg
+      );
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--write-candidate-reference") {
+      options.writeCandidateReference = true;
+      writeCandidateReferenceProvided = true;
       continue;
     }
 
@@ -1426,6 +1472,13 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (candidateSiblingsLimitProvided && !options.candidateSiblingsDedupeKey) {
     throw new Error("--candidate-siblings-limit requires --candidate-siblings.");
+  }
+
+  if (
+    writeCandidateReferenceProvided &&
+    !options.prepareCandidateReferenceDedupeKey
+  ) {
+    throw new Error("--write-candidate-reference requires --prepare-candidate-reference.");
   }
 
   if (claimLinkNoteProvided && !options.linkCandidateClaimDedupeKey) {
@@ -1945,6 +1998,150 @@ export function parseSourceCandidateJobCommandArgs(
     throw new Error(
       "--candidate-siblings cannot be combined with --candidate-reference-matches."
     );
+  }
+
+  if (options.prepareCandidateReferenceDedupeKey && options.candidateDetailDedupeKey) {
+    throw new Error(
+      "--candidate-detail cannot be combined with --prepare-candidate-reference."
+    );
+  }
+
+  if (
+    options.prepareCandidateReferenceDedupeKey &&
+    options.candidateCurationStatusDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-curation-status cannot be combined with --prepare-candidate-reference."
+    );
+  }
+
+  if (
+    options.prepareCandidateReferenceDedupeKey &&
+    options.candidateCurationDraftDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-curation-draft cannot be combined with --prepare-candidate-reference."
+    );
+  }
+
+  if (
+    options.prepareCandidateReferenceDedupeKey &&
+    options.candidateReferenceMatchesDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-reference-matches cannot be combined with --prepare-candidate-reference."
+    );
+  }
+
+  if (
+    options.prepareCandidateReferenceDedupeKey &&
+    options.candidateReviewPacketDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-review-packet cannot be combined with --prepare-candidate-reference."
+    );
+  }
+
+  if (
+    options.prepareCandidateReferenceDedupeKey &&
+    options.candidateSiblingsDedupeKey
+  ) {
+    throw new Error(
+      "--candidate-siblings cannot be combined with --prepare-candidate-reference."
+    );
+  }
+
+  if (options.prepareCandidateReferenceDedupeKey && options.summary) {
+    throw new Error("--prepare-candidate-reference cannot be combined with --summary.");
+  }
+
+  if (options.prepareCandidateReferenceDedupeKey && options.candidates) {
+    throw new Error("--prepare-candidate-reference cannot be combined with --candidates.");
+  }
+
+  if (
+    options.prepareCandidateReferenceDedupeKey &&
+    hasCandidateListFilter({
+      candidatesLimitProvided,
+      candidateDecisionProvided,
+      candidateExternalIdProvided,
+      candidateJobIdProvided,
+      candidateInterventionIdProvided,
+      candidateInterventionMissingProvided,
+      candidateClaimIdProvided,
+      candidateClaimMissingProvided,
+      candidateRegionProvided,
+      candidateSource: options.candidateSource
+    })
+  ) {
+    throw new Error(
+      "Candidate-list filters cannot be combined with --prepare-candidate-reference."
+    );
+  }
+
+  if (options.prepareCandidateReferenceDedupeKey && options.candidateCurationHandoff) {
+    throw new Error(
+      "--candidate-curation-handoff cannot be combined with --prepare-candidate-reference."
+    );
+  }
+
+  if (options.prepareCandidateReferenceDedupeKey && options.candidateReviewFlags) {
+    throw new Error(
+      "--candidate-review-flags cannot be combined with --prepare-candidate-reference."
+    );
+  }
+
+  if (options.prepareCandidateReferenceDedupeKey && options.candidateReviewOverview) {
+    throw new Error(
+      "--candidate-review-overview cannot be combined with --prepare-candidate-reference."
+    );
+  }
+
+  if (options.prepareCandidateReferenceDedupeKey && options.reviewDecision) {
+    throw new Error(
+      "--prepare-candidate-reference cannot be combined with review options."
+    );
+  }
+
+  if (
+    options.prepareCandidateReferenceDedupeKey &&
+    options.linkCandidateClaimDedupeKey
+  ) {
+    throw new Error(
+      "--prepare-candidate-reference cannot be combined with --link-candidate-claim."
+    );
+  }
+
+  if (
+    options.prepareCandidateReferenceDedupeKey &&
+    options.extractCandidateStudyDedupeKey
+  ) {
+    throw new Error(
+      "--prepare-candidate-reference cannot be combined with --extract-candidate-study."
+    );
+  }
+
+  if (options.prepareCandidateReferenceDedupeKey && options.jobs) {
+    throw new Error("--prepare-candidate-reference cannot be combined with --jobs.");
+  }
+
+  if (options.prepareCandidateReferenceDedupeKey && hasQueueOption(options)) {
+    throw new Error(
+      "--prepare-candidate-reference cannot be combined with queue options."
+    );
+  }
+
+  if (
+    options.prepareCandidateReferenceDedupeKey &&
+    (options.region || options.interventionId || options.claimId)
+  ) {
+    throw new Error(
+      "--prepare-candidate-reference cannot be combined with queue metadata."
+    );
+  }
+
+  if (options.prepareCandidateReferenceDedupeKey && runOptionProvided) {
+    throw new Error("--prepare-candidate-reference cannot be combined with run options.");
   }
 
   if (options.candidateReviewPacketDedupeKey && options.candidateDetailDedupeKey) {
@@ -2723,6 +2920,8 @@ export function commandUsage() {
     "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
     "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
     "  --candidate-reference-matches <dedupe-key> Print accepted-reference matches and review/curation hints.",
+    "  --prepare-candidate-reference <dedupe-key> Preview a curated Reference row for a candidate.",
+    "  --write-candidate-reference      With --prepare-candidate-reference, create the matching local Reference row.",
     "  --candidate-review-flags        Print read-only flagged pending review groups with review/curation hints.",
     "  --candidate-review-flag <flag>  With --candidate-review-flags, filter by broad-safety-query or low-title-query-overlap.",
     "  --candidate-review-flags-limit <count> Review flag group count (default 25, max 50).",
@@ -3187,16 +3386,16 @@ function formatSourceCandidateReviewPacketCommandHints(
   }
 
   lines.push(
-    "humanReviewedWritesRequireOperator=true",
+    "codexAiReviewedWritesAllowed=true",
     "acceptRequiresMatchingCuratedReference=true",
     `acceptedReferenceMatches=${acceptedReferenceMatches}`,
     `acceptReferenceReady=${acceptedReferenceMatches > 0}`,
-    "reviewDecisionRequiresHumanNote=true",
+    "reviewDecisionRequiresAuditNote=true",
     `acceptTemplate=${quote(
-      `--accept-candidate ${key} --accepted-reference-id <reference-id> --review-note "Human-reviewed rationale."`
+      `--accept-candidate ${key} --accepted-reference-id <reference-id> --review-note "AI-reviewed rationale."`
     )}`,
     `rejectTemplate=${quote(
-      `--reject-candidate ${key} --review-note "Human-reviewed rationale."`
+      `--reject-candidate ${key} --review-note "AI-reviewed rationale."`
     )}`
   );
 
@@ -3328,7 +3527,7 @@ function formatSourceCandidateCurationDraft(
   if (status.status === "Not accepted") {
     lines.push(
       "acceptRequiresMatchingCuratedReference=true",
-      "reviewDecisionRequiresHumanNote=true"
+      "reviewDecisionRequiresAuditNote=true"
     );
   }
 
@@ -3536,7 +3735,7 @@ function formatSourceCandidateClaimLinkCommandTemplate(
   return [
     `--link-candidate-claim ${safeCandidateKey(candidate.dedupeKey)}`,
     `--claim-link-relevance ${draft.relevance}`,
-    `--claim-link-note ${commandTextArgument("Human-reviewed claim-link rationale.")}`
+    `--claim-link-note ${commandTextArgument("AI-reviewed claim-link rationale.")}`
   ].join(" ");
 }
 
@@ -3557,49 +3756,49 @@ function formatSourceCandidateStudyExtractionCommandTemplate(
       studyExtractionPrefillCommandValue(
         draft,
         "sampleSize",
-        "Human-entered sample size."
+        "AI-reviewed sample size."
       )
     )}`,
     `--study-population ${commandTextArgument(
       studyExtractionPrefillCommandValue(
         draft,
         "population",
-        "Human-reviewed population."
+        "AI-reviewed population."
       )
     )}`,
     `--study-intervention-name ${commandTextArgument(
       studyExtractionPrefillCommandValue(
         draft,
         "interventionName",
-        "Human-reviewed intervention."
+        "AI-reviewed intervention."
       )
     )}`,
     `--study-outcome ${commandTextArgument(
       studyExtractionPrefillCommandValue(
         draft,
         "outcomes",
-        "Human-reviewed outcome."
+        "AI-reviewed outcome."
       )
     )}`,
     `--study-adverse-events ${commandTextArgument(
       studyExtractionPrefillCommandValue(
         draft,
         "adverseEvents",
-        "Human-reviewed adverse event summary."
+        "AI-reviewed adverse event summary."
       )
     )}`,
     `--study-funding-conflicts ${commandTextArgument(
       studyExtractionPrefillCommandValue(
         draft,
         "fundingConflicts",
-        "Human-reviewed funding/conflict note."
+        "AI-reviewed funding/conflict note."
       )
     )}`,
     `--study-risk-of-bias ${commandTextArgument(
       studyExtractionPrefillCommandValue(
         draft,
         "riskOfBias",
-        "Human-reviewed risk-of-bias assessment."
+        "AI-reviewed risk-of-bias assessment."
       )
     )}`,
     ...(duration ? [`--study-duration ${commandTextArgument(duration)}`] : []),
@@ -3691,7 +3890,7 @@ function formatSourceCandidateCurationStatus(
   if (status.status === "Not accepted") {
     lines.push(
       "acceptRequiresMatchingCuratedReference=true",
-      "reviewDecisionRequiresHumanNote=true"
+      "reviewDecisionRequiresAuditNote=true"
     );
   }
 
@@ -4108,6 +4307,54 @@ function formatSourceCandidateReferenceMatch(reference: Reference) {
   }
 
   return parts.join(" ");
+}
+
+function formatSourceCandidateReferencePrep(prep: SourceCandidateReferencePrep) {
+  const candidate = prep.candidate;
+  const key = safeCandidateKey(candidate.dedupeKey);
+  const status = prep.existing ? "existing" : prep.created ? "created" : "preview";
+  const lines = [
+    "Source-candidate reference prep",
+    `safeReadOnly=${!prep.write}`,
+    `write=${prep.write}`,
+    "candidateDecisionWrite=false",
+    "claimLinkWrite=false",
+    "extractionWrite=false",
+    "claimReviewWrite=false",
+    "scoreWrite=false",
+    "publicEvidenceWrite=false",
+    `status=${quote(status)}`,
+    `dedupe=${quote(candidate.dedupeKey)}`,
+    `key=${key}`,
+    `candidate=${quote(candidate.title)}`,
+    `source=${quote(candidate.source)}`,
+    `externalId=${quote(candidate.externalId)}`,
+    `decision=${quote(candidate.decision)}`,
+    `reviewStatus=${quote(candidate.reviewStatus)}`,
+    formatSourceCandidateReferenceMatch(prep.reference)
+  ];
+
+  if (!prep.write && !prep.existing) {
+    lines.push(
+      `writeCommand=${quote(`--prepare-candidate-reference ${key} --write-candidate-reference`)}`
+    );
+  }
+
+  if (prep.existing) {
+    lines.push(
+      `nextAction=${quote("Reference already exists; inspect matches before candidate review.")}`
+    );
+  } else if (prep.created) {
+    lines.push(
+      `nextAction=${quote("Inspect accepted-reference matches before any candidate decision.")}`
+    );
+  } else {
+    lines.push(
+      `nextAction=${quote("Verify source identity, then rerun with --write-candidate-reference if approved.")}`
+    );
+  }
+
+  return lines.join("\n");
 }
 
 function formatSourceCandidateReferenceDraft(candidate: SourceCandidate) {
@@ -5453,11 +5700,13 @@ function readCandidateKeyValue(
 }
 
 function decodeCandidateKeyValue(value: string, option: string) {
-  if (!value.startsWith(CANDIDATE_KEY_B64_PREFIX)) {
-    return value;
+  const candidateKey = value.startsWith("key=") ? value.slice("key=".length) : value;
+
+  if (!candidateKey.startsWith(CANDIDATE_KEY_B64_PREFIX)) {
+    return candidateKey;
   }
 
-  const encoded = value.slice(CANDIDATE_KEY_B64_PREFIX.length);
+  const encoded = candidateKey.slice(CANDIDATE_KEY_B64_PREFIX.length);
 
   if (!encoded || !/^[A-Za-z0-9_-]+={0,2}$/.test(encoded)) {
     throw new Error(`${option} has an invalid b64 candidate key.`);

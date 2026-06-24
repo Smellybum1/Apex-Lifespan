@@ -382,7 +382,7 @@ const SAFETY_WATCHLIST_RULES = [
 const SOURCE_CONVICTION_POLICY = [
   "Database-backed readiness scores candidate sources by source reputation, study design, traceability, abstract availability, recency, and relevance signals.",
   "Higher-conviction sources should be reviewed first and lower-conviction sources should carry visible limitations.",
-  "The score explains positive factors and limitations; it does not auto-accept evidence or remove the explicit public promotion gate."
+  "The score explains positive factors and limitations; it does not auto-accept evidence or remove the explicit public promotion approval."
 ];
 
 export interface SupplementOnboardingClaimInput {
@@ -800,7 +800,7 @@ function buildSupplementOnboardingHandoffCommands({
       label: "Preview import assistant",
       mode: "read-only",
       purpose:
-        "Preview manual seed-copy status, future-gated database import shape, and public-promotion prerequisites without writes."
+        "Preview manual seed-copy status, not-yet-enabled database import shape, and public-promotion prerequisites without writes."
     },
     {
       command: `npm run onboarding:readiness -- --supplement ${shellQuote(slug)} --summary`,

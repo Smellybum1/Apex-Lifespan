@@ -11,10 +11,14 @@ import {
 export type OperatorBrowserWriteControl =
   | "candidate-review"
   | "claim-link"
+  | "claim-packet-review"
   | "onboarding-draft"
   | "onboarding-import"
+  | "public-changelog-publication"
   | "public-promotion"
-  | "study-extraction";
+  | "source-discovery"
+  | "study-extraction"
+  | "trial-alert";
 
 export interface OperatorBrowserWriteControlEnv
   extends OperatorWriteEnv,
@@ -22,6 +26,7 @@ export interface OperatorBrowserWriteControlEnv
   APEX_OPERATOR_BROWSER_WRITE_CONTROLS_APPROVED_AT?: string;
   APEX_OPERATOR_FLOW_QA_REVIEWED_AT?: string;
   APEX_OPERATOR_NONPROD_WRITE_QA_AT?: string;
+  APEX_PUBLIC_CHANGELOG_PUBLISH_REVIEWED_AT?: string;
   APEX_ONBOARDING_DATABASE_IMPORT_ENABLED?: string;
   APEX_ONBOARDING_DATABASE_IMPORT_REVIEWED_AT?: string;
 }
@@ -36,10 +41,14 @@ export interface OperatorBrowserWriteControlState {
 const CONTROL_PERMISSION: Record<OperatorBrowserWriteControl, OperatorPermission> = {
   "candidate-review": "candidate:review",
   "claim-link": "curation:claim-link",
+  "claim-packet-review": "evidence:promote",
   "onboarding-draft": "onboarding:draft",
   "onboarding-import": "onboarding:import",
+  "public-changelog-publication": "evidence:promote",
   "public-promotion": "evidence:promote",
-  "study-extraction": "curation:study-extraction"
+  "source-discovery": "candidate:review",
+  "study-extraction": "curation:study-extraction",
+  "trial-alert": "curation:study-extraction"
 };
 
 const REQUIRED_APPROVAL_KEYS = [
@@ -50,6 +59,10 @@ const REQUIRED_APPROVAL_KEYS = [
 
 const ONBOARDING_IMPORT_APPROVAL_KEYS = [
   "APEX_ONBOARDING_DATABASE_IMPORT_REVIEWED_AT"
+] as const;
+
+const PUBLIC_CHANGELOG_PUBLICATION_APPROVAL_KEYS = [
+  "APEX_PUBLIC_CHANGELOG_PUBLISH_REVIEWED_AT"
 ] as const;
 
 export function getOperatorBrowserWriteControlState(
@@ -64,7 +77,9 @@ export function getOperatorBrowserWriteControlState(
       process.env.APEX_OPERATOR_BROWSER_WRITE_CONTROLS_APPROVED_AT,
     APEX_OPERATOR_FLOW_QA_REVIEWED_AT: process.env.APEX_OPERATOR_FLOW_QA_REVIEWED_AT,
     APEX_OPERATOR_NONPROD_WRITE_QA_AT: process.env.APEX_OPERATOR_NONPROD_WRITE_QA_AT,
-    APEX_OPERATOR_WRITES_ENABLED: process.env.APEX_OPERATOR_WRITES_ENABLED
+    APEX_OPERATOR_WRITES_ENABLED: process.env.APEX_OPERATOR_WRITES_ENABLED,
+    APEX_PUBLIC_CHANGELOG_PUBLISH_REVIEWED_AT:
+      process.env.APEX_PUBLIC_CHANGELOG_PUBLISH_REVIEWED_AT
   }
 ): OperatorBrowserWriteControlState {
   const permission = CONTROL_PERMISSION[control];
@@ -109,6 +124,16 @@ export function getOperatorBrowserWriteControlState(
       "APEX_ONBOARDING_DATABASE_IMPORT_ENABLED",
       ...ONBOARDING_IMPORT_APPROVAL_KEYS
     );
+  }
+
+  if (control === "public-changelog-publication") {
+    for (const key of PUBLIC_CHANGELOG_PUBLICATION_APPROVAL_KEYS) {
+      if (!readEnv(env, key)) {
+        blockers.push(`${key} is required.`);
+      }
+    }
+
+    evidenceKeys.push(...PUBLIC_CHANGELOG_PUBLICATION_APPROVAL_KEYS);
   }
 
   return {

@@ -173,5 +173,13 @@ function decisionFromDb(decision: string): SourceCandidateDecision {
 }
 
 function reviewStatusFromDb(reviewStatus: string): ReviewStatus {
-  return reviewStatus === "HUMAN_REVIEWED" ? "Human reviewed" : "Unreviewed AI draft";
+  if (reviewStatus === "HUMAN_REVIEWED") {
+    return "Human reviewed";
+  }
+
+  if (reviewStatus === "AI_REVIEWED") {
+    return "AI reviewed";
+  }
+
+  return "Unreviewed AI draft";
 }

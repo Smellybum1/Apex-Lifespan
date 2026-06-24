@@ -26,7 +26,7 @@ The guide wraps the packet builders and recommends one safest next command. Open
 1. Draft the supplement and scoped claims with `onboarding:guide`.
 2. Generate a local review kit when the draft is worth reviewing.
 3. Review claim scope, safety/watchlist flags, AU/TGA product-status gaps, and source-query plan.
-4. Use seed-diff/import-assistant outputs for manual review or the separately gated operator draft import.
+4. Use seed-diff/import-assistant outputs for manual review or the separately approved operator draft import.
 5. Queue sources only after reviewed records exist.
 6. Accept/reject candidates, extract studies, mark claim packets reviewed, and promote public evidence only through explicit operator-owned steps.
 7. Use monitor/status/quality summaries for stale evidence, missing source tracking, full-text gates, and next actions.
@@ -35,4 +35,4 @@ The guide wraps the packet builders and recommends one safest next command. Open
 
 - Full onboarding command reference: `docs/codex/reference/supplement-onboarding-command-reference.md`.
 - Connector approval decision evidence: `docs/codex/onboarding/fulltext-connector-approval-decision.md`.
-- Plans and completed implementation history: `docs/codex/plans/archive/` and the command reference history section.
+- Plans and completed implementation history: `docs/codex/plans/archive/` and `docs/codex/archive/reference/2026-06-19-supplement-onboarding-automation-roadmap.md`.

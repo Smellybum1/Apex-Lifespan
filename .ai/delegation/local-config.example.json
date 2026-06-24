@@ -1,0 +1,15 @@
+{
+  "backend": "wsl",
+  "model": "",
+  "require_standard_mode": true,
+  "forbid_fast_mode": true,
+  "sandbox": "enabled",
+  "autonomous": true,
+  "safety_proven": false,
+  "agent_timeout_seconds": 210,
+  "agent_output_format": "stream-json",
+  "wsl_distro": "Ubuntu-24.04",
+  "wsl_user": "root",
+  "wsl_agent_path": "/root/.local/bin/agent",
+  "worktree_root": "../.apex-lifespan-composer-worktrees"
+}

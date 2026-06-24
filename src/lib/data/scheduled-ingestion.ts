@@ -85,6 +85,7 @@ export interface ScheduledIngestionPolicyReview {
   schedulerDefaultJobsPerRun: number;
   schedulerMaxJobsPerRun: number;
   sourcePolicy: "review-before-enable";
+  trialAlertDraftMode: "operator-click-reviewed";
 }
 
 export interface ScheduledIngestionHostedCronReview {
@@ -515,7 +516,8 @@ function scheduledIngestionPolicyReview(
     pubMedRetmaxCap: SOURCE_RESULT_CAP,
     schedulerDefaultJobsPerRun: DEFAULT_MAX_JOBS_PER_RUN,
     schedulerMaxJobsPerRun: MAX_SCHEDULER_JOBS_PER_RUN,
-    sourcePolicy: "review-before-enable"
+    sourcePolicy: "review-before-enable",
+    trialAlertDraftMode: "operator-click-reviewed"
   };
 }
 
@@ -614,6 +616,12 @@ function scheduledIngestionWorksheet({
       detail: "Scheduled ingestion keeps source candidates separate from public evidence promotion."
     },
     {
+      id: "trial-alert-drafts",
+      label: "Trial alert drafts",
+      detail:
+        "ClinicalTrials.gov alert labels stay source-candidate metadata until an operator records a reviewed TrialAlert; scheduled ingestion does not auto-open alert rows."
+    },
+    {
       id: "automatic-retries-disabled",
       label: "Automatic retries disabled",
       detail: "Failed jobs stay human-reviewed until an explicit retry policy is approved."
@@ -657,7 +665,7 @@ function scheduledIngestionWorksheet({
       ],
       id: "hosted-cron",
       label: "Hosted cron evidence",
-      detail: "Managed database mode, scheduled write gate, alerts, approval, and NCBI metadata are configured."
+      detail: "Managed database mode, scheduled execution control, alerts, approval, and NCBI metadata are configured."
     });
   } else {
     blocked.push({
@@ -666,7 +674,7 @@ function scheduledIngestionWorksheet({
       label: "Hosted cron evidence",
       detail: `Missing hosted cron evidence: ${policy.hostedCron.missingEnv.join(", ")}.`,
       nextAction:
-        "Configure hosted cron evidence only after production database, scheduled write gate, alerts, approval, and NCBI metadata are ready."
+        "Configure hosted cron evidence only after production database, scheduled execution control, alerts, approval, and NCBI metadata are ready."
     });
   }
 

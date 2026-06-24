@@ -461,7 +461,7 @@ export function buildFullTextFixtureExtractionDraft({
     reviewOnlyFields.length > 0
       ? "Comparator/review-only fixture values are not included in the Study write command; carry them into claim wording review manually."
       : undefined,
-    "This draft does not check candidate acceptance, claim link, reference match, or operator write gates; the ingest command still enforces those checks."
+    "This draft does not check candidate acceptance, claim link, reference match, or operator write controls; the ingest command still enforces those checks."
   ].filter((warning): warning is string => Boolean(warning)));
   const commandDraftReady = blockers.length === 0;
 

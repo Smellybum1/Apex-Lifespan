@@ -101,6 +101,19 @@ export interface SourceCandidateAcceptedReferenceMatches {
   references: Reference[];
 }
 
+export interface SourceCandidateReferencePrepInput {
+  dedupeKey: string;
+  write?: boolean;
+}
+
+export interface SourceCandidateReferencePrep {
+  candidate: SourceCandidate;
+  created: boolean;
+  existing: boolean;
+  reference: Reference;
+  write: boolean;
+}
+
 export type SourceCandidateSiblingMatchReason =
   | "Same source/external id"
   | "Same query/region"
@@ -297,6 +310,7 @@ export type ReviewedSourceCandidateDecision = Exclude<
 interface RecordSourceCandidateDecisionInputBase {
   dedupeKey: string;
   reviewedAt?: Date;
+  reviewStatus?: Exclude<ReviewStatus, "Unreviewed AI draft">;
 }
 
 export type RecordSourceCandidateDecisionInput =
@@ -310,6 +324,12 @@ export type RecordSourceCandidateDecisionInput =
       decision: "Rejected";
       reviewNote: string;
     });
+
+export interface ConfirmSourceCandidateHumanReviewInput {
+  dedupeKey: string;
+  reviewedAt?: Date;
+  reviewNote: string;
+}
 
 const DEFAULT_REVIEW_QUEUE_LIMIT = 25;
 const MAX_REVIEW_QUEUE_LIMIT = 100;
@@ -618,6 +638,65 @@ export async function listSourceCandidateAcceptedReferenceMatches(
     references: references
       .filter((reference) => referenceMatchesSourceCandidate(reference, candidate))
       .map(mapDbReference)
+  };
+}
+
+export async function prepareSourceCandidateReference({
+  dedupeKey,
+  write = false
+}: SourceCandidateReferencePrepInput): Promise<SourceCandidateReferencePrep | null> {
+  const candidate = await prisma.sourceCandidate.findUnique({
+    where: {
+      dedupeKey
+    }
+  });
+
+  if (!candidate) {
+    return null;
+  }
+
+  const existingReference = await firstMatchingReferenceForCandidate(candidate);
+  const mappedCandidate = mapDbSourceCandidate(candidate);
+
+  if (existingReference) {
+    return {
+      candidate: mappedCandidate,
+      created: false,
+      existing: true,
+      reference: mapDbReference(existingReference),
+      write: false
+    };
+  }
+
+  const referenceDraft = sourceCandidateReferenceDraft(candidate);
+
+  if (!write) {
+    return {
+      candidate: mappedCandidate,
+      created: false,
+      existing: false,
+      reference: referenceDraft,
+      write: false
+    };
+  }
+
+  const reference = await prisma.reference.create({
+    data: {
+      id: referenceDraft.id,
+      title: referenceDraft.title,
+      source: candidate.source,
+      identifier: referenceDraft.identifier,
+      year: referenceDraft.year,
+      url: referenceDraft.url
+    }
+  });
+
+  return {
+    candidate: mappedCandidate,
+    created: true,
+    existing: false,
+    reference: mapDbReference(reference),
+    write: true
   };
 }
 
@@ -1176,6 +1255,7 @@ export async function recordSourceCandidateDecision({
   decision,
   acceptedReferenceId,
   reviewNote,
+  reviewStatus = "AI reviewed",
   reviewedAt = new Date()
 }: RecordSourceCandidateDecisionInput): Promise<SourceCandidate> {
   const acceptedReferenceIdOrUndefined = acceptedReferenceId?.trim();
@@ -1237,7 +1317,7 @@ export async function recordSourceCandidateDecision({
       },
       data: {
         decision: decisionMap[decision],
-        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        reviewStatus: reviewStatusToDb(reviewStatus),
         reviewedAt,
         reviewNote: reviewNoteOrUndefined,
         acceptedReferenceId:
@@ -1253,6 +1333,52 @@ export async function recordSourceCandidateDecision({
 
     throw error;
   }
+}
+
+export async function confirmSourceCandidateHumanReview({
+  dedupeKey,
+  reviewNote,
+  reviewedAt = new Date()
+}: ConfirmSourceCandidateHumanReviewInput): Promise<SourceCandidate> {
+  const dedupeKeyOrUndefined = dedupeKey.trim();
+  const reviewNoteOrUndefined = reviewNote.trim();
+
+  if (!dedupeKeyOrUndefined) {
+    throw new Error("Source candidate dedupe key is required.");
+  }
+
+  if (!reviewNoteOrUndefined) {
+    throw new Error("Source candidate human review note is required.");
+  }
+
+  const candidate = await prisma.sourceCandidate.findUnique({
+    where: {
+      dedupeKey: dedupeKeyOrUndefined
+    }
+  });
+
+  if (!candidate) {
+    throw new Error("Source candidate not found for human review.");
+  }
+
+  if (candidate.decision === DbSourceCandidateDecision.PENDING_REVIEW) {
+    throw new Error(
+      "Pending source candidate must be accepted or rejected before human review confirmation."
+    );
+  }
+
+  const updatedCandidate = await prisma.sourceCandidate.update({
+    where: {
+      dedupeKey: dedupeKeyOrUndefined
+    },
+    data: {
+      reviewedAt,
+      reviewNote: reviewNoteOrUndefined,
+      reviewStatus: DbReviewStatus.HUMAN_REVIEWED
+    }
+  });
+
+  return mapDbSourceCandidate(updatedCandidate);
 }
 
 function sourceCandidateCreateInput(
@@ -1552,6 +1678,60 @@ function mapDbReference(reference: DbReference): Reference {
     year: reference.year ?? undefined,
     url: reference.url
   };
+}
+
+async function firstMatchingReferenceForCandidate(candidate: DbSourceCandidate) {
+  const references = await prisma.reference.findMany({
+    where: referenceMatchLookupWhere(candidate),
+    orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+    take: MAX_REFERENCE_MATCH_CANDIDATES
+  });
+
+  return references.find((reference) =>
+    referenceMatchesSourceCandidate(reference, candidate)
+  );
+}
+
+function sourceCandidateReferenceDraft(candidate: DbSourceCandidate): Reference {
+  const source = sourceFromDb(candidate.source);
+
+  return {
+    id: sourceCandidateReferenceDraftId(source, candidate.externalId),
+    title: candidate.title,
+    source,
+    identifier: sourceCandidateReferenceIdentifier(source, candidate.externalId),
+    year: candidate.publishedYear ?? undefined,
+    url: candidate.url
+  };
+}
+
+function sourceCandidateReferenceDraftId(
+  source: SourceCandidateSource,
+  externalId: string
+) {
+  const sourceSlug = source === "ClinicalTrials.gov" ? "clinicaltrials-gov" : "pubmed";
+  const externalIdSlug = slugReferenceIdPart(externalId);
+
+  return `ref-${sourceSlug}-${externalIdSlug || "candidate"}`;
+}
+
+function sourceCandidateReferenceIdentifier(
+  source: SourceCandidateSource,
+  externalId: string
+) {
+  if (source === "PubMed") {
+    return `PMID: ${externalId}`;
+  }
+
+  return externalId.toUpperCase();
+}
+
+function slugReferenceIdPart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function mapDbClaimReference(
@@ -1929,6 +2109,13 @@ function sourceCandidateStudyExtractionReviewCues(
     }),
     reviewCue({
       confidence: "candidate-metadata",
+      label: "trialAlertWorkflow",
+      note:
+        "ClinicalTrials.gov alert labels route monitoring or review work only; they do not auto-promote evidence or update scores.",
+      value: trialAlertWorkflowCue(candidate)
+    }),
+    reviewCue({
+      confidence: "candidate-metadata",
       label: "outcomeReviewTargets",
       note: "Outcome metadata should guide extraction targets, but endpoint hierarchy and claim relevance need review.",
       value: joinedMetadata(candidate.metadata, "primaryOutcomes")
@@ -1991,7 +2178,7 @@ function prefillField({
     }),
     field,
     note,
-    value: trimmed || `Human-reviewed ${field} required.`,
+    value: trimmed || `AI-reviewed ${field} required.`,
     writeFlag
   };
 }
@@ -2081,7 +2268,7 @@ function sourceCandidateReviewConfidenceRationale({
   reviewConfidence: SourceCandidateCurationReviewConfidence;
 }) {
   if (!hasValue) {
-    return `No ${field} value was available in candidate metadata; human extraction is required.`;
+    return `No ${field} value was available in candidate metadata; source-backed extraction is required.`;
   }
 
   if (reviewConfidence === "strong") {
@@ -2354,6 +2541,21 @@ function registryStatusCue(candidate: SourceCandidate) {
   return parts.length > 0 ? parts.join("; ") : undefined;
 }
 
+function trialAlertWorkflowCue(candidate: SourceCandidate) {
+  if (candidate.source !== "ClinicalTrials.gov") {
+    return undefined;
+  }
+
+  const label = metadataString(candidate.metadata, "trialAlertLabel");
+  const detail = metadataString(candidate.metadata, "trialAlertDetail");
+
+  if (!label && !detail) {
+    return undefined;
+  }
+
+  return [label ? `Alert: ${label}` : undefined, detail].filter(Boolean).join("; ");
+}
+
 function reviewCueTokens(value: string) {
   return Array.from(
     new Set(
@@ -2561,8 +2763,21 @@ function reviewStatusFromDb(reviewStatus: DbReviewStatus): ReviewStatus {
   switch (reviewStatus) {
     case DbReviewStatus.UNREVIEWED_AI_DRAFT:
       return "Unreviewed AI draft";
+    case DbReviewStatus.AI_REVIEWED:
+      return "AI reviewed";
     case DbReviewStatus.HUMAN_REVIEWED:
       return "Human reviewed";
+  }
+}
+
+function reviewStatusToDb(
+  reviewStatus: Exclude<ReviewStatus, "Unreviewed AI draft">
+): DbReviewStatus {
+  switch (reviewStatus) {
+    case "AI reviewed":
+      return DbReviewStatus.AI_REVIEWED;
+    case "Human reviewed":
+      return DbReviewStatus.HUMAN_REVIEWED;
   }
 }
 

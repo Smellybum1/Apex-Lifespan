@@ -6,6 +6,7 @@ import {
   buildLaunchReadinessReport,
   FULLY_LIVE_LAUNCH_CHECKLIST_PATH,
   POST_LAUNCH_REVIEW_TEMPLATE_PATH,
+  summarizeLaunchIterationReadinessReport,
   summarizeLaunchReadinessReport
 } from "@/lib/launch-readiness";
 import { buildOperationsReadinessReport } from "@/lib/operations-readiness";
@@ -19,8 +20,12 @@ async function main() {
   const args = readLaunchReadinessArgs(process.argv.slice(2));
   const envFile = args.envFilePath ? loadEnvFile(args.envFilePath) : undefined;
   const initialEnv = mergeEnv(process.env, envFile?.env);
+  const readinessEnv = {
+    ...initialEnv,
+    APEX_PRISMA_LOG: initialEnv.APEX_PRISMA_LOG ?? "silent"
+  };
 
-  await withProcessEnv(initialEnv, async () => {
+  await withProcessEnv(readinessEnv, async () => {
     const [scheduledIngestion, promotion, evidenceCoverage] = await Promise.all([
       readScheduledIngestionEvidence(),
       readPromotionEvidence(),
@@ -47,23 +52,25 @@ async function main() {
       scheduledIngestion
     });
 
-    console.log(
-      JSON.stringify(
-        args.summary ? summarizeLaunchReadinessReport(report) : report,
-        null,
-        2
-      )
-    );
+    const output = args.iteration
+      ? summarizeLaunchIterationReadinessReport(report)
+      : args.summary
+        ? summarizeLaunchReadinessReport(report)
+        : report;
+
+    console.log(JSON.stringify(output, null, 2));
   });
 }
 
 interface LaunchReadinessCliArgs {
   envFilePath?: string;
+  iteration: boolean;
   summary: boolean;
 }
 
 function readLaunchReadinessArgs(args: string[]): LaunchReadinessCliArgs {
   const parsed: LaunchReadinessCliArgs = {
+    iteration: false,
     summary: false
   };
 
@@ -72,6 +79,11 @@ function readLaunchReadinessArgs(args: string[]): LaunchReadinessCliArgs {
 
     if (arg === "--summary") {
       parsed.summary = true;
+      continue;
+    }
+
+    if (arg === "--iteration") {
+      parsed.iteration = true;
       continue;
     }
 

@@ -66,7 +66,7 @@ describe("supplement onboarding review kit", () => {
     expect(kit.files[4].content).toContain("npm run onboarding:review-packet");
     expect(kit.files[5].content).toContain("AU/TGA Product Status");
     expect(kit.files[6].content).toContain("no connector approval: true");
-    expect(kit.files[7].content).toContain("database import: future-gated");
+    expect(kit.files[7].content).toContain("database import: not-yet-enabled");
   });
 
   it("fails closed when the seed diff report does not match the draft", () => {

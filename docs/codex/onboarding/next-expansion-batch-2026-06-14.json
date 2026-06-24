@@ -1,0 +1,84 @@
+{
+  "supplements": [
+    {
+      "category": "Vitamin/mineral",
+      "claimTemplateIds": ["sleep", "blood-pressure", "safety"],
+      "commonForms": ["capsule", "tablet", "powder"],
+      "name": "Magnesium glycinate",
+      "region": "AU",
+      "synonyms": ["magnesium", "glycine magnesium", "magnesium bisglycinate"]
+    },
+    {
+      "category": "Vitamin/mineral",
+      "claimTemplateIds": ["immune", "fertility-hormones", "safety"],
+      "commonForms": ["tablet", "capsule", "lozenge"],
+      "name": "Zinc",
+      "region": "AU",
+      "synonyms": ["zinc gluconate", "zinc citrate", "zinc picolinate"]
+    },
+    {
+      "category": "Ergogenic/performance supplement",
+      "claimTemplateIds": ["strength", "lifespan", "safety"],
+      "commonForms": ["powder", "drink mix", "bar"],
+      "name": "Whey protein",
+      "region": "AU",
+      "synonyms": ["protein powder", "whey protein isolate", "whey protein concentrate"]
+    },
+    {
+      "category": "Ergogenic/performance supplement",
+      "claimTemplateIds": ["endurance", "cognition", "sleep", "safety"],
+      "commonForms": ["capsule", "tablet", "drink", "powder"],
+      "name": "Caffeine",
+      "region": "AU",
+      "synonyms": ["caffeine anhydrous", "coffee caffeine", "pre-workout caffeine"]
+    },
+    {
+      "category": "Botanical/herbal",
+      "claimTemplateIds": ["mood-stress", "sleep", "fertility-hormones", "safety"],
+      "commonForms": ["extract", "capsule", "powder"],
+      "name": "Ashwagandha",
+      "region": "AU",
+      "synonyms": ["withania somnifera", "ashwagandha extract", "KSM-66", "Sensoril"]
+    },
+    {
+      "category": "Botanical/herbal",
+      "claimTemplateIds": ["glucose", "lipids", "safety"],
+      "commonForms": ["capsule", "tablet", "extract"],
+      "name": "Berberine",
+      "region": "AU",
+      "synonyms": ["berberine hydrochloride", "berberine HCl"]
+    },
+    {
+      "category": "Botanical/herbal",
+      "claimTemplateIds": ["inflammation", "joint-skin", "safety"],
+      "commonForms": ["extract", "capsule", "powder"],
+      "name": "Curcumin",
+      "region": "AU",
+      "synonyms": ["turmeric extract", "curcuma longa", "curcuminoids"]
+    },
+    {
+      "category": "Amino acid",
+      "claimTemplateIds": ["joint-skin", "safety"],
+      "commonForms": ["powder", "capsule", "drink mix"],
+      "name": "Hydrolyzed collagen",
+      "region": "AU",
+      "synonyms": ["collagen hydrolysate", "hydrolyzed gelatin", "oral collagen supplement"]
+    },
+    {
+      "category": "Hormonal/endocrine intervention",
+      "claimTemplateIds": ["sleep", "safety", "mood-stress"],
+      "commonForms": ["tablet", "capsule", "liquid"],
+      "name": "Melatonin",
+      "region": "AU",
+      "synonyms": ["melatonin supplement", "circadian sleep aid"]
+    },
+    {
+      "category": "Fiber/prebiotic/probiotic",
+      "claimTemplateIds": ["immune", "safety", "glucose"],
+      "commonForms": ["capsule", "sachet", "powder"],
+      "name": "Probiotic blend",
+      "region": "AU",
+      "synonyms": ["lactobacillus", "bifidobacterium", "multi-strain probiotic"]
+    }
+  ]
+}

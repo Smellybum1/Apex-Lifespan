@@ -1,3 +1,11 @@
+import {
+  type Prisma,
+  PublicChangelogKind as DbPublicChangelogKind,
+  type PublicChangelogEntry as DbPublicChangelogEntry
+} from "@prisma/client";
+
+import { prisma } from "@/lib/db/prisma";
+
 export type ChangelogEntryKind =
   | "Evidence card"
   | "Operations"
@@ -149,6 +157,37 @@ export const publicChangelogEntries: ChangelogEntry[] = [
   }
 ];
 
+const changelogKindMap: Record<DbPublicChangelogKind, ChangelogEntryKind> = {
+  EVIDENCE_CARD: "Evidence card",
+  METHODOLOGY: "Public trust",
+  OPERATIONS: "Operations",
+  PRODUCT_LABEL_ANALYZER: "Public trust",
+  SAFETY_REGULATORY: "Evidence card",
+  SCORING: "Scoring",
+  SOURCE_SEARCH: "Source search"
+};
+
+export async function getPublicChangelogEntries(): Promise<ChangelogEntry[]> {
+  try {
+    const entries = await prisma.publicChangelogEntry.findMany({
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+      where: {
+        publishedAt: {
+          not: null
+        }
+      }
+    });
+
+    if (entries.length === 0) {
+      return publicChangelogEntries;
+    }
+
+    return [...entries.map(mapDatabaseChangelogEntry), ...publicChangelogEntries];
+  } catch {
+    return publicChangelogEntries;
+  }
+}
+
 export function formatChangelogDate(date: string) {
   const [year, month, day] = date.split("-").map(Number);
   return new Intl.DateTimeFormat("en-US", {
@@ -157,4 +196,23 @@ export function formatChangelogDate(date: string) {
     timeZone: "UTC",
     year: "numeric"
   }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+function mapDatabaseChangelogEntry(entry: DbPublicChangelogEntry): ChangelogEntry {
+  return {
+    date: entry.date.toISOString().slice(0, 10),
+    details: jsonStringArray(entry.details),
+    id: entry.slug,
+    kind: changelogKindMap[entry.kind],
+    publicImpact: entry.publicImpact,
+    title: entry.title
+  };
+}
+
+function jsonStringArray(value: Prisma.JsonValue): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
 }

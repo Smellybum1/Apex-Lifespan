@@ -434,7 +434,7 @@ export function summarizeSupplementOnboardingPacketReport(
             claimDrafts: report.draft.plan.claimDrafts.length,
             databaseImportStatus:
               report.draft.importAssistant.items[0]?.databaseImportStatus ??
-              "future-gated",
+              "not-yet-enabled",
             importAssistantStatus:
               report.draft.importAssistant.items[0]?.status ?? "blocked",
             interventionId: report.draft.plan.interventionDraft.id,

@@ -98,6 +98,9 @@ describe("source candidate mapping", () => {
             hasResults: false,
             resultsFirstPostDate: null,
             sponsor: "Example University",
+            trialAlertDetail:
+              "This direct-match registry row is active or recruiting. Monitor for status/results changes; do not promote it into evidence automatically.",
+            trialAlertLabel: "Monitor active trial",
             trialRelevanceDetail:
               "The query intervention appears in the registered intervention metadata; still confirm dose, form, comparator, and outcome.",
             trialRelevanceLabel: "Direct match",
@@ -138,6 +141,9 @@ describe("source candidate mapping", () => {
       upstreamSource: "ClinicalTrials.gov API v2",
       status: "Recruiting",
       hasResults: false,
+      trialAlertLabel: "Monitor active trial",
+      trialRelevanceLabel: "Direct match",
+      trialResultLabel: "Unreviewed lead",
       primaryOutcomes: ["Whole-body lean mass"],
       briefSummary: "Registry summary for creatine and resistance training."
     });

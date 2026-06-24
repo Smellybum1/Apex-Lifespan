@@ -1,11 +1,13 @@
 import { ReviewStatus as DbReviewStatus } from "@prisma/client";
 
 import {
+  confirmSourceCandidateHumanReview,
   extractAcceptedSourceCandidateStudy,
   getSourceCandidateByDedupeKey,
   getSourceCandidateCurationStatus,
   linkAcceptedSourceCandidateClaim,
   recordSourceCandidateDecision,
+  type ConfirmSourceCandidateHumanReviewInput,
   type ExtractAcceptedSourceCandidateStudyInput,
   type LinkAcceptedSourceCandidateClaimInput,
   type RecordSourceCandidateDecisionInput
@@ -14,19 +16,31 @@ import { prisma } from "@/lib/db/prisma";
 import type { OperatorPrincipal, OperatorWriteEnv } from "@/lib/operator/authorization";
 import { requireOperatorPermission } from "@/lib/operator/authorization";
 import { recordOperatorAuditEvent } from "@/lib/operator/audit";
+import { recordClaimReviewArtifacts } from "@/lib/operator/claim-review-records";
 import { assessSourceCandidatePublicPromotion } from "@/lib/operator/curation-promotion";
 
 export interface PromoteSourceCandidatePublicEvidenceInput {
   dedupeKey: string;
   promotedAt?: Date;
   promotionNote: string;
+  reviewStatus?: "AI reviewed" | "Human reviewed";
 }
+
+export type SourceCandidateReviewApprovalBasis =
+  | "codex-ai-candidate-review"
+  | "manual-operator-review"
+  | "owner-approved-ai-candidate-review";
+
+export type ReviewSourceCandidateAsOperatorInput = RecordSourceCandidateDecisionInput & {
+  aiReviewSummary?: string;
+  approvalBasis?: SourceCandidateReviewApprovalBasis;
+};
 
 export interface PromotedSourceCandidatePublicEvidence {
   claim: {
     id: string;
     lastReviewedAt?: string;
-    reviewStatus: "Human reviewed";
+    reviewStatus: "AI reviewed" | "Human reviewed";
   };
   dedupeKey: string;
   referenceId: string;
@@ -35,16 +49,23 @@ export interface PromotedSourceCandidatePublicEvidence {
 
 export async function reviewSourceCandidateAsOperator(
   principal: OperatorPrincipal,
-  input: RecordSourceCandidateDecisionInput,
+  input: ReviewSourceCandidateAsOperatorInput,
   env?: OperatorWriteEnv
 ) {
   requireOperatorPermission(principal, "candidate:review", env);
 
   const before = await getSourceCandidateByDedupeKey(input.dedupeKey);
-  const candidate = await recordSourceCandidateDecision(input);
+  const approvalBasis = input.approvalBasis ?? "codex-ai-candidate-review";
+  const candidate = await recordSourceCandidateDecision(
+    sourceCandidateDecisionInput({ ...input, approvalBasis })
+  );
 
   await recordOperatorAuditEvent(principal, {
-    action: "sourceCandidate.reviewDecision",
+    action:
+      approvalBasis === "codex-ai-candidate-review" ||
+      approvalBasis === "owner-approved-ai-candidate-review"
+        ? "sourceCandidate.aiReview"
+        : "sourceCandidate.reviewDecision",
     afterSummary: {
       acceptedReferenceId: candidate.acceptedReferenceId ?? null,
       decision: candidate.decision,
@@ -58,6 +79,10 @@ export async function reviewSourceCandidateAsOperator(
         }
       : undefined,
     metadata: {
+      ...(input.aiReviewSummary ? { aiReviewSummary: input.aiReviewSummary } : {}),
+      approvalBasis,
+      noExtractionWrite: true,
+      noPromotion: true,
       source: candidate.source
     },
     note: input.reviewNote,
@@ -66,6 +91,73 @@ export async function reviewSourceCandidateAsOperator(
   });
 
   return candidate;
+}
+
+export async function confirmSourceCandidateHumanReviewAsOperator(
+  principal: OperatorPrincipal,
+  input: ConfirmSourceCandidateHumanReviewInput,
+  env?: OperatorWriteEnv
+) {
+  requireOperatorPermission(principal, "candidate:review", env);
+
+  const before = await getSourceCandidateByDedupeKey(input.dedupeKey);
+  const candidate = await confirmSourceCandidateHumanReview(input);
+
+  await recordOperatorAuditEvent(principal, {
+    action: "sourceCandidate.humanReview",
+    afterSummary: {
+      acceptedReferenceId: candidate.acceptedReferenceId ?? null,
+      decision: candidate.decision,
+      reviewStatus: candidate.reviewStatus
+    },
+    beforeSummary: before
+      ? {
+          acceptedReferenceId: before.acceptedReferenceId ?? null,
+          decision: before.decision,
+          reviewStatus: before.reviewStatus
+        }
+      : undefined,
+    metadata: {
+      approvalBasis: "manual-operator-review",
+      noExtractionWrite: true,
+      noPromotion: true,
+      source: candidate.source
+    },
+    note: input.reviewNote,
+    targetId: input.dedupeKey,
+    targetType: "SourceCandidate"
+  });
+
+  return candidate;
+}
+
+function sourceCandidateDecisionInput(
+  input: ReviewSourceCandidateAsOperatorInput
+): RecordSourceCandidateDecisionInput {
+  if (input.decision === "Accepted") {
+    return {
+      acceptedReferenceId: input.acceptedReferenceId,
+      decision: input.decision,
+      dedupeKey: input.dedupeKey,
+      reviewNote: input.reviewNote,
+      reviewStatus: sourceCandidateReviewStatus(input.approvalBasis),
+      ...(input.reviewedAt ? { reviewedAt: input.reviewedAt } : {})
+    };
+  }
+
+  return {
+    decision: input.decision,
+    dedupeKey: input.dedupeKey,
+    reviewNote: input.reviewNote,
+    reviewStatus: sourceCandidateReviewStatus(input.approvalBasis),
+    ...(input.reviewedAt ? { reviewedAt: input.reviewedAt } : {})
+  };
+}
+
+function sourceCandidateReviewStatus(
+  approvalBasis?: SourceCandidateReviewApprovalBasis
+): "AI reviewed" | "Human reviewed" {
+  return approvalBasis === "manual-operator-review" ? "Human reviewed" : "AI reviewed";
 }
 
 export async function linkSourceCandidateClaimAsOperator(
@@ -146,8 +238,11 @@ export async function promoteSourceCandidatePublicEvidenceAsOperator(
   }
 
   const assessment = await assessSourceCandidatePublicPromotion(input.dedupeKey);
+  const promotionCandidate = assessment.candidate;
+  const publicPacket = assessment.publicPacket;
+  const reviewStatus = input.reviewStatus ?? "AI reviewed";
 
-  if (!assessment.ready || !assessment.publicPacket || !assessment.candidate?.claimId) {
+  if (!assessment.ready || !publicPacket || !promotionCandidate?.claimId) {
     throw new Error(
       `Source candidate is not ready for public promotion: ${
         assessment.blockers[0] ?? "public packet is missing."
@@ -155,11 +250,21 @@ export async function promoteSourceCandidatePublicEvidenceAsOperator(
     );
   }
 
-  const claimId = assessment.publicPacket.claimId;
+  const claimId = publicPacket.claimId;
   const before = await prisma.claim.findUnique({
     select: {
       id: true,
+      evidenceDirectnessScore: true,
+      evidenceRigorScore: true,
+      effectSizeScore: true,
+      finalLabel: true,
+      hypePenalty: true,
+      interventionId: true,
       lastReviewedAt: true,
+      measurabilityScore: true,
+      productQualityScore: true,
+      regulatoryRiskScore: true,
+      safetyScore: true,
       reviewStatus: true
     },
     where: {
@@ -172,53 +277,101 @@ export async function promoteSourceCandidatePublicEvidenceAsOperator(
   }
 
   const promotedAt = input.promotedAt ?? new Date();
-  const claim = await prisma.claim.update({
-    data: {
-      lastReviewedAt: promotedAt,
-      reviewStatus: DbReviewStatus.HUMAN_REVIEWED
-    },
-    select: {
-      id: true,
-      lastReviewedAt: true,
-      reviewStatus: true
-    },
-    where: {
-      id: claimId
-    }
-  });
+  const claim = await prisma.$transaction(async (tx) => {
+    const updatedClaim = await tx.claim.update({
+      data: {
+        lastReviewedAt: promotedAt,
+        reviewStatus: reviewStatusToDb(reviewStatus)
+      },
+      select: {
+        id: true,
+        lastReviewedAt: true,
+        reviewStatus: true
+      },
+      where: {
+        id: claimId
+      }
+    });
 
-  await recordOperatorAuditEvent(principal, {
-    action: "sourceCandidate.publicEvidencePromotion",
-    afterSummary: {
-      claimId: claim.id,
-      lastReviewedAt: claim.lastReviewedAt?.toISOString() ?? null,
-      referenceId: assessment.publicPacket.referenceId,
-      reviewStatus: claim.reviewStatus,
-      studyIds: assessment.publicPacket.studyIds
-    },
-    beforeSummary: {
-      claimId: before.id,
-      lastReviewedAt: before.lastReviewedAt?.toISOString() ?? null,
-      reviewStatus: before.reviewStatus
-    },
-    metadata: {
-      candidateExternalId: assessment.candidate.externalId,
-      candidateSource: assessment.candidate.source,
-      publicSourcePacketReady: true
-    },
-    note: promotionNote,
-    targetId: input.dedupeKey,
-    targetType: "SourceCandidate"
+    await recordClaimReviewArtifacts({
+      changelog: {
+        details: [
+          reviewStatus === "Human reviewed"
+            ? "A human operator promoted an accepted source candidate only after dry-run readiness reported a complete public source packet."
+            : "Codex promoted an accepted source candidate as AI reviewed after dry-run readiness reported a complete public source packet.",
+          "The promotion keeps source-candidate review, structured extraction, and public evidence status separate."
+        ],
+        interventionId: before.interventionId,
+        publicImpact:
+          "Readers can trace that a promoted source candidate changed a claim's public review status once the changelog entry is published.",
+        title: "Source-candidate evidence promotion recorded"
+      },
+      claim: before,
+      client: tx,
+      entityId: updatedClaim.id,
+      entityType: "Claim",
+      metadata: {
+        candidateExternalId: promotionCandidate.externalId,
+        candidateSource: promotionCandidate.source,
+        interventionId: before.interventionId,
+        publicSourcePacketReady: true,
+        sourceCandidateDedupeKey: input.dedupeKey,
+        studyIds: publicPacket.studyIds,
+        workflow: "sourceCandidate.publicEvidencePromotion"
+      },
+      note: promotionNote,
+      principal,
+      rationale: `Source-candidate public promotion: ${promotionNote}`,
+      referenceId: publicPacket.referenceId,
+      reviewStatus: reviewStatusToDb(reviewStatus),
+      reviewedAt: promotedAt
+    });
+
+    await recordOperatorAuditEvent(
+      principal,
+      {
+        action: "sourceCandidate.publicEvidencePromotion",
+        afterSummary: {
+          claimId: updatedClaim.id,
+          lastReviewedAt: updatedClaim.lastReviewedAt?.toISOString() ?? null,
+          referenceId: publicPacket.referenceId,
+          reviewStatus: updatedClaim.reviewStatus,
+          studyIds: publicPacket.studyIds
+        },
+        beforeSummary: {
+          claimId: before.id,
+          lastReviewedAt: before.lastReviewedAt?.toISOString() ?? null,
+          reviewStatus: before.reviewStatus
+        },
+        metadata: {
+          candidateExternalId: promotionCandidate.externalId,
+          candidateSource: promotionCandidate.source,
+          publicSourcePacketReady: true
+        },
+        note: promotionNote,
+        targetId: input.dedupeKey,
+        targetType: "SourceCandidate"
+      },
+      tx
+    );
+
+    return updatedClaim;
   });
 
   return {
     claim: {
       id: claim.id,
       lastReviewedAt: claim.lastReviewedAt?.toISOString(),
-      reviewStatus: "Human reviewed"
+      reviewStatus
     },
     dedupeKey: input.dedupeKey,
-    referenceId: assessment.publicPacket.referenceId,
-    studyIds: assessment.publicPacket.studyIds
+    referenceId: publicPacket.referenceId,
+    studyIds: publicPacket.studyIds
   };
+}
+
+function reviewStatusToDb(reviewStatus: "AI reviewed" | "Human reviewed") {
+  return reviewStatus === "Human reviewed"
+    ? DbReviewStatus.HUMAN_REVIEWED
+    : DbReviewStatus.AI_REVIEWED;
 }

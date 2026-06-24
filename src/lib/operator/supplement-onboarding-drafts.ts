@@ -898,10 +898,10 @@ function databaseImportNextAction(
   }
 
   if (status === "review-required") {
-    return "Review warnings, confirm draft public visibility is acceptable, then use the gated operator import action with an import note.";
+    return "Review warnings, confirm draft public visibility is acceptable, then use the approved operator import action with an import note.";
   }
 
-  return "Use the gated operator import action with an import note, then queue sources only through the separate reviewed source workflow.";
+  return "Use the approved operator import action with an import note, then queue sources only through the separate reviewed source workflow.";
 }
 
 function databaseConflictWording(blocker: string) {
@@ -981,9 +981,9 @@ function unreadablePlanImportPlan(): SupplementOnboardingDraftImportPlan {
       nextAction:
         "Keep saved operator drafts private; re-save this draft before any future database import can be considered.",
       noImportCommand: true,
-      requiredFutureGate:
+      requiredFutureApproval:
         "Explicit authenticated operator database-import implementation and review.",
-      status: "future-gated",
+      status: "not-yet-enabled",
       supportedNow: false
     },
     nextAction:

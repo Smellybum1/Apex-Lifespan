@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   type ColumnDef,
   flexRender,
@@ -21,16 +21,6 @@ import {
   Search,
   ShieldCheck
 } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
-
 import { projectConfig } from "@/lib/config/project";
 import type {
   ClinicalTrialSearchItem,
@@ -44,24 +34,39 @@ import {
   normaliseLiveSourceSearchTerm,
   publicLiveSourceDisplayError
 } from "@/lib/live-source-request";
+import { australiaRegulatoryTone } from "@/lib/regulatory";
 import {
-  australiaRegulatoryKindDescription,
-  australiaRegulatoryTone,
-  getPrimaryAustraliaStatus
-} from "@/lib/regulatory";
-import {
+  buildParsedAustraliaRegulatoryIdentifierVerifications,
   buildProductAustraliaRegulatoryVerifications,
+  type ParsedAustraliaRegulatoryIdentifierVerification,
   type ProductAustraliaRegulatoryVerification
 } from "@/lib/australia-regulatory-verification";
+import { buildProductLabelVerificationSummary } from "@/lib/product-label-verification";
 import {
   analyzeLabel,
+  assessLabelProductQuality,
   compositeScore,
-  getClaimScoreRows,
   labelTone,
+  parseLabelCertifications,
+  parseLabelDoseCues,
+  parseLabelIngredients,
+  parseLabelProductIdentifiers,
+  type ParsedLabelIngredient,
   scoreBand,
   severityTone
 } from "@/lib/scoring";
 import { summarizeReviewStatus } from "@/lib/review-summary";
+import {
+  formatSafetyAlertRegionLabel,
+  normalizeSafetyReviewRegion,
+  type RegionalSafetyRegulatoryReviewGap,
+  safetyDomainForAlertType,
+  summarizeSafetyAlertsByDomain,
+  summarizeSafetyDomainCoverage,
+  summarizeRegionalSafetyDomainCoverage,
+  summarizeRegionalSafetyRegulatoryCoverage,
+  summarizeRegionalSafetyRegulatoryReviewGaps
+} from "@/lib/safety-domains";
 import {
   buildClaimSourcePacket,
   summarizeClaimSourcePackets,
@@ -71,10 +76,26 @@ import {
 } from "@/lib/source-packet";
 import { buildSourceSearchQueries } from "@/lib/source-queries";
 import { formatProductRegionLabel } from "@/lib/product-signals";
+import {
+  buildProductFormulationEvidenceMappings,
+  type ProductFormulationEvidenceMapping
+} from "@/lib/product-efficacy-mapping";
+import {
+  buildEvidenceHumanReviewQueue,
+  type EvidenceCoverageHumanReviewQueue,
+  type EvidenceCoverageHumanReviewQueueItem
+} from "@/lib/evidence-coverage";
+import {
+  supplementGoalCategories,
+  supplementGoalCategoryForOutcome,
+  type SupplementGoalCategory,
+  type SupplementGoalCategoryId
+} from "@/lib/outcome-categories";
 import type {
   Claim,
   EvidenceDashboardData,
   EvidenceLabel,
+  AustraliaRegulatoryKind,
   AustraliaRegulatoryStatus,
   Intervention,
   OutcomeArea,
@@ -82,11 +103,13 @@ import type {
   Reference,
   SafetyAlert,
   Study,
+  TrialAlert,
   TrialWatchItem
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type ClaimTableRow = {
+  aiConfidenceScore: number;
   id: string;
   intervention: string;
   outcome: string;
@@ -94,6 +117,8 @@ type ClaimTableRow = {
   sourcePacketStatus: ClaimSourcePacket["completeness"]["status"];
   sourcePacketLabel: string;
   composite: number;
+  confidenceWeightedComposite: number;
+  confidenceWeight: number;
   safety: number;
   regulatoryRisk: number;
   confidence: string;
@@ -111,7 +136,46 @@ const CODEX_REVIEW_TOKEN_KEY = "apexCodexReviewToken";
 const DEFAULT_CODEX_REVIEW_SIDECAR_URL = "http://127.0.0.1:3217/codex/review";
 const HUMAN_REVIEWED_TOOLTIP =
   "Human reviewed means a human reviewer checked the source packet against the scoped claim. It does not mean clinical guideline endorsement.";
-const scoreColors = ["#1d4ed8", "#0f766e", "#b7791f", "#334155", "#7c3aed", "#b91c1c"];
+const SAFETY_DOMAIN_ALL = "All safety domains";
+const SAFETY_SEVERITY_ALL = "All safety severity labels";
+const SAFETY_REGION_ALL = "All safety regions";
+const AUSTRALIA_REGULATORY_KIND_ALL = "All AU/TGA contexts";
+const PRODUCT_REGULATORY_KIND_ALL = "All product AU/TGA contexts";
+const PRODUCT_REGULATORY_KIND_UNCAPTURED = "Uncaptured AU status";
+const PRODUCT_QUALITY_ALL = "All product quality signals";
+const PRODUCT_FORMULATION_ALL = "All formulation evidence";
+const productFormulationFilterOptions = [
+  PRODUCT_FORMULATION_ALL,
+  "Fully ingredient-mapped",
+  "Has unmatched ingredients",
+  "Product-specific evidence captured",
+  "No local ingredient match"
+] as const;
+const supportedSafetyDomains: SafetyAlert["alertType"][] = [
+  "Liver injury",
+  "Kidney risk",
+  "Contamination",
+  "Adulteration",
+  "Mislabeling",
+  "Prohibited in sport",
+  "Prescription-only",
+  "Unapproved therapeutic good",
+  "Compounding restriction",
+  "Drug interaction"
+];
+const supportedSafetySeverities: SafetyAlert["severity"][] = [
+  "Low",
+  "Moderate",
+  "High",
+  "Clinician review recommended",
+  "Avoid"
+];
+const productQualityFilterOptions = [
+  PRODUCT_QUALITY_ALL,
+  "Higher quality signal",
+  "Mixed quality signal",
+  "Needs quality review"
+] as const;
 const compositeScoreFormula =
   "Composite = directness + rigor + impact + safety + measurability - hype/regulatory penalty.";
 const compositeScoreDetail =
@@ -120,6 +184,7 @@ const compositeScoreDetail =
 type ScoreExplanationKind =
   | "claimRisk"
   | "composite"
+  | "confidenceWeightedComposite"
   | "directness"
   | "lowHypeRisk"
   | "impact"
@@ -136,6 +201,130 @@ type ScoreExplanation = {
   formula?: string;
   title: string;
 };
+type AustraliaRegulatoryKindFilter =
+  | AustraliaRegulatoryKind
+  | typeof AUSTRALIA_REGULATORY_KIND_ALL;
+type ProductRegulatoryKindFilter =
+  | AustraliaRegulatoryKind
+  | typeof PRODUCT_REGULATORY_KIND_ALL
+  | typeof PRODUCT_REGULATORY_KIND_UNCAPTURED;
+type ProductQualityFilter = (typeof productQualityFilterOptions)[number];
+type ProductFormulationFilter = (typeof productFormulationFilterOptions)[number];
+type IngredientEvidenceMapping = {
+  claims: Claim[];
+  ingredient: ParsedLabelIngredient;
+  intervention?: Intervention;
+};
+
+type DashboardTabId =
+  | "evidence-map"
+  | "claim-scores"
+  | "ai-confidence"
+  | "safety-center"
+  | "evidence-cards"
+  | "product-label-analyzer"
+  | "trial-watcher"
+  | "sources-review";
+type DashboardTab = {
+  detail: string;
+  id: DashboardTabId;
+  label: string;
+};
+type PanelExplanation = {
+  body: string[];
+  summary: string;
+};
+type SourcePacketGapItem = {
+  claimId: string;
+  interventionName: string;
+  interventionSlug?: string;
+  label: string;
+  nextStep: string;
+  outcomeLabel: string;
+};
+
+const panelExplanations = {
+  "ai-confidence": {
+    body: [
+      "Use this when you want to see which claim packets can already contribute to scoring and how much influence they should have. A low AI confidence score does not mean the packet is useless; it means the packet should have lower weight until traceability, source extraction, claim fit, or caveats improve.",
+      "The weighted score shown here is the raw composite multiplied by AI confidence. That makes uncertain packets visible without letting them dominate the dashboard.",
+      "This overlaps with Claim Scores because both show weighted score. The difference is that AI Confidence explains why confidence is high or low, while Claim Scores is better for sorting all claims in a compact table.",
+      "This is not a clinical review, product recommendation, TGA/ARTG clearance, or an approval workflow. It does not write evidence rows or mark claims reviewed."
+    ],
+    summary:
+      "Explains the confidence multiplier behind each claim packet and shows how much impact uncertain evidence should have."
+  },
+  "claim-scores": {
+    body: [
+      "Use this as the compact sortable ledger of all intervention-outcome claims. Each row is one scoped claim, such as a supplement and one outcome area, not a general rating for the entire supplement.",
+      "The Weighted column is the main quick-iteration score: raw composite score multiplied by AI confidence. The Raw score column stays visible so you can tell whether a claim is weak because the evidence signal is weak, because confidence is low, or both.",
+      "This overlaps with Evidence Map because both use the same weighted scoring idea. Claim Scores is better for precise row sorting and comparing numeric components; Evidence Map is better for scanning a supplement across goal categories.",
+      "Scores are review aids. They are not individualized medical advice, dosing guidance, product verification, or a substitute for source traceability."
+    ],
+    summary:
+      "A sortable row-by-row score table for comparing scoped claims and their confidence-weighted impact."
+  },
+  "evidence-cards": {
+    body: [
+      "Use this when you want the narrative card for each scoped claim: claim text, classification label, confidence label, non-proof statements, source badges, and concise research context.",
+      "Evidence Cards are the human-readable version of the scoring rows. They explain what the claim says, what it does not prove, and which references are attached.",
+      "This overlaps with Claim Scores and Sources and Review Queue. Claim Scores is better for comparing numbers; Evidence Cards is better for reading the claim boundary; Sources and Review Queue is better for inspecting the source packet and live search leads.",
+      "The cards should preserve uncertainty. A card can be useful even when confidence is low, but it should not imply clinical certainty, product-level clearance, or broad supplement-wide benefit."
+    ],
+    summary:
+      "Readable claim cards that explain the boundary, label, confidence, non-proof statements, and linked references."
+  },
+  "evidence-map": {
+    body: [
+      "Use this as the main cockpit for scanning supplements across practical goal categories such as Strength, Sleep, Heart, Safety, and Lifespan.",
+      "Each cell shows the best available confidence-weighted claim score for that supplement and goal category. The small raw-score note shows the raw composite and AI confidence multiplier behind the weighted score.",
+      "This overlaps with Claim Scores because the map uses the same underlying claims. The map is intentionally less detailed: it is for pattern recognition and navigation, not full evidence inspection.",
+      "Empty cells mean not yet assessed in the local dataset. They do not mean no evidence exists, and they do not mean the supplement is safe, unsafe, effective, or ineffective."
+    ],
+    summary:
+      "The high-level scan view for comparing supplements across goal categories using confidence-weighted scores."
+  },
+  "product-label-analyzer": {
+    body: [
+      "Use this for pasted product-label text and captured product profiles. It parses ingredients, amounts, certifications, AUST identifiers, product-quality signals, and label-risk flags.",
+      "This panel separates product-quality signals from efficacy evidence and from Australian regulatory status. A certification or clean-looking label can improve product-quality context without proving the product works or is authorized.",
+      "This overlaps with Safety Center because label text can surface safety or regulatory flags. Safety Center summarizes reviewed local alerts; Product Label Analyzer is a label/product-context workspace.",
+      "Parsed label findings are cues for review. They are not product recommendations, dosing advice, or proof of product-level TGA/ARTG status."
+    ],
+    summary:
+      "A product-label workspace for parsing ingredients, identifiers, quality cues, and product-level caveats."
+  },
+  "safety-center": {
+    body: [
+      "Use this to review safety, regulatory, and regional warning coverage across the local dataset. It groups alerts by safety domain and by configured review scope, with Australia/TGA kept prominent.",
+      "This panel is about captured warning coverage, not benefit scoring. It helps you see where risks, jurisdiction-specific warnings, or missing regional review coverage should affect interpretation.",
+      "This overlaps with Evidence Map's Safety column and Product Label Analyzer. The Safety column is a score view; Product Label Analyzer checks pasted labels; Safety Center is the broader reviewed-alert and regional-gap view.",
+      "A missing alert means no reviewed local alert is captured. It does not imply safety, efficacy, product authorization, or absence of current regulator warnings."
+    ],
+    summary:
+      "The risk and regulatory coverage view for reviewed alerts, safety domains, and regional review gaps."
+  },
+  "sources-review": {
+    body: [
+      "Use this when you want to inspect the selected claim's source packet: linked references, extracted study rows, source completeness, and live PubMed or ClinicalTrials.gov search leads.",
+      "This is the most source-provenance-heavy panel. It is where you check whether a claim has enough linked, extracted, traceable evidence to support its score and confidence.",
+      "This overlaps with AI Confidence because source completeness affects the confidence multiplier. AI Confidence summarizes the consequence; Sources and Review Queue shows the underlying packet and search leads.",
+      "Live search results are unreviewed leads and their priority scores rank what to inspect next. They do not automatically change public scores, promote evidence, or approve claims."
+    ],
+    summary:
+      "The source-traceability workspace for selected claims, extracted studies, and live citation or trial leads."
+  },
+  "trial-watcher": {
+    body: [
+      "Use this to monitor clinical trial records and trial alert leads that may change the evidence picture later.",
+      "Trial Watcher is forward-looking. It helps track active, completed, missing-results, or result-posted trials so they can be reviewed before any score changes are made.",
+      "This overlaps with Sources and Review Queue because both can show ClinicalTrials.gov material. Trial Watcher is for monitoring trial leads over time; Sources and Review Queue is for the currently selected claim's source packet and live searches.",
+      "Trial alerts do not change scores by themselves. Outcomes still need extraction, citation links, claim-fit checks, and explicit review before influencing public evidence."
+    ],
+    summary:
+      "A monitoring view for trial leads and alerts that might justify future evidence updates after review."
+  }
+} satisfies Record<DashboardTabId, PanelExplanation>;
 
 const scoreExplanations: Record<ScoreExplanationKind, ScoreExplanation> = {
   claimRisk: {
@@ -147,6 +336,12 @@ const scoreExplanations: Record<ScoreExplanationKind, ScoreExplanation> = {
     detail: compositeScoreDetail,
     formula: compositeScoreFormula,
     title: "Composite score"
+  },
+  confidenceWeightedComposite: {
+    detail:
+      "Confidence-weighted score keeps the raw 0-10 composite visible, then multiplies it by the AI evidence-confidence score. Low-confidence packets still contribute, but with lower impact until source quality, extraction, claim fit, and caveats improve.",
+    formula: "Weighted score = raw composite x AI confidence / 100.",
+    title: "Confidence-weighted score"
   },
   directness: {
     detail:
@@ -200,22 +395,50 @@ const scoreExplanations: Record<ScoreExplanationKind, ScoreExplanation> = {
   }
 };
 
+function uniqueSorted<T extends string>(items: T[]) {
+  return Array.from(new Set(items)).sort((first, second) => first.localeCompare(second));
+}
+
 export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const {
+    australiaRegulatoryStatuses,
     claims,
     interventions,
     productSignals,
     references,
     safetyAlerts,
     studies,
+    trialAlerts = [],
     trialWatchItems
   } = data;
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
+  const [safetyDomain, setSafetyDomain] = useState(SAFETY_DOMAIN_ALL);
+  const [safetySeverity, setSafetySeverity] = useState(SAFETY_SEVERITY_ALL);
+  const [safetyRegion, setSafetyRegion] = useState(SAFETY_REGION_ALL);
+  const [australiaRegulatoryKind, setAustraliaRegulatoryKind] =
+    useState<AustraliaRegulatoryKindFilter>(AUSTRALIA_REGULATORY_KIND_ALL);
   const [activeClaimId, setActiveClaimId] = useState(claims[0]?.id ?? "");
+  const [activeDashboardTab, setActiveDashboardTab] =
+    useState<DashboardTabId>("evidence-map");
   const [labelText, setLabelText] = useState(
-    "Creatine monohydrate 5 g\nNSF Certified for Sport\nNo proprietary blend"
+    "Creatine monohydrate 5 g\nVitamin D3 400 IU\nVitamin A 5,000 IU (as retinyl palmitate)\nVitamin E 400 IU (as d-alpha-tocopherol)\nFolate 680 mcg DFE (400 mcg folic acid)\nNiacin 16 mg NE\nNSF Certified for Sport\nNo proprietary blend"
   );
+  const hasActiveEvidenceMapFilters =
+    query.trim().length > 0 ||
+    category !== "All" ||
+    safetyDomain !== SAFETY_DOMAIN_ALL ||
+    safetyRegion !== SAFETY_REGION_ALL ||
+    safetySeverity !== SAFETY_SEVERITY_ALL ||
+    australiaRegulatoryKind !== AUSTRALIA_REGULATORY_KIND_ALL;
+  const resetEvidenceMapFilters = () => {
+    setQuery("");
+    setCategory("All");
+    setSafetyDomain(SAFETY_DOMAIN_ALL);
+    setSafetyRegion(SAFETY_REGION_ALL);
+    setSafetySeverity(SAFETY_SEVERITY_ALL);
+    setAustraliaRegulatoryKind(AUSTRALIA_REGULATORY_KIND_ALL);
+  };
 
   const referencesById = useMemo(
     () => new Map(references.map((reference) => [reference.id, reference])),
@@ -232,19 +455,117 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     [interventions]
   );
 
+  const safetyAlertsByInterventionId = useMemo(() => {
+    const grouped = new Map<string, SafetyAlert[]>();
+
+    safetyAlerts.forEach((alert) => {
+      grouped.set(alert.interventionId, [
+        ...(grouped.get(alert.interventionId) ?? []),
+        alert
+      ]);
+    });
+
+    return grouped;
+  }, [safetyAlerts]);
+
+  const australiaStatusByInterventionId = useMemo(
+    () =>
+      new Map(
+        australiaRegulatoryStatuses
+          .filter((status) => status.interventionId)
+          .map((status) => [status.interventionId as string, status])
+      ),
+    [australiaRegulatoryStatuses]
+  );
+
+  const safetyDomainOptions = useMemo(
+    () => [
+      SAFETY_DOMAIN_ALL,
+      ...uniqueSorted([
+        ...supportedSafetyDomains,
+        ...safetyAlerts.map((alert) => alert.alertType)
+      ])
+    ],
+    [safetyAlerts]
+  );
+
+  const safetyRegionOptions = useMemo(
+    () => [
+      SAFETY_REGION_ALL,
+      ...uniqueSorted(safetyAlerts.map((alert) => normalizeSafetyReviewRegion(alert.region)))
+    ],
+    [safetyAlerts]
+  );
+
+  const safetySeverityOptions = useMemo(
+    () => [
+      SAFETY_SEVERITY_ALL,
+      ...uniqueSorted([
+        ...supportedSafetySeverities,
+        ...safetyAlerts.map((alert) => alert.severity)
+      ])
+    ],
+    [safetyAlerts]
+  );
+
+  const australiaRegulatoryKindOptions = useMemo(
+    () => [
+      AUSTRALIA_REGULATORY_KIND_ALL,
+      ...uniqueSorted(
+        australiaRegulatoryStatuses
+          .filter((status) => status.interventionId)
+          .map((status) => status.kind)
+      )
+    ],
+    [australiaRegulatoryStatuses]
+  );
+
   const filteredInterventions = useMemo(() => {
     const normalized = query.trim().toLowerCase();
 
     return interventions.filter((intervention) => {
+      const interventionAlerts = safetyAlertsByInterventionId.get(intervention.id) ?? [];
+      const australiaStatus = australiaStatusByInterventionId.get(intervention.id);
       const categoryMatch = category === "All" || intervention.category === category;
       const queryMatch =
         !normalized ||
         intervention.name.toLowerCase().includes(normalized) ||
         intervention.synonyms.some((synonym) => synonym.toLowerCase().includes(normalized));
+      const safetyDomainMatch =
+        safetyDomain === SAFETY_DOMAIN_ALL ||
+        interventionAlerts.some((alert) => alert.alertType === safetyDomain);
+      const safetySeverityMatch =
+        safetySeverity === SAFETY_SEVERITY_ALL ||
+        interventionAlerts.some((alert) => alert.severity === safetySeverity);
+      const safetyRegionMatch =
+        safetyRegion === SAFETY_REGION_ALL ||
+        interventionAlerts.some(
+          (alert) => normalizeSafetyReviewRegion(alert.region) === safetyRegion
+        );
+      const australiaRegulatoryMatch =
+        australiaRegulatoryKind === AUSTRALIA_REGULATORY_KIND_ALL ||
+        australiaStatus?.kind === australiaRegulatoryKind;
 
-      return categoryMatch && queryMatch;
+      return (
+        categoryMatch &&
+        queryMatch &&
+        safetyDomainMatch &&
+        safetySeverityMatch &&
+        safetyRegionMatch &&
+        australiaRegulatoryMatch
+      );
     });
-  }, [category, interventions, query]);
+  }, [
+    australiaRegulatoryKind,
+    australiaStatusByInterventionId,
+    category,
+    interventions,
+    query,
+    safetyAlertsByInterventionId,
+    safetyDomain,
+    safetySeverity,
+    safetyRegion
+  ]);
 
   const visibleInterventionIds = useMemo(
     () => new Set(filteredInterventions.map((intervention) => intervention.id)),
@@ -279,9 +600,6 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const activeIntervention = activeClaim
     ? interventionsById.get(activeClaim.interventionId)
     : undefined;
-  const activeAustraliaStatus = activeIntervention
-    ? getPrimaryAustraliaStatus(data.australiaRegulatoryStatuses, activeIntervention.id)
-    : undefined;
   const productAustraliaVerifications = useMemo(
     () => buildProductAustraliaRegulatoryVerifications(data),
     [data]
@@ -298,6 +616,11 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   );
   const labelFindings = analyzeLabel(labelText);
   const reviewSummary = useMemo(() => summarizeReviewStatus(claims), [claims]);
+  const humanReviewQueue = useMemo(() => buildEvidenceHumanReviewQueue(data), [data]);
+  const confidenceQueueItemsByClaimId = useMemo(
+    () => new Map(humanReviewQueue.items.map((item) => [item.claimId, item])),
+    [humanReviewQueue]
+  );
   const sourcePacketSummary = useMemo(
     () =>
       summarizeClaimSourcePackets({
@@ -307,6 +630,45 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
       }),
     [claims, referencesById, studies]
   );
+  const sourcePacketGapItems = useMemo(
+    () =>
+      claims
+        .map((claim): SourcePacketGapItem | null => {
+          const packet = buildClaimSourcePacket({
+            claim,
+            referencesById,
+            studies
+          });
+
+          if (packet.completeness.status === "complete") {
+            return null;
+          }
+
+          return {
+            claimId: claim.id,
+            interventionName:
+              interventionsById.get(claim.interventionId)?.name ?? "Unknown intervention",
+            interventionSlug: interventionsById.get(claim.interventionId)?.slug,
+            label: packet.completeness.label,
+            nextStep: packet.completeness.nextStep,
+            outcomeLabel: shortOutcome(claim.outcome)
+          };
+        })
+        .filter((item): item is SourcePacketGapItem => Boolean(item)),
+    [claims, interventionsById, referencesById, studies]
+  );
+  const safetyAlertInterventionCount = useMemo(
+    () => countUniqueIds(safetyAlerts.map((alert) => alert.interventionId)),
+    [safetyAlerts]
+  );
+  const australiaRegulatoryInterventionCount = useMemo(
+    () =>
+      countUniqueIds(
+        australiaRegulatoryStatuses.map((status) => status.interventionId)
+      ),
+    [australiaRegulatoryStatuses]
+  );
+  const trialLeadCount = trialWatchItems.length + trialAlerts.length;
 
   const tableRows = useMemo(
     () =>
@@ -316,23 +678,72 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
           referencesById,
           studies
         });
+        const rawComposite = compositeScore(claim.scores);
+        const confidenceItem = confidenceQueueItemsByClaimId.get(claim.id);
 
         return {
+          aiConfidenceScore: confidenceItem?.aiConfidenceScore ?? 100,
           id: claim.id,
           intervention: interventionsById.get(claim.interventionId)?.name ?? "Unknown",
           outcome: claim.outcome,
           label: claim.finalLabel,
           sourcePacketStatus: sourcePacket.completeness.status,
           sourcePacketLabel: sourcePacket.completeness.label,
-          composite: compositeScore(claim.scores),
+          composite: rawComposite,
+          confidenceWeightedComposite:
+            confidenceItem?.confidenceWeightedScore ?? rawComposite,
+          confidenceWeight: confidenceItem?.confidenceWeight ?? 1,
           safety: claim.scores.safety,
           regulatoryRisk: claim.scores.regulatoryRisk,
           confidence: claim.confidenceLevel,
           updated: claim.lastUpdated
         };
       }),
-    [filteredClaims, interventionsById, referencesById, studies]
+    [confidenceQueueItemsByClaimId, filteredClaims, interventionsById, referencesById, studies]
   );
+
+  const dashboardTabs: DashboardTab[] = [
+    {
+      detail: `${filteredClaims.length}/${claims.length} claims`,
+      id: "evidence-map",
+      label: "Evidence Map"
+    },
+    {
+      detail: `${tableRows.length} rows`,
+      id: "claim-scores",
+      label: "Claim Scores"
+    },
+    {
+      detail: `${humanReviewQueue.aiConfidenceAverage}/100 avg`,
+      id: "ai-confidence",
+      label: "AI Confidence"
+    },
+    {
+      detail: `${safetyAlerts.length} alerts`,
+      id: "safety-center",
+      label: "Safety Center"
+    },
+    {
+      detail: `${filteredClaims.length} cards`,
+      id: "evidence-cards",
+      label: "Evidence Cards"
+    },
+    {
+      detail: `${productSignals.length} product signals`,
+      id: "product-label-analyzer",
+      label: "Product Label Analyzer"
+    },
+    {
+      detail: `${trialWatchItems.length + trialAlerts.length} leads`,
+      id: "trial-watcher",
+      label: "Trial Watcher"
+    },
+    {
+      detail: `${sourcePacketSummary.completeClaims}/${sourcePacketSummary.totalClaims} packets`,
+      id: "sources-review",
+      label: "Sources and Review Queue"
+    }
+  ];
 
   return (
     <main className="min-h-screen overflow-x-hidden px-4 py-4 sm:px-6 lg:px-8">
@@ -351,7 +762,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             label="Human reviewed"
             title={HUMAN_REVIEWED_TOOLTIP}
             value={reviewSummary.humanReviewed}
-            detail={`${reviewSummary.unreviewedDrafts} drafts awaiting review`}
+            detail={`${reviewSummary.unreviewedDrafts} draft classifications awaiting human confirmation`}
           />
           <MetricPanel
             icon={<AlertTriangle aria-hidden="true" className="h-4 w-4" />}
@@ -367,16 +778,42 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
           />
         </section>
 
-        <section className="grid min-w-0 items-start gap-4 xl:grid-cols-[1.35fr_0.65fr]">
-          <div className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h2 className="text-base font-semibold text-ink">Evidence Map</h2>
+        <ProjectHealthSnapshot
+          australiaRegulatoryInterventionCount={australiaRegulatoryInterventionCount}
+          claimCount={claims.length}
+          interventionCount={interventions.length}
+          onShowSourcesReview={() => setActiveDashboardTab("sources-review")}
+          productSignalCount={productSignals.length}
+          safetyAlertInterventionCount={safetyAlertInterventionCount}
+          sourcePacketGapItems={sourcePacketGapItems}
+          sourcePacketSummary={sourcePacketSummary}
+          trialLeadCount={trialLeadCount}
+        />
+
+        <DashboardTabs
+          activeTab={activeDashboardTab}
+          onChange={setActiveDashboardTab}
+          tabs={dashboardTabs}
+        />
+
+        <DashboardTabPanel
+          active={activeDashboardTab === "evidence-map"}
+          id="dashboard-panel-evidence-map"
+          labelledBy="dashboard-tab-evidence-map"
+        >
+          <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-3xl">
+                <PanelExplainer
+                  explanation={panelExplanations["evidence-map"]}
+                  title="Evidence Map"
+                />
                 <p className="mt-1 text-sm text-slate-600">
-                  Claim cells show composite evidence confidence, with safety and hype penalties included.
+                  Claim cells show confidence-weighted evidence scores. Open any supplement row or
+                  cell for its evidence cards, source packets, safety context, and score history.
                 </p>
               </div>
-              <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(220px,1fr)_220px]">
+              <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-6">
                 <label className="relative" htmlFor="evidence-map-search">
                   <Search
                     aria-hidden="true"
@@ -408,41 +845,172 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
                     ))}
                   </select>
                 </label>
+                <label className="relative" htmlFor="evidence-map-safety-domain">
+                  <AlertTriangle
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                  />
+                  <span className="sr-only">Filter safety domain</span>
+                  <select
+                    id="evidence-map-safety-domain"
+                    value={safetyDomain}
+                    onChange={(event) => setSafetyDomain(event.target.value)}
+                    className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                  >
+                    {safetyDomainOptions.map((item) => (
+                      <option key={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="relative" htmlFor="evidence-map-safety-region">
+                  <Filter
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                  />
+                  <span className="sr-only">Filter safety region</span>
+                  <select
+                    id="evidence-map-safety-region"
+                    value={safetyRegion}
+                    onChange={(event) => setSafetyRegion(event.target.value)}
+                    className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                  >
+                    {safetyRegionOptions.map((item) => (
+                      <option key={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="relative" htmlFor="evidence-map-safety-severity">
+                  <AlertTriangle
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                  />
+                  <span className="sr-only">Filter safety severity</span>
+                  <select
+                    id="evidence-map-safety-severity"
+                    value={safetySeverity}
+                    onChange={(event) => setSafetySeverity(event.target.value)}
+                    className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                  >
+                    {safetySeverityOptions.map((item) => (
+                      <option key={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="relative" htmlFor="evidence-map-au-tga-context">
+                  <ShieldCheck
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                  />
+                  <span className="sr-only">Filter AU/TGA context</span>
+                  <select
+                    id="evidence-map-au-tga-context"
+                    value={australiaRegulatoryKind}
+                    onChange={(event) =>
+                      setAustraliaRegulatoryKind(
+                        event.target.value as AustraliaRegulatoryKindFilter
+                      )
+                    }
+                    className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                  >
+                    {australiaRegulatoryKindOptions.map((item) => (
+                      <option key={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
               </div>
             </div>
 
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              <span className="rounded-md border border-line bg-mist px-2 py-1 font-semibold text-slate-700">
+                Showing {filteredInterventions.length} of {interventions.length} supplements and{" "}
+                {filteredClaims.length} of {claims.length} scoped claims
+              </span>
+              <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-600">
+                Category: {category}
+              </span>
+              {query.trim() ? (
+                <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-600">
+                  Search: {query.trim()}
+                </span>
+              ) : null}
+              <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-600">
+                Safety domain: {safetyDomain}
+              </span>
+              <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-600">
+                Safety region: {safetyRegion}
+              </span>
+              <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-600">
+                Safety severity: {safetySeverity}
+              </span>
+              <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-600">
+                AU/TGA: {australiaRegulatoryKind}
+              </span>
+              <button
+                aria-label="Reset evidence map filters"
+                className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 font-semibold text-signal transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-line disabled:bg-mist disabled:text-slate-500"
+                disabled={!hasActiveEvidenceMapFilters}
+                onClick={resetEvidenceMapFilters}
+                title={
+                  hasActiveEvidenceMapFilters
+                    ? "Reset search, category, safety, region, severity, and AU/TGA filters"
+                    : "Evidence map filters are already at their default values"
+                }
+                type="button"
+              >
+                Reset filters
+              </button>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              Open a supplement row or goal cell for claim boundaries, source packets, safety
+              alerts, AU/TGA context, and score-change reasons. Filtered-out or unassessed cells
+              are local data gaps, not evidence of no effect or safety.
+            </p>
+
             <EvidenceMap
               claims={filteredClaims}
+              confidenceQueueItemsByClaimId={confidenceQueueItemsByClaimId}
               interventions={filteredInterventions}
-              activeClaimId={activeClaimIdForDisplay}
-              onSelectClaim={setActiveClaimId}
             />
-          </div>
+          </section>
+        </DashboardTabPanel>
 
-          {hasFilteredClaims && activeClaim ? (
-            <ScorePanel
-              australiaStatus={activeAustraliaStatus}
-              claim={activeClaim}
-              intervention={activeIntervention}
-            />
-          ) : (
-            <FilteredClaimDetailEmptyState
-              title="Active Evidence Card"
-              detail="No active evidence card is selected because the current filters do not match local scored claims."
-            />
-          )}
-        </section>
-
-        <section className="grid min-w-0 items-start gap-4 xl:grid-cols-[1fr_0.8fr]">
+        <DashboardTabPanel
+          active={activeDashboardTab === "claim-scores"}
+          id="dashboard-panel-claim-scores"
+          labelledBy="dashboard-tab-claim-scores"
+        >
           <ClaimTable
             rows={tableRows}
             onSelectClaim={setActiveClaimId}
             activeClaimId={activeClaimIdForDisplay}
           />
-          <SafetyPanel interventionsById={interventionsById} safetyAlerts={safetyAlerts} />
-        </section>
+        </DashboardTabPanel>
 
-        <section className="grid min-w-0 items-start gap-4 xl:grid-cols-[1fr_1fr]">
+        <DashboardTabPanel
+          active={activeDashboardTab === "ai-confidence"}
+          id="dashboard-panel-ai-confidence"
+          labelledBy="dashboard-tab-ai-confidence"
+        >
+          <NeedsHumanReviewPanel queue={humanReviewQueue} />
+        </DashboardTabPanel>
+
+        <DashboardTabPanel
+          active={activeDashboardTab === "safety-center"}
+          id="dashboard-panel-safety-center"
+          labelledBy="dashboard-tab-safety-center"
+        >
+          <SafetyPanel
+            australiaRegulatoryStatuses={australiaRegulatoryStatuses}
+            interventionsById={interventionsById}
+            safetyAlerts={safetyAlerts}
+          />
+        </DashboardTabPanel>
+
+        <DashboardTabPanel
+          active={activeDashboardTab === "evidence-cards"}
+          id="dashboard-panel-evidence-cards"
+          labelledBy="dashboard-tab-evidence-cards"
+        >
           <EvidenceCards
             claims={filteredClaims}
             interventionsById={interventionsById}
@@ -451,54 +1019,238 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             activeClaimId={activeClaimIdForDisplay}
             onSelectClaim={setActiveClaimId}
           />
+        </DashboardTabPanel>
+
+        <DashboardTabPanel
+          active={activeDashboardTab === "product-label-analyzer"}
+          id="dashboard-panel-product-label-analyzer"
+          labelledBy="dashboard-tab-product-label-analyzer"
+        >
           <LabelAnalyzer
+            australiaRegulatoryStatuses={australiaRegulatoryStatuses}
+            claims={claims}
+            interventions={interventions}
             labelText={labelText}
             setLabelText={setLabelText}
             findings={labelFindings}
             productSignals={productSignals}
             productAustraliaVerificationById={productAustraliaVerificationById}
           />
-        </section>
+        </DashboardTabPanel>
 
-        <section className="grid min-w-0 items-start gap-4 xl:grid-cols-[0.8fr_1fr]">
+        <DashboardTabPanel
+          active={activeDashboardTab === "trial-watcher"}
+          id="dashboard-panel-trial-watcher"
+          labelledBy="dashboard-tab-trial-watcher"
+        >
           <TrialWatcher
             interventionsById={interventionsById}
+            trialAlerts={trialAlerts}
             trialWatchItems={trialWatchItems}
           />
+        </DashboardTabPanel>
+
+        <DashboardTabPanel
+          active={activeDashboardTab === "sources-review"}
+          id="dashboard-panel-sources-review"
+          labelledBy="dashboard-tab-sources-review"
+        >
           {hasFilteredClaims && activeClaim ? (
             <SourceAndStudyPanel
               key={activeClaim.id}
               activeClaim={activeClaim}
               activeIntervention={activeIntervention}
               referencesById={referencesById}
+              sourcePacketGapItems={sourcePacketGapItems}
               studies={studies}
             />
           ) : (
             <FilteredClaimDetailEmptyState
               title="Sources and Review Queue"
               detail="Source packets and live search suggestions appear after the current filters match a local scored claim."
+              explanation={panelExplanations["sources-review"]}
             />
           )}
-        </section>
+        </DashboardTabPanel>
       </div>
     </main>
   );
 }
 
+function NeedsHumanReviewPanel({ queue }: { queue: EvidenceCoverageHumanReviewQueue }) {
+  return (
+    <section className="min-w-0 rounded-lg border border-amberline/30 bg-white p-4 shadow-panel">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <PanelExplainer
+            explanation={panelExplanations["ai-confidence"]}
+            title="AI Evidence Confidence"
+          />
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-slate-600">
+            {queue.nextAction} Scores are Codex&apos;s evidence-confidence estimates from citation
+            traceability, source-packet completeness, claim fit, uncertainty, and safety/regulatory
+            caveats. Low scores are useful signals, not failures, and they are not medical advice or
+            product-level TGA/ARTG clearance.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs">
+          <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 font-semibold text-amberline">
+            {queue.total} scored
+          </span>
+          <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 font-semibold text-spruce">
+            {queue.aiConfidenceAverage}/100 avg AI confidence
+          </span>
+          {queue.aiCrossCheckRecommended > 0 ? (
+            <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 font-semibold text-amberline">
+              {queue.aiCrossCheckRecommended} high-attention
+            </span>
+          ) : null}
+          {queue.blockedBySourcePacket > 0 ? (
+            <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 font-semibold text-slate-700">
+              {queue.blockedBySourcePacket} need source work
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      {queue.items.length > 0 ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {queue.items.map((item) => (
+            <NeedsHumanReviewCard item={item} key={item.claimId} />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 rounded-md border border-line bg-mist p-3 text-sm text-slate-600">
+          No public claim packets currently need AI confidence scoring.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function NeedsHumanReviewCard({ item }: { item: EvidenceCoverageHumanReviewQueueItem }) {
+  const preflightReady = item.aiPreReviewStatus === "codex-preflight-passed";
+
+  return (
+    <article className="min-w-0 rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase text-slate-500">
+            #{item.reviewOrder} {item.interventionName} / {item.outcome}
+          </p>
+          <h3 className="mt-1 break-words text-sm font-semibold leading-6 text-ink">
+            {item.claimId}
+          </h3>
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            preflightReady
+              ? "border-spruce/30 bg-teal-50 text-spruce"
+              : "border-amberline/30 bg-amber-50 text-amberline"
+          )}
+        >
+          {item.aiPreReviewLabel}
+        </span>
+      </div>
+
+      <p className="mt-2 text-sm leading-6 text-slate-700">{item.aiPreReviewExplanation}</p>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 font-semibold text-spruce">
+          AI confidence {item.aiConfidenceScore}/100
+        </span>
+        <span className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 font-semibold text-signal">
+          Weighted score {item.confidenceWeightedScore.toFixed(1)}/10
+        </span>
+        <span className="rounded-md border border-line bg-white px-2 py-1 font-semibold text-slate-700">
+          {item.aiConfidenceSummary}
+        </span>
+        <span className="rounded-md border border-line bg-white px-2 py-1 font-semibold text-slate-700">
+          {item.finalLabel}
+        </span>
+        <span className="rounded-md border border-line bg-white px-2 py-1 font-semibold text-slate-700">
+          {item.extractedReferences}/{item.referenceCount} refs extracted
+        </span>
+        {item.highAttention ? (
+          <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 font-semibold text-amberline">
+            High attention
+          </span>
+        ) : null}
+      </div>
+      {item.highAttentionReasons.length > 0 ? (
+        <p className="mt-3 text-sm leading-6 text-slate-700">
+          Optional ChatGPT Pro cross-check: {item.highAttentionReasons.join(" ")}
+        </p>
+      ) : null}
+      <ul className="mt-3 space-y-1 text-sm leading-6 text-slate-700">
+        <li>{item.confidenceWeightedScoreExplanation}</li>
+        {item.aiConfidenceRationale.map((reason) => (
+          <li key={reason}>{reason}</li>
+        ))}
+      </ul>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <a
+          className="inline-flex items-center gap-2 rounded-md border border-signal/30 bg-blue-50 px-3 py-2 text-sm font-semibold text-signal hover:bg-blue-100"
+          href={item.operatorHref}
+        >
+          <ClipboardCheck aria-hidden="true" className="h-4 w-4" />
+          Open Confidence Packet
+        </a>
+        <span className="text-xs leading-5 text-slate-500">
+          {item.confirmationRequirement}
+        </span>
+      </div>
+    </article>
+  );
+}
+
 function FilteredClaimDetailEmptyState({
   detail,
+  explanation,
   title
 }: {
   detail: string;
+  explanation?: PanelExplanation;
   title: string;
 }) {
   return (
     <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
-      <h2 className="text-base font-semibold text-ink">{title}</h2>
+      <PanelExplainer explanation={explanation} title={title} />
       <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-        {detail} Clear the search or category filter to return to the full local evidence set.
+        {detail} Clear the active filters (search, category, safety, region, severity, or AU/TGA)
+        to return to the full local evidence set.
       </p>
     </section>
+  );
+}
+
+function PanelExplainer({
+  explanation,
+  title
+}: {
+  explanation?: PanelExplanation;
+  title: string;
+}) {
+  if (!explanation) {
+    return <h2 className="text-base font-semibold text-ink">{title}</h2>;
+  }
+
+  return (
+    <details className="group max-w-4xl">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-md outline-none transition hover:text-signal focus:ring-4 focus:ring-signal/20">
+        <h2 className="text-base font-semibold text-ink group-hover:text-signal">{title}</h2>
+        <CircleHelp aria-hidden="true" className="h-4 w-4 shrink-0 text-signal" />
+        <span className="text-xs font-semibold text-signal">About this panel</span>
+      </summary>
+      <div className="mt-2 rounded-md border border-line bg-mist p-3 text-sm leading-6 text-slate-700">
+        <p className="font-semibold text-ink">{explanation.summary}</p>
+        <ul className="mt-2 grid gap-1">
+          {explanation.body.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </div>
+    </details>
   );
 }
 
@@ -518,6 +1270,45 @@ function ScoreWithExplainer({
     >
       <span>{children}</span>
       <ScoreExplainer explanationKind={explanationKind} value={value} />
+    </span>
+  );
+}
+
+function ScoreHeaderExplainer({
+  children,
+  explanationKind
+}: {
+  children: ReactNode;
+  explanationKind: ScoreExplanationKind;
+}) {
+  const explanation = scoreExplanations[explanationKind];
+  const label = scoreExplanationTitle(explanationKind);
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span>{children}</span>
+      <span className="group relative inline-flex">
+        <span
+          aria-label={label}
+          className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-signal/25 bg-white text-signal"
+          role="img"
+          title={label}
+        >
+          <CircleHelp aria-hidden="true" className="h-3 w-3" />
+        </span>
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-md border border-line bg-white p-3 text-left text-xs normal-case leading-5 tracking-normal text-slate-700 shadow-panel group-hover:block"
+        >
+          <span className="block font-semibold text-ink">{explanation.title}</span>
+          {explanation.formula ? (
+            <span className="mt-1 block font-semibold text-slate-700">
+              {explanation.formula}
+            </span>
+          ) : null}
+          <span className="mt-1 block">{explanation.detail}</span>
+        </span>
+      </span>
     </span>
   );
 }
@@ -572,7 +1363,7 @@ function ReviewStatusBadge({
 }) {
   const tooltip = isHumanReviewed(status)
     ? HUMAN_REVIEWED_TOOLTIP
-    : "Pending human review means this remains an unreviewed AI draft. A human reviewer has not yet checked the source packet against the scoped claim.";
+    : "Pending human review means a human reviewer has not yet confirmed the source packet against the scoped claim. AI-reviewed packets remain draft review aids.";
 
   return (
     <span
@@ -611,34 +1402,6 @@ function scoreExplanationTitle(explanationKind: ScoreExplanationKind, value?: st
   return [explanation.title, value, explanation.formula, explanation.detail]
     .filter(Boolean)
     .join(": ");
-}
-
-function scoreExplanationKindForLabel(label: string): ScoreExplanationKind {
-  if (label === "Directness") {
-    return "directness";
-  }
-
-  if (label === "Rigor") {
-    return "rigor";
-  }
-
-  if (label === "Impact") {
-    return "impact";
-  }
-
-  if (label === "Safety") {
-    return "safety";
-  }
-
-  if (label === "Measurability") {
-    return "measurability";
-  }
-
-  if (label === "Low regulatory risk") {
-    return "lowRegulatoryRisk";
-  }
-
-  return "lowHypeRisk";
 }
 
 function NonProofBox({
@@ -1058,6 +1821,156 @@ function MetricPanel({
   );
 }
 
+function ProjectHealthSnapshot({
+  australiaRegulatoryInterventionCount,
+  claimCount,
+  interventionCount,
+  onShowSourcesReview,
+  productSignalCount,
+  safetyAlertInterventionCount,
+  sourcePacketGapItems,
+  sourcePacketSummary,
+  trialLeadCount
+}: {
+  australiaRegulatoryInterventionCount: number;
+  claimCount: number;
+  interventionCount: number;
+  onShowSourcesReview: () => void;
+  productSignalCount: number;
+  safetyAlertInterventionCount: number;
+  sourcePacketGapItems: SourcePacketGapItem[];
+  sourcePacketSummary: ClaimSourcePacketSummary;
+  trialLeadCount: number;
+}) {
+  const sourcePacketGapCount =
+    sourcePacketSummary.totalClaims - sourcePacketSummary.completeClaims;
+  const previewSourcePacketGapItems = sourcePacketGapItems.slice(0, 3);
+  const hasSourcePacketGaps = sourcePacketGapCount > 0;
+
+  return (
+    <section
+      aria-label="Privacy-safe project health"
+      className="rounded-lg border border-line bg-white p-4 shadow-panel"
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-3xl">
+          <h2 className="text-base font-semibold text-ink">Project Health Snapshot</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            Aggregate local signals only; no user identifiers, raw health text, pasted labels,
+            search terms, or operator notes are reported here.
+          </p>
+        </div>
+        <a
+          className="inline-flex w-fit rounded-md border border-line bg-mist px-3 py-2 text-xs font-semibold text-signal hover:border-signal"
+          href="/privacy"
+        >
+          Privacy boundary
+        </a>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <ProjectHealthItem
+          detail={
+            hasSourcePacketGaps
+              ? `${sourcePacketGapCount} scoped claims still need source-packet work.`
+              : "All scoped claims have citation-linked source packets; human review remains separate."
+          }
+          label="Evidence coverage"
+          value={`${sourcePacketSummary.completeClaims}/${sourcePacketSummary.totalClaims} source packets`}
+        />
+        <ProjectHealthItem
+          detail="Captured alert rows and AU/TGA rows are local review aids, not clearance."
+          label="Safety alerts/AU scope"
+          value={`${safetyAlertInterventionCount}/${interventionCount} alerts, ${australiaRegulatoryInterventionCount}/${interventionCount} AU/TGA`}
+        />
+        <ProjectHealthItem
+          detail="Demo product/profile signals stay separate from ingredient evidence and AU/TGA status."
+          label="Product context"
+          value={`${productSignalCount} profile${productSignalCount === 1 ? "" : "s"}`}
+        />
+        <ProjectHealthItem
+          detail="Registry/watch items are review leads only and do not change scores."
+          label="Trial monitoring"
+          value={`${trialLeadCount} lead${trialLeadCount === 1 ? "" : "s"}`}
+        />
+      </div>
+      <p className="mt-3 text-xs leading-5 text-slate-600">
+        Current local scope: {interventionCount} interventions and {claimCount} scoped claims.
+      </p>
+      <div className="mt-3 rounded-md border border-line bg-mist p-3">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">
+              {hasSourcePacketGaps ? "Next source gaps" : "Source packet coverage complete"}
+            </h3>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              {hasSourcePacketGaps
+                ? "Local evidence-intake leads only; these do not change public scores until sources are citation-linked and reviewed."
+                : "Every scoped claim has a linked source packet in the local dataset. This does not mark claims human reviewed or product-level cleared."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="w-fit rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+              {previewSourcePacketGapItems.length} of {sourcePacketGapCount} shown
+            </span>
+            <button
+              className="w-fit rounded-md border border-signal/30 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal hover:bg-blue-100"
+              onClick={onShowSourcesReview}
+              type="button"
+            >
+              {hasSourcePacketGaps ? "Review all source gaps" : "Open source review"}
+            </button>
+          </div>
+        </div>
+        {previewSourcePacketGapItems.length > 0 ? (
+          <ol className="mt-3 grid gap-2 md:grid-cols-3">
+            {previewSourcePacketGapItems.map((item) => (
+              <li key={item.claimId} className="rounded-md border border-line bg-white p-2">
+                <p className="text-xs font-semibold text-ink">
+                  {item.interventionName} - {item.outcomeLabel}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">{item.label}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-600">{item.nextStep}</p>
+                {item.interventionSlug ? (
+                  <a
+                    className="mt-2 inline-flex rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-signal hover:border-signal"
+                    href={`/interventions/${item.interventionSlug}#source-packet-${item.claimId}`}
+                  >
+                    Open intervention detail
+                  </a>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="mt-3 rounded-md border border-line bg-white p-2 text-xs leading-5 text-slate-600">
+            Source-packet coverage is complete for the current local dataset. Keep checking source
+            packets separately from human review, AU/TGA product status, safety clearance, and
+            medical advice.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ProjectHealthItem({
+  detail,
+  label,
+  value
+}: {
+  detail: string;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{label}</p>
+      <p className="mt-2 text-sm font-semibold text-ink">{value}</p>
+      <p className="mt-1 text-xs leading-5 text-slate-600">{detail}</p>
+    </div>
+  );
+}
+
 function sourcePacketSummaryDetail(summary: ClaimSourcePacketSummary) {
   if (summary.totalClaims === 0) {
     return "No scored claims yet";
@@ -1073,6 +1986,10 @@ function sourcePacketSummaryDetail(summary: ClaimSourcePacketSummary) {
   }
 
   return `${needsWork} need source work: ${summary.extractionPendingClaims} pending, ${summary.missingSourceClaims} missing, ${summary.unlinkedClaims} unlinked`;
+}
+
+function countUniqueIds(values: Array<string | null | undefined>) {
+  return new Set(values.filter((value): value is string => Boolean(value))).size;
 }
 
 function readBrowserStorage(key: string, fallback: string) {
@@ -1182,25 +2099,35 @@ export function buildCodexReviewPacket(data: EvidenceDashboardData) {
 
 function EvidenceMap({
   claims: visibleClaims,
-  interventions: visibleInterventions,
-  activeClaimId,
-  onSelectClaim
+  confidenceQueueItemsByClaimId,
+  interventions: visibleInterventions
 }: {
   claims: Claim[];
+  confidenceQueueItemsByClaimId: Map<string, EvidenceCoverageHumanReviewQueueItem>;
   interventions: Intervention[];
-  activeClaimId: string;
-  onSelectClaim: (claimId: string) => void;
 }) {
-  const outcomes = useMemo(
-    () => Array.from(new Set(visibleClaims.map((claim) => claim.outcome))),
-    [visibleClaims]
+  const [sortCategoryId, setSortCategoryId] =
+    useState<SupplementGoalCategoryId | null>(null);
+  const activeSortCategory =
+    supplementGoalCategories.find((category) => category.id === sortCategoryId) ?? null;
+  const sortedInterventions = useMemo(
+    () =>
+      sortCategoryId
+        ? sortInterventionsByGoalCategory(
+            visibleInterventions,
+            visibleClaims,
+            confidenceQueueItemsByClaimId,
+            sortCategoryId
+          )
+        : visibleInterventions,
+    [confidenceQueueItemsByClaimId, sortCategoryId, visibleClaims, visibleInterventions]
   );
 
   if (visibleClaims.length === 0) {
     return (
       <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-        No local scored claims match the current filters. Clear the search or category filter to
-        rebuild the evidence map.
+        No local scored claims match the current filters. Clear the active filters (search,
+        category, safety, region, severity, or AU/TGA) to rebuild the evidence map.
       </p>
     );
   }
@@ -1210,11 +2137,12 @@ function EvidenceMap({
       <div className="max-w-full overflow-x-auto">
         <table
           aria-describedby="evidence-map-legend"
-          className="w-full min-w-[880px] border-separate border-spacing-1 text-sm"
+          className="w-full min-w-[1600px] border-separate border-spacing-1 text-sm"
         >
           <caption className="sr-only">
-            Evidence map. Rows are interventions and columns are outcomes. Unassessed cells do not
-            imply absence of evidence.
+            Evidence map. Rows are interventions and columns are supplement goals. Select a goal
+            column to sort supplements by the highest available score in that category. Unassessed
+            cells do not imply absence of evidence.
           </caption>
           <thead>
             <tr>
@@ -1224,32 +2152,116 @@ function EvidenceMap({
               >
                 Intervention
               </th>
-              {outcomes.map((outcome) => (
+              {supplementGoalCategories.map((category) => (
                 <th
-                  key={outcome}
-                  className="rounded-md border border-line bg-mist px-2 py-2 text-left text-xs font-semibold text-slate-700"
+                  aria-sort={sortCategoryId === category.id ? "descending" : undefined}
+                  key={category.id}
+                  className={cn(
+                    "rounded-md border border-line bg-mist p-0 text-left text-xs font-semibold text-slate-700",
+                    sortCategoryId === category.id && "border-signal/40 bg-blue-50"
+                  )}
                   scope="col"
                 >
-                  {shortOutcome(outcome)}
+                  <button
+                    aria-label={`Sort supplements by ${category.label} score, highest to lowest`}
+                    className="flex h-full min-h-12 w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left transition hover:bg-blue-50 hover:text-signal focus:outline-none focus:ring-4 focus:ring-inset focus:ring-signal/20"
+                    onClick={() => setSortCategoryId(category.id)}
+                    title={category.description}
+                    type="button"
+                  >
+                    <span>{category.label}</span>
+                    <ArrowUpDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                  </button>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {visibleInterventions.map((intervention) => (
+            {sortedInterventions.map((intervention) => (
               <EvidenceMapRow
-                key={intervention.id}
-                intervention={intervention}
-                outcomes={outcomes}
+                categories={supplementGoalCategories}
                 claims={visibleClaims}
-                activeClaimId={activeClaimId}
-                onSelectClaim={onSelectClaim}
+                confidenceQueueItemsByClaimId={confidenceQueueItemsByClaimId}
+                intervention={intervention}
+                key={intervention.id}
               />
             ))}
           </tbody>
         </table>
       </div>
+      {activeSortCategory ? (
+        <p className="mt-2 text-xs font-semibold text-slate-600">
+          Sorted by {activeSortCategory.label} score, highest first.
+        </p>
+      ) : null}
       <EvidenceMapLegend />
+    </div>
+  );
+}
+
+function DashboardTabs({
+  activeTab,
+  onChange,
+  tabs
+}: {
+  activeTab: DashboardTabId;
+  onChange: (tab: DashboardTabId) => void;
+  tabs: DashboardTab[];
+}) {
+  return (
+    <div
+      aria-label="Dashboard sections"
+      className="flex max-w-full gap-1 overflow-x-auto border-b border-line"
+      role="tablist"
+    >
+      {tabs.map((tab) => {
+        const active = tab.id === activeTab;
+
+        return (
+          <button
+            aria-controls={`dashboard-panel-${tab.id}`}
+            aria-selected={active}
+            className={cn(
+              "min-w-[11rem] border border-line border-b-0 bg-mist px-4 py-3 text-left text-sm transition hover:bg-white focus:outline-none focus:ring-4 focus:ring-inset focus:ring-signal/20",
+              active && "border-t-4 border-t-spruce bg-white pt-[9px] text-ink"
+            )}
+            id={`dashboard-tab-${tab.id}`}
+            key={tab.id}
+            onClick={() => onChange(tab.id)}
+            role="tab"
+            type="button"
+          >
+            <span className="block font-semibold">{tab.label}</span>
+            <span className="mt-1 block text-xs font-medium text-slate-600">
+              {tab.detail}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function DashboardTabPanel({
+  active,
+  children,
+  id,
+  labelledBy
+}: {
+  active: boolean;
+  children: ReactNode;
+  id: string;
+  labelledBy: string;
+}) {
+  return (
+    <div
+      aria-labelledby={labelledBy}
+      className={cn("min-w-0", !active && "hidden")}
+      hidden={!active}
+      id={id}
+      role="tabpanel"
+    >
+      {children}
     </div>
   );
 }
@@ -1278,74 +2290,110 @@ function EvidenceMapLegend() {
 }
 
 function EvidenceMapRow({
-  intervention,
-  outcomes,
+  categories,
   claims: visibleClaims,
-  activeClaimId,
-  onSelectClaim
+  confidenceQueueItemsByClaimId,
+  intervention,
 }: {
-  intervention: Intervention;
-  outcomes: OutcomeArea[];
+  categories: readonly SupplementGoalCategory[];
   claims: Claim[];
-  activeClaimId: string;
-  onSelectClaim: (claimId: string) => void;
+  confidenceQueueItemsByClaimId: Map<string, EvidenceCoverageHumanReviewQueueItem>;
+  intervention: Intervention;
 }) {
+  const href = interventionDetailHref(intervention);
+
   return (
     <tr>
       <th
-        className="h-14 rounded-md border border-line bg-white px-2 text-left text-sm font-semibold text-ink"
+        className="h-14 rounded-md border border-line bg-white p-0 text-left text-sm font-semibold text-ink"
         scope="row"
       >
-        {intervention.name}
+        <a
+          className="flex h-full min-h-14 items-center rounded-md px-2 transition hover:bg-blue-50 hover:text-signal focus:outline-none focus:ring-4 focus:ring-inset focus:ring-signal/20"
+          href={href}
+        >
+          {intervention.name}
+        </a>
       </th>
-      {outcomes.map((outcome) => {
-        const claim = visibleClaims.find(
-          (item) => item.interventionId === intervention.id && item.outcome === outcome
+      {categories.map((category) => {
+        const categoryClaims = claimsForGoalCategory(
+          visibleClaims,
+          intervention.id,
+          category.id
+        );
+        const claim = bestClaimForGoalCategory(
+          categoryClaims,
+          confidenceQueueItemsByClaimId
         );
 
         if (!claim) {
           return (
             <td
-              key={`${intervention.id}-${outcome}`}
-              aria-label={`${intervention.name}, ${outcome}: not yet assessed; this does not mean no evidence exists.`}
-              className="h-14 rounded-md border border-dashed border-line bg-slate-50 px-2 text-center text-xs text-slate-400"
+              key={`${intervention.id}-${category.id}`}
+              aria-label={`${intervention.name}, ${category.label}: not yet assessed; this does not mean no evidence exists.`}
+              className="h-14 p-0 align-middle"
               title="Not yet assessed; this does not mean no evidence exists."
             >
+              <a
+                className="flex h-14 w-full items-center justify-center rounded-md border border-dashed border-line bg-slate-50 px-2 text-xs text-slate-400 transition hover:border-signal hover:bg-blue-50 hover:text-signal focus:outline-none focus:ring-4 focus:ring-signal/20"
+                href={href}
+              >
               <span aria-hidden="true">—</span>
               <span className="sr-only">
-                Not yet assessed; this does not mean no evidence exists.
+                {category.label} not yet assessed; open {intervention.name} detail.
               </span>
+              </a>
             </td>
           );
         }
 
-        const score = compositeScore(claim.scores);
+        const rawScore = compositeScore(claim.scores);
+        const confidenceScore = claimAiConfidenceScore(claim, confidenceQueueItemsByClaimId);
+        const score = claimConfidenceWeightedScore(claim, confidenceQueueItemsByClaimId);
+        const detailedOutcomes = categoryClaims
+          .map((item) => item.outcome)
+          .sort((first, second) => first.localeCompare(second));
+        const detailedOutcomeLabel = detailedOutcomes.join(", ");
 
         return (
-          <td key={claim.id} className="h-14 p-0 align-middle">
-            <button
-              type="button"
-              onClick={() => onSelectClaim(claim.id)}
+          <td key={`${intervention.id}-${category.id}`} className="h-14 p-0 align-middle">
+            <a
+              href={href}
               className={cn(
                 "flex h-14 w-full flex-col items-start justify-center rounded-md border px-2 text-left text-xs transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20",
-                labelTone(claim.finalLabel),
-                activeClaimId === claim.id && "border-signal ring-2 ring-signal/25"
+                labelTone(claim.finalLabel)
               )}
-              aria-label={`${intervention.name}, ${claim.outcome}: ${compositeLabel(
+              aria-label={`${intervention.name}, ${category.label}: confidence-weighted ${compositeLabel(
                 claim
               )} ${score.toFixed(
                 1
-              )} out of 10, ${scoreBand(score)} band, ${classificationLabel(claim)} ${
+              )} out of 10 from ${detailedOutcomeLabel}, raw composite ${rawScore.toFixed(
+                1
+              )}, AI confidence ${confidenceScore}/100, ${scoreBand(
+                score
+              )} band, ${classificationLabel(claim)} ${
                 claim.finalLabel
-              }, review status ${reviewStatusLabel(claim.reviewStatus)}. ${scoreExplanationTitle(
-                "composite",
+              }, review status ${reviewStatusLabel(
+                claim.reviewStatus
+              )}. Open intervention detail. ${category.description} ${scoreExplanationTitle(
+                "confidenceWeightedComposite",
                 `${score.toFixed(1)}/10`
               )}`}
-              title={scoreExplanationTitle("composite", `${score.toFixed(1)}/10`)}
+              title={scoreExplanationTitle(
+                "confidenceWeightedComposite",
+                `${score.toFixed(1)}/10`
+              )}
             >
               <span className="font-semibold">{score.toFixed(1)}</span>
-              <span className="max-w-full truncate">{scoreBand(score)}</span>
-            </button>
+              <span className="max-w-full truncate">
+                {categoryClaims.length > 1
+                  ? `${categoryClaims.length} claims`
+                  : shortOutcome(claim.outcome)}
+              </span>
+              <span className="max-w-full truncate text-[11px] opacity-80">
+                raw {rawScore.toFixed(1)} x {confidenceScore}%
+              </span>
+            </a>
           </td>
         );
       })}
@@ -1353,236 +2401,109 @@ function EvidenceMapRow({
   );
 }
 
-function ScorePanel({
-  australiaStatus,
-  claim,
-  intervention
-}: {
-  australiaStatus?: AustraliaRegulatoryStatus;
-  claim: Claim;
-  intervention?: Intervention;
-}) {
-  const chartRef = useRef<HTMLDivElement>(null);
-  const [chartReady, setChartReady] = useState(false);
-  const [chartWidth, setChartWidth] = useState(0);
-  const scoreRows = getClaimScoreRows(claim);
-  const composite = compositeScore(claim.scores);
+function claimsForGoalCategory(
+  claims: Claim[],
+  interventionId: string,
+  categoryId: SupplementGoalCategoryId
+) {
+  return claims.filter(
+    (claim) =>
+      claim.interventionId === interventionId &&
+      supplementGoalCategoryForOutcome(claim.outcome).id === categoryId
+  );
+}
 
-  useEffect(() => {
-    setChartReady(true);
-  }, []);
-
-  useEffect(() => {
-    const node = chartRef.current;
-
-    if (!node) {
-      return;
+function bestClaimForGoalCategory(
+  claims: Claim[],
+  confidenceQueueItemsByClaimId: Map<string, EvidenceCoverageHumanReviewQueueItem>
+) {
+  return claims.reduce<Claim | undefined>((best, claim) => {
+    if (!best) {
+      return claim;
     }
 
-    const updateWidth = () => {
-      setChartWidth(Math.max(0, Math.floor(node.getBoundingClientRect().width)));
-    };
-
-    updateWidth();
-
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(node);
-
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Active evidence card
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-ink">{intervention?.name}</h2>
-          {intervention ? (
-            <a
-              className="mt-2 inline-flex rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-signal hover:border-signal"
-              href={`/interventions/${intervention.slug}`}
-            >
-              Intervention detail
-            </a>
-          ) : null}
-          <p className="mt-1 text-sm text-slate-600">{claim.claimText}</p>
-        </div>
-        <div className="rounded-md border border-line bg-mist px-3 py-2 text-right">
-          <p className="inline-flex items-center justify-end gap-1 text-xs text-slate-600">
-            {compositeLabel(claim)}
-            <ScoreExplainer explanationKind="composite" value={`${composite.toFixed(1)}/10`} />
-          </p>
-          <p className="text-2xl font-semibold text-ink">{composite.toFixed(1)}</p>
-        </div>
-      </div>
-      <p className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
-        {compositeScoreFormula} The weighting is partly heuristic, so scores are review aids rather
-        than medical advice.
-      </p>
-      <NonProofBox claim={claim} intervention={intervention} />
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", labelTone(claim.finalLabel))}>
-          {classificationLabel(claim)}: {claim.finalLabel}
-        </span>
-        <ReviewStatusBadge status={claim.reviewStatus} />
-      </div>
-
-      <div ref={chartRef} className="mt-4 h-64">
-        {chartReady && chartWidth > 0 ? (
-            <BarChart
-              data={scoreRows}
-              height={250}
-              layout="vertical"
-              margin={{ left: 8, right: 16, top: 8, bottom: 8 }}
-              width={chartWidth}
-            >
-              <CartesianGrid stroke="#e2e8f0" horizontal={false} />
-              <XAxis type="number" domain={[0, 10]} hide />
-              <YAxis
-                dataKey="label"
-                type="category"
-                width={92}
-                tick={{ fill: "#475569", fontSize: 12 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                cursor={{ fill: "rgba(29, 78, 216, 0.08)" }}
-                content={<ScoreBarTooltip />}
-              />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]} isAnimationActive={false}>
-                {scoreRows.map((row, index) => (
-                  <Cell key={row.label} fill={scoreColors[index % scoreColors.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-        ) : (
-          <div className="grid h-full content-center gap-3">
-            {scoreRows.map((row, index) => (
-              <div key={row.label} className="grid grid-cols-[92px_1fr_34px] items-center gap-2 text-xs">
-                <span className="inline-flex items-center gap-1 text-slate-600">
-                  {row.label}
-                  <ScoreExplainer
-                    explanationKind={scoreExplanationKindForLabel(row.label)}
-                    value={`${row.value}/10`}
-                  />
-                </span>
-                <span className="h-3 overflow-hidden rounded-full bg-slate-100">
-                  <span
-                    className="block h-full rounded-full"
-                    style={{
-                      width: `${row.value * 10}%`,
-                      backgroundColor: scoreColors[index % scoreColors.length]
-                    }}
-                  />
-                </span>
-                <span className="text-right font-semibold text-slate-700">{row.value}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <dl className="grid gap-2 text-sm">
-        <DetailRow label="Population" value={claim.populationStudied} />
-        <AustraliaRegulatoryDetail status={australiaStatus} />
-        <DetailRow label="Dose/form" value={claim.doseFormStudied} />
-        <DetailRow label="Safety" value={claim.safetyNotes} />
-        <DetailRow label="Score mover" value={claim.whatWouldChangeScore} />
-      </dl>
-    </section>
-  );
+    return claimConfidenceWeightedScore(claim, confidenceQueueItemsByClaimId) >
+      claimConfidenceWeightedScore(best, confidenceQueueItemsByClaimId)
+      ? claim
+      : best;
+  }, undefined);
 }
 
-function ScoreBarTooltip({
-  active,
-  payload
-}: {
-  active?: boolean;
-  payload?: Array<{
-    payload?: {
-      label?: string;
-      value?: number;
-    };
-  }>;
-}) {
-  const row = payload?.[0]?.payload;
-
-  if (!active || !row?.label || typeof row.value !== "number") {
-    return null;
-  }
-
-  const explanation = scoreExplanations[scoreExplanationKindForLabel(row.label)];
-
-  return (
-    <div className="max-w-xs rounded-md border border-line bg-white p-3 text-xs leading-5 text-slate-700 shadow-panel">
-      <p className="font-semibold text-ink">{row.label}</p>
-      <p className="mt-1 font-semibold text-signal">{row.value}/10</p>
-      <p className="mt-1">{explanation.detail}</p>
-    </div>
+function bestGoalCategoryScore(
+  claims: Claim[],
+  interventionId: string,
+  confidenceQueueItemsByClaimId: Map<string, EvidenceCoverageHumanReviewQueueItem>,
+  categoryId: SupplementGoalCategoryId
+) {
+  const bestClaim = bestClaimForGoalCategory(
+    claimsForGoalCategory(claims, interventionId, categoryId),
+    confidenceQueueItemsByClaimId
   );
+
+  return bestClaim
+    ? claimConfidenceWeightedScore(bestClaim, confidenceQueueItemsByClaimId)
+    : null;
 }
 
-function AustraliaRegulatoryDetail({
-  status
-}: {
-  status?: AustraliaRegulatoryStatus;
-}) {
-  if (!status) {
-    return (
-      <DetailRow
-        label="AU/TGA"
-        value="Australian regulatory status has not been captured for this intervention yet."
-      />
+function sortInterventionsByGoalCategory(
+  interventions: Intervention[],
+  claims: Claim[],
+  confidenceQueueItemsByClaimId: Map<string, EvidenceCoverageHumanReviewQueueItem>,
+  categoryId: SupplementGoalCategoryId
+) {
+  return [...interventions].sort((first, second) => {
+    const firstScore = bestGoalCategoryScore(
+      claims,
+      first.id,
+      confidenceQueueItemsByClaimId,
+      categoryId
     );
-  }
+    const secondScore = bestGoalCategoryScore(
+      claims,
+      second.id,
+      confidenceQueueItemsByClaimId,
+      categoryId
+    );
 
+    if (firstScore === null && secondScore === null) {
+      return first.name.localeCompare(second.name);
+    }
+
+    if (firstScore === null) {
+      return 1;
+    }
+
+    if (secondScore === null) {
+      return -1;
+    }
+
+    if (secondScore !== firstScore) {
+      return secondScore - firstScore;
+    }
+
+    return first.name.localeCompare(second.name);
+  });
+}
+
+function claimAiConfidenceScore(
+  claim: Claim,
+  confidenceQueueItemsByClaimId: Map<string, EvidenceCoverageHumanReviewQueueItem>
+) {
+  return confidenceQueueItemsByClaimId.get(claim.id)?.aiConfidenceScore ?? 100;
+}
+
+function claimConfidenceWeightedScore(
+  claim: Claim,
+  confidenceQueueItemsByClaimId: Map<string, EvidenceCoverageHumanReviewQueueItem>
+) {
   return (
-    <div className="grid gap-2 rounded-md border border-line bg-mist p-3 sm:grid-cols-[120px_1fr]">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-600">AU/TGA</dt>
-      <dd className="text-sm text-slate-700">
-        <span
-          className={cn(
-            "mb-2 inline-flex rounded-md border px-2 py-1 text-xs font-semibold",
-            australiaRegulatoryTone(status.kind)
-          )}
-        >
-          {status.kind}
-        </span>
-        <p className="leading-6">{status.status}</p>
-        <p className="mt-1 leading-6 text-slate-600">{status.supplySummary}</p>
-        <details className="mt-2">
-          <summary className="cursor-pointer text-xs font-semibold text-signal">
-            Research detail
-          </summary>
-          <p className="mt-2 leading-6 text-slate-600">
-            {australiaRegulatoryKindDescription(status.kind)}
-          </p>
-          <p className="mt-2 leading-6 text-slate-600">{status.evidenceRequirement}</p>
-          <a
-            href={status.sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
-          >
-            TGA source <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-          </a>
-        </details>
-      </dd>
-    </div>
+    confidenceQueueItemsByClaimId.get(claim.id)?.confidenceWeightedScore ??
+    compositeScore(claim.scores)
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid gap-1 rounded-md border border-line bg-mist p-3 sm:grid-cols-[120px_1fr]">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-600">{label}</dt>
-      <dd className="text-sm text-slate-700">{value}</dd>
-    </div>
-  );
+function interventionDetailHref(intervention: Intervention) {
+  return `/interventions/${intervention.slug}`;
 }
 
 function ClaimTable({
@@ -1594,7 +2515,9 @@ function ClaimTable({
   activeClaimId: string;
   onSelectClaim: (claimId: string) => void;
 }) {
-  const [sorting, setSorting] = useState<SortingState>([{ id: "composite", desc: true }]);
+  const [sorting, setSorting] = useState<SortingState>([
+    { id: "confidenceWeightedComposite", desc: true }
+  ]);
 
   const columns = useMemo<ColumnDef<ClaimTableRow>[]>(
     () => [
@@ -1625,41 +2548,48 @@ function ClaimTable({
         )
       },
       {
-        accessorKey: "composite",
-        header: "Score",
+        accessorKey: "confidenceWeightedComposite",
+        header: () => (
+          <ScoreHeaderExplainer explanationKind="confidenceWeightedComposite">
+            Weighted
+          </ScoreHeaderExplainer>
+        ),
         cell: ({ row }) => (
-          <ScoreWithExplainer
-            explanationKind="composite"
-            value={`${row.original.composite.toFixed(1)}/10`}
-          >
-            {row.original.composite.toFixed(1)}
-          </ScoreWithExplainer>
+          <div className="min-w-[5.5rem]">
+            <span>{row.original.confidenceWeightedComposite.toFixed(1)}</span>
+            <p className="mt-1 text-[11px] leading-4 text-slate-500">
+              raw {row.original.composite.toFixed(1)} x {row.original.aiConfidenceScore}%
+            </p>
+          </div>
         )
+      },
+      {
+        accessorKey: "composite",
+        header: () => (
+          <ScoreHeaderExplainer explanationKind="composite">Raw score</ScoreHeaderExplainer>
+        ),
+        cell: ({ row }) => row.original.composite.toFixed(1)
       },
       {
         accessorKey: "safety",
-        header: "Safety",
-        cell: ({ row }) => (
-          <ScoreWithExplainer explanationKind="safety" value={`${row.original.safety}/10`}>
-            {row.original.safety}
-          </ScoreWithExplainer>
-        )
+        header: () => <ScoreHeaderExplainer explanationKind="safety">Safety</ScoreHeaderExplainer>,
+        cell: ({ row }) => row.original.safety
       },
       {
         accessorKey: "regulatoryRisk",
-        header: "Reg risk",
-        cell: ({ row }) => (
-          <ScoreWithExplainer
-            explanationKind="regulatoryRisk"
-            value={`${row.original.regulatoryRisk}/10`}
-          >
-            {row.original.regulatoryRisk}
-          </ScoreWithExplainer>
-        )
+        header: () => (
+          <ScoreHeaderExplainer explanationKind="regulatoryRisk">Reg risk</ScoreHeaderExplainer>
+        ),
+        cell: ({ row }) => row.original.regulatoryRisk
       },
       {
         accessorKey: "confidence",
         header: "Confidence"
+      },
+      {
+        accessorKey: "aiConfidenceScore",
+        header: "AI conf",
+        cell: ({ row }) => `${row.original.aiConfidenceScore}/100`
       }
     ],
     []
@@ -1678,8 +2608,14 @@ function ClaimTable({
     <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-ink">Claim Scores</h2>
-          <p className="mt-1 text-sm text-slate-600">Each row is an intervention-outcome pair.</p>
+          <PanelExplainer
+            explanation={panelExplanations["claim-scores"]}
+            title="Claim Scores"
+          />
+          <p className="mt-1 text-sm text-slate-600">
+            Each row is an intervention-outcome pair. Weighted score is raw composite multiplied by
+            AI confidence, so low-confidence packets still count with lower impact.
+          </p>
         </div>
       </div>
       {rows.length > 0 ? (
@@ -1741,8 +2677,8 @@ function ClaimTable({
         </div>
       ) : (
         <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-          No local scored claims match the current filters. Clear the search or category filter to
-          return to the full local evidence set.
+          No local scored claims match the current filters. Clear the active filters (search,
+          category, safety, region, severity, or AU/TGA) to return to the full local evidence set.
         </p>
       )}
     </section>
@@ -1750,43 +2686,307 @@ function ClaimTable({
 }
 
 function SafetyPanel({
+  australiaRegulatoryStatuses,
   interventionsById,
   safetyAlerts
 }: {
+  australiaRegulatoryStatuses: AustraliaRegulatoryStatus[];
   interventionsById: Map<string, Intervention>;
   safetyAlerts: SafetyAlert[];
 }) {
+  const domainSummaries = summarizeSafetyAlertsByDomain(safetyAlerts);
+  const domainCoverage = summarizeSafetyDomainCoverage(safetyAlerts);
+  const regionalCoverage = summarizeRegionalSafetyRegulatoryCoverage({
+    australiaRegulatoryStatuses,
+    safetyAlerts
+  });
+  const regionalReviewGapsByRegion = new Map(
+    summarizeRegionalSafetyRegulatoryReviewGaps({
+      australiaRegulatoryStatuses,
+      safetyAlerts
+    }).map((gap) => [gap.region, gap])
+  );
+  const regionalDomainCoverage = summarizeRegionalSafetyDomainCoverage(safetyAlerts);
+
   return (
     <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
-      <h2 className="text-base font-semibold text-ink">Safety Center</h2>
-      <div className="mt-4 grid gap-3">
-        {safetyAlerts.length > 0 ? (
-          safetyAlerts.map((alert) => (
-            <article key={alert.id} className="rounded-lg border border-line bg-white p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-semibold text-ink">
-                    {interventionsById.get(alert.interventionId)?.name}
-                  </h3>
-                  <p className="mt-1 text-xs text-slate-600">
-                    {alert.source} - {alert.region} - {alert.date}
-                  </p>
-                </div>
-                <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", severityTone(alert.severity))}>
-                  {alert.severity}
+      <PanelExplainer
+        explanation={panelExplanations["safety-center"]}
+        title="Safety Center"
+      />
+      <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">Safety coverage snapshot</h3>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Reviewed local alerts by domain; gaps mean no reviewed alert is currently captured.
+            </p>
+          </div>
+          <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+            {safetyAlerts.length} alert{safetyAlerts.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {domainCoverage.map((coverage) => (
+            <div key={coverage.id} className="rounded-md border border-line bg-white p-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-ink">{coverage.label}</span>
+                <span
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-xs font-semibold",
+                    coverage.status === "reviewed-alerts-captured"
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-amber-200 bg-amber-50 text-amber-700"
+                  )}
+                >
+                  {coverage.statusLabel}
                 </span>
               </div>
-              <p className="mt-3 text-sm leading-6 text-slate-700">{alert.summary}</p>
-              <a
-                href={alert.url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
-              >
-                Source <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-              </a>
-            </article>
-          ))
+              <p className="mt-2 text-xs leading-5 text-slate-600">
+                {coverage.alertCount > 0
+                  ? `${coverage.alertCount} reviewed alert${
+                      coverage.alertCount === 1 ? "" : "s"
+                    } across ${coverage.regions.join(", ")}.`
+                  : "No reviewed local alert is currently linked to this domain."}
+              </p>
+              {coverage.alertTypes.length > 0 ? (
+                <p className="mt-1 text-xs font-semibold text-slate-700">
+                  {coverage.alertTypes.join(", ")}
+                </p>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      </div>
+      {regionalCoverage.length > 0 ? (
+        <div className="mt-4 rounded-lg border border-line bg-white p-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold text-ink">Regional review scope</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-600">
+                Captured local safety and AU/TGA records only; absence is not clearance.
+              </p>
+            </div>
+            <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-700">
+              {regionalCoverage.length} region{regionalCoverage.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2">
+            {regionalCoverage.map((coverage) => {
+              const reviewGap = regionalReviewGapsByRegion.get(coverage.region);
+
+              return (
+                <div key={coverage.region} className="rounded-md border border-line bg-mist p-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-semibold text-ink">{coverage.region}</span>
+                    <p className="mt-1 text-xs text-slate-600">{coverage.reviewScopeLabel}</p>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {reviewGap ? (
+                      <span
+                        className={cn(
+                          "rounded-md border px-2 py-1 text-xs font-semibold",
+                          regionalReviewPriorityTone(reviewGap.reviewPriority)
+                        )}
+                      >
+                        {reviewGap.reviewPriorityLabel}
+                      </span>
+                    ) : null}
+                    <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+                      {coverage.scopeLabel}
+                    </span>
+                  </div>
+                </div>
+                <p
+                  className={`mt-2 text-xs leading-5 ${
+                    coverage.status === "not-yet-captured"
+                      ? "text-slate-500"
+                      : "text-slate-600"
+                  }`}
+                >
+                  {coverage.statusLabel}
+                  {coverage.status === "not-yet-captured"
+                    ? ": no reviewed local safety or AU/TGA record is currently linked to this review region."
+                    : "."}
+                </p>
+                {reviewGap ? (
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    {reviewGap.nextAction}
+                  </p>
+                ) : null}
+                <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
+                  <MiniStat
+                    label="Safety alerts"
+                    value={`${coverage.safetyAlertCount}${
+                      coverage.safetyAlertTypes.length > 0
+                        ? `: ${coverage.safetyAlertTypes.join(", ")}`
+                      : ""
+                    }`}
+                  />
+                  <MiniStat
+                    label="Highest safety severity"
+                    value={coverage.highestSafetySeverityLabel}
+                  />
+                  <MiniStat
+                    label="AU/TGA records"
+                    value={`${coverage.australiaRegulatoryStatusCount}${
+                      coverage.australiaRegulatoryKinds.length > 0
+                        ? `: ${coverage.australiaRegulatoryKinds.join(", ")}`
+                      : ""
+                    }`}
+                  />
+                  {reviewGap ? (
+                    <MiniStat
+                      label="Review gaps"
+                      value={
+                        reviewGap.missingSafetyDomainLabels.length > 0
+                          ? reviewGap.missingSafetyDomainLabels.join(", ")
+                          : "No missing safety domains in current model"
+                      }
+                    />
+                  ) : null}
+                </div>
+              </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      {regionalDomainCoverage.length > 0 ? (
+        <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-semibold text-ink">Regional safety-domain matrix</h3>
+              <p className="mt-1 text-xs leading-5 text-slate-600">
+                Reviewed safety-domain alerts by configured region; empty cells are review gaps,
+                not evidence of safety or clearance.
+              </p>
+            </div>
+            <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+              {regionalDomainCoverage.length} review scopes
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2">
+            {regionalDomainCoverage.map((coverage) => (
+              <div key={coverage.region} className="rounded-md border border-line bg-white p-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <span className="text-xs font-semibold text-ink">{coverage.region}</span>
+                    <p className="mt-1 text-xs text-slate-600">{coverage.reviewScopeLabel}</p>
+                  </div>
+                  <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-700">
+                    {coverage.reviewedDomainCount}/{coverage.totalDomainCount} domains captured
+                  </span>
+                </div>
+                <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                  {coverage.domains.map((domain) => (
+                    <div
+                      key={domain.id}
+                      className={cn(
+                        "rounded-md border px-2 py-2 text-xs",
+                        domain.status === "reviewed-alerts-captured"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                          : "border-line bg-mist text-slate-600"
+                      )}
+                    >
+                      <p className="font-semibold text-ink">{domain.label}</p>
+                      <p className="mt-1 leading-5">{domain.statusLabel}</p>
+                      <p className="mt-1 leading-5">
+                        {domain.alertCount > 0
+                          ? `${domain.alertCount} alert${
+                              domain.alertCount === 1 ? "" : "s"
+                            }; highest severity ${domain.highestSeverityLabel}.`
+                          : "No reviewed local alert captured for this domain in this region."}
+                      </p>
+                      {domain.alertTypes.length > 0 ? (
+                        <p className="mt-1 font-semibold text-slate-700">
+                          {domain.alertTypes.join(", ")}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {domainSummaries.length > 0 ? (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {domainSummaries.map((summary) => (
+            <div key={summary.id} className="rounded-lg border border-line bg-mist p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-ink">{summary.label}</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    {summary.alertCount} alert{summary.alertCount === 1 ? "" : "s"} across{" "}
+                    {summary.regions.join(", ")}
+                  </p>
+                </div>
+                <span
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-xs font-semibold",
+                    severityTone(summary.highestSeverity)
+                  )}
+                >
+                  {summary.highestSeverity}
+                </span>
+              </div>
+              <p className="mt-2 text-xs leading-5 text-slate-600">{summary.description}</p>
+              <p className="mt-2 text-xs font-semibold text-slate-700">
+                {summary.alertTypes.join(", ")}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="mt-4 grid gap-3">
+        {safetyAlerts.length > 0 ? (
+          safetyAlerts.map((alert) => {
+            const domain = safetyDomainForAlertType(alert.alertType);
+
+            return (
+              <article key={alert.id} className="rounded-lg border border-line bg-white p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-ink">
+                      {interventionsById.get(alert.interventionId)?.name}
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {alert.source} - {formatSafetyAlertRegionLabel(alert.region)} -{" "}
+                      {alert.date}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-700">
+                      {domain.label}
+                    </span>
+                    <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-700">
+                      {alert.alertType}
+                    </span>
+                    <span
+                      className={cn(
+                        "rounded-md border px-2 py-1 text-xs font-semibold",
+                        severityTone(alert.severity)
+                      )}
+                    >
+                      {alert.severity}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-slate-700">{alert.summary}</p>
+                <a
+                  href={alert.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
+                >
+                  Source <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                </a>
+              </article>
+            );
+          })
         ) : (
           <p className="rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
             No local safety alerts were captured for this dataset. Check current regulator and
@@ -1815,7 +3015,10 @@ function EvidenceCards({
 }) {
   return (
     <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
-      <h2 className="text-base font-semibold text-ink">Evidence Cards</h2>
+      <PanelExplainer
+        explanation={panelExplanations["evidence-cards"]}
+        title="Evidence Cards"
+      />
       <div className="mt-4 grid gap-3">
         {visibleClaims.length > 0 ? (
           visibleClaims.map((claim) => {
@@ -1922,8 +3125,8 @@ function EvidenceCards({
           })
         ) : (
           <p className="rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-            No evidence cards match the current filters. Clear the search or category filter to
-            review the full local evidence set.
+            No evidence cards match the current filters. Clear the active filters (search,
+            category, safety, region, severity, or AU/TGA) to review the full local evidence set.
           </p>
         )}
       </div>
@@ -1932,29 +3135,248 @@ function EvidenceCards({
 }
 
 function LabelAnalyzer({
+  australiaRegulatoryStatuses,
+  claims,
+  interventions,
   labelText,
   setLabelText,
   findings,
   productAustraliaVerificationById,
   productSignals
 }: {
+  australiaRegulatoryStatuses: AustraliaRegulatoryStatus[];
+  claims: Claim[];
+  interventions: Intervention[];
   labelText: string;
   setLabelText: (value: string) => void;
   findings: ReturnType<typeof analyzeLabel>;
   productAustraliaVerificationById: Map<string, ProductAustraliaRegulatoryVerification>;
   productSignals: ProductSignal[];
 }) {
+  const [productRegulatoryKind, setProductRegulatoryKind] =
+    useState<ProductRegulatoryKindFilter>(PRODUCT_REGULATORY_KIND_ALL);
+  const [productQualityFilter, setProductQualityFilter] =
+    useState<ProductQualityFilter>(PRODUCT_QUALITY_ALL);
+  const [productFormulationFilter, setProductFormulationFilter] =
+    useState<ProductFormulationFilter>(PRODUCT_FORMULATION_ALL);
+  const labelProductQualityAssessment = useMemo(
+    () => assessLabelProductQuality(labelText),
+    [labelText]
+  );
+  const parsedCertifications = useMemo(
+    () => parseLabelCertifications(labelText),
+    [labelText]
+  );
+  const parsedDoseCues = useMemo(() => parseLabelDoseCues(labelText), [labelText]);
+  const parsedIngredients = useMemo(() => parseLabelIngredients(labelText), [labelText]);
+  const parsedProductIdentifiers = useMemo(
+    () => parseLabelProductIdentifiers(labelText),
+    [labelText]
+  );
+  const parsedProductIdentifierVerifications = useMemo(
+    () =>
+      buildParsedAustraliaRegulatoryIdentifierVerifications(parsedProductIdentifiers, {
+        australiaRegulatoryStatuses,
+        productSignals
+      }),
+    [australiaRegulatoryStatuses, parsedProductIdentifiers, productSignals]
+  );
+  const productLabelVerification = useMemo(
+    () =>
+      buildProductLabelVerificationSummary({
+        labelText,
+        parsedProductIdentifierVerifications,
+        productAustraliaVerificationById,
+        productSignals
+      }),
+    [
+      labelText,
+      parsedProductIdentifierVerifications,
+      productAustraliaVerificationById,
+      productSignals
+    ]
+  );
+  const ingredientEvidenceMappings = useMemo(
+    () => buildIngredientEvidenceMappings(parsedIngredients, interventions, claims),
+    [claims, interventions, parsedIngredients]
+  );
+  const productRegulatoryKindOptions = useMemo(
+    () => [
+      PRODUCT_REGULATORY_KIND_ALL,
+      ...uniqueSorted(
+        productSignals.map((product) =>
+          productRegulatoryKindFor(product, productAustraliaVerificationById)
+        )
+      )
+    ],
+    [productAustraliaVerificationById, productSignals]
+  );
+  const productFormulationEvidenceById = useMemo(
+    () =>
+      new Map(
+        buildProductFormulationEvidenceMappings({
+          claims,
+          interventions,
+          productAustraliaVerificationById,
+          productSignals
+        }).map((mapping) => [mapping.productId, mapping])
+      ),
+    [claims, interventions, productAustraliaVerificationById, productSignals]
+  );
+  const productSignalsMatchingBaseFilters = useMemo(
+    () =>
+      productSignals.filter((product) => {
+        const regulatoryMatch =
+          productRegulatoryKind === PRODUCT_REGULATORY_KIND_ALL ||
+          productRegulatoryKindFor(product, productAustraliaVerificationById) ===
+            productRegulatoryKind;
+        const qualityMatch =
+          productQualityFilter === PRODUCT_QUALITY_ALL ||
+          productQualitySignalFor(product) === productQualityFilter;
+
+        return regulatoryMatch && qualityMatch;
+      }),
+    [
+      productAustraliaVerificationById,
+      productQualityFilter,
+      productRegulatoryKind,
+      productSignals
+    ]
+  );
+  const productFormulationFilterCounts = useMemo(
+    () =>
+      new Map(
+        productFormulationFilterOptions.map((filter) => [
+          filter,
+          productSignalsMatchingBaseFilters.filter((product) => {
+            const mapping = productFormulationEvidenceById.get(product.id);
+            return mapping ? productFormulationFilterMatches(mapping, filter) : false;
+          }).length
+        ])
+      ),
+    [productFormulationEvidenceById, productSignalsMatchingBaseFilters]
+  );
+  const filteredProductSignals = useMemo(
+    () =>
+      productSignalsMatchingBaseFilters.filter((product) => {
+        const formulationMapping = productFormulationEvidenceById.get(product.id);
+        const formulationMatch = formulationMapping
+          ? productFormulationFilterMatches(formulationMapping, productFormulationFilter)
+          : productFormulationFilter === PRODUCT_FORMULATION_ALL;
+
+        return formulationMatch;
+      }),
+    [
+      productFormulationEvidenceById,
+      productFormulationFilter,
+      productSignalsMatchingBaseFilters
+    ]
+  );
+  const visibleProductFormulationMappings = useMemo(
+    () =>
+      filteredProductSignals.flatMap((product) => {
+        const mapping = productFormulationEvidenceById.get(product.id);
+        return mapping ? [mapping] : [];
+      }),
+    [filteredProductSignals, productFormulationEvidenceById]
+  );
+  const productFormulationCoverage = useMemo(
+    () => ({
+      fullyMappedCount: visibleProductFormulationMappings.filter(
+        (mapping) => mapping.matchedIngredientCount > 0 && mapping.unmatchedIngredients.length === 0
+      ).length,
+      ingredientLevelClaimCount: visibleProductFormulationMappings.reduce(
+        (count, mapping) => count + mapping.ingredientLevelClaimCount,
+        0
+      ),
+      productSpecificEvidenceCount: visibleProductFormulationMappings.reduce(
+        (count, mapping) => count + mapping.productSpecificEvidenceCount,
+        0
+      ),
+      withUnmatchedCount: visibleProductFormulationMappings.filter(
+        (mapping) => mapping.unmatchedIngredients.length > 0
+      ).length
+    }),
+    [visibleProductFormulationMappings]
+  );
+
   return (
     <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-ink">Product Label Analyzer</h2>
+          <PanelExplainer
+            explanation={panelExplanations["product-label-analyzer"]}
+            title="Product Label Analyzer"
+          />
           <p className="mt-1 text-sm text-slate-600">
             Ingredient text is checked for quality and safety signals. Demo profiles are not
             verified product recommendations.
           </p>
         </div>
-        <ClipboardCheck aria-hidden="true" className="h-5 w-5 text-spruce" />
+        <div className="grid min-w-0 gap-2 sm:grid-cols-3">
+          <label className="relative" htmlFor="product-au-tga-filter">
+            <ShieldCheck
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+            />
+            <span className="sr-only">Filter product AU/TGA context</span>
+            <select
+              id="product-au-tga-filter"
+              value={productRegulatoryKind}
+              onChange={(event) =>
+                setProductRegulatoryKind(event.target.value as ProductRegulatoryKindFilter)
+              }
+              className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+            >
+              {productRegulatoryKindOptions.map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+          </label>
+          <label className="relative" htmlFor="product-quality-filter">
+            <ClipboardCheck
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+            />
+            <span className="sr-only">Filter product quality signal</span>
+            <select
+              id="product-quality-filter"
+              value={productQualityFilter}
+              onChange={(event) =>
+                setProductQualityFilter(event.target.value as ProductQualityFilter)
+              }
+              className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+            >
+              {productQualityFilterOptions.map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+          </label>
+          <label className="relative" htmlFor="product-formulation-filter">
+            <Filter
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+            />
+            <span className="sr-only">Filter product formulation evidence</span>
+            <select
+              id="product-formulation-filter"
+              value={productFormulationFilter}
+              onChange={(event) =>
+                setProductFormulationFilter(event.target.value as ProductFormulationFilter)
+              }
+              className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+            >
+              {productFormulationFilterOptions.map((item) => (
+                <option key={item} value={item}>
+                  {formatProductFormulationFilterOptionLabel(
+                    item,
+                    productFormulationFilterCounts.get(item) ?? 0
+                  )}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </div>
       <label className="sr-only" htmlFor="product-label-text">
         Product label text
@@ -2003,69 +3425,615 @@ function LabelAnalyzer({
           ))
         )}
       </div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        {productSignals.map((product) => (
-          <div key={product.id} className="rounded-lg border border-line bg-mist p-3">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-ink">{product.name}</h3>
-                <p className="mt-1 text-xs text-slate-600">{product.brand}</p>
-              </div>
-              {isDemoProductSignal(product) ? (
-                <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
-                  Demo only - not a verified product recommendation
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2 text-xs">
-              <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-700">
-                Market context: {formatProductRegionLabel(product.region)}
-              </span>
-              {product.proprietaryBlend ? (
-                <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 font-semibold text-amberline">
-                  Proprietary blend
-                </span>
-              ) : null}
-            </div>
-            <ProductAustraliaRegulatoryChip
-              verification={productAustraliaVerificationById.get(product.id)}
-            />
-            <p className="mt-3 text-xs leading-5 text-slate-600">
-              {product.certifications.length > 0
-                ? `Certifications: ${product.certifications.join(", ")}`
-                : "No product certifications captured."}
-            </p>
-            <p className="mt-2 rounded-md border border-line bg-white px-2 py-1 text-xs leading-5 text-slate-600">
-              Product quality, efficacy evidence, and AU/TGA/ARTG status are separate. Certification
-              does not imply medical proof or Australian authorization.
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-              <span className="rounded-md bg-white px-2 py-1 text-slate-700">
-                <ScoreWithExplainer
-                  explanationKind="productQuality"
-                  value={`${product.qualityScore}/10`}
-                >
-                  Product quality {product.qualityScore}/10
-                </ScoreWithExplainer>
-              </span>
-              <span className="rounded-md bg-white px-2 py-1 text-slate-700">
-                <ScoreWithExplainer
-                  explanationKind="claimRisk"
-                  value={`${product.labelClaimRiskScore}/10`}
-                >
-                  Claim risk {product.labelClaimRiskScore}/10
-                </ScoreWithExplainer>
-              </span>
-            </div>
+      <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink">Parsed label quality score</h3>
+          <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+            {labelProductQualityAssessment.score}/10
+          </span>
+        </div>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Signal: {labelProductQualityAssessment.signal}
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <div className="rounded-md border border-line bg-white px-2 py-2 text-xs text-slate-600">
+            <p className="font-semibold text-ink">Positive cues</p>
+            <ul className="mt-2 grid gap-1">
+              {labelProductQualityAssessment.positiveSignals.map((signal) => (
+                <li key={signal}>{signal}</li>
+              ))}
+            </ul>
           </div>
-        ))}
+          <div className="rounded-md border border-line bg-white px-2 py-2 text-xs text-slate-600">
+            <p className="font-semibold text-ink">Review flags</p>
+            {labelProductQualityAssessment.reviewFlags.length > 0 ? (
+              <ul className="mt-2 grid gap-1">
+                {labelProductQualityAssessment.reviewFlags.map((flag) => (
+                  <li key={flag}>{flag}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2">No local product-quality review flags from parsed label cues.</p>
+            )}
+          </div>
+        </div>
+        <p className="mt-3 text-xs leading-5 text-slate-600">
+          {labelProductQualityAssessment.caveats.join(" ")}
+        </p>
+      </div>
+      <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink">Parsed label verification status</h3>
+          <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+            {productLabelVerification.statusLabel}
+          </span>
+        </div>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          {productLabelVerification.detail}
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          <div className="rounded-md border border-line bg-white px-2 py-2 text-xs text-slate-600">
+            <p className="font-semibold text-ink">Verification evidence</p>
+            <ul className="mt-2 grid gap-1">
+              {productLabelVerification.evidence.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-md border border-line bg-white px-2 py-2 text-xs text-slate-600">
+            <p className="font-semibold text-ink">Next verification step</p>
+            <p className="mt-2 leading-5">{productLabelVerification.nextAction}</p>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink">Parsed certifications</h3>
+          <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+            {parsedCertifications.length} captured
+          </span>
+        </div>
+        {parsedCertifications.length > 0 ? (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {parsedCertifications.map((certification) => (
+              <div
+                key={certification.id}
+                className="rounded-md border border-line bg-white px-2 py-2 text-xs text-slate-600"
+              >
+                <p className="font-semibold text-ink">{certification.label}</p>
+                <p className="mt-1">Signal: {certification.signal}</p>
+                <p className="mt-1 leading-5">{certification.note}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            No recognized third-party certification was parsed. Product quality remains separate
+            from efficacy evidence and AU/TGA status.
+          </p>
+        )}
+      </div>
+      <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink">Parsed ingredients</h3>
+          <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+            {parsedIngredients.length} captured
+          </span>
+        </div>
+        {parsedIngredients.length > 0 ? (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {parsedIngredients.map((ingredient) => (
+              <div
+                key={`${ingredient.normalizedName}-${ingredient.amount ?? "unknown"}`}
+                className="rounded-md border border-line bg-white px-2 py-2 text-xs text-slate-600"
+              >
+                <p className="font-semibold text-ink">{ingredient.displayName}</p>
+                <p className="mt-1">Normalized: {ingredient.normalizedName}</p>
+                {ingredient.blendContext ? (
+                  <p className="mt-1">Context: {ingredient.blendContext}</p>
+                ) : null}
+                <p className="mt-1">
+                  {ingredient.amount && ingredient.unit
+                    ? `Captured amount: ${ingredient.amount} ${
+                        ingredient.amountUnitLabel ?? ingredient.unit
+                      }`
+                    : "Amount not captured"}
+                </p>
+                {ingredient.amountMg !== undefined ? (
+                  <p className="mt-1">
+                    Metric normalization: {formatAmountMg(ingredient.amountMg)}{" "}
+                    {ingredient.amountMetricUnit ?? "mg"}
+                  </p>
+                ) : null}
+                {ingredient.amountConversion ? (
+                  <p className="mt-1">
+                    Converted amount: {ingredient.amountConversion.basis}{" "}
+                    {ingredient.amountConversion.caveat}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            No ingredient amounts were parsed from the current label text.
+          </p>
+        )}
+      </div>
+      <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink">Parsed dose directions</h3>
+          <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+            {parsedDoseCues.length} captured
+          </span>
+        </div>
+        {parsedDoseCues.length > 0 ? (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {parsedDoseCues.map((cue) => (
+              <div
+                key={cue.id}
+                className="rounded-md border border-line bg-white px-2 py-2 text-xs text-slate-600"
+              >
+                <p className="font-semibold text-ink">{cue.label}</p>
+                <p className="mt-1">Cue type: {formatDoseCueKind(cue.kind)}</p>
+                {cue.count !== undefined ? (
+                  <p className="mt-1">
+                    Count: {cue.count}
+                    {cue.unit ? ` ${cue.unit}` : ""}
+                  </p>
+                ) : null}
+                {cue.dailyUnitCount !== undefined ? (
+                  <p className="mt-1">
+                    Potential daily units: {cue.dailyUnitCount}
+                    {cue.unit ? ` ${cue.unit}` : ""}
+                  </p>
+                ) : null}
+                <p className="mt-1 leading-5">{cue.note}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            No serving-size, per-unit, or daily-use direction cue was parsed. Amount review still
+            depends on the exact product label basis.
+          </p>
+        )}
+      </div>
+      <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink">Captured product identifiers</h3>
+          <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+            {parsedProductIdentifiers.length} captured
+          </span>
+        </div>
+        {parsedProductIdentifierVerifications.length > 0 ? (
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {parsedProductIdentifierVerifications.map((verification) => (
+              <div
+                key={`${verification.label}-${verification.status?.id ?? verification.matchState}`}
+                className="rounded-md border border-line bg-white px-2 py-2 text-xs text-slate-600"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-ink">{verification.label}</p>
+                    <p className="mt-1">Kind: {verification.kind}</p>
+                  </div>
+                  <span
+                    className={cn(
+                      "rounded-md border px-2 py-1 font-semibold",
+                      parsedAustraliaIdentifierMatchTone(verification)
+                    )}
+                  >
+                    {verification.matchStateLabel}
+                  </span>
+                </div>
+                {verification.productName ? (
+                  <p className="mt-2">
+                    Local product: {verification.productName}
+                    {verification.productBrand ? ` (${verification.productBrand})` : ""}
+                  </p>
+                ) : null}
+                {verification.status ? (
+                  <p className="mt-1">
+                    Local status: {verification.status.kind} - {verification.status.status}
+                  </p>
+                ) : null}
+                <p className="mt-1">AU confidence: {verification.confidence}</p>
+                {verification.interventionStatusIds.length > 0 &&
+                verification.matchState !== "local-product-match" ? (
+                  <p className="mt-1">
+                    Intervention-level matches: {verification.interventionStatusIds.length}
+                  </p>
+                ) : null}
+                <p className="mt-1 leading-5">{verification.nextAction}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            No AUST label identifier was parsed. Product-level Australian regulatory confidence
+            still needs product-level evidence.
+          </p>
+        )}
+      </div>
+      <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink">Ingredient evidence mapping</h3>
+          <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+            {ingredientEvidenceMappings.filter((mapping) => mapping.intervention).length} matched
+          </span>
+        </div>
+        {ingredientEvidenceMappings.length > 0 ? (
+          <div className="mt-3 grid gap-2">
+            {ingredientEvidenceMappings.map((mapping) => (
+              <div
+                key={`${mapping.ingredient.normalizedName}-${mapping.intervention?.id ?? "none"}`}
+                className="rounded-md border border-line bg-white px-2 py-2 text-xs text-slate-600"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-ink">{mapping.ingredient.displayName}</p>
+                    <p className="mt-1">
+                      {mapping.intervention
+                        ? `Matched intervention: ${mapping.intervention.name}`
+                        : "No local intervention match"}
+                    </p>
+                  </div>
+                  <span className="rounded-md border border-line bg-mist px-2 py-1 font-semibold text-slate-700">
+                    {mapping.claims.length} scored {mapping.claims.length === 1 ? "claim" : "claims"}
+                  </span>
+                </div>
+                <p className="mt-2 leading-5">
+                  Ingredient-level mapping only. It does not establish product-level efficacy,
+                  product quality, dose/form match, or AU/TGA authorization.
+                </p>
+                {mapping.claims.length > 0 ? (
+                  <ul className="mt-3 grid gap-2">
+                    {mapping.claims.slice(0, 3).map((claim) => (
+                      <li key={claim.id} className="border-l-2 border-line pl-2">
+                        <p className="font-semibold text-ink">
+                          Mapped claim: {claim.outcome} - {claim.finalLabel}
+                        </p>
+                        <p className="mt-1">Review status: {reviewStatusLabel(claim.reviewStatus)}</p>
+                        <p className="mt-1">Dose/form evidence: {claim.doseFormStudied}</p>
+                        <p className="mt-1">
+                          Product amount match: not verified from label parsing alone.
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            No parsed ingredients are available for local evidence mapping.
+          </p>
+        )}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2 text-xs">
+        <span className="rounded-md border border-line bg-mist px-2 py-1 font-semibold text-slate-700">
+          Showing {filteredProductSignals.length} of {productSignals.length} product profiles
+        </span>
+        <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-600">
+          Product AU/TGA: {productRegulatoryKind}
+        </span>
+        <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-600">
+          Quality signal: {productQualityFilter}
+        </span>
+        <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-600">
+          Formulation: {productFormulationFilter}
+        </span>
+        <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-600">
+          {formatCountLabel(
+            productFormulationCoverage.fullyMappedCount,
+            "fully ingredient-mapped profile"
+          )}
+        </span>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1",
+            productFormulationCoverage.withUnmatchedCount > 0
+              ? "border-amberline/30 bg-amber-50 font-semibold text-amberline"
+              : "border-line bg-white text-slate-600"
+          )}
+        >
+          {formatCountLabel(
+            productFormulationCoverage.withUnmatchedCount,
+            "profile with unmatched ingredients"
+          )}
+        </span>
+        <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-600">
+          {formatCountLabel(
+            productFormulationCoverage.ingredientLevelClaimCount,
+            "mapped ingredient claim"
+          )}
+        </span>
+        <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-600">
+          {formatCountLabel(
+            productFormulationCoverage.productSpecificEvidenceCount,
+            "product-specific evidence row"
+          )}
+        </span>
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {filteredProductSignals.length > 0 ? (
+          filteredProductSignals.map((product) => (
+            <div key={product.id} className="rounded-lg border border-line bg-mist p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-semibold text-ink">{product.name}</h3>
+                  <p className="mt-1 text-xs text-slate-600">{product.brand}</p>
+                </div>
+                {isDemoProductSignal(product) ? (
+                  <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+                    Demo only - not a verified product recommendation
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-700">
+                  Market context: {formatProductRegionLabel(product.region)}
+                </span>
+                <span className="rounded-md border border-line bg-white px-2 py-1 font-semibold text-slate-700">
+                  {formatCountLabel(product.ingredients.length, "captured ingredient")}
+                </span>
+                {product.proprietaryBlend ? (
+                  <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 font-semibold text-amberline">
+                    Proprietary blend
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                {product.ingredients.map((ingredient) => (
+                  <span
+                    key={`${product.id}-${ingredient}`}
+                    className="rounded-md border border-line bg-white px-2 py-1 text-slate-700"
+                  >
+                    {ingredient}
+                  </span>
+                ))}
+              </div>
+              <ProductAustraliaRegulatoryChip
+                verification={productAustraliaVerificationById.get(product.id)}
+              />
+              <ProductFormulationEvidenceSummary
+                mapping={productFormulationEvidenceById.get(product.id)}
+              />
+              <p className="mt-3 text-xs leading-5 text-slate-600">
+                {product.certifications.length > 0
+                  ? `Certifications: ${product.certifications.join(", ")}`
+                  : "No product certifications captured."}
+              </p>
+              <p className="mt-2 rounded-md border border-line bg-white px-2 py-1 text-xs leading-5 text-slate-600">
+                Product quality, efficacy evidence, and AU/TGA/ARTG status are separate. Certification
+                does not imply medical proof or Australian authorization.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <span className="rounded-md bg-white px-2 py-1 text-slate-700">
+                  <ScoreWithExplainer
+                    explanationKind="productQuality"
+                    value={`${product.qualityScore}/10`}
+                  >
+                    Product quality {product.qualityScore}/10
+                  </ScoreWithExplainer>
+                </span>
+                <span className="rounded-md bg-white px-2 py-1 text-slate-700">
+                  <ScoreWithExplainer
+                    explanationKind="claimRisk"
+                    value={`${product.labelClaimRiskScore}/10`}
+                  >
+                    Claim risk {product.labelClaimRiskScore}/10
+                  </ScoreWithExplainer>
+                </span>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600 sm:col-span-2">
+            No product profiles match the selected AU/TGA, quality-signal, and formulation filters.
+          </div>
+        )}
       </div>
     </section>
   );
 }
 
+function productRegulatoryKindFor(
+  product: ProductSignal,
+  productAustraliaVerificationById: Map<string, ProductAustraliaRegulatoryVerification>
+): ProductRegulatoryKindFilter {
+  return (
+    productAustraliaVerificationById.get(product.id)?.status?.kind ??
+    PRODUCT_REGULATORY_KIND_UNCAPTURED
+  );
+}
+
+function productQualitySignalFor(product: ProductSignal): ProductQualityFilter {
+  if (product.qualityScore >= 7) {
+    return "Higher quality signal";
+  }
+
+  if (product.qualityScore <= 4) {
+    return "Needs quality review";
+  }
+
+  return "Mixed quality signal";
+}
+
+function productFormulationFilterMatches(
+  mapping: ProductFormulationEvidenceMapping,
+  filter: ProductFormulationFilter
+) {
+  switch (filter) {
+    case PRODUCT_FORMULATION_ALL:
+      return true;
+    case "Fully ingredient-mapped":
+      return mapping.matchedIngredientCount > 0 && mapping.unmatchedIngredients.length === 0;
+    case "Has unmatched ingredients":
+      return mapping.unmatchedIngredients.length > 0;
+    case "Product-specific evidence captured":
+      return mapping.productSpecificEvidenceCount > 0;
+    case "No local ingredient match":
+      return mapping.matchedIngredientCount === 0 && mapping.ingredientLevelClaimCount === 0;
+  }
+}
+
+function formatProductFormulationFilterOptionLabel(
+  filter: ProductFormulationFilter,
+  count: number
+) {
+  return `${filter} (${count})`;
+}
+
+function buildIngredientEvidenceMappings(
+  ingredients: ParsedLabelIngredient[],
+  interventions: Intervention[],
+  claims: Claim[]
+): IngredientEvidenceMapping[] {
+  const interventionByName = new Map<string, Intervention>();
+
+  interventions.forEach((intervention) => {
+    [intervention.name, ...intervention.synonyms].forEach((name) => {
+      interventionByName.set(normalizeEvidenceMappingName(name), intervention);
+    });
+  });
+
+  return ingredients.map((ingredient) => {
+    const intervention = interventionByName.get(ingredient.normalizedName);
+
+    return {
+      claims: intervention
+        ? claims.filter((claim) => claim.interventionId === intervention.id)
+        : [],
+      ingredient,
+      ...(intervention ? { intervention } : {})
+    };
+  });
+}
+
+function normalizeEvidenceMappingName(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/\bvitamin\s+d3\b/g, "vitamin d")
+    .replace(/\bcholecalciferol\b/g, "vitamin d")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatAmountMg(amountMg: number) {
+  return Number.isInteger(amountMg) ? amountMg.toLocaleString("en-US") : amountMg.toString();
+}
+
 function isDemoProductSignal(product: ProductSignal) {
   return product.brand.toLowerCase() === "demo profile";
+}
+
+function ProductFormulationEvidenceSummary({
+  mapping
+}: {
+  mapping?: ProductFormulationEvidenceMapping;
+}) {
+  if (!mapping) {
+    return null;
+  }
+
+  return (
+    <details className="mt-3 rounded-md border border-line bg-white px-3 py-2 text-xs text-slate-600">
+      <summary className="cursor-pointer font-semibold text-ink">
+        Formulation evidence map: {mapping.statusLabel}
+      </summary>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <span className="rounded-md border border-line bg-mist px-2 py-1 font-semibold text-slate-700">
+          {formatCountLabel(mapping.matchedIngredientCount, "matched ingredient")}
+        </span>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 font-semibold",
+            mapping.unmatchedIngredients.length > 0
+              ? "border-amberline/30 bg-amber-50 text-amberline"
+              : "border-line bg-mist text-slate-700"
+          )}
+        >
+          {formatCountLabel(mapping.unmatchedIngredients.length, "unmatched ingredient")}
+        </span>
+        <span className="rounded-md border border-line bg-mist px-2 py-1 font-semibold text-slate-700">
+          {formatCountLabel(mapping.ingredientLevelClaimCount, "ingredient-level claim")}
+        </span>
+        <span className="rounded-md border border-line bg-mist px-2 py-1 font-semibold text-slate-700">
+          {formatCountLabel(mapping.productSpecificEvidenceCount, "product-specific row")}
+        </span>
+      </div>
+      {mapping.productSpecificEvidence.length > 0 ? (
+        <ul className="mt-3 grid gap-2">
+          {mapping.productSpecificEvidence.slice(0, 3).map((evidence) => (
+            <li key={evidence.id} className="border-l-2 border-line pl-2">
+              <p className="font-semibold text-ink">{evidence.outcome}</p>
+              <p className="mt-1">{evidence.detail}</p>
+              <a
+                href={evidence.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1 inline-flex items-center gap-1 font-semibold text-signal hover:underline"
+              >
+                {evidence.sourceLabel}{" "}
+                <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+              </a>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {mapping.mappedIngredients.length > 0 ? (
+        <ul className="mt-3 grid gap-2">
+          {mapping.mappedIngredients.map((ingredient) => (
+            <li key={ingredient.ingredient} className="border-l-2 border-line pl-2">
+              <p className="font-semibold text-ink">{ingredient.ingredient}</p>
+              <p className="mt-1">
+                {ingredient.interventionName
+                  ? `Matched intervention: ${ingredient.interventionName}`
+                  : "No local scoped intervention match"}
+              </p>
+              {ingredient.claimSummaries.length > 0 ? (
+                <p className="mt-1">
+                  Claims:{" "}
+                  {ingredient.claimSummaries
+                    .slice(0, 2)
+                    .map((claim) => `${claim.outcome} - ${claim.finalLabel}`)
+                    .join("; ")}
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <ul className="mt-3 grid gap-1">
+        {mapping.readinessReasons.map((reason) => (
+          <li key={reason} className="leading-5">
+            {reason}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+function formatCountLabel(count: number, singular: string) {
+  return `${count} ${singular}${count === 1 ? "" : "s"}`;
+}
+
+function formatDoseCueKind(kind: string) {
+  switch (kind) {
+    case "daily-directions":
+      return "Daily directions";
+    case "per-unit-amount":
+      return "Per-unit amount";
+    case "serving-size":
+      return "Serving size";
+    default:
+      return kind;
+  }
 }
 
 function ProductAustraliaRegulatoryChip({
@@ -2172,6 +4140,8 @@ function australiaVerificationStateTone(state: ProductAustraliaRegulatoryVerific
   switch (state) {
     case "Verified":
       return "border-spruce/30 bg-teal-50 text-spruce";
+    case "Captured":
+      return "border-amberline/30 bg-amber-50 text-amberline";
     case "Stale":
       return "border-amberline/30 bg-amber-50 text-amberline";
     case "Unknown":
@@ -2181,16 +4151,96 @@ function australiaVerificationStateTone(state: ProductAustraliaRegulatoryVerific
   }
 }
 
+function parsedAustraliaIdentifierMatchTone(
+  verification: ParsedAustraliaRegulatoryIdentifierVerification
+) {
+  if (verification.matchState === "local-product-match") {
+    return verification.confidence === "High" || verification.confidence === "Moderate"
+      ? "border-spruce/30 bg-teal-50 text-spruce"
+      : "border-amberline/30 bg-amber-50 text-amberline";
+  }
+
+  if (verification.matchState === "local-intervention-only-match") {
+    return "border-amberline/30 bg-amber-50 text-amberline";
+  }
+
+  return "border-line bg-mist text-slate-700";
+}
+
+function regionalReviewPriorityTone(
+  priority: RegionalSafetyRegulatoryReviewGap["reviewPriority"]
+) {
+  if (priority === "primary-lens-gap") {
+    return "border-amberline/30 bg-amber-50 text-amberline";
+  }
+
+  if (priority === "captured-record-gap") {
+    return "border-signal/25 bg-blue-50 text-signal";
+  }
+
+  if (priority === "unstarted-configured-scope") {
+    return "border-slate-300 bg-slate-50 text-slate-700";
+  }
+
+  return "border-spruce/30 bg-teal-50 text-spruce";
+}
+
 function TrialWatcher({
   interventionsById,
+  trialAlerts,
   trialWatchItems
 }: {
   interventionsById: Map<string, Intervention>;
+  trialAlerts: TrialAlert[];
   trialWatchItems: TrialWatchItem[];
 }) {
   return (
     <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
-      <h2 className="text-base font-semibold text-ink">Trial Watcher</h2>
+      <PanelExplainer
+        explanation={panelExplanations["trial-watcher"]}
+        title="Trial Watcher"
+      />
+      {trialAlerts.length > 0 ? (
+        <div className="mt-4 rounded-md border border-line bg-mist p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-ink">Trial alert queue</h3>
+            <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+              {trialAlerts.length} review {trialAlerts.length === 1 ? "lead" : "leads"}
+            </span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-600">
+            Trial alerts are monitoring and review signals only. They do not change scores or
+            promote evidence without extraction and human review.
+          </p>
+          <div className="mt-3 grid gap-2">
+            {trialAlerts.slice(0, 4).map((alert) => (
+              <article key={alert.id} className="rounded-md border border-line bg-white p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-semibold leading-6 text-ink">{alert.title}</h4>
+                    <p className="mt-1 text-xs text-slate-600">
+                      {alert.nctId ?? "No NCT"} - detected {alert.detectedAt}
+                    </p>
+                  </div>
+                  <TrialClassificationBadge detail={alert.detail} label={alert.kind} />
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-600">{alert.detail}</p>
+                <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+                  <MiniStat label="Status" value={alert.status} />
+                  <MiniStat
+                    label="Score link"
+                    value={alert.scoreHistoryId ? "Linked after review" : "No score change"}
+                  />
+                  <MiniStat
+                    label="Auto-promotion"
+                    value={alert.noAutoPromotion ? "Disabled" : "Review required"}
+                  />
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <div className="mt-4 grid gap-3">
         {trialWatchItems.length > 0 ? (
           trialWatchItems.map((item) => (
@@ -2237,11 +4287,13 @@ function SourceAndStudyPanel({
   activeClaim,
   activeIntervention,
   referencesById,
+  sourcePacketGapItems,
   studies
 }: {
   activeClaim: Claim;
   activeIntervention?: Intervention;
   referencesById: Map<string, Reference>;
+  sourcePacketGapItems: SourcePacketGapItem[];
   studies: Study[];
 }) {
   const activeSourceQueries = useMemo(
@@ -2439,7 +4491,10 @@ function SourceAndStudyPanel({
     <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-ink">Sources and Review Queue</h2>
+          <PanelExplainer
+            explanation={panelExplanations["sources-review"]}
+            title="Sources and Review Queue"
+          />
           <p className="mt-1 text-sm text-slate-600">Seed records stay linked to primary or regulatory sources.</p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
@@ -2517,6 +4572,7 @@ function SourceAndStudyPanel({
           </a>
         </div>
       </div>
+      <SourceGapQueue sourcePacketGapItems={sourcePacketGapItems} />
       <div className="mt-4 rounded-lg border border-line bg-mist p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="min-w-0">
@@ -2596,6 +4652,64 @@ function SourceAndStudyPanel({
   );
 }
 
+function SourceGapQueue({
+  sourcePacketGapItems
+}: {
+  sourcePacketGapItems: SourcePacketGapItem[];
+}) {
+  const hasSourcePacketGaps = sourcePacketGapItems.length > 0;
+
+  return (
+    <section className="mt-4 rounded-lg border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-ink">
+            {hasSourcePacketGaps ? "Source gap queue" : "Source packet coverage"}
+          </h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {hasSourcePacketGaps
+              ? "Read-only local queue for incomplete source packets. Choose a claim to inspect next; this does not accept sources, change scores, or mark evidence reviewed."
+              : "All local source packets are linked and extracted. This panel stays read-only and does not mark evidence human reviewed."}
+          </p>
+        </div>
+        <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+          {hasSourcePacketGaps
+            ? `${sourcePacketGapItems.length} local source-packet gaps`
+            : "No local source-packet gaps"}
+        </span>
+      </div>
+      {sourcePacketGapItems.length > 0 ? (
+        <div className="mt-3 max-h-80 overflow-y-auto pr-1">
+          <ol className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {sourcePacketGapItems.map((item) => (
+              <li key={item.claimId} className="rounded-md border border-line bg-white p-2">
+                <p className="text-xs font-semibold text-ink">
+                  {item.interventionName} - {item.outcomeLabel}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">{item.label}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-600">{item.nextStep}</p>
+                {item.interventionSlug ? (
+                  <a
+                    className="mt-2 inline-flex rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-signal hover:border-signal"
+                    href={`/interventions/${item.interventionSlug}#source-packet-${item.claimId}`}
+                  >
+                    Open source packet
+                  </a>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-line bg-white p-2 text-xs leading-5 text-slate-600">
+          Source-packet coverage is complete for the current local dataset. Continue to treat human
+          review, AU/TGA product status, safety clearance, and medical advice as separate checks.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function ActiveSourcePacketPanel({
   claim,
   intervention,
@@ -2613,7 +4727,7 @@ function ActiveSourcePacketPanel({
     <div className="mt-4 rounded-lg border border-signal/25 bg-blue-50 p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-ink">Active card source packet</h3>
+          <h3 className="text-sm font-semibold text-ink">Selected claim source packet</h3>
           <p className="mt-1 text-xs text-slate-600">
             {intervention?.name ?? "Selected intervention"} - {shortOutcome(claim.outcome)}
           </p>
@@ -2908,7 +5022,7 @@ function PubMedTriagePreview({
 
       {status === "idle" ? (
         <p className="mt-3 rounded-md border border-line bg-white p-3 text-sm text-slate-600">
-          Submit a PubMed term or use the active-card suggestion to load live citation candidates.
+          Submit a PubMed term or use the selected-claim suggestion to load live citation candidates.
         </p>
       ) : null}
 
@@ -3037,7 +5151,7 @@ function ClinicalTrialsPreview({
 
       {status === "idle" ? (
         <p className="mt-3 rounded-md border border-line bg-white p-3 text-sm text-slate-600">
-          Submit a ClinicalTrials.gov term or use the active-card suggestion to load live trial records.
+          Submit a ClinicalTrials.gov term or use the selected-claim suggestion to load live trial records.
         </p>
       ) : null}
 
@@ -3096,6 +5210,10 @@ function ClinicalTrialsPreviewCard({ study }: { study: ClinicalTrialSearchItem }
           detail={study.trialResultDetail}
           label={study.trialResultLabel}
         />
+        <TrialClassificationBadge
+          detail={study.trialAlertDetail}
+          label={study.trialAlertLabel}
+        />
         {study.triageReasons.map((reason) => (
           <span
             key={reason}
@@ -3109,7 +5227,7 @@ function ClinicalTrialsPreviewCard({ study }: { study: ClinicalTrialSearchItem }
       <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
         <MiniStat label="Enrollment" value={study.enrollment} />
         <MiniStat label="Study type" value={study.studyType} />
-        <MiniStat label="Results" value={study.trialResultLabel} />
+        <MiniStat label="Alert" value={study.trialAlertLabel} />
       </div>
 
       <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
@@ -3154,12 +5272,25 @@ function trialClassificationTone(label: string) {
     return "border-signal/25 bg-blue-50 text-signal";
   }
 
-  if (label === "Related outcome only" || label === "Completed, no results posted") {
+  if (
+    label === "Related outcome only" ||
+    label === "Completed, no results posted" ||
+    label === "Missing results follow-up" ||
+    label === "Monitor active trial"
+  ) {
     return "border-amberline/30 bg-amber-50 text-amberline";
   }
 
-  if (label === "Wrong population" || label === "Terminated/unknown") {
+  if (
+    label === "Wrong population" ||
+    label === "Terminated/unknown" ||
+    label === "Registry status review"
+  ) {
     return "border-danger/30 bg-red-50 text-danger";
+  }
+
+  if (label === "Results review needed") {
+    return "border-spruce/30 bg-teal-50 text-spruce";
   }
 
   return "border-slate-300 bg-slate-50 text-slate-700";

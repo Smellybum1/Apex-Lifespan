@@ -46,7 +46,7 @@ describe("supplement onboarding packet", () => {
       readOnly: true,
       draft: {
         claimDrafts: 1,
-        databaseImportStatus: "future-gated",
+        databaseImportStatus: "not-yet-enabled",
         importAssistantStatus: "manual-review-required",
         interventionId: "magnesium-glycinate",
         name: "Magnesium glycinate",

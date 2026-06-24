@@ -21,26 +21,26 @@ vi.mock("@/lib/data/source-candidates", () => ({
       confidenceLabel: sourceCandidate.metadata.abstractText ? "Strong" : "Missing",
       confidenceRationale: sourceCandidate.metadata.abstractText
         ? "Value comes directly from captured source metadata or source-text preview, but still needs operator verification."
-        : "No abstract value was available in candidate metadata; human extraction is required.",
+        : "No abstract value was available in candidate metadata; source-backed extraction is required.",
       field: "abstract",
       note:
         "Captured abstract or registry summary can seed the optional study abstract field, but operators must verify source context before writing.",
       reviewConfidence: sourceCandidate.metadata.abstractText ? "strong" : "missing",
       value: sourceCandidate.metadata.abstractText
         ? `PubMed abstract: ${sourceCandidate.metadata.abstractText}`
-        : "Human-reviewed abstract required.",
+        : "AI-reviewed abstract required.",
       writeFlag: "--study-abstract"
     },
     {
       confidence: "manual-required",
       confidenceLabel: "Missing",
       confidenceRationale:
-        "No sampleSize value was available in candidate metadata; human extraction is required.",
+        "No sampleSize value was available in candidate metadata; source-backed extraction is required.",
       field: "sampleSize",
       note:
         "Enrollment/sample-size metadata may describe planned rather than analyzed sample; verify actual analyzed sample before writing.",
       reviewConfidence: "missing",
-      value: "Human-reviewed sampleSize required.",
+      value: "AI-reviewed sampleSize required.",
       writeFlag: "--study-sample-size"
     }
   ],
@@ -127,7 +127,7 @@ describe("source candidate promotion assessment", () => {
         claimLink: {
           existingClaimIds: [],
           nextAction:
-            "Human link the accepted reference to the candidate claim before promotion review.",
+            "Link the accepted reference to the candidate claim before promotion review.",
           ready: false,
           targetClaimId: candidate.claimId,
           targetReferenceId: acceptedReference.id
@@ -135,8 +135,8 @@ describe("source candidate promotion assessment", () => {
         curationStatus: "Claim link missing",
         humanReviewRequired: true,
         nextHumanActions: [
-          "Human link the accepted reference to the candidate claim before promotion review.",
-          "Human add structured study extraction for the accepted reference before promotion review.",
+          "Link the accepted reference to the candidate claim before promotion review.",
+          "Add structured study extraction for the accepted reference before promotion review.",
           "Rerun promotion dry-run after claim link and extraction are complete."
         ],
         publicSourcePacketReady: false,
@@ -149,8 +149,8 @@ describe("source candidate promotion assessment", () => {
             ready: true
           },
           {
-            id: "candidate-human-reviewed",
-            label: "Candidate human review",
+            id: "candidate-reviewed",
+            label: "Candidate review",
             nextAction: "Candidate review status is Human reviewed.",
             ready: true
           },
@@ -164,14 +164,14 @@ describe("source candidate promotion assessment", () => {
             id: "claim-link",
             label: "Claim link",
             nextAction:
-              "Human link the accepted reference to the candidate claim before promotion review.",
+              "Link the accepted reference to the candidate claim before promotion review.",
             ready: false
           },
           {
             id: "structured-extraction",
             label: "Structured extraction",
             nextAction:
-              "Human add structured study extraction for the accepted reference before promotion review.",
+              "Add structured study extraction for the accepted reference before promotion review.",
             ready: false
           },
           {
@@ -184,7 +184,7 @@ describe("source candidate promotion assessment", () => {
         studyExtraction: {
           existingStudyIds: [],
           nextAction:
-            "Human add structured study extraction for the accepted reference before promotion review.",
+            "Add structured study extraction for the accepted reference before promotion review.",
           ready: false,
           targetReferenceId: acceptedReference.id
         }
@@ -231,7 +231,7 @@ describe("source candidate promotion assessment", () => {
         title: candidate.title
       },
       dryRun: true,
-      nextAction: "Ready for explicit human promotion review.",
+      nextAction: "Ready for AI-reviewed promotion; human confirmation remains optional.",
       publicPacket: {
         claimId: candidate.claimId,
         referenceId: acceptedReference.id,
@@ -251,7 +251,9 @@ describe("source candidate promotion assessment", () => {
         },
         curationStatus: "Public source packet ready",
         humanReviewRequired: true,
-        nextHumanActions: ["Human review the ready public packet before any explicit promotion."],
+        nextHumanActions: [
+          "Codex may promote the ready public packet as AI reviewed; human confirmation is optional."
+        ],
         publicSourcePacketReady: true,
         readOnlyCommands: candidateReadOnlyCommands,
         requiredEvidence: [
@@ -262,8 +264,8 @@ describe("source candidate promotion assessment", () => {
             ready: true
           },
           {
-            id: "candidate-human-reviewed",
-            label: "Candidate human review",
+            id: "candidate-reviewed",
+            label: "Candidate review",
             nextAction: "Candidate review status is Human reviewed.",
             ready: true
           },
@@ -389,13 +391,13 @@ describe("source candidate promotion readiness snapshot", () => {
         {
           actionPreview: expect.objectContaining({
             browserAction:
-              "Promote accepted candidate 42141930 with an explicit human promotion note.",
+              "Promote accepted candidate 42141930 with an AI-reviewed or human-confirmed promotion note.",
             promotionEffect:
               "Would expose reference ref-pubmed-42141930 and 1 structured extraction(s) on claim creatine-strength.",
             requiredPermission: "evidence:promote"
           }),
           blockers: [],
-          nextAction: "Ready for explicit human promotion review.",
+          nextAction: "Ready for AI-reviewed promotion; human confirmation remains optional.",
           ready: true,
           status: "Public source packet ready"
         }
@@ -505,7 +507,7 @@ describe("source candidate promotion readiness snapshot", () => {
             id: "candidate-review-overview",
             label: "Review pending candidate overview",
             mode: "read-only",
-            purpose: "Inspect pending source-candidate groups before any human review decisions."
+            purpose: "Inspect pending source-candidate groups before applying Codex/operator review decisions."
           },
           {
             command: "npm run launch:readiness",

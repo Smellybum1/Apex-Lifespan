@@ -319,7 +319,7 @@ function stepForSavedDraft(
     rationale: [
       `${row.claimCount} draft claim(s), ${row.blockerCount} blocker(s), ${row.warningCount} warning(s).`,
       `Manual seed-copy status: ${row.importPlan.seedCopy.status}.`,
-      "Database import remains future-gated and commandless."
+      "Database import remains not yet enabled and commandless."
     ],
     readOnly: true,
     stage: "private-draft-review",

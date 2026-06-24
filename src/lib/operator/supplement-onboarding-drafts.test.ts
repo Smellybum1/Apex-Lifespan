@@ -285,10 +285,10 @@ describe("operator supplement onboarding drafts", () => {
 
   it("returns a read-only saved draft review snapshot with import-plan status", async () => {
     const plan = buildSupplementOnboardingPlan({
-      category: "Vitamin/mineral",
-      claimTemplateIds: ["sleep"],
+      category: "Botanical/herbal",
+      claimTemplateIds: ["mood-stress"],
       generatedAt: new Date("2026-06-12T10:00:00.000Z"),
-      name: "Magnesium glycinate"
+      name: "Saffron"
     });
     findManyDraftsMock.mockResolvedValue([
       {
@@ -347,7 +347,7 @@ describe("operator supplement onboarding drafts", () => {
           id: "draft-1",
           importPlan: expect.objectContaining({
             databaseImport: expect.objectContaining({
-              status: "future-gated",
+              status: "not-yet-enabled",
               supportedNow: false
             }),
             noAutoPromotion: true,
@@ -357,10 +357,10 @@ describe("operator supplement onboarding drafts", () => {
             recommendedPath: "manual-seed-copy",
             status: "review-required"
           }),
-          name: "Magnesium glycinate",
+          name: "Saffron",
           privateDraft: true,
           readOnly: true,
-          slug: "magnesium-glycinate",
+          slug: "saffron",
           updatedAt: "2026-06-12T10:00:00.000Z"
         }
       ],
@@ -397,7 +397,7 @@ describe("operator supplement onboarding drafts", () => {
       },
       where: {
         id: {
-          in: ["magnesium-glycinate"]
+          in: ["saffron"]
         }
       }
     });
@@ -407,7 +407,7 @@ describe("operator supplement onboarding drafts", () => {
       },
       where: {
         id: {
-          in: ["magnesium-glycinate-sleep"]
+          in: ["saffron-mood-stress"]
         }
       }
     });
@@ -417,7 +417,7 @@ describe("operator supplement onboarding drafts", () => {
       },
       where: {
         id: {
-          in: ["magnesium-glycinate-au-status"]
+          in: ["saffron-au-status"]
         }
       }
     });

@@ -34,10 +34,11 @@ const operatorCheckIds = [
   "operator-smoke",
   "operator-auth-config",
   "active-operator",
-  "operator-write-gate",
+  "operator-write-approval",
   "nonproduction-write-qa",
   "operator-flow-qa",
-  "browser-write-controls-approval"
+  "browser-write-controls-approval",
+  "public-changelog-publication-review"
 ];
 
 describe("operator readiness report", () => {
@@ -49,7 +50,7 @@ describe("operator readiness report", () => {
     });
 
     expect(report.overall).toBe("blocked");
-    expect(report.counts.ready).toBe(12);
+    expect(report.counts.ready).toBe(13);
     expect(report.worksheet.copySafeCommands).toEqual([
       {
         command: "npm run operator:readiness",
@@ -145,7 +146,8 @@ describe("operator readiness report", () => {
       "operator-smoke"
     ]);
     expect(report.worksheet.readyEvidence.map((item) => item.id)).toEqual([
-      "operator-write-gate"
+      "operator-write-approval",
+      "public-changelog-publication-review"
     ]);
     expect(report.worksheet.blocked.map((item) => item.id)).toEqual([
       "operator-auth-config",
@@ -174,7 +176,7 @@ describe("operator readiness report", () => {
           status: "blocked"
         }),
         expect.objectContaining({
-          id: "operator-write-gate",
+          id: "operator-write-approval",
           status: "ready"
         })
       ])
@@ -240,7 +242,7 @@ describe("operator readiness report", () => {
       blockedChecks: report.worksheet.blocked,
       counts: {
         blocked: 5,
-        ready: 12,
+        ready: 13,
         warning: 0
       },
       generatedAt: "2026-06-11T00:00:00.000Z",
@@ -302,10 +304,11 @@ describe("operator readiness report", () => {
     expect(report.worksheet.readyEvidence.map((item) => item.id)).toEqual([
       "operator-auth-config",
       "active-operator",
-      "operator-write-gate",
+      "operator-write-approval",
       "nonproduction-write-qa",
       "operator-flow-qa",
-      "browser-write-controls-approval"
+      "browser-write-controls-approval",
+      "public-changelog-publication-review"
     ]);
     expect(report.checks).toEqual(
       expect.arrayContaining([
@@ -347,10 +350,11 @@ describe("operator readiness report", () => {
     expect(report.worksheet.readyEvidence.map((item) => item.id)).toEqual([
       "operator-auth-config",
       "active-operator",
-      "operator-write-gate",
+      "operator-write-approval",
       "nonproduction-write-qa",
       "operator-flow-qa",
-      "browser-write-controls-approval"
+      "browser-write-controls-approval",
+      "public-changelog-publication-review"
     ]);
     expect(report.worksheet.nextOperatorAction).toBe(
       "Operator workflow evidence is ready; review launch readiness before enabling production writes."
@@ -380,19 +384,47 @@ describe("operator readiness report", () => {
     expect(report.overall).toBe("ready");
     expect(report.counts.warning).toBe(1);
     expect(report.worksheet.warnings.map((item) => item.id)).toEqual([
-      "operator-write-gate"
+      "operator-write-approval"
     ]);
     expect(report.worksheet.nextOperatorAction).toBe(
-      "Use this only for controlled non-production QA; keep public production writes disabled until launch approval."
+      "Use this only for controlled non-production QA; keep public production writes disabled until the exact launch execution decision."
     );
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "operator-write-gate",
+          id: "operator-write-approval",
           status: "warning"
         })
       ])
     );
+  });
+
+  it("warns when public changelog publication review evidence is active", () => {
+    const report = buildOperatorReadinessReport({
+      env: {
+        APEX_OPERATOR_ACTIVE_ACCOUNT_READY: "true",
+        APEX_OPERATOR_BROWSER_WRITE_CONTROLS_APPROVED_AT: "2026-06-11T13:00:00Z",
+        APEX_OPERATOR_FLOW_QA_REVIEWED_AT: "2026-06-11T12:00:00Z",
+        APEX_OPERATOR_NONPROD_WRITE_QA_AT: "2026-06-11T11:00:00Z",
+        APEX_PUBLIC_CHANGELOG_PUBLISH_REVIEWED_AT: "2026-06-13T02:00:00Z",
+        AUTH_GITHUB_ID: "github-id",
+        AUTH_GITHUB_SECRET: "github-secret",
+        AUTH_SECRET: "auth-secret",
+        DATABASE_URL: "postgresql://db.example.com/apex"
+      },
+      files: localFilesReady,
+      generatedAt: new Date("2026-06-11T00:00:00.000Z")
+    });
+
+    expect(report.overall).toBe("ready");
+    expect(report.counts.warning).toBe(1);
+    expect(report.worksheet.warnings.map((item) => item.id)).toEqual([
+      "public-changelog-publication-review"
+    ]);
+    expect(report.worksheet.nextOperatorAction).toBe(
+      "Use this only for an exact reviewed public changelog publication request; remove it from ordinary local/operator sessions after the execution decision."
+    );
+    expect(JSON.stringify(report)).not.toContain("2026-06-13T02:00:00Z");
   });
 
   it("blocks when required local operator artifacts are missing", () => {

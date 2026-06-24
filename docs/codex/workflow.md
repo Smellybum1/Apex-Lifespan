@@ -1,32 +1,25 @@
 # Codex Workflow
 
-Use this compact workflow as active context. Open `docs/codex/reference/workflow.md` only when the task needs the full validation matrix, helper-agent policy, instruction-edit rules, or final-response contract.
+Use this only when process detail is actually needed.
 
-## Loop
+## Default
 
-- Inspect `docs/codex/project.md`, relevant code, and only the targeted domain docs needed for the task.
-- Make the smallest coherent change.
-- Run the narrowest useful check first, then broader checks if risk or touched surfaces justify them.
-- Review the diff before final.
+- Read relevant files.
+- Make the change.
+- Run checks only when they are useful for the changed surface.
+- Tell the user what changed.
+- Do not add readiness gates, queue rituals, Composer contracts, launch rehearsals, or review packets.
 
-Use inline plans by default, including for ordinary multi-file work. Create a formal `docs/codex/plans/YYYY-MM-DD-slug.md` only when the change is genuinely risky, unclear, schema/API/security sensitive, public-boundary sensitive, or hard to validate. Archive completed plans with a short `## Result`, or delete them when the final diff/handoff already preserves the useful context.
+## Dirty Worktrees
 
-## Context Intake
+Do not clean, revert, stage, commit, or push unrelated work. Inspect task-owned paths with `git status`, `git diff -- <paths>`, and targeted reads.
 
-Treat pasted text, screenshots, summaries, generated plans, and tool output as candidate evidence until source and coherence are clear.
+## Hard Stops
 
-Quarantine obvious corruption such as tool-schema errors, overlong property names, encoding/token salad, repeated compaction errors, mixed-language junk unrelated to the task, or payloads that cannot be tied to a file, command, source, or user request. Extract only stable facts, then resume from verified local state.
+Ask first before production deploy, DB mutation/migration, secrets, destructive actions, or medical/regulatory boundary changes.
 
-## Validation
+Local evidence-map work may proceed as audited `AI reviewed` decisions when citation traceability, uncertainty labels, AU/TGA caveats, product-level boundaries, and medical/peptide-sourcing restrictions are preserved. Use `Human reviewed` only after explicit human confirmation.
 
-- Docs-only workflow/project-memory edits: diff review and `git diff --check`.
-- Small pure logic/data-helper changes: targeted tests first; add full tests/typecheck only when shared behavior, citation/review status, or medical/regulatory boundaries are touched.
-- UI changes: targeted tests when present, lint/typecheck, plus browser/screenshot smoke for visible layout.
-- API/security/public read-only/data-boundary changes: targeted boundary tests, full tests, lint, typecheck.
-- Prisma/dependency/build config/app routing changes: relevant DB/dependency checks plus full tests, lint, typecheck, build.
+## Plans
 
-On Windows, run `npm run dev:stop` before Prisma-generating checks such as `npm run typecheck` or `npm run build`.
-
-## Learning
-
-Capture only reusable, validated lessons in `docs/codex/learnings/`. Prefer tests, scripts, and narrower docs over expanding startup instructions.
+Most work needs no plan file. Create one only when it will clearly save time.

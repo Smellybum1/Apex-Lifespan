@@ -129,7 +129,7 @@ export function buildSupplementOnboardingReviewKit({
       ),
       path: `${slug}-review-kit/07-import-assistant.md`,
       purpose:
-        "Draft-to-seed/database import assistant with planned records and future gates.",
+        "Draft-to-seed/database import assistant with planned records and future approvals.",
       title: "Import Assistant"
     }
   ];
@@ -211,7 +211,7 @@ function indexMarkdown({
     "- This kit does not edit seed data.",
     "- This kit does not create database intervention, claim, source-candidate, reference, study, AU/TGA, or public evidence rows.",
     "- This kit does not queue sources, accept or reject candidates, extract studies, mark claim packets reviewed, approve connectors, fetch full text, or promote evidence.",
-    "- Database import remains future-gated and requires a separate authenticated, audited implementation review.",
+    "- Database import remains not yet enabled and requires a separate authenticated, audited implementation review.",
     "",
     "## Next Action",
     "",

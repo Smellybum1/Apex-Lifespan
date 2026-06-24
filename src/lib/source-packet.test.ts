@@ -55,6 +55,46 @@ describe("buildClaimSourcePacket", () => {
     ).toContain("This does not mean no human trials exist");
   });
 
+  it("prefers explicit normalized claim-study links when present", () => {
+    const reference: Reference = {
+      id: "known-ref",
+      title: "Known source",
+      source: "PubMed",
+      url: "https://pubmed.ncbi.nlm.nih.gov/"
+    };
+    const selectedStudy = studyFixture({
+      id: "selected-study",
+      referenceId: reference.id,
+      studyType: "Systematic review"
+    });
+    const sameReferenceBackgroundStudy = studyFixture({
+      id: "background-study",
+      referenceId: reference.id,
+      studyType: "Observational cohort"
+    });
+    const unlinkedSelectedStudy = studyFixture({
+      id: "unlinked-study",
+      referenceId: "unlinked-ref",
+      studyType: "Randomized controlled trial"
+    });
+
+    const packet = buildClaimSourcePacket({
+      claim: {
+        keyReferenceIds: [reference.id],
+        keyStudyIds: [selectedStudy.id, unlinkedSelectedStudy.id]
+      },
+      referencesById: new Map([[reference.id, reference]]),
+      studies: [selectedStudy, sameReferenceBackgroundStudy, unlinkedSelectedStudy]
+    });
+
+    expect(packet.studies.map((study) => study.id)).toEqual([selectedStudy.id]);
+    expect(packet.completeness).toMatchObject({
+      status: "complete",
+      extractedReferences: 1,
+      totalReferences: 1
+    });
+  });
+
   it("keeps current seed claim source packets fully extracted", () => {
     const incompletePackets = claims
       .filter((claim) => claim.keyReferenceIds.length > 0)
@@ -87,15 +127,151 @@ describe("buildClaimSourcePacket", () => {
         studies
       })
     ).toEqual({
-      completeClaims: 8,
+      completeClaims: 73,
       extractionPendingClaims: 0,
-      extractedReferences: 9,
+      extractedReferences: 179,
       missingReferences: 0,
       missingSourceClaims: 0,
       pendingReferences: 0,
-      totalClaims: 8,
-      totalReferences: 9,
-      unlinkedClaims: 0
+      totalClaims: claims.length,
+      totalReferences: 179,
+      unlinkedClaims: claims.length - 73
+    });
+  });
+
+  it("links dietary nitrate / beetroot juice claims to extracted source packets", () => {
+    const nitrateClaims = claims.filter(
+      (claim) => claim.interventionId === "dietary-nitrate-beetroot"
+    );
+
+    expect(nitrateClaims.map((claim) => claim.id)).toEqual([
+      "dietary-nitrate-beetroot-blood-pressure",
+      "dietary-nitrate-beetroot-endurance",
+      "dietary-nitrate-beetroot-safety"
+    ]);
+
+    nitrateClaims.forEach((claim) => {
+      const packet = buildClaimSourcePacket({
+        claim,
+        referencesById,
+        studies
+      });
+
+      expect(packet.completeness.status).toBe("complete");
+      expect(packet.pendingReferences).toEqual([]);
+      expect(packet.missingReferenceIds).toEqual([]);
+      expect(packet.studies.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("links sodium bicarbonate claims to extracted source packets", () => {
+    const bicarbonateClaims = claims.filter((claim) => claim.interventionId === "sodium-bicarbonate");
+
+    expect(bicarbonateClaims.map((claim) => claim.id)).toEqual([
+      "sodium-bicarbonate-high-intensity-performance",
+      "sodium-bicarbonate-safety"
+    ]);
+
+    bicarbonateClaims.forEach((claim) => {
+      const packet = buildClaimSourcePacket({
+        claim,
+        referencesById,
+        studies
+      });
+
+      expect(packet.completeness.status).toBe("complete");
+      expect(packet.pendingReferences).toEqual([]);
+      expect(packet.missingReferenceIds).toEqual([]);
+      expect(packet.studies.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("links vitamin C claims to extracted source packets", () => {
+    const vitaminCClaims = claims.filter((claim) => claim.interventionId === "vitamin-c");
+
+    expect(vitaminCClaims.map((claim) => claim.id)).toEqual([
+      "vitamin-c-immune-respiratory",
+      "vitamin-c-safety"
+    ]);
+
+    vitaminCClaims.forEach((claim) => {
+      const packet = buildClaimSourcePacket({
+        claim,
+        referencesById,
+        studies
+      });
+
+      expect(packet.completeness.status).toBe("complete");
+      expect(packet.pendingReferences).toEqual([]);
+      expect(packet.missingReferenceIds).toEqual([]);
+      expect(packet.studies.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("links resveratrol claims to extracted source packets", () => {
+    const resveratrolClaims = claims.filter((claim) => claim.interventionId === "resveratrol");
+
+    expect(resveratrolClaims.map((claim) => claim.id)).toEqual([
+      "resveratrol-glucose-insulin-hba1c",
+      "resveratrol-lifespan",
+      "resveratrol-safety"
+    ]);
+
+    resveratrolClaims.forEach((claim) => {
+      const packet = buildClaimSourcePacket({
+        claim,
+        referencesById,
+        studies
+      });
+
+      expect(packet.completeness.status).toBe("complete");
+      expect(packet.pendingReferences).toEqual([]);
+      expect(packet.missingReferenceIds).toEqual([]);
+      expect(packet.studies.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("links quercetin claims to extracted source packets", () => {
+    const quercetinClaims = claims.filter((claim) => claim.interventionId === "quercetin");
+
+    expect(quercetinClaims.map((claim) => claim.id)).toEqual([
+      "quercetin-blood-pressure-biomarkers",
+      "quercetin-safety"
+    ]);
+
+    quercetinClaims.forEach((claim) => {
+      const packet = buildClaimSourcePacket({
+        claim,
+        referencesById,
+        studies
+      });
+
+      expect(packet.completeness.status).toBe("complete");
+      expect(packet.pendingReferences).toEqual([]);
+      expect(packet.missingReferenceIds).toEqual([]);
+      expect(packet.studies.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("links fisetin claims to extracted source packets", () => {
+    const fisetinClaims = claims.filter((claim) => claim.interventionId === "fisetin");
+
+    expect(fisetinClaims.map((claim) => claim.id)).toEqual([
+      "fisetin-senolytic-lifespan",
+      "fisetin-safety"
+    ]);
+
+    fisetinClaims.forEach((claim) => {
+      const packet = buildClaimSourcePacket({
+        claim,
+        referencesById,
+        studies
+      });
+
+      expect(packet.completeness.status).toBe("complete");
+      expect(packet.pendingReferences).toEqual([]);
+      expect(packet.missingReferenceIds).toEqual([]);
+      expect(packet.studies.length).toBeGreaterThan(0);
     });
   });
 

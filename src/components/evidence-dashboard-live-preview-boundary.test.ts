@@ -28,6 +28,13 @@ describe("EvidenceDashboard live preview boundary", () => {
     expect(DASHBOARD_SOURCE).not.toContain("Triage {study.triageScore}/100");
   });
 
+  it("renders ClinicalTrials.gov alert classifications as review-only signals", () => {
+    expect(DASHBOARD_SOURCE).toContain("study.trialAlertDetail");
+    expect(DASHBOARD_SOURCE).toContain("study.trialAlertLabel");
+    expect(DASHBOARD_SOURCE).toContain('<MiniStat label="Alert" value={study.trialAlertLabel} />');
+    expect(DASHBOARD_SOURCE).not.toContain("Promote trial");
+  });
+
   it("normalises submitted live preview terms before storing request state", () => {
     expect(DASHBOARD_SOURCE).toContain(
       "normaliseLiveSourceSearchTerm"

@@ -3,17 +3,21 @@ import Link from "next/link";
 
 import {
   formatChangelogDate,
-  publicChangelogEntries,
+  getPublicChangelogEntries,
   type ChangelogEntry
 } from "@/lib/changelog";
 import { cn } from "@/lib/utils";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Changelog | Apex Lifespan",
   description: "Public changelog for Apex Lifespan evidence, scoring, and trust updates."
 };
 
-export default function ChangelogPage() {
+export default async function ChangelogPage() {
+  const changelogEntries = await getPublicChangelogEntries();
+
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
       <article className="mx-auto max-w-4xl">
@@ -39,7 +43,7 @@ export default function ChangelogPage() {
         </header>
 
         <section className="mt-6 grid gap-4">
-          {publicChangelogEntries.map((entry) => (
+          {changelogEntries.map((entry) => (
             <ChangelogEntryCard entry={entry} key={entry.id} />
           ))}
         </section>

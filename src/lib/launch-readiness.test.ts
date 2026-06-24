@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildLaunchReadinessReport,
+  summarizeLaunchIterationReadinessReport,
   summarizeLaunchReadinessReport,
   type LaunchReadinessContext
 } from "@/lib/launch-readiness";
@@ -90,7 +91,7 @@ describe("launch readiness report", () => {
         label: "Refresh aggregate launch readiness",
         mode: "read-only",
         purpose:
-          "Recheck production, operator, operations, ingestion, promotion, coverage, smoke, and launch evidence gates."
+          "Recheck production, operator, operations, ingestion, promotion, coverage, smoke, and launch readiness checks."
       },
       {
         command: "npm run launch:readiness -- --summary",
@@ -98,7 +99,7 @@ describe("launch readiness report", () => {
         label: "Refresh compact launch summary",
         mode: "read-only",
         purpose:
-          "Print a compact launch status with counts, blocked gates, ready gates, and the next action."
+          "Print a compact launch status with counts, blocked checks, ready checks, and the next action."
       },
       {
         command: "npm run launch:readiness -- --env-file <non-production-env-file> --summary",
@@ -106,7 +107,7 @@ describe("launch readiness report", () => {
         label: "Refresh launch summary from env file",
         mode: "read-only",
         purpose:
-          "Recheck aggregate launch gates with approved non-production evidence without printing secret values."
+          "Recheck aggregate launch checks with approved non-production evidence without printing secret values."
       },
       {
         command: "npm run production:readiness",
@@ -370,6 +371,66 @@ describe("launch readiness report", () => {
     expect(JSON.stringify(summarizeLaunchReadinessReport(report))).not.toContain(
       "copySafeCommands"
     );
+  });
+
+  it("summarizes quick iteration without approval blockers while retaining milestone gates", () => {
+    const report = buildLaunchReadinessReport({
+      env: {},
+      evidenceCoverage: {
+        dataSource: "seed",
+        report: coverageSummary({
+          claimReviewBacklog: 7,
+          humanReviewedClaims: 0,
+          interventionGaps: 1
+        })
+      },
+      files: {
+        launchChecklist: true,
+        postLaunchReviewTemplate: true
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      operations: readinessReport(["uptime-monitoring"]) as OperationsReadinessReport,
+      operator: readinessReport(["operator-auth-config"]) as OperatorReadinessReport,
+      production: readinessReport(["database-url"]) as ProductionReadinessReport,
+      promotion: {
+        snapshot: promotionSnapshot({ blockedCount: 1, readyCount: 0, total: 1 })
+      },
+      scheduledIngestion: {
+        hostedCronReady: false,
+        hostedRunGateReady: true,
+        missingEnv: ["DATABASE_URL", "APEX_DATA_SOURCE=database"],
+        noAutoPromotion: true,
+        retryAutomationReady: false
+      }
+    });
+
+    expect(summarizeLaunchIterationReadinessReport(report)).toEqual({
+      blockedGates: [],
+      counts: {
+        blocked: 0,
+        milestone: 10,
+        ready: 2,
+        warning: 0
+      },
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      humanOwned: true,
+      iterationReady: true,
+      milestoneReviewGates: report.worksheet.blockedGates,
+      nextAction:
+        "Quick iteration is open; batch approvals, launch evidence, and production/operations review into the next milestone checkpoint.",
+      overall: "ready",
+      readOnly: true,
+      readyGates: report.worksheet.readyGates,
+      retainedGuardrails: [
+        "Public routes remain read-only.",
+        "Operator writes still require auth, role permission, and explicit write-control gates.",
+        "Source candidates and public promotion still require separate explicit operator actions.",
+        "Citation traceability, uncertainty labels, and Australia/TGA caveats remain visible.",
+        "Production, operations, smoke, and launch approval checks remain strict in normal launch readiness mode."
+      ],
+      strictLaunchOverall: "blocked",
+      warningGates: []
+    });
   });
 
   it("blocks scheduled ingestion when the hosted-run gate is not verified", () => {
@@ -709,10 +770,59 @@ function coverageSummary({
       packetStatus: "complete",
       priority: 100,
       priorityReasons: ["Unreviewed draft claim"],
+      rawCompositeScore: 2.1,
       referenceCount: 1,
       reviewStatus: "Unreviewed AI draft"
     })),
     completeSourcePackets: 7,
+    expansionReadiness: {
+      blockingClaims: [],
+      blockers:
+        interventionGaps > 0
+          ? [
+              `${interventionGaps} current intervention(s) still need at least one scoped claim.`
+            ]
+          : [],
+      candidateBatchSize: {
+        maximum: 10,
+        minimum: 5
+      },
+      candidateReviewCommands: [],
+      humanOwned: true,
+      milestoneReviewClaims: Array.from(
+        { length: humanReviewedClaims < 7 ? 7 - humanReviewedClaims : 0 },
+        (_, index) => ({
+          claimId: `claim-${index}`,
+          interventionId: `intervention-${index}`,
+          nextAction: "Review.",
+          outcome: "Mortality/lifespan",
+          packetStatus: "complete",
+          priority: 100,
+          priorityReasons: ["Unreviewed draft claim"],
+          reviewStatus: "Unreviewed AI draft"
+        })
+      ),
+      nextAction:
+        interventionGaps > 0
+          ? "Resolve source-packet or intervention-shape blockers before expanding the evidence map."
+          : humanReviewedClaims < 7
+            ? `Continue quick iteration; batch ${7 - humanReviewedClaims} complete claim review(s) into the next milestone review.`
+          : "Prepare a reviewed 5-10 intervention onboarding batch with scoped claims, citation-linked source packets, and safety/regulatory caveats.",
+      noAutoPromotion: true,
+      noPublicEvidenceRowsWritten: true,
+      readySignals:
+        interventionGaps > 0
+          ? []
+          : [
+              "Current public claims have complete source packets.",
+              humanReviewedClaims < 7
+                ? "Complete-but-unreviewed claim packets are queued for milestone review instead of blocking quick iteration."
+                : "Current public claims have human-reviewed complete source packets.",
+              "Current intervention coverage has no empty intervention rows.",
+              "Expansion can proceed through onboarding/review-kit commands only."
+            ],
+      status: interventionGaps > 0 ? "blocked" : "ready"
+    },
     humanReviewedClaims,
     incompleteClaims: [],
     interventionGaps: Array.from({ length: interventionGaps }, (_, index) => ({

@@ -30,27 +30,28 @@ The dashboard route reads from Prisma when PostgreSQL is reachable and falls bac
 
 Detailed local database, Windows DLL-lock, reset, and ingestion workflows live in `docs/codex/reference/local-operations.md`.
 
-## Public MVP Demo Launch
+## Public Production Operations
 
-Public MVP URL: `https://apex-lifespan.vercel.app`.
+Public URL: `https://apex-lifespan.vercel.app`.
 
-Selected public MVP data mode: `APEX_DATA_SOURCE=seed`. The first public demo is seed-backed and read-only, with user-triggered PubMed and ClinicalTrials.gov preview routes enabled. Do not configure `DATABASE_URL` for the public MVP unless the deployment is deliberately switched to managed PostgreSQL.
+Current production data mode: database-backed public reads. Public routes and dashboard surfaces remain read-only. Source-candidate review, evidence promotion, changelog publication, trial-alert recording, and score/history writes remain authenticated operator workflows with explicit review approvals.
 
 Selected deployment path now that GitHub push access is restored: push the reviewed branch to GitHub, merge or select the intended production branch, then import the GitHub repo into Vercel. Manual Vercel CLI deployment from the local checkout remains a fallback. See Vercel's [deploy](https://vercel.com/docs/cli/deploy), [environment variable](https://vercel.com/docs/environment-variables), and [rollback](https://vercel.com/docs/cli/rollback) docs for the operator workflow.
 
-Public MVP environment:
+Production public environment:
 
 ```bash
-APEX_DATA_SOURCE=seed
+APEX_DATA_SOURCE=database
+DATABASE_URL=<managed PostgreSQL URL configured in Vercel>
 NCBI_TOOL=apex-lifespan
 NCBI_EMAIL=
 ```
 
-Do not configure `APEX_CODEX_THREAD_ID`, `APEX_CODEX_REVIEW_TOKEN`, or other Codex sidecar variables in the public deployment. Those are local-only operator controls.
+Do not configure `APEX_CODEX_THREAD_ID`, `APEX_CODEX_REVIEW_TOKEN`, or other Codex sidecar variables in the public deployment. Those are local-only operator controls. Operator auth and write approvals are configured separately from public read paths.
 
 Build command: `npm run build`.
 
-Local production smoke before deploy: set `APEX_DATA_SOURCE=seed`, then run:
+Local production-mode smoke before deploy should use a reviewed non-production database environment when database behavior is under test. Do not run migration, seed, or persistence smoke against a managed database without explicit approval. For local seed fallback checks, use `APEX_DATA_SOURCE=seed`.
 
 ```bash
 npm run start
@@ -72,18 +73,19 @@ npm audit
 Production smoke target once deployed:
 
 ```bash
-npm run smoke:public-mvp -- https://apex-lifespan.vercel.app
+npm run smoke:public-mvp -- https://apex-lifespan.vercel.app --require-database
+npm run operator:smoke -- https://apex-lifespan.vercel.app --expect-auth-required
 ```
 
 The smoke command verifies the homepage, PubMed and ClinicalTrials.gov live-preview routes, invalid live-source term guards, no-store/noindex response headers, and the AU/TGA, citation, unreviewed-draft, and live-preview caveats.
 
 Rollback path: use `vercel rollback <deployment-url>` or the Vercel dashboard to restore the previous production deployment, then smoke the dashboard and both live-source routes again.
 
-Latest public smoke: passed on 2026-06-11 against `https://apex-lifespan.vercel.app`.
+For Codex startup, read `AGENTS.md` and `docs/codex/project.md` first. Use `docs/codex/handoff.md` only for current resume state and `docs/codex/roadmap.md` only for planning or prioritization.
 
-Known MVP limitations: source-candidate review and promotion stay local; accepted `PMID 42141930` remains curation backlog until a human-owned claim-link and structured extraction are completed; live preview results are unreviewed research leads, not public evidence cards.
+Known operating limitations: operator evidence-map writes remain audited and role-gated; live preview results are unreviewed research leads, not public evidence cards; product-level AU/TGA confidence still requires product-level ARTG/AUST evidence.
 
-Launch handoff draft: `docs/codex/public-mvp-launch-handoff.md`.
+Historical public MVP launch handoff: `docs/codex/archive/handoff/2026-06-11-public-mvp-launch-handoff.md`.
 
 ## Local Ingestion
 
@@ -110,8 +112,8 @@ Apex Lifespan tracks Australia/TGA regulatory status separately from evidence sc
 ## Safety Boundaries
 
 - General public resource only.
-- Public read-only MVP; admin review can come later.
+- Public routes remain read-only; authenticated operator writes require explicit review approvals.
 - Australia/TGA is the first regulatory lens.
 - No individualized medical advice.
 - No sourcing, compounding, reconstitution, injection, cycling, or self-administration guidance for unapproved drugs or peptides.
-- Every evidence card must stay traceable to citations and human review status.
+- Every evidence card must stay traceable to citations and review status.

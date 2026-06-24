@@ -102,6 +102,12 @@ export function buildClinicalTrialSourceCandidates(
         hasResults: study.hasResults,
         resultsFirstPostDate: study.resultsFirstPostDate,
         sponsor: study.sponsor,
+        trialAlertDetail: study.trialAlertDetail,
+        trialAlertLabel: study.trialAlertLabel,
+        trialRelevanceDetail: study.trialRelevanceDetail,
+        trialRelevanceLabel: study.trialRelevanceLabel,
+        trialResultDetail: study.trialResultDetail,
+        trialResultLabel: study.trialResultLabel,
         lastUpdateDate: study.lastUpdateDate,
         startDate: study.startDate,
         completionDate: study.completionDate

@@ -28,7 +28,7 @@ describe("public MVP smoke", () => {
   it("passes against a fully human-reviewed database-backed public surface", async () => {
     const baseUrl = await listenWithPages({
       homeDataSourceBadge: "Database-backed",
-      homeReviewStatus: "Human-reviewed",
+      homeReviewStatus: "Human reviewed",
       operatorHtml: "Operator access required"
     });
 
@@ -102,7 +102,7 @@ async function listenWithPages({
 }: {
   homeDataSourceBadge: "Database-backed" | "Seed fallback";
   homeExtraHtml?: string;
-  homeReviewStatus?: "Human-reviewed" | "Unreviewed AI draft";
+  homeReviewStatus?: "Human reviewed" | "Human-reviewed" | "Unreviewed AI draft";
   operatorHtml: string;
 }) {
   const server = createServer((request, response) => {

@@ -896,8 +896,8 @@ function packetCaveats({
     sourcePacket.completeness.nextStep
   ];
 
-  if (claim.reviewStatus !== "Human reviewed") {
-    caveats.push("Claim packet is not human-reviewed; do not promote public wording.");
+  if (!reviewStatusIsReviewed(claim.reviewStatus)) {
+    caveats.push("Claim packet is not reviewed; do not promote public wording.");
   }
 
   if (regulatoryStatuses.length === 0 || regulatoryStatuses.some((status) => status.kind === "Unknown")) {
@@ -1104,8 +1104,8 @@ function promotionDiffBlockers({
     blockers.push(sourcePacket.completeness.nextStep);
   }
 
-  if (claim.reviewStatus !== "Human reviewed") {
-    blockers.push("Claim packet must be human-reviewed before promotion review.");
+  if (!reviewStatusIsReviewed(claim.reviewStatus)) {
+    blockers.push("Claim packet must be AI reviewed or Human reviewed before promotion review.");
   }
 
   if (claim.keyReferenceIds.length === 0) {
@@ -1113,6 +1113,10 @@ function promotionDiffBlockers({
   }
 
   return uniqueNonEmpty(blockers);
+}
+
+function reviewStatusIsReviewed(reviewStatus: Claim["reviewStatus"]) {
+  return reviewStatus === "AI reviewed" || reviewStatus === "Human reviewed";
 }
 
 function reviewPacketStudy(study: Study) {

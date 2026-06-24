@@ -3,12 +3,19 @@ import {
   type ClaimSourcePacketCompletenessStatus,
   summarizeClaimSourcePackets
 } from "@/lib/source-packet";
+import {
+  compositeScore,
+  confidenceWeightFromAiScore,
+  confidenceWeightedScore
+} from "@/lib/scoring";
 import type {
   Claim,
   ConfidenceLevel,
   EvidenceDashboardData,
   EvidenceLabel,
-  Reference
+  Intervention,
+  Reference,
+  Study
 } from "@/lib/types";
 
 export interface EvidenceCoverageClaimGap {
@@ -35,29 +42,90 @@ export interface EvidenceCoverageReviewBacklogItem {
   packetStatus: ClaimSourcePacketCompletenessStatus;
   priority: number;
   priorityReasons: string[];
+  rawCompositeScore: number;
   referenceCount: number;
+  reviewStatus: string;
+}
+
+export type EvidenceCoverageAiPreReviewStatus =
+  | "codex-preflight-blocked"
+  | "codex-preflight-passed";
+
+export interface EvidenceCoverageHumanReviewQueue {
+  aiCrossCheckRecommended: number;
+  aiConfidenceAverage: number;
+  aiPreReviewed: number;
+  blockedBySourcePacket: number;
+  humanOwned: true;
+  items: EvidenceCoverageHumanReviewQueueItem[];
+  nextAction: string;
+  noAiApproval: true;
+  noMedicalAdvice: true;
+  noAutoPromotion: true;
+  noPublicEvidenceRowsWritten: true;
+  readOnly: true;
+  total: number;
+}
+
+export interface EvidenceCoverageHumanReviewQueueItem {
+  aiConfidenceRationale: string[];
+  aiConfidenceScore: number;
+  aiConfidenceSummary: string;
+  aiPreReviewExplanation: string;
+  aiPreReviewLabel: string;
+  aiPreReviewStatus: EvidenceCoverageAiPreReviewStatus;
+  chatGptProPrompt: string;
+  claimId: string;
+  confidenceLevel: ConfidenceLevel;
+  confirmationRequirement: string;
+  confidenceWeight: number;
+  confidenceWeightedScore: number;
+  confidenceWeightedScoreExplanation: string;
+  extractedReferences: number;
+  finalLabel: EvidenceLabel;
+  highAttention: boolean;
+  highAttentionReasons: string[];
+  humanDecisionGate: string;
+  interventionId: string;
+  interventionName: string;
+  nextAction: string;
+  operatorHref: string;
+  outcome: Claim["outcome"];
+  packetStatus: ClaimSourcePacketCompletenessStatus;
+  priority: number;
+  priorityReasons: string[];
+  rawCompositeScore: number;
+  referenceCount: number;
+  reviewFocus: string[];
+  reviewOrder: number;
+  reviewPacketCommand: string;
   reviewStatus: string;
 }
 
 export interface EvidenceCoverageReviewSampleItem {
   claimBoundary: EvidenceCoverageReviewBoundary;
   claimId: string;
+  envFileReviewPacketCommand: string;
+  humanDecisionGate: string;
   interventionId: string;
   nextAction: string;
   outcome: Claim["outcome"];
   priority: number;
   priorityReasons: string[];
   referenceIds: string[];
+  referenceSummaries: EvidenceCoverageReviewReferenceSummary[];
   reviewChecklist: string[];
+  reviewPacketCommand: string;
   sourcePacketStatus: ClaimSourcePacketCompletenessStatus;
   studyIds: string[];
+  studySummaries: EvidenceCoverageReviewStudySummary[];
 }
 
 export type EvidenceCoverageClaimReviewStatus =
   | "already-reviewed"
   | "incomplete-source-packet"
   | "not-found"
-  | "ready-for-human-review";
+  | "ready-for-review";
 
 export interface EvidenceCoverageClaimReviewPacket {
   claimId: string;
@@ -68,6 +136,15 @@ export interface EvidenceCoverageClaimReviewPacket {
   reviewBacklogItem: EvidenceCoverageReviewBacklogItem | null;
   reviewContext: EvidenceCoverageReviewSampleItem | null;
   status: EvidenceCoverageClaimReviewStatus;
+}
+
+export interface EvidenceCoverageReadyClaimReviewBatch {
+  claimIds: string[];
+  claimPackets: EvidenceCoverageClaimReviewPacket[];
+  humanOwned: true;
+  nextAction: string;
+  readOnly: true;
+  readyClaims: number;
 }
 
 export interface EvidenceCoverageReviewBoundary {
@@ -84,6 +161,31 @@ export interface EvidenceCoverageReviewSamplingPlan {
   items: EvidenceCoverageReviewSampleItem[];
   nextAction: string;
   readyClaims: number;
+}
+
+export interface EvidenceCoverageReviewReferenceSummary {
+  id: string;
+  identifier?: string;
+  source: string;
+  title: string;
+  url: string;
+  year?: number;
+}
+
+export interface EvidenceCoverageReviewStudySummary {
+  adverseEvents: string;
+  fundingConflicts: string;
+  id: string;
+  outcomes: string[];
+  population: string;
+  referenceId: string;
+  riskOfBias: string;
+  sampleSize: string;
+  source: string;
+  sourceTypeTaxonomy?: Study["sourceTypeTaxonomy"];
+  studyType: Study["studyType"];
+  title: string;
+  year: number;
 }
 
 export interface EvidenceCoverageWorksheet {
@@ -104,21 +206,54 @@ export interface EvidenceCoverageCommand {
   purpose: string;
 }
 
+export interface EvidenceCoverageExpansionReadiness {
+  blockingClaims: EvidenceCoverageExpansionBlockingClaim[];
+  blockers: string[];
+  candidateBatchSize: {
+    maximum: 10;
+    minimum: 5;
+  };
+  candidateReviewCommands: EvidenceCoverageCommand[];
+  humanOwned: true;
+  milestoneReviewClaims: EvidenceCoverageExpansionBlockingClaim[];
+  nextAction: string;
+  noAutoPromotion: true;
+  noPublicEvidenceRowsWritten: true;
+  readySignals: string[];
+  status: "blocked" | "ready";
+}
+
+export interface EvidenceCoverageExpansionBlockingClaim {
+  claimId: string;
+  interventionId: string;
+  nextAction: string;
+  outcome: Claim["outcome"];
+  packetStatus: ClaimSourcePacketCompletenessStatus;
+  priority: number;
+  priorityReasons: string[];
+  reviewStatus: string;
+}
+
 export interface EvidenceCoverageWorksheetClaimItem {
   claimId: string;
+  envFileReviewPacketCommand: string;
   extractedReferences: number;
+  humanDecisionGate: string;
   interventionId: string;
   nextAction: string;
   packetStatus: ClaimSourcePacketCompletenessStatus;
   priority: number;
   priorityReasons: string[];
   referenceCount: number;
+  reviewOrder: number;
+  reviewPacketCommand: string;
   reviewStatus: string;
 }
 
 export interface EvidenceCoverageSummary {
   claimReviewBacklog: EvidenceCoverageReviewBacklogItem[];
   completeSourcePackets: number;
+  expansionReadiness: EvidenceCoverageExpansionReadiness;
   humanReviewedClaims: number;
   incompleteClaims: EvidenceCoverageClaimGap[];
   interventionGaps: EvidenceCoverageInterventionGap[];
@@ -134,6 +269,7 @@ export interface EvidenceCoverageSummary {
 export interface EvidenceCoverageReviewReportSummary {
   counts: EvidenceCoverageReviewReportSummaryCounts;
   coverageGaps: EvidenceCoverageInterventionGap[];
+  expansionReadiness: EvidenceCoverageExpansionReadiness;
   humanOwned: true;
   nextAction: string;
   readOnly: true;
@@ -181,7 +317,7 @@ export function summarizeEvidenceCoverage(data: EvidenceDashboardData): Evidence
       studies: data.studies
     });
 
-    if (packet.completeness.status === "complete" && claim.reviewStatus === "Human reviewed") {
+    if (packet.completeness.status === "complete" && reviewStatusIsReviewed(claim.reviewStatus)) {
       return [];
     }
 
@@ -225,6 +361,12 @@ export function summarizeEvidenceCoverage(data: EvidenceDashboardData): Evidence
   return {
     claimReviewBacklog,
     completeSourcePackets: sourcePacketSummary.completeClaims,
+    expansionReadiness: evidenceExpansionReadiness({
+      claimReviewBacklog,
+      completeSourcePackets: sourcePacketSummary.completeClaims,
+      interventionGaps,
+      totalClaims: data.claims.length
+    }),
     humanReviewedClaims: data.claims.filter((claim) => claim.reviewStatus === "Human reviewed")
       .length,
     incompleteClaims,
@@ -234,13 +376,138 @@ export function summarizeEvidenceCoverage(data: EvidenceDashboardData): Evidence
     reviewSamplingPlan,
     totalClaims: data.claims.length,
     totalInterventions: data.interventions.length,
-    unreviewedClaims: data.claims.filter((claim) => claim.reviewStatus !== "Human reviewed")
+    unreviewedClaims: data.claims.filter((claim) => !reviewStatusIsReviewed(claim.reviewStatus))
       .length,
     worksheet: evidenceCoverageWorksheet({
       claimReviewBacklog,
       interventionGaps,
       reviewSamplingPlan
     })
+  };
+}
+
+export function buildEvidenceHumanReviewQueue(
+  data: EvidenceDashboardData,
+  options: {
+    limit?: number;
+  } = {}
+): EvidenceCoverageHumanReviewQueue {
+  const summary = summarizeEvidenceCoverage(data);
+  const interventionsById = new Map(
+    data.interventions.map((intervention) => [intervention.id, intervention])
+  );
+  const backlog = summary.claimReviewBacklog.filter(
+    (item) => !reviewStatusIsReviewed(item.reviewStatus)
+  );
+  const limitedBacklog =
+    typeof options.limit === "number" ? backlog.slice(0, options.limit) : backlog;
+  const items = limitedBacklog.map((item, index) =>
+    evidenceCoverageHumanReviewQueueItem({
+      interventionCategory: interventionsById.get(item.interventionId)?.category,
+      item,
+      interventionName:
+        interventionsById.get(item.interventionId)?.name ?? item.interventionId,
+      reviewOrder: index + 1
+    })
+  );
+  const aiPreReviewed = items.filter(
+    (item) => item.aiPreReviewStatus === "codex-preflight-passed"
+  ).length;
+  const aiConfidenceAverage =
+    items.length > 0
+      ? Math.round(items.reduce((total, item) => total + item.aiConfidenceScore, 0) / items.length)
+      : 0;
+  const blockedBySourcePacket = items.length - aiPreReviewed;
+  const aiCrossCheckRecommended = items.filter((item) => item.highAttention).length;
+
+  return {
+    aiCrossCheckRecommended,
+    aiConfidenceAverage,
+    aiPreReviewed,
+    blockedBySourcePacket,
+    humanOwned: true,
+    items,
+    nextAction:
+      items.length > 0
+        ? "Use AI evidence-confidence scores as quick-iteration decision support; low confidence is acceptable when the source packet is weak or claim fit is uncertain."
+        : backlog.length > 0
+          ? "Resolve source-packet blockers before AI confidence can be scored cleanly."
+          : "No claims currently need AI confidence scoring.",
+    noAiApproval: true,
+    noMedicalAdvice: true,
+    noAutoPromotion: true,
+    noPublicEvidenceRowsWritten: true,
+    readOnly: true,
+    total: backlog.length
+  };
+}
+
+export function buildEvidenceHumanConfirmationQueue(
+  data: EvidenceDashboardData,
+  options: {
+    limit?: number;
+  } = {}
+): EvidenceCoverageHumanReviewQueue {
+  const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
+  const interventionsById = new Map(
+    data.interventions.map((intervention) => [intervention.id, intervention])
+  );
+  const backlog = data.claims
+    .flatMap((claim) => {
+      const packet = buildClaimSourcePacket({
+        claim,
+        referencesById,
+        studies: data.studies
+      });
+
+      if (claim.reviewStatus !== "AI reviewed" || packet.completeness.status !== "complete") {
+        return [];
+      }
+
+      return [
+        evidenceCoverageHumanConfirmationBacklogItem({
+          claim,
+          packet
+        })
+      ];
+    })
+    .sort(compareReviewBacklogItems);
+  const limitedBacklog =
+    typeof options.limit === "number" ? backlog.slice(0, options.limit) : backlog;
+  const items = limitedBacklog.map((item, index) =>
+    evidenceCoverageHumanReviewQueueItem({
+      interventionCategory: interventionsById.get(item.interventionId)?.category,
+      item,
+      interventionName:
+        interventionsById.get(item.interventionId)?.name ?? item.interventionId,
+      reviewOrder: index + 1
+    })
+  );
+  const aiPreReviewed = items.filter(
+    (item) => item.aiPreReviewStatus === "codex-preflight-passed"
+  ).length;
+  const aiConfidenceAverage =
+    items.length > 0
+      ? Math.round(items.reduce((total, item) => total + item.aiConfidenceScore, 0) / items.length)
+      : 0;
+
+  return {
+    aiCrossCheckRecommended: items.filter((item) => item.highAttention).length,
+    aiConfidenceAverage,
+    aiPreReviewed,
+    blockedBySourcePacket: items.length - aiPreReviewed,
+    humanOwned: true,
+    items,
+    nextAction:
+      items.length > 0
+        ? "Human may confirm these AI-reviewed complete source packets after checking cited references, extraction, uncertainty, and caveats."
+        : "No AI-reviewed complete source packets are waiting for human confirmation.",
+    noAiApproval: true,
+    noMedicalAdvice: true,
+    noAutoPromotion: true,
+    noPublicEvidenceRowsWritten: true,
+    readOnly: true,
+    total: backlog.length
   };
 }
 
@@ -262,6 +529,7 @@ export function summarizeEvidenceCoverageReviewReport(
       unreviewedClaims: summary.unreviewedClaims
     },
     coverageGaps: summary.worksheet.coverageGaps,
+    expansionReadiness: summary.expansionReadiness,
     humanOwned: true,
     nextAction: summary.worksheet.nextHumanAction,
     readOnly: true,
@@ -305,14 +573,14 @@ export function summarizeEvidenceCoverageClaimReview(
       found: true,
       humanOwned: true,
       nextAction:
-        "Claim already has a complete human-reviewed source packet; rerun aggregate launch readiness before changing scope.",
+        "Claim already has a complete reviewed source packet; rerun aggregate launch readiness before changing scope.",
       readOnly: true,
       reviewBacklogItem: null,
       reviewContext: evidenceCoverageReviewSampleItem({
         claim,
         packet,
         priority: 0,
-        priorityReasons: ["Human reviewed claim"]
+        priorityReasons: [`${claim.reviewStatus} claim`]
       }),
       status: "already-reviewed"
     };
@@ -323,8 +591,8 @@ export function summarizeEvidenceCoverageClaimReview(
     found: true,
     humanOwned: true,
     nextAction:
-      reviewBacklogItem.packetStatus === "complete" && claim.reviewStatus !== "Human reviewed"
-        ? "Human review this claim packet; do not update review status until cited references and structured extraction are checked."
+      reviewBacklogItem.packetStatus === "complete" && !reviewStatusIsReviewed(claim.reviewStatus)
+        ? "Codex may mark this claim packet AI reviewed after cited references and structured extraction are checked."
         : reviewBacklogItem.nextAction,
     readOnly: true,
     reviewBacklogItem,
@@ -336,9 +604,143 @@ export function summarizeEvidenceCoverageClaimReview(
     }),
     status:
       reviewBacklogItem.packetStatus === "complete"
-        ? "ready-for-human-review"
-        : "incomplete-source-packet"
+        ? "ready-for-review"
+      : "incomplete-source-packet"
   };
+}
+
+export function summarizeEvidenceCoverageReadyClaimReviews(
+  data: EvidenceDashboardData
+): EvidenceCoverageReadyClaimReviewBatch {
+  const summary = summarizeEvidenceCoverage(data);
+  const claimIds = summary.worksheet.readySourcePackets.map((item) => item.claimId);
+  const claimPackets = claimIds.map((claimId) =>
+    summarizeEvidenceCoverageClaimReview(data, claimId)
+  );
+
+  return {
+    claimIds,
+    claimPackets,
+    humanOwned: true,
+    nextAction:
+      claimPackets.length > 0
+        ? "Review these packets in priority order; Codex may mark them AI reviewed through the authenticated operator workflow."
+        : "No complete unreviewed source packets are ready for review.",
+    readOnly: true,
+    readyClaims: claimPackets.length
+  };
+}
+
+function evidenceExpansionReadiness({
+  claimReviewBacklog,
+  completeSourcePackets,
+  interventionGaps,
+  totalClaims
+}: {
+  claimReviewBacklog: EvidenceCoverageReviewBacklogItem[];
+  completeSourcePackets: number;
+  interventionGaps: EvidenceCoverageInterventionGap[];
+  totalClaims: number;
+}): EvidenceCoverageExpansionReadiness {
+  const blockingClaims = claimReviewBacklog
+    .filter((item) => item.packetStatus !== "complete")
+    .map(evidenceCoverageExpansionBlockingClaim);
+  const milestoneReviewClaims = claimReviewBacklog
+    .filter(
+      (item) =>
+        item.packetStatus === "complete" && !reviewStatusIsReviewed(item.reviewStatus)
+    )
+    .map(evidenceCoverageExpansionBlockingClaim);
+  const blockers = [
+    ...(completeSourcePackets < totalClaims
+      ? [
+          `${totalClaims - completeSourcePackets} current claim(s) still need complete source packets before expansion.`
+        ]
+      : []),
+    ...(interventionGaps.length > 0
+      ? [
+          `${interventionGaps.length} current intervention(s) still need at least one scoped claim.`
+        ]
+      : [])
+  ];
+
+  return {
+    blockingClaims,
+    blockers,
+    candidateBatchSize: {
+      maximum: 10,
+      minimum: 5
+    },
+    candidateReviewCommands: expansionCandidateReviewCommands(),
+    humanOwned: true,
+    milestoneReviewClaims,
+    nextAction:
+      blockers.length > 0
+        ? "Resolve source-packet or intervention-shape blockers before expanding the evidence map."
+        : milestoneReviewClaims.length > 0
+          ? `Continue quick iteration; batch ${milestoneReviewClaims.length} complete claim review(s) into the next milestone review.`
+          : "Prepare a reviewed 5-10 intervention onboarding batch with scoped claims, citation-linked source packets, and safety/regulatory caveats.",
+    noAutoPromotion: true,
+    noPublicEvidenceRowsWritten: true,
+    readySignals:
+      blockers.length > 0
+        ? []
+        : [
+            completeSourcePackets === totalClaims
+              ? "Current public claims have complete source packets."
+              : "Current public claims still need source-packet completion.",
+            milestoneReviewClaims.length > 0
+              ? "Complete-but-unreviewed claim packets are queued for milestone review instead of blocking quick iteration."
+              : "Current public claims have AI-reviewed or human-reviewed complete source packets.",
+            "Current intervention coverage has no empty intervention rows.",
+            "Expansion can proceed through onboarding/review-kit commands only."
+          ],
+    status: blockers.length > 0 ? "blocked" : "ready"
+  };
+}
+
+function evidenceCoverageExpansionBlockingClaim(
+  item: EvidenceCoverageReviewBacklogItem
+): EvidenceCoverageExpansionBlockingClaim {
+  return {
+    claimId: item.claimId,
+    interventionId: item.interventionId,
+    nextAction: item.nextAction,
+    outcome: item.outcome,
+    packetStatus: item.packetStatus,
+    priority: item.priority,
+    priorityReasons: item.priorityReasons,
+    reviewStatus: item.reviewStatus
+  };
+}
+
+function expansionCandidateReviewCommands(): EvidenceCoverageCommand[] {
+  return [
+    {
+      command: "npm run onboarding:guide -- --name <supplement-name> --summary",
+      id: "onboarding-draft-guide",
+      label: "Preview one draft onboarding guide",
+      mode: "read-only",
+      purpose:
+        "Preview a new intervention onboarding packet without writing seed, database, source-candidate, or public evidence rows."
+    },
+    {
+      command: "npm run onboarding:guide -- --batch-file <reviewed-expansion-batch.json> --summary",
+      id: "onboarding-draft-batch-guide",
+      label: "Preview reviewed expansion batch",
+      mode: "read-only",
+      purpose:
+        "Preview a 5-10 intervention onboarding batch after humans define scoped claims and source targets."
+    },
+    {
+      command: "npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10",
+      id: "candidate-review-overview",
+      label: "Review source-candidate backlog",
+      mode: "read-only",
+      purpose:
+        "Inspect pending source candidates that may support future curated intervention expansion."
+    }
+  ];
 }
 
 function evidenceCoverageWorksheet({
@@ -353,15 +755,15 @@ function evidenceCoverageWorksheet({
   const readySourcePackets = claimReviewBacklog
     .filter(
       (item) =>
-        item.reviewStatus !== "Human reviewed" && item.packetStatus === "complete"
+        !reviewStatusIsReviewed(item.reviewStatus) && item.packetStatus === "complete"
     )
-    .map(evidenceCoverageWorksheetClaimItem);
+    .map((item, index) => evidenceCoverageWorksheetClaimItem(item, index + 1));
   const remainingBacklog = claimReviewBacklog
     .filter(
       (item) =>
-        item.reviewStatus === "Human reviewed" || item.packetStatus !== "complete"
+        reviewStatusIsReviewed(item.reviewStatus) || item.packetStatus !== "complete"
     )
-    .map(evidenceCoverageWorksheetClaimItem);
+    .map((item, index) => evidenceCoverageWorksheetClaimItem(item, index + 1));
 
   return {
     coverageGaps: interventionGaps,
@@ -411,7 +813,15 @@ function evidenceCoverageCopySafeCommands(): EvidenceCoverageCommand[] {
       label: "Focus one claim review packet",
       mode: "read-only",
       purpose:
-        "Print one claim's source-packet boundary, checklist, references, and structured study IDs for human review."
+        "Print one claim's source-packet boundary, checklist, references, and structured study IDs for AI or human review."
+    },
+    {
+      command: "npm run coverage:review -- --ready-claim-packets",
+      id: "coverage-ready-claim-packets",
+      label: "Print all ready claim packets",
+      mode: "read-only",
+      purpose:
+        "Print full read-only AI-review packets for all complete unreviewed claims in priority order."
     },
     {
       command: "npm run regulatory:review",
@@ -471,19 +881,241 @@ function evidenceCoverageReviewReportSampleItem(
 }
 
 function evidenceCoverageWorksheetClaimItem(
-  item: EvidenceCoverageReviewBacklogItem
+  item: EvidenceCoverageReviewBacklogItem,
+  reviewOrder: number
 ): EvidenceCoverageWorksheetClaimItem {
   return {
     claimId: item.claimId,
+    envFileReviewPacketCommand: coverageClaimReviewEnvFileCommand(item.claimId),
     extractedReferences: item.extractedReferences,
+    humanDecisionGate: evidenceCoverageHumanDecisionGate(item.claimId),
     interventionId: item.interventionId,
     nextAction: item.nextAction,
     packetStatus: item.packetStatus,
     priority: item.priority,
     priorityReasons: item.priorityReasons,
     referenceCount: item.referenceCount,
+    reviewOrder,
+    reviewPacketCommand: coverageClaimReviewCommand(item.claimId),
     reviewStatus: item.reviewStatus
   };
+}
+
+function evidenceCoverageHumanReviewQueueItem({
+  interventionCategory,
+  interventionName,
+  item,
+  reviewOrder
+}: {
+  interventionCategory?: Intervention["category"];
+  interventionName: string;
+  item: EvidenceCoverageReviewBacklogItem;
+  reviewOrder: number;
+}): EvidenceCoverageHumanReviewQueueItem {
+  const readyForHumanReview =
+    item.packetStatus === "complete" && item.reviewStatus !== "Human reviewed";
+  const highAttentionReasons = readyForHumanReview
+    ? evidenceCoverageHighAttentionReasons({ interventionCategory, item })
+    : [];
+  const highAttention = highAttentionReasons.length > 0;
+  const aiConfidence = evidenceCoverageAiConfidence({ highAttention, item });
+  const confidenceWeight = confidenceWeightFromAiScore(aiConfidence.score);
+  const weightedScore = confidenceWeightedScore(item.rawCompositeScore, aiConfidence.score);
+
+  return {
+    aiConfidenceRationale: aiConfidence.rationale,
+    aiConfidenceScore: aiConfidence.score,
+    aiConfidenceSummary: aiConfidence.summary,
+    aiPreReviewExplanation: readyForHumanReview
+      ? highAttention
+        ? "Codex scored this as a high-attention evidence packet because safety, regulatory, or peptide-specific caveats materially affect confidence."
+        : "Codex scored this evidence packet from citation traceability, source-packet completeness, claim fit, uncertainty, and caveats."
+      : "Codex cannot score this packet cleanly until the source packet is complete.",
+    aiPreReviewLabel: readyForHumanReview
+      ? "AI confidence scored"
+      : "AI scoring blocked",
+    aiPreReviewStatus: readyForHumanReview
+      ? "codex-preflight-passed"
+      : "codex-preflight-blocked",
+    chatGptProPrompt: evidenceCoverageChatGptProPrompt({
+      highAttentionReasons,
+      interventionName,
+      item
+    }),
+    claimId: item.claimId,
+    confidenceLevel: item.confidenceLevel,
+    confirmationRequirement:
+      "AI confidence is a transparent model judgment for quick iteration. It is not individualized medical advice, qualified clinical review, or product-level TGA/ARTG clearance.",
+    confidenceWeight,
+    confidenceWeightedScore: weightedScore,
+    confidenceWeightedScoreExplanation: `Confidence-weighted score uses the raw ${item.rawCompositeScore.toFixed(
+      1
+    )}/10 composite multiplied by ${aiConfidence.score}/100 AI confidence, so low-confidence packets still contribute with lower impact.`,
+    extractedReferences: item.extractedReferences,
+    finalLabel: item.finalLabel,
+    highAttention,
+    highAttentionReasons,
+    humanDecisionGate: evidenceCoverageHumanDecisionGate(item.claimId),
+    interventionId: item.interventionId,
+    interventionName,
+    nextAction: item.nextAction,
+    operatorHref: `/operator?reviewClaim=${encodeURIComponent(item.claimId)}`,
+    outcome: item.outcome,
+    packetStatus: item.packetStatus,
+    priority: item.priority,
+    priorityReasons: item.priorityReasons,
+    rawCompositeScore: item.rawCompositeScore,
+    referenceCount: item.referenceCount,
+    reviewFocus: evidenceCoverageHumanReviewFocus(item),
+    reviewOrder,
+    reviewPacketCommand: coverageClaimReviewCommand(item.claimId),
+    reviewStatus: item.reviewStatus
+  };
+}
+
+function evidenceCoverageHumanReviewFocus(item: EvidenceCoverageReviewBacklogItem) {
+  const focus = [
+    `Citation traceability: ${item.extractedReferences}/${item.referenceCount} linked reference(s) have structured extraction.`,
+    `Claim scope: ${item.outcome} for ${item.interventionId}; current label is ${item.finalLabel}.`,
+    `Uncertainty: ${item.confidenceLevel} confidence draft; do not treat the AI score as expert or clinical approval.`
+  ];
+
+  if (item.finalLabel === "Regulatory Concern") {
+    focus.push(
+      "Regulatory caveat: preserve warning framing and avoid peptide sourcing, compounding, injection, cycling, dosing, or self-administration guidance."
+    );
+  }
+
+  if (item.outcome === "Safety/adverse effects") {
+    focus.push(
+      "Safety caveat: confirm adverse-event and upper-limit wording does not imply product safety or TGA clearance."
+    );
+  }
+
+  return focus;
+}
+
+function evidenceCoverageAiConfidence({
+  highAttention,
+  item
+}: {
+  highAttention: boolean;
+  item: EvidenceCoverageReviewBacklogItem;
+}) {
+  const confidenceBase: Record<ConfidenceLevel, number> = {
+    High: 82,
+    Moderate: 62,
+    Low: 38,
+    "Very low": 18
+  };
+  const labelAdjustment: Partial<Record<EvidenceLabel, number>> = {
+    "Avoid / Not Recommended": -10,
+    "Core Evidence-Based": 8,
+    "Insufficient Evidence": -12,
+    "Regulatory Concern": -12,
+    "Requires Clinician Oversight": -8,
+    "Safety Concern": -10,
+    "Speculative Watchlist": -8,
+    "Useful for Specific Use Case": 2
+  };
+  const extractionRatio =
+    item.referenceCount > 0 ? item.extractedReferences / item.referenceCount : 0;
+  const traceabilityAdjustment = Math.round(extractionRatio * 8);
+  const completenessAdjustment = item.packetStatus === "complete" ? 8 : -25;
+  const attentionAdjustment = highAttention ? -5 : 0;
+  const score = clampAiConfidenceScore(
+    confidenceBase[item.confidenceLevel] +
+      (labelAdjustment[item.finalLabel] ?? 0) +
+      traceabilityAdjustment +
+      completenessAdjustment +
+      attentionAdjustment
+  );
+
+  return {
+    rationale: [
+      `${item.confidenceLevel} source confidence baseline.`,
+      `${item.extractedReferences}/${item.referenceCount} linked reference(s) have structured extraction.`,
+      `${item.finalLabel} label shapes the confidence score.`,
+      ...(highAttention
+        ? ["High-attention safety/regulatory context lowers confidence until caveats are clear."]
+        : []),
+      "Score is Codex's evidence-confidence estimate, not expert review."
+    ],
+    score,
+    summary: aiConfidenceSummary(score)
+  };
+}
+
+function clampAiConfidenceScore(score: number) {
+  return Math.max(5, Math.min(95, score));
+}
+
+function aiConfidenceSummary(score: number) {
+  if (score >= 80) {
+    return "High AI confidence";
+  }
+
+  if (score >= 60) {
+    return "Moderate AI confidence";
+  }
+
+  if (score >= 35) {
+    return "Low AI confidence";
+  }
+
+  return "Very low AI confidence";
+}
+
+function evidenceCoverageHighAttentionReasons({
+  interventionCategory,
+  item
+}: {
+  interventionCategory?: Intervention["category"];
+  item: EvidenceCoverageReviewBacklogItem;
+}) {
+  const reasons: string[] = [];
+
+  if (interventionCategory === "Peptide/biologic") {
+    reasons.push("Peptide/biologic scope.");
+  }
+
+  if (
+    item.finalLabel === "Regulatory Concern" ||
+    item.finalLabel === "Safety Concern" ||
+    item.finalLabel === "Avoid / Not Recommended" ||
+    item.finalLabel === "Requires Clinician Oversight"
+  ) {
+    reasons.push(`${item.finalLabel} label.`);
+  }
+
+  if (item.outcome === "Safety/adverse effects") {
+    reasons.push("Safety/adverse-effects outcome.");
+  }
+
+  return reasons;
+}
+
+function evidenceCoverageChatGptProPrompt({
+  highAttentionReasons,
+  interventionName,
+  item
+}: {
+  highAttentionReasons: string[];
+  interventionName: string;
+  item: EvidenceCoverageReviewBacklogItem;
+}) {
+  if (highAttentionReasons.length === 0) {
+    return "";
+  }
+
+  return [
+    `Please cross-check this Apex Lifespan AI evidence review: ${item.claimId}.`,
+    `Intervention: ${interventionName}. Outcome: ${item.outcome}. Current label: ${item.finalLabel}. Confidence: ${item.confidenceLevel}.`,
+    `High-attention reasons: ${highAttentionReasons.join(" ")}`,
+    `Focus on citation fit, claim scope, uncertainty wording, safety/regulatory caveats, and whether the public wording should stay cautious.`,
+    "Do not provide sourcing, compounding, reconstitution, injection, cycling, dosing, self-administration, diagnosis, or individualized medical advice.",
+    `Local packet command: ${coverageClaimReviewCommand(item.claimId)}`
+  ].join("\n");
 }
 
 function evidenceCoverageReviewSamplingPlan({
@@ -500,7 +1132,7 @@ function evidenceCoverageReviewSamplingPlan({
   const claimById = new Map(claims.map((claim) => [claim.id, claim]));
   const readyBacklog = claimReviewBacklog.filter(
     (item) =>
-      item.reviewStatus !== "Human reviewed" && item.packetStatus === "complete"
+      !reviewStatusIsReviewed(item.reviewStatus) && item.packetStatus === "complete"
   );
   const batchSize = Math.min(3, readyBacklog.length);
   const items = readyBacklog.slice(0, batchSize).flatMap((item) => {
@@ -531,7 +1163,7 @@ function evidenceCoverageReviewSamplingPlan({
     items,
     nextAction:
       items.length > 0
-        ? "Human review this sampled batch first; do not update review status until the cited packet and extraction are checked."
+        ? "Review this sampled batch first; Codex may mark packets AI reviewed after cited packet and extraction checks."
         : "No complete unreviewed source packets are ready for sampling.",
     readyClaims: readyBacklog.length
   };
@@ -551,6 +1183,8 @@ function evidenceCoverageReviewSampleItem({
   return {
     claimBoundary: evidenceCoverageReviewBoundary(claim),
     claimId: claim.id,
+    envFileReviewPacketCommand: coverageClaimReviewEnvFileCommand(claim.id),
+    humanDecisionGate: evidenceCoverageHumanDecisionGate(claim.id),
     interventionId: claim.interventionId,
     nextAction:
       "Review the linked references and structured study extraction before changing this claim's review status.",
@@ -558,14 +1192,60 @@ function evidenceCoverageReviewSampleItem({
     priority,
     priorityReasons,
     referenceIds: packet.referenceIds,
+    referenceSummaries: packet.references.map(evidenceCoverageReviewReferenceSummary),
     reviewChecklist: evidenceCoverageReviewChecklist({ claim, packet }),
+    reviewPacketCommand: coverageClaimReviewCommand(claim.id),
     sourcePacketStatus: packet.completeness.status,
     studyIds: packet.referenceIds.flatMap((referenceId) =>
       packet.studies
         .filter((study) => study.referenceId === referenceId)
         .map((study) => study.id)
         .sort()
-    )
+    ),
+    studySummaries: packet.studies.map(evidenceCoverageReviewStudySummary)
+  };
+}
+
+function coverageClaimReviewCommand(claimId: string) {
+  return `npm run coverage:review -- --claim ${claimId}`;
+}
+
+function coverageClaimReviewEnvFileCommand(claimId: string) {
+  return `npm run coverage:review -- --env-file <non-production-env-file> --claim ${claimId}`;
+}
+
+function evidenceCoverageHumanDecisionGate(claimId: string) {
+  return `Keep ${claimId} read-only here until Codex applies AI review, or a human explicitly confirms human review, through the authenticated operator workflow after cited references, structured extraction, scope, uncertainty, and safety/regulatory caveats are checked.`;
+}
+
+function evidenceCoverageReviewReferenceSummary(
+  reference: Reference
+): EvidenceCoverageReviewReferenceSummary {
+  return {
+    id: reference.id,
+    ...(reference.identifier ? { identifier: reference.identifier } : {}),
+    source: reference.source,
+    title: reference.title,
+    url: reference.url,
+    ...(reference.year ? { year: reference.year } : {})
+  };
+}
+
+function evidenceCoverageReviewStudySummary(study: Study): EvidenceCoverageReviewStudySummary {
+  return {
+    adverseEvents: study.adverseEvents,
+    fundingConflicts: study.fundingConflicts,
+    id: study.id,
+    outcomes: study.outcomes,
+    population: study.population,
+    referenceId: study.referenceId,
+    riskOfBias: study.riskOfBias,
+    sampleSize: study.sampleSize,
+    source: study.source,
+    ...(study.sourceTypeTaxonomy ? { sourceTypeTaxonomy: study.sourceTypeTaxonomy } : {}),
+    studyType: study.studyType,
+    title: study.title,
+    year: study.year
   };
 }
 
@@ -591,7 +1271,7 @@ function evidenceCoverageReviewChecklist({
     "Confirm the cited references and structured studies match this claim's population, outcome, comparator, and uncertainty label.",
     "Check population, dose/form, duration, safety notes, and applicability notes before changing review status.",
     `Verify source packet status is still ${packet.completeness.status} and every linked reference has traceable extraction.`,
-    "Leave review status unchanged until a human reviewer records the evidence decision."
+    "Leave review status unchanged until Codex records an AI-reviewed decision or a human confirms human review."
   ];
 
   if (claim.finalLabel === "Regulatory Concern") {
@@ -620,7 +1300,7 @@ function evidenceCoverageReviewBacklogItem({
   claim: Claim;
   packet: ReturnType<typeof buildClaimSourcePacket>;
 }): EvidenceCoverageReviewBacklogItem | null {
-  if (claim.reviewStatus === "Human reviewed" && packet.completeness.status === "complete") {
+  if (reviewStatusIsReviewed(claim.reviewStatus) && packet.completeness.status === "complete") {
     return null;
   }
 
@@ -633,16 +1313,48 @@ function evidenceCoverageReviewBacklogItem({
     finalLabel: claim.finalLabel,
     interventionId: claim.interventionId,
     nextAction:
-      claim.reviewStatus !== "Human reviewed" && packet.completeness.status === "complete"
-        ? "Human review the complete source packet before upgrading review status."
+      !reviewStatusIsReviewed(claim.reviewStatus) && packet.completeness.status === "complete"
+        ? "Codex may mark the complete source packet AI reviewed after checking cited references and extraction."
         : packet.completeness.nextStep,
     outcome: claim.outcome,
     packetStatus: packet.completeness.status,
     priority,
     priorityReasons,
+    rawCompositeScore: compositeScore(claim.scores),
     referenceCount: packet.completeness.totalReferences,
     reviewStatus: claim.reviewStatus
   };
+}
+
+function evidenceCoverageHumanConfirmationBacklogItem({
+  claim,
+  packet
+}: {
+  claim: Claim;
+  packet: ReturnType<typeof buildClaimSourcePacket>;
+}): EvidenceCoverageReviewBacklogItem {
+  const { priority, priorityReasons } = evidenceCoverageReviewPriority({ claim, packet });
+
+  return {
+    claimId: claim.id,
+    confidenceLevel: claim.confidenceLevel,
+    extractedReferences: packet.completeness.extractedReferences,
+    finalLabel: claim.finalLabel,
+    interventionId: claim.interventionId,
+    nextAction:
+      "Human may confirm this AI-reviewed source packet after checking cited references, structured extraction, uncertainty labels, and caveats.",
+    outcome: claim.outcome,
+    packetStatus: packet.completeness.status,
+    priority,
+    priorityReasons,
+    rawCompositeScore: compositeScore(claim.scores),
+    referenceCount: packet.completeness.totalReferences,
+    reviewStatus: claim.reviewStatus
+  };
+}
+
+function reviewStatusIsReviewed(reviewStatus: string) {
+  return reviewStatus === "AI reviewed" || reviewStatus === "Human reviewed";
 }
 
 function evidenceCoverageReviewPriority({
@@ -655,14 +1367,14 @@ function evidenceCoverageReviewPriority({
   const reasons: string[] = [];
   let priority = 0;
 
-  if (claim.reviewStatus !== "Human reviewed") {
+  if (!reviewStatusIsReviewed(claim.reviewStatus)) {
     priority += 100;
     reasons.push("Unreviewed draft claim");
   }
 
   if (packet.completeness.status === "complete") {
     priority += 50;
-    reasons.push("Complete source packet ready for human review");
+    reasons.push("Complete source packet ready for AI review");
   } else {
     reasons.push(packet.completeness.label);
   }

@@ -31,8 +31,8 @@ export interface SupplementOnboardingDraftImportPlan {
   databaseImport: {
     nextAction: string;
     noImportCommand: true;
-    requiredFutureGate: string;
-    status: "future-gated";
+    requiredFutureApproval: string;
+    status: "not-yet-enabled";
     supportedNow: false;
   };
   nextAction: string;
@@ -103,7 +103,7 @@ export interface SupplementOnboardingSeedDiffSummary {
     blockers: string[];
     claimCount: number;
     importPlan: {
-      databaseImportStatus: "future-gated";
+      databaseImportStatus: "not-yet-enabled";
       noAutoWrite: true;
       noDatabaseWrite: true;
       recommendedPath: "manual-seed-copy" | "resolve-blockers";
@@ -371,14 +371,14 @@ function draftImportPlanForSeedDiffItem({
   return {
     databaseImport: {
       nextAction:
-        "Keep saved operator drafts private for now; a future database import action must be separately implemented, operator-gated, audited, and reviewed before it can create intervention or claim rows.",
+        "Keep saved operator drafts private for now; a future database import action must be separately implemented, operator-approved, audited, and reviewed before it can create intervention or claim rows.",
       noImportCommand: true,
-      requiredFutureGate:
+      requiredFutureApproval:
         "Explicit authenticated operator database-import implementation and review.",
-      status: "future-gated",
+      status: "not-yet-enabled",
       supportedNow: false
     },
-    nextAction: blocked ? seedCopyNextAction : `${seedCopyNextAction} Database import remains future-gated.`,
+    nextAction: blocked ? seedCopyNextAction : `${seedCopyNextAction} Database import remains not yet enabled.`,
     noAutoPromotion: true,
     noAutoWrite: true,
     noDatabaseWrite: true,

@@ -116,7 +116,8 @@ describe("scheduled source ingestion dry run", () => {
         pubMedRetmaxCap: 20,
         schedulerDefaultJobsPerRun: 1,
         schedulerMaxJobsPerRun: 5,
-        sourcePolicy: "review-before-enable"
+        sourcePolicy: "review-before-enable",
+        trialAlertDraftMode: "operator-click-reviewed"
       },
       queuedJobs: 3,
       recentFailures: 0,
@@ -232,6 +233,12 @@ describe("scheduled source ingestion dry run", () => {
             label: "No automatic public promotion"
           },
           {
+            detail:
+              "ClinicalTrials.gov alert labels stay source-candidate metadata until an operator records a reviewed TrialAlert; scheduled ingestion does not auto-open alert rows.",
+            id: "trial-alert-drafts",
+            label: "Trial alert drafts"
+          },
+          {
             detail: "Failed jobs stay human-reviewed until an explicit retry policy is approved.",
             id: "automatic-retries-disabled",
             label: "Automatic retries disabled"
@@ -250,7 +257,7 @@ describe("scheduled source ingestion dry run", () => {
           },
           {
             detail:
-              "Managed database mode, scheduled write gate, alerts, approval, and NCBI metadata are configured.",
+              "Managed database mode, scheduled execution control, alerts, approval, and NCBI metadata are configured.",
             evidenceKeys: [
               "DATABASE_URL",
               "APEX_DATA_SOURCE=database",
@@ -767,7 +774,7 @@ describe("scheduled source ingestion batch runner", () => {
     expect(runNextJobMock).not.toHaveBeenCalled();
   });
 
-  it("blocks apply mode unless the scheduled-ingestion write gate is enabled", async () => {
+  it("blocks apply mode unless the scheduled-ingestion execution control is enabled", async () => {
     mockQueuedSchedulerState(1);
 
     await expect(

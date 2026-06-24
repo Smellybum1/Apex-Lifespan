@@ -27,6 +27,11 @@ const approvedImportEnv: OperatorBrowserWriteControlEnv = {
   APEX_ONBOARDING_DATABASE_IMPORT_REVIEWED_AT: "2026-06-13T01:00:00Z"
 };
 
+const approvedPublicChangelogPublicationEnv: OperatorBrowserWriteControlEnv = {
+  ...approvedEnv,
+  APEX_PUBLIC_CHANGELOG_PUBLISH_REVIEWED_AT: "2026-06-13T02:00:00Z"
+};
+
 describe("operator browser write control gate", () => {
   it("keeps browser writes locked by default", () => {
     const state = getOperatorBrowserWriteControlState(activeAdmin, "claim-link", {});
@@ -66,7 +71,7 @@ describe("operator browser write control gate", () => {
     ]);
   });
 
-  it("enables only after write gate and browser-control approval evidence are present", () => {
+  it("enables only after write control and browser-control evidence are present", () => {
     const state = getOperatorBrowserWriteControlState(
       activeAdmin,
       "study-extraction",
@@ -87,6 +92,65 @@ describe("operator browser write control gate", () => {
 
     expect(state.enabled).toBe(true);
     expect(state.permission).toBe("evidence:promote");
+  });
+
+  it("keeps public changelog publication behind its dedicated reviewed-at evidence", () => {
+    const locked = getOperatorBrowserWriteControlState(
+      activeAdmin,
+      "public-changelog-publication",
+      approvedEnv
+    );
+
+    expect(locked.enabled).toBe(false);
+    expect(locked.blockers).toEqual([
+      "APEX_PUBLIC_CHANGELOG_PUBLISH_REVIEWED_AT is required."
+    ]);
+    expect(locked.permission).toBe("evidence:promote");
+
+    const ready = getOperatorBrowserWriteControlState(
+      activeAdmin,
+      "public-changelog-publication",
+      approvedPublicChangelogPublicationEnv
+    );
+
+    expect(ready.enabled).toBe(true);
+    expect(ready.blockers).toEqual([]);
+    expect(ready.evidenceKeys).toContain(
+      "APEX_PUBLIC_CHANGELOG_PUBLISH_REVIEWED_AT"
+    );
+  });
+
+  it("maps source discovery collection to the candidate review permission", () => {
+    const state = getOperatorBrowserWriteControlState(
+      activeAdmin,
+      "source-discovery",
+      approvedEnv
+    );
+
+    expect(state.enabled).toBe(true);
+    expect(state.permission).toBe("candidate:review");
+  });
+
+  it("maps claim-packet review to the evidence promotion permission", () => {
+    const state = getOperatorBrowserWriteControlState(
+      activeAdmin,
+      "claim-packet-review",
+      approvedEnv
+    );
+
+    expect(state.enabled).toBe(true);
+    expect(state.permission).toBe("evidence:promote");
+  });
+
+  it("maps trial-alert recording to the admin curation permission", () => {
+    const state = getOperatorBrowserWriteControlState(
+      activeAdmin,
+      "trial-alert",
+      approvedEnv
+    );
+
+    expect(state.enabled).toBe(true);
+    expect(state.permission).toBe("curation:study-extraction");
   });
 
   it("maps onboarding drafts to the admin-only onboarding draft permission", () => {

@@ -10,9 +10,15 @@ async function main() {
     const {
       summarizeEvidenceCoverage,
       summarizeEvidenceCoverageClaimReview,
+      summarizeEvidenceCoverageReadyClaimReviews,
       summarizeEvidenceCoverageReviewReport
     } = await import("@/lib/evidence-coverage");
     const data = await getEvidenceDashboardData();
+
+    if (args.readyClaimPackets) {
+      console.log(JSON.stringify(summarizeEvidenceCoverageReadyClaimReviews(data), null, 2));
+      return;
+    }
 
     if (args.claimId) {
       const summary = summarizeEvidenceCoverageClaimReview(data, args.claimId);
@@ -41,11 +47,13 @@ interface CoverageReviewCliArgs {
   claimId?: string;
   compactSummary: boolean;
   envFilePath?: string;
+  readyClaimPackets: boolean;
 }
 
 function readCoverageReviewArgs(args: string[]): CoverageReviewCliArgs {
   const parsed: CoverageReviewCliArgs = {
-    compactSummary: false
+    compactSummary: false,
+    readyClaimPackets: false
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -53,6 +61,11 @@ function readCoverageReviewArgs(args: string[]): CoverageReviewCliArgs {
 
     if (arg === "--summary") {
       parsed.compactSummary = true;
+      continue;
+    }
+
+    if (arg === "--ready-claim-packets") {
+      parsed.readyClaimPackets = true;
       continue;
     }
 
@@ -105,8 +118,14 @@ function readCoverageReviewArgs(args: string[]): CoverageReviewCliArgs {
     throw new Error(`Unknown coverage review argument: ${arg}`);
   }
 
-  if (parsed.compactSummary && parsed.claimId) {
-    throw new Error("--summary cannot be combined with --claim.");
+  const outputModes = [
+    parsed.compactSummary ? "--summary" : undefined,
+    parsed.claimId ? "--claim" : undefined,
+    parsed.readyClaimPackets ? "--ready-claim-packets" : undefined
+  ].filter((mode): mode is string => Boolean(mode));
+
+  if (outputModes.length > 1) {
+    throw new Error(`${outputModes.join(", ")} cannot be combined.`);
   }
 
   return parsed;

@@ -18,7 +18,7 @@ describe("operator auth controls", () => {
     expect(OPERATOR_PAGE_SOURCE).toContain('await signOut({ redirectTo: "/operator" });');
   });
 
-  it("keeps source-candidate persistence behind the browser write gate", () => {
+  it("keeps source-candidate persistence behind the browser write controls", () => {
     expect(OPERATOR_PAGE_SOURCE).toContain("Promotion readiness");
     expect(OPERATOR_PAGE_SOURCE).toContain("Audit trail");
     expect(OPERATOR_PAGE_SOURCE).toContain("OperatorOnboardingWizard");

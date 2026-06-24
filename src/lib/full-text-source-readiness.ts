@@ -3287,7 +3287,7 @@ function fullTextSourceFixtureScenarios(): FullTextSourceFixtureScenario[] {
     },
     {
       description:
-        "Terms, API policy, rate, and access method are partially reviewed, but retention and approval gates are still incomplete.",
+        "Terms, API policy, rate, and access method are partially reviewed, but retention and approval checks are still incomplete.",
       expectedConnectorReviewStatus: "blocked",
       expectedProgressStatus: "in-progress",
       id: "in-progress-reviewed-terms",

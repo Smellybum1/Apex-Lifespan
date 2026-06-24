@@ -16,6 +16,8 @@ export interface ClinicalTrialSearchItem {
   hasResults: boolean;
   resultsFirstPostDate: string | null;
   sponsor: string | null;
+  trialAlertDetail: string;
+  trialAlertLabel: ClinicalTrialAlertLabel;
   trialRelevanceDetail: string;
   trialRelevanceLabel: ClinicalTrialRelevanceLabel;
   trialResultDetail: string;
@@ -37,6 +39,13 @@ export type ClinicalTrialResultLabel =
   | "Results posted"
   | "Terminated/unknown"
   | "Unreviewed lead";
+
+export type ClinicalTrialAlertLabel =
+  | "Low-priority lead"
+  | "Missing results follow-up"
+  | "Monitor active trial"
+  | "Registry status review"
+  | "Results review needed";
 
 export interface ClinicalTrialSearchResult {
   query: string;
@@ -187,6 +196,9 @@ function mapClinicalTrialStudy(
     hasResults,
     resultsFirstPostDate: firstText(protocol?.statusModule?.resultsFirstPostDateStruct?.date),
     sponsor: firstText(protocol?.sponsorCollaboratorsModule?.leadSponsor?.name),
+    trialAlertDetail:
+      "Registry rows are review leads only; they do not change scores without extraction and human review.",
+    trialAlertLabel: "Low-priority lead" as const,
     trialRelevanceDetail: "Trial relevance needs manual review against the scoped claim.",
     trialRelevanceLabel: "Unreviewed lead" as const,
     trialResultDetail: "Registry status needs manual review before treating this as evidence.",
@@ -197,10 +209,16 @@ function mapClinicalTrialStudy(
   };
   const relevance = classifyClinicalTrialRelevance(item, term);
   const resultStatus = classifyClinicalTrialResultStatus(item);
-  const labelledItem = {
+  const alertStatus = classifyClinicalTrialAlert({
     ...item,
     ...relevance,
     ...resultStatus
+  });
+  const labelledItem = {
+    ...item,
+    ...relevance,
+    ...resultStatus,
+    ...alertStatus
   };
   const triage = triageClinicalTrial(labelledItem, term);
 
@@ -275,6 +293,54 @@ function classifyClinicalTrialRelevance(
     trialRelevanceDetail:
       "ClinicalTrials.gov metadata does not yet show a direct intervention, outcome, or population match; inspect manually before use.",
     trialRelevanceLabel: "Unreviewed lead"
+  };
+}
+
+function classifyClinicalTrialAlert(
+  item: Pick<
+    ClinicalTrialSearchItem,
+    "status" | "trialRelevanceLabel" | "trialResultLabel"
+  >
+): Pick<ClinicalTrialSearchItem, "trialAlertDetail" | "trialAlertLabel"> {
+  if (item.trialResultLabel === "Results posted") {
+    return {
+      trialAlertDetail:
+        "Posted registry results are an operator review alert. Do not change public scores until outcomes are extracted, citation-linked, and human-reviewed.",
+      trialAlertLabel: "Results review needed"
+    };
+  }
+
+  if (item.trialResultLabel === "Completed, no results posted") {
+    return {
+      trialAlertDetail:
+        "The trial appears completed without posted results in captured metadata. Track as a follow-up lead rather than evidence for or against the claim.",
+      trialAlertLabel: "Missing results follow-up"
+    };
+  }
+
+  if (item.trialResultLabel === "Terminated/unknown") {
+    return {
+      trialAlertDetail:
+        "Terminated, suspended, withdrawn, or unknown-status records need registry-status review before they influence any public interpretation.",
+      trialAlertLabel: "Registry status review"
+    };
+  }
+
+  if (
+    item.trialRelevanceLabel === "Direct match" &&
+    /\b(active|enrolling|not yet recruiting|recruiting)\b/i.test(item.status)
+  ) {
+    return {
+      trialAlertDetail:
+        "This direct-match registry row is active or recruiting. Monitor for status/results changes; do not promote it into evidence automatically.",
+      trialAlertLabel: "Monitor active trial"
+    };
+  }
+
+  return {
+    trialAlertDetail:
+      "This registry row remains a low-priority review lead unless manual claim-scoped review finds stronger relevance.",
+    trialAlertLabel: "Low-priority lead"
   };
 }
 

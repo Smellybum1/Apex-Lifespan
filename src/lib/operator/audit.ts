@@ -3,6 +3,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import type { OperatorPrincipal } from "@/lib/operator/authorization";
 
+type OperatorAuditClient = Pick<typeof prisma, "operatorAuditEvent">;
+
 export interface OperatorAuditInput {
   action: string;
   afterSummary?: Prisma.InputJsonValue;
@@ -15,14 +17,15 @@ export interface OperatorAuditInput {
 
 export async function recordOperatorAuditEvent(
   principal: OperatorPrincipal,
-  input: OperatorAuditInput
+  input: OperatorAuditInput,
+  client: OperatorAuditClient = prisma
 ) {
-  return prisma.operatorAuditEvent.create({
+  return client.operatorAuditEvent.create({
     data: {
       action: input.action,
       actorEmail: principal.email,
       actorRole: principal.role,
-      actorUserId: principal.userId,
+      actorUserId: principal.userId.trim() ? principal.userId : undefined,
       afterSummary: input.afterSummary,
       beforeSummary: input.beforeSummary,
       metadata: input.metadata,

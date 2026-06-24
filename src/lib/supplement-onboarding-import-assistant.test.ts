@@ -68,7 +68,7 @@ describe("supplement onboarding import assistant", () => {
             status: "draft-only"
           })
         ],
-        status: "future-gated",
+        status: "not-yet-enabled",
         supportedNow: false
       },
       manualSeedCopy: {
@@ -119,7 +119,7 @@ describe("supplement onboarding import assistant", () => {
       }
     });
     expect(summary.items[0]).toMatchObject({
-      databaseImportStatus: "future-gated",
+      databaseImportStatus: "not-yet-enabled",
       manualSeedCopyStatus: "blocked",
       plannedDatabaseRecords: 3,
       publicPromotionStatus: "blocked-until-evidence-review",
@@ -128,7 +128,7 @@ describe("supplement onboarding import assistant", () => {
     expect(JSON.stringify(summary)).not.toContain("fieldPreview");
   });
 
-  it("renders markdown with gates and planned records", () => {
+  it("renders markdown with future approvals and planned records", () => {
     const plan = buildSupplementOnboardingPlan({
       category: "Vitamin/mineral",
       claimTemplateIds: ["sleep"],
@@ -146,9 +146,9 @@ describe("supplement onboarding import assistant", () => {
 
     expect(markdown).toContain("# Supplement Onboarding Import Assistant");
     expect(markdown).toContain("No database write: true");
-    expect(markdown).toContain("database import: future-gated; supported now: false");
+    expect(markdown).toContain("database import: not-yet-enabled; supported now: false");
     expect(markdown).toContain("Claim `magnesium-glycinate-sleep`");
-    expect(markdown).toContain("Required future gates for database import:");
+    expect(markdown).toContain("Required future approvals for database import:");
     expect(markdown).toContain("Public promotion prerequisites:");
   });
 });

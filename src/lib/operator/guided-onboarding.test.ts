@@ -219,7 +219,7 @@ function savedDraftSnapshot(): SupplementOnboardingDraftReviewSnapshot {
           },
           interventionId: "magnesium-glycinate",
           nextAction:
-            "Review warnings, confirm draft public visibility is acceptable, then use the gated operator import action with an import note.",
+            "Review warnings, confirm draft public visibility is acceptable, then use the approved operator import action with an import note.",
           noAutoPromotion: true,
           noCandidateDecision: true,
           noClaimReview: true,
@@ -243,15 +243,15 @@ function savedDraftSnapshot(): SupplementOnboardingDraftReviewSnapshot {
         importPlan: {
           databaseImport: {
             nextAction:
-              "Keep saved operator drafts private for now; a future database import action must be separately implemented, operator-gated, audited, and reviewed before it can create intervention or claim rows.",
+              "Keep saved operator drafts private for now; a future database import action must be separately implemented, operator-approved, audited, and reviewed before it can create intervention or claim rows.",
             noImportCommand: true,
-            requiredFutureGate:
+            requiredFutureApproval:
               "Explicit authenticated operator database-import implementation and review.",
-            status: "future-gated",
+            status: "not-yet-enabled",
             supportedNow: false
           },
           nextAction:
-            "Complete manual copy review, then copy accepted snippets into src/lib/seed-data.ts and run validation. Database import remains future-gated.",
+            "Complete manual copy review, then copy accepted snippets into src/lib/seed-data.ts and run validation. Database import remains not yet enabled.",
           noAutoPromotion: true,
           noAutoWrite: true,
           noDatabaseWrite: true,

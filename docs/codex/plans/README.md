@@ -6,9 +6,9 @@ Use `YYYY-MM-DD-slug.md`. Keep each plan short, update it only when direction ma
 
 After completion, either:
 - archive the plan under `archive/YYYY-MM-DD/`; or
-- delete it when the final diff, tests, and `docs/codex/handoff.md` already preserve the useful context.
+- delete it when the final diff, tests, and final response already preserve the useful context.
 
-Keep the top-level `plans/` folder for active work plus this README.
+Keep the top-level `plans/` folder for active work plus this README. Do not copy completed-plan history into `docs/codex/handoff.md`; handoff should stay a compact current-state snapshot.
 
 Do not read `archive/` wholesale during startup or routine task orientation. Search archived plans only for a specific historical decision, file, command, or failure pattern.
 

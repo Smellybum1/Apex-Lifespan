@@ -5,6 +5,7 @@ const prismaMocks = vi.hoisted(() => ({
   claimReferenceFindMany: vi.fn(),
   claimReferenceFindUnique: vi.fn(),
   claimReferenceUpsert: vi.fn(),
+  referenceCreate: vi.fn(),
   referenceFindMany: vi.fn(),
   referenceFindUnique: vi.fn(),
   studyCreate: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock("@/lib/db/prisma", () => ({
       upsert: prismaMocks.claimReferenceUpsert
     },
     reference: {
+      create: prismaMocks.referenceCreate,
       findMany: prismaMocks.referenceFindMany,
       findUnique: prismaMocks.referenceFindUnique
     },
@@ -49,6 +51,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 import {
+  confirmSourceCandidateHumanReview,
   extractAcceptedSourceCandidateStudy,
   getSourceCandidateCurationDraft,
   getSourceCandidateCurationStatus,
@@ -60,6 +63,7 @@ import {
   listSourceCandidateReviewOverview,
   listSourceCandidateReviewQueue,
   listSourceCandidateSiblings,
+  prepareSourceCandidateReference,
   summarizeSourceCandidateCurationHandoff,
   recordSourceCandidateDecision,
   summarizeSourceCandidateBacklog,
@@ -82,6 +86,9 @@ beforeEach(() => {
   );
   prismaMocks.referenceFindMany.mockResolvedValue([dbReference()]);
   prismaMocks.referenceFindUnique.mockResolvedValue(dbReference());
+  prismaMocks.referenceCreate.mockImplementation(async (args) =>
+    dbReference(args.data)
+  );
   prismaMocks.studyCreate.mockImplementation(async (args) => dbStudy(args.data));
   prismaMocks.studyFindMany.mockResolvedValue([]);
   prismaMocks.studyUpdate.mockImplementation(async (args) =>
@@ -896,6 +903,100 @@ describe("listSourceCandidateAcceptedReferenceMatches", () => {
   });
 });
 
+describe("prepareSourceCandidateReference", () => {
+  it("previews a matching curated reference row without writing by default", async () => {
+    prismaMocks.referenceFindMany.mockResolvedValue([]);
+
+    await expect(
+      prepareSourceCandidateReference({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength"
+      })
+    ).resolves.toEqual({
+      candidate: expect.objectContaining({
+        externalId: "28615996",
+        source: "PubMed"
+      }),
+      created: false,
+      existing: false,
+      reference: {
+        id: "ref-pubmed-28615996",
+        identifier: "PMID: 28615996",
+        source: "PubMed",
+        title: "Creatine position stand",
+        url: "https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        year: 2017
+      },
+      write: false
+    });
+
+    expect(prismaMocks.referenceCreate).not.toHaveBeenCalled();
+  });
+
+  it("creates the curated reference row only when write is explicit", async () => {
+    prismaMocks.referenceFindMany.mockResolvedValue([]);
+
+    await expect(
+      prepareSourceCandidateReference({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        write: true
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        created: true,
+        existing: false,
+        reference: expect.objectContaining({
+          id: "ref-pubmed-28615996",
+          identifier: "PMID: 28615996",
+          source: "PubMed"
+        }),
+        write: true
+      })
+    );
+
+    expect(prismaMocks.referenceCreate).toHaveBeenCalledWith({
+      data: {
+        id: "ref-pubmed-28615996",
+        identifier: "PMID: 28615996",
+        source: "PUBMED",
+        title: "Creatine position stand",
+        url: "https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        year: 2017
+      }
+    });
+  });
+
+  it("returns an existing matching reference instead of creating a duplicate", async () => {
+    await expect(
+      prepareSourceCandidateReference({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        write: true
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        created: false,
+        existing: true,
+        reference: expect.objectContaining({
+          id: "ref-creatine-position-stand"
+        }),
+        write: false
+      })
+    );
+
+    expect(prismaMocks.referenceCreate).not.toHaveBeenCalled();
+  });
+
+  it("returns null without reading references when the candidate is missing", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(null);
+
+    await expect(
+      prepareSourceCandidateReference({ dedupeKey: "missing-candidate" })
+    ).resolves.toBeNull();
+
+    expect(prismaMocks.referenceFindMany).not.toHaveBeenCalled();
+    expect(prismaMocks.referenceCreate).not.toHaveBeenCalled();
+  });
+});
+
 describe("listSourceCandidateSiblings", () => {
   it("lists same-source external-id and query-context siblings with match reasons", async () => {
     prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
@@ -1416,7 +1517,7 @@ describe("getSourceCandidateCurationDraft", () => {
             field: "sampleSize",
             note:
               "Enrollment/sample-size metadata may describe planned rather than analyzed sample; verify actual analyzed sample before writing.",
-            value: "Human-reviewed sampleSize required.",
+            value: "AI-reviewed sampleSize required.",
             writeFlag: "--study-sample-size"
           },
           {
@@ -1424,7 +1525,7 @@ describe("getSourceCandidateCurationDraft", () => {
             field: "population",
             note:
               "Condition/population metadata may be broad; verify population, inclusion criteria, and health status before writing.",
-            value: "Human-reviewed population required.",
+            value: "AI-reviewed population required.",
             writeFlag: "--study-population"
           },
           {
@@ -1432,7 +1533,7 @@ describe("getSourceCandidateCurationDraft", () => {
             field: "interventionName",
             note:
               "Intervention metadata may omit formulation and comparator context; verify before writing.",
-            value: "Human-reviewed interventionName required.",
+            value: "AI-reviewed interventionName required.",
             writeFlag: "--study-intervention-name"
           },
           {
@@ -1440,7 +1541,7 @@ describe("getSourceCandidateCurationDraft", () => {
             field: "outcomes",
             note:
               "Outcome metadata may omit endpoint hierarchy and claim relevance; verify before writing.",
-            value: "Human-reviewed outcomes required.",
+            value: "AI-reviewed outcomes required.",
             writeFlag: "--study-outcome"
           },
           {
@@ -1448,7 +1549,7 @@ describe("getSourceCandidateCurationDraft", () => {
             field: "adverseEvents",
             note:
               "Adverse-event reporting is not fully captured by candidate metadata; review results or full text before writing.",
-            value: "Human-reviewed adverseEvents required.",
+            value: "AI-reviewed adverseEvents required.",
             writeFlag: "--study-adverse-events"
           },
           {
@@ -1456,7 +1557,7 @@ describe("getSourceCandidateCurationDraft", () => {
             field: "fundingConflicts",
             note:
               "Sponsor metadata is not a full funding/conflict-of-interest assessment.",
-            value: "Human-reviewed fundingConflicts required.",
+            value: "AI-reviewed fundingConflicts required.",
             writeFlag: "--study-funding-conflicts"
           },
           {
@@ -1473,7 +1574,7 @@ describe("getSourceCandidateCurationDraft", () => {
             field: "duration",
             note:
               "Duration inferred only from registry date metadata; verify actual intervention and follow-up duration.",
-            value: "Human-reviewed duration required.",
+            value: "AI-reviewed duration required.",
             writeFlag: "--study-duration"
           },
           {
@@ -1481,7 +1582,7 @@ describe("getSourceCandidateCurationDraft", () => {
             field: "mainResults",
             note:
               "Results summary is not extracted automatically; verify registry results or full text before writing.",
-            value: "Human-reviewed mainResults required.",
+            value: "AI-reviewed mainResults required.",
             writeFlag: "--study-main-results"
           },
           {
@@ -1585,7 +1686,10 @@ describe("getSourceCandidateCurationDraft", () => {
           primaryOutcomes: ["Strength change"],
           resultsFirstPostDate: "2026-01-01",
           sponsor: "Example University",
-          startDate: "2025-01-01"
+          startDate: "2025-01-01",
+          trialAlertDetail:
+            "Posted registry results are an operator review alert. Do not change public scores until outcomes are extracted, citation-linked, and human-reviewed.",
+          trialAlertLabel: "Results review needed"
         },
         reviewStatus: "HUMAN_REVIEWED",
         source: "CLINICALTRIALS_GOV",
@@ -1699,6 +1803,16 @@ describe("getSourceCandidateCurationDraft", () => {
             reviewConfidence: "weak",
             value:
               "Has posted results: true; Results first posted: 2026-01-01"
+          }),
+          expect.objectContaining({
+            confidence: "candidate-metadata",
+            confidenceLabel: "Weak",
+            label: "trialAlertWorkflow",
+            note:
+              "ClinicalTrials.gov alert labels route monitoring or review work only; they do not auto-promote evidence or update scores.",
+            reviewConfidence: "weak",
+            value:
+              "Alert: Results review needed; Posted registry results are an operator review alert. Do not change public scores until outcomes are extracted, citation-linked, and human-reviewed."
           }),
           expect.objectContaining({
             confidence: "candidate-metadata",
@@ -2893,7 +3007,7 @@ describe("recordSourceCandidateDecision", () => {
     prismaMocks.sourceCandidateUpdate.mockResolvedValue(
       dbSourceCandidate({
         decision: "ACCEPTED",
-        reviewStatus: "HUMAN_REVIEWED",
+        reviewStatus: "AI_REVIEWED",
         acceptedReferenceId: "ref-creatine-position-stand",
         reviewedAt,
         reviewNote: "Promoted after full-text review."
@@ -2911,7 +3025,7 @@ describe("recordSourceCandidateDecision", () => {
     ).resolves.toEqual(
       expect.objectContaining({
         decision: "Accepted",
-        reviewStatus: "Human reviewed",
+        reviewStatus: "AI reviewed",
         acceptedReferenceId: "ref-creatine-position-stand",
         reviewedAt: "2026-06-02T01:00:00.000Z",
         reviewNote: "Promoted after full-text review."
@@ -2925,7 +3039,7 @@ describe("recordSourceCandidateDecision", () => {
       },
       data: {
         decision: "ACCEPTED",
-        reviewStatus: "HUMAN_REVIEWED",
+        reviewStatus: "AI_REVIEWED",
         reviewedAt,
         reviewNote: "Promoted after full-text review.",
         acceptedReferenceId: "ref-creatine-position-stand"
@@ -2943,7 +3057,7 @@ describe("recordSourceCandidateDecision", () => {
     prismaMocks.sourceCandidateUpdate.mockResolvedValue(
       dbSourceCandidate({
         decision: "REJECTED",
-        reviewStatus: "HUMAN_REVIEWED",
+        reviewStatus: "AI_REVIEWED",
         acceptedReferenceId: null,
         reviewedAt,
         reviewNote: "Not relevant to the AU consumer claim."
@@ -2960,7 +3074,7 @@ describe("recordSourceCandidateDecision", () => {
     ).resolves.toEqual(
       expect.objectContaining({
         decision: "Rejected",
-        reviewStatus: "Human reviewed",
+        reviewStatus: "AI reviewed",
         acceptedReferenceId: undefined,
         reviewedAt: "2026-06-02T02:00:00.000Z",
         reviewNote: "Not relevant to the AU consumer claim."
@@ -2974,7 +3088,7 @@ describe("recordSourceCandidateDecision", () => {
       },
       data: {
         decision: "REJECTED",
-        reviewStatus: "HUMAN_REVIEWED",
+        reviewStatus: "AI_REVIEWED",
         reviewedAt,
         reviewNote: "Not relevant to the AU consumer claim.",
         acceptedReferenceId: null
@@ -3319,6 +3433,75 @@ describe("recordSourceCandidateDecision", () => {
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
+    );
+
+    expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("confirmSourceCandidateHumanReview", () => {
+  it("upgrades already decided AI-reviewed candidates to human reviewed", async () => {
+    const reviewedAt = new Date("2026-06-16T03:00:00.000Z");
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        acceptedReferenceId: "ref-creatine-position-stand",
+        decision: "ACCEPTED",
+        reviewStatus: "AI_REVIEWED"
+      })
+    );
+    prismaMocks.sourceCandidateUpdate.mockResolvedValue(
+      dbSourceCandidate({
+        acceptedReferenceId: "ref-creatine-position-stand",
+        decision: "ACCEPTED",
+        reviewedAt,
+        reviewNote: "Human confirmed the AI-reviewed candidate decision.",
+        reviewStatus: "HUMAN_REVIEWED"
+      })
+    );
+
+    await expect(
+      confirmSourceCandidateHumanReview({
+        dedupeKey: " pubmed|au|creatine|28615996|creatine|creatine-strength ",
+        reviewedAt,
+        reviewNote: " Human confirmed the AI-reviewed candidate decision. "
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        acceptedReferenceId: "ref-creatine-position-stand",
+        decision: "Accepted",
+        reviewedAt: "2026-06-16T03:00:00.000Z",
+        reviewNote: "Human confirmed the AI-reviewed candidate decision.",
+        reviewStatus: "Human reviewed"
+      })
+    );
+
+    expect(prismaMocks.sourceCandidateUpdate).toHaveBeenCalledWith({
+      where: {
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength"
+      },
+      data: {
+        reviewedAt,
+        reviewNote: "Human confirmed the AI-reviewed candidate decision.",
+        reviewStatus: "HUMAN_REVIEWED"
+      }
+    });
+  });
+
+  it("does not let human confirmation skip pending candidate review", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "PENDING_REVIEW",
+        reviewStatus: "UNREVIEWED_AI_DRAFT"
+      })
+    );
+
+    await expect(
+      confirmSourceCandidateHumanReview({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        reviewNote: "Human confirmed."
+      })
+    ).rejects.toThrow(
+      "Pending source candidate must be accepted or rejected before human review confirmation."
     );
 
     expect(prismaMocks.sourceCandidateUpdate).not.toHaveBeenCalled();

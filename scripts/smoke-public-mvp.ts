@@ -52,7 +52,7 @@ const pageSmokes: PageSmoke[] = [
       },
       {
         label: "review status",
-        values: ["Unreviewed AI draft", "Human-reviewed"]
+        values: ["Unreviewed AI draft", "Human-reviewed", "Human reviewed"]
       }
     ]
   },

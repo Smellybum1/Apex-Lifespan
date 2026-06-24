@@ -49,7 +49,7 @@ export type EvidenceMomentum =
   | "Weakening"
   | "Safety concern emerging";
 
-export type ReviewStatus = "Unreviewed AI draft" | "Human reviewed";
+export type ReviewStatus = "Unreviewed AI draft" | "AI reviewed" | "Human reviewed";
 
 export type ConfidenceLevel = "High" | "Moderate" | "Low" | "Very low";
 
@@ -131,12 +131,38 @@ export interface Claim {
   applicabilityNotes: string;
   doesNotProve?: string[];
   keyReferenceIds: string[];
+  keyStudyIds?: string[];
   scores: ScoreSet;
   finalLabel: EvidenceLabel;
   momentum: EvidenceMomentum;
   reviewStatus: ReviewStatus;
   lastUpdated: string;
   whatWouldChangeScore: string;
+}
+
+export interface ClaimScoreSnapshot {
+  claimId: string;
+  compositeScore: number;
+  computedAt: string;
+  finalLabel: EvidenceLabel;
+  id: string;
+  rationale?: string;
+  reviewStatus: ReviewStatus;
+  scoreVersion: string;
+  scores: ScoreSet;
+}
+
+export interface ClaimScoreHistoryEntry {
+  claimId: string;
+  createdAt: string;
+  id: string;
+  newCompositeScore?: number;
+  newLabel?: EvidenceLabel;
+  oldCompositeScore?: number;
+  oldLabel?: EvidenceLabel;
+  rationale: string;
+  reason: string;
+  referenceId?: string;
 }
 
 export interface Study {
@@ -201,6 +227,31 @@ export interface TrialWatchItem {
   url: string;
 }
 
+export type TrialAlertKind =
+  | "Low-priority lead"
+  | "Missing results follow-up"
+  | "Monitor active trial"
+  | "Registry status review"
+  | "Results review needed";
+
+export type TrialAlertStatus = "Acknowledged" | "Dismissed" | "Open" | "Resolved";
+
+export interface TrialAlert {
+  claimId?: string;
+  detectedAt: string;
+  detail: string;
+  id: string;
+  interventionId?: string;
+  kind: TrialAlertKind;
+  nctId?: string;
+  noAutoPromotion: boolean;
+  reviewedAt?: string;
+  scoreHistoryId?: string;
+  status: TrialAlertStatus;
+  title: string;
+  trialId?: string;
+}
+
 export interface SafetyAlert {
   id: string;
   interventionId: string;
@@ -261,8 +312,11 @@ export interface EvidenceDashboardData {
   interventions: Intervention[];
   claims: Claim[];
   studies: Study[];
+  trialAlerts?: TrialAlert[];
   trialWatchItems: TrialWatchItem[];
   safetyAlerts: SafetyAlert[];
+  scoreHistory?: ClaimScoreHistoryEntry[];
+  scoreSnapshots?: ClaimScoreSnapshot[];
   productSignals: ProductSignal[];
   australiaRegulatoryStatuses: AustraliaRegulatoryStatus[];
   dataSource: "database" | "seed";

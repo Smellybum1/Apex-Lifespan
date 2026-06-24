@@ -37,3 +37,14 @@ Thumbs.db
 output/
 
 .vercel
+
+# Local AI delegation runtime
+.ai/delegation/local-config.json
+.ai/delegation/runs/
+.ai/delegation/contracts/
+
+# Local Codex / Composer runtime
+.codex-logs/
+.composer-task/
+
+../.apex-lifespan-composer-worktrees/

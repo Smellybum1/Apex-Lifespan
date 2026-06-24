@@ -8,16 +8,25 @@ import {
   OutcomeArea as DbOutcomeArea,
   type Claim as DbClaim,
   type ClaimReference as DbClaimReference,
+  type ClaimScoreHistory as DbClaimScoreHistory,
+  type ClaimScoreSnapshot as DbClaimScoreSnapshot,
+  type ClaimStudy as DbClaimStudy,
   type Intervention as DbIntervention,
   type Product as DbProduct,
   type Reference as DbReference,
   type SafetyAlert as DbSafetyAlert,
   SafetyAlertType as DbSafetyAlertType,
   SafetySeverity as DbSafetySeverity,
+  ScoreChangeKind as DbScoreChangeKind,
   SourceKind as DbSourceKind,
+  type SourcePacket as DbSourcePacket,
+  type SourcePacketReference as DbSourcePacketReference,
   type Study as DbStudy,
   StudyType as DbStudyType,
   type Trial as DbTrial,
+  type TrialAlert as DbTrialAlert,
+  TrialAlertKind as DbTrialAlertKind,
+  TrialAlertStatus as DbTrialAlertStatus,
   TrialStatus as DbTrialStatus,
   type Prisma
 } from "@prisma/client";
@@ -35,8 +44,11 @@ import {
   studies,
   trialWatchItems
 } from "@/lib/seed-data";
+import { buildSeedNormalizedEvidenceRows } from "@/lib/seed-normalized-evidence";
 import type {
   Claim,
+  ClaimScoreHistoryEntry,
+  ClaimScoreSnapshot,
   AustraliaRegulatoryKind,
   AustraliaRegulatoryStatus,
   ConfidenceLevel,
@@ -51,11 +63,18 @@ import type {
   SafetyAlert,
   SourceTypeTaxonomy,
   Study,
+  TrialAlert,
   TrialWatchItem
 } from "@/lib/types";
 
 type DbClaimWithReferences = DbClaim & {
-  references: DbClaimReference[];
+  references?: DbClaimReference[];
+  sourcePackets?: Array<
+    DbSourcePacket & {
+      references: DbSourcePacketReference[];
+    }
+  >;
+  studyLinks?: DbClaimStudy[];
 };
 
 type DatabasePreflight =
@@ -144,6 +163,21 @@ const trialStatusMap: Record<DbTrialStatus, TrialWatchItem["status"]> = {
   RESULTS_PENDING: "Results pending"
 };
 
+const trialAlertKindMap: Record<DbTrialAlertKind, TrialAlert["kind"]> = {
+  LOW_PRIORITY_LEAD: "Low-priority lead",
+  MISSING_RESULTS_FOLLOW_UP: "Missing results follow-up",
+  MONITOR_ACTIVE_TRIAL: "Monitor active trial",
+  REGISTRY_STATUS_REVIEW: "Registry status review",
+  RESULTS_REVIEW_NEEDED: "Results review needed"
+};
+
+const trialAlertStatusMap: Record<DbTrialAlertStatus, TrialAlert["status"]> = {
+  ACKNOWLEDGED: "Acknowledged",
+  DISMISSED: "Dismissed",
+  OPEN: "Open",
+  RESOLVED: "Resolved"
+};
+
 const alertTypeMap: Record<DbSafetyAlertType, SafetyAlert["alertType"]> = {
   LIVER_INJURY: "Liver injury",
   KIDNEY_RISK: "Kidney risk",
@@ -155,6 +189,19 @@ const alertTypeMap: Record<DbSafetyAlertType, SafetyAlert["alertType"]> = {
   UNAPPROVED_THERAPEUTIC_GOOD: "Unapproved therapeutic good",
   COMPOUNDING_RESTRICTION: "Compounding restriction",
   DRUG_INTERACTION: "Drug interaction"
+};
+
+const scoreChangeReasonMap: Record<DbScoreChangeKind, string> = {
+  BETTER_DOSE_FORM_EVIDENCE: "Better dose-form evidence",
+  CONTRADICTORY_EVIDENCE: "Contradictory evidence",
+  MANUAL_REVIEW: "Manual review",
+  NEW_META_ANALYSIS: "New meta-analysis",
+  NEW_RCT: "New RCT",
+  OTHER: "Other",
+  PRODUCT_QUALITY_CONCERN: "Product-quality concern",
+  REGULATORY_WARNING: "Regulatory warning",
+  SAFETY_SIGNAL: "Safety signal",
+  TRIAL_RESULT_POSTED: "Trial result posted"
 };
 
 const severityMap: Record<DbSafetySeverity, SafetyAlert["severity"]> = {
@@ -213,7 +260,7 @@ export async function getEvidenceDashboardData(): Promise<EvidenceDashboardData>
     });
   } catch (error) {
     if (process.env.APEX_DATA_SOURCE === "database") {
-      throw error;
+      throw new Error(strictDatabaseError(error));
     }
 
     return getSeedDashboardData(readableError(error));
@@ -228,11 +275,26 @@ function getSeedDashboardData(fallbackReason?: string): EvidenceDashboardData {
     studies,
     trialWatchItems,
     safetyAlerts,
+    scoreSnapshots: seedScoreSnapshots(),
     productSignals,
     australiaRegulatoryStatuses,
     dataSource: "seed",
     fallbackReason
   };
+}
+
+function seedScoreSnapshots(): ClaimScoreSnapshot[] {
+  return buildSeedNormalizedEvidenceRows({ claims, studies }).scoreSnapshots.map((snapshot) => ({
+    claimId: snapshot.claimId,
+    compositeScore: snapshot.compositeScore,
+    computedAt: snapshot.computedAt ?? "Unknown",
+    finalLabel: snapshot.finalLabel,
+    id: snapshot.id,
+    rationale: snapshot.rationale,
+    reviewStatus: snapshot.reviewStatus,
+    scoreVersion: snapshot.scoreVersion,
+    scores: snapshot.scores
+  }));
 }
 
 async function getPrismaDashboardData({
@@ -246,19 +308,48 @@ async function getPrismaDashboardData({
     dbClaims,
     dbStudies,
     dbTrials,
+    dbTrialAlerts,
     dbSafetyAlerts,
+    dbScoreHistory,
+    dbScoreSnapshots,
     dbProducts,
     dbAustraliaRegulatoryStatuses
   ] = await Promise.all([
     prisma.reference.findMany({ orderBy: [{ source: "asc" }, { title: "asc" }] }),
     prisma.intervention.findMany({ orderBy: { name: "asc" } }),
     prisma.claim.findMany({
-      include: { references: true },
+      include: {
+        references: true,
+        sourcePackets: {
+          include: {
+            references: {
+              orderBy: { createdAt: "asc" }
+            }
+          },
+          orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+          where: { current: true }
+        },
+        studyLinks: {
+          orderBy: [{ relevanceScore: "desc" }, { updatedAt: "desc" }],
+          where: {
+            relation: {
+              not: "UNREVIEWED_LEAD"
+            }
+          }
+        }
+      },
       orderBy: [{ finalLabel: "asc" }, { updatedAt: "desc" }]
     }),
     prisma.study.findMany({ orderBy: [{ year: "desc" }, { title: "asc" }] }),
     prisma.trial.findMany({ orderBy: [{ lastUpdateDate: "desc" }, { title: "asc" }] }),
+    prisma.trialAlert.findMany({ orderBy: [{ detectedAt: "desc" }, { createdAt: "desc" }] }),
     prisma.safetyAlert.findMany({ orderBy: [{ date: "desc" }, { severity: "desc" }] }),
+    prisma.claimScoreHistory.findMany({
+      orderBy: [{ createdAt: "desc" }]
+    }),
+    prisma.claimScoreSnapshot.findMany({
+      orderBy: [{ computedAt: "desc" }, { createdAt: "desc" }]
+    }),
     prisma.product.findMany({ orderBy: [{ qualityScore: "desc" }, { name: "asc" }] }),
     prisma.australiaRegulatoryStatus.findMany({
       orderBy: [{ region: "asc" }, { kind: "asc" }, { status: "asc" }]
@@ -278,10 +369,13 @@ async function getPrismaDashboardData({
   return {
     references: dbReferences.map(mapReference),
     interventions: dbInterventions.map(mapIntervention),
-    claims: dbClaims.map(mapClaim),
+    claims: dbClaims.map((claim) => mapClaim(claim, dbStudies)),
     studies: dbStudies.map(mapStudy),
+    trialAlerts: dbTrialAlerts.map(mapTrialAlert),
     trialWatchItems: dbTrials.map(mapTrial),
     safetyAlerts: dbSafetyAlerts.map(mapSafetyAlert),
+    scoreHistory: dbScoreHistory.map(mapClaimScoreHistory),
+    scoreSnapshots: dbScoreSnapshots.map(mapClaimScoreSnapshot),
     productSignals: dbProducts.map(mapProduct),
     australiaRegulatoryStatuses: dbAustraliaRegulatoryStatuses.map(mapAustraliaRegulatoryStatus),
     dataSource: "database"
@@ -318,7 +412,10 @@ function mapIntervention(intervention: DbIntervention): Intervention {
   };
 }
 
-function mapClaim(claim: DbClaimWithReferences): Claim {
+function mapClaim(claim: DbClaimWithReferences, dbStudies: DbStudy[]): Claim {
+  const keyReferenceIds = currentSourcePacketReferenceIds(claim);
+  const keyStudyIds = currentClaimStudyIds(claim, dbStudies);
+
   return {
     id: claim.id,
     interventionId: claim.interventionId,
@@ -334,7 +431,8 @@ function mapClaim(claim: DbClaimWithReferences): Claim {
     confidenceLevel: confidenceMap[claim.confidenceLevel],
     safetyNotes: claim.safetyNotes,
     applicabilityNotes: claim.applicabilityNotes,
-    keyReferenceIds: claim.references.map((reference) => reference.referenceId),
+    keyReferenceIds,
+    ...(keyStudyIds.length > 0 ? { keyStudyIds } : {}),
     scores: {
       evidenceDirectness: claim.evidenceDirectnessScore,
       evidenceRigor: claim.evidenceRigorScore,
@@ -347,10 +445,88 @@ function mapClaim(claim: DbClaimWithReferences): Claim {
     },
     finalLabel: evidenceLabelMap[claim.finalLabel],
     momentum: momentumMap[claim.momentum],
-    reviewStatus:
-      claim.reviewStatus === "HUMAN_REVIEWED" ? "Human reviewed" : "Unreviewed AI draft",
+    reviewStatus: reviewStatusFromDb(claim.reviewStatus),
     lastUpdated: formatDate(claim.lastReviewedAt ?? claim.updatedAt),
     whatWouldChangeScore: claim.whatWouldChangeScore
+  };
+}
+
+function currentSourcePacketReferenceIds(claim: DbClaimWithReferences) {
+  const packetReferenceIds = uniqueStrings(
+    (claim.sourcePackets ?? []).flatMap((packet) =>
+      packet.references.map((reference) => reference.referenceId)
+    )
+  );
+  const claimReferenceIds = uniqueStrings(
+    (claim.references ?? []).map((reference) => reference.referenceId)
+  );
+
+  return uniqueStrings([...packetReferenceIds, ...claimReferenceIds]);
+}
+
+function currentClaimStudyIds(claim: DbClaimWithReferences, dbStudies: DbStudy[]) {
+  const linkedStudyIds = uniqueStrings((claim.studyLinks ?? []).map((link) => link.studyId));
+  const referenceIds = new Set(currentSourcePacketReferenceIds(claim));
+  const extractedStudyIds = dbStudies
+    .filter((study) => referenceIds.has(study.referenceId))
+    .map((study) => study.id);
+
+  return uniqueStrings([...linkedStudyIds, ...extractedStudyIds]);
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values));
+}
+
+function mapClaimScoreSnapshot(snapshot: DbClaimScoreSnapshot): ClaimScoreSnapshot {
+  return {
+    claimId: snapshot.claimId,
+    compositeScore: Number(snapshot.compositeScore),
+    computedAt: formatDate(snapshot.computedAt),
+    finalLabel: evidenceLabelMap[snapshot.finalLabel],
+    id: snapshot.id,
+    rationale: snapshot.rationale ?? undefined,
+    reviewStatus: reviewStatusFromDb(snapshot.reviewStatus),
+    scoreVersion: snapshot.scoreVersion,
+    scores: {
+      evidenceDirectness: snapshot.evidenceDirectnessScore,
+      evidenceRigor: snapshot.evidenceRigorScore,
+      effectSize: snapshot.effectSizeScore,
+      safety: snapshot.safetyScore,
+      regulatoryRisk: snapshot.regulatoryRiskScore,
+      productQuality: snapshot.productQualityScore,
+      hypePenalty: snapshot.hypePenalty,
+      measurability: snapshot.measurabilityScore
+    }
+  };
+}
+
+function reviewStatusFromDb(reviewStatus: string) {
+  if (reviewStatus === "HUMAN_REVIEWED") {
+    return "Human reviewed";
+  }
+
+  if (reviewStatus === "AI_REVIEWED") {
+    return "AI reviewed";
+  }
+
+  return "Unreviewed AI draft";
+}
+
+function mapClaimScoreHistory(history: DbClaimScoreHistory): ClaimScoreHistoryEntry {
+  return {
+    claimId: history.claimId,
+    createdAt: formatDate(history.createdAt),
+    id: history.id,
+    newCompositeScore:
+      history.newCompositeScore === null ? undefined : Number(history.newCompositeScore),
+    newLabel: history.newLabel === null ? undefined : evidenceLabelMap[history.newLabel],
+    oldCompositeScore:
+      history.oldCompositeScore === null ? undefined : Number(history.oldCompositeScore),
+    oldLabel: history.oldLabel === null ? undefined : evidenceLabelMap[history.oldLabel],
+    rationale: history.rationale,
+    reason: scoreChangeReasonMap[history.reason],
+    referenceId: history.referenceId ?? undefined
   };
 }
 
@@ -441,6 +617,24 @@ function mapTrial(trial: DbTrial): TrialWatchItem {
   };
 }
 
+function mapTrialAlert(alert: DbTrialAlert): TrialAlert {
+  return {
+    claimId: alert.claimId ?? undefined,
+    detectedAt: formatDate(alert.detectedAt),
+    detail: alert.detail,
+    id: alert.id,
+    interventionId: alert.interventionId ?? undefined,
+    kind: trialAlertKindMap[alert.kind],
+    nctId: alert.nctId ?? undefined,
+    noAutoPromotion: alert.noAutoPromotion,
+    reviewedAt: alert.reviewedAt ? formatDate(alert.reviewedAt) : undefined,
+    scoreHistoryId: alert.scoreHistoryId ?? undefined,
+    status: trialAlertStatusMap[alert.status],
+    title: alert.title,
+    trialId: alert.trialId ?? undefined
+  };
+}
+
 function mapSafetyAlert(alert: DbSafetyAlert): SafetyAlert {
   return {
     id: alert.id,
@@ -525,6 +719,30 @@ function readableError(error: unknown) {
   }
 
   return "Database query failed, using seed data.";
+}
+
+function strictDatabaseError(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+
+  if (message === "Database connected but has not been seeded yet.") {
+    return message;
+  }
+
+  const missingTableName = missingDatabaseTableName(message);
+
+  if (missingTableName) {
+    return `Database schema is missing required table ${missingTableName}; run approved migrations before strict database smoke.`;
+  }
+
+  return "Database query failed while strict database mode is required.";
+}
+
+function missingDatabaseTableName(message: string) {
+  const missingTableMatch = message.match(
+    /(?:table|relation)\s+[`'"]?(?:[a-z_][\w]*\.)?([A-Z][A-Za-z0-9_]*)[`'"]?\s+(?:does not exist|doesn't exist)/i
+  );
+
+  return missingTableMatch?.[1];
 }
 
 async function checkDatabaseConnection(databaseUrl: string | undefined): Promise<DatabasePreflight> {

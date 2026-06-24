@@ -61,7 +61,7 @@ describe("operator authorization policy", () => {
       );
   });
 
-  it("allows an active operator when role and write gate both pass", () => {
+  it("allows an active operator when role and write control both pass", () => {
     expect(requireOperatorPermission(activeReviewer, "candidate:review", writesEnabled))
       .toBe(activeReviewer);
   });

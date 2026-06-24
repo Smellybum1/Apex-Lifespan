@@ -37,8 +37,8 @@ export interface SupplementOnboardingImportAssistantItem {
     nextAction: string;
     noImportCommand: true;
     plannedRecords: SupplementOnboardingImportAssistantPlannedRecord[];
-    requiredFutureGates: string[];
-    status: "future-gated";
+    requiredFutureApprovals: string[];
+    status: "not-yet-enabled";
     supportedNow: false;
   };
   humanOwned: true;
@@ -101,7 +101,7 @@ export interface SupplementOnboardingImportAssistantSummary {
   humanOwned: true;
   items: Array<{
     blockers: string[];
-    databaseImportStatus: "future-gated";
+    databaseImportStatus: "not-yet-enabled";
     interventionId: string;
     manualSeedCopyStatus: SupplementOnboardingDraftImportPlanStatus;
     name: string;
@@ -123,7 +123,7 @@ export interface SupplementOnboardingImportAssistantSummary {
   summary: SupplementOnboardingImportAssistantReport["summary"];
 }
 
-const DATABASE_IMPORT_FUTURE_GATES = [
+const DATABASE_IMPORT_FUTURE_APPROVALS = [
   "Authenticated operator database-import action with an explicit permission and browser-write control.",
   "Audited import event containing before/after summaries, source draft id, reviewed note, and no-public-promotion flags.",
   "Collision checks against current database intervention, claim, and AU/TGA status ids.",
@@ -164,7 +164,7 @@ export function buildSupplementOnboardingImportAssistantReport({
   const nextAction =
     blockedItem?.nextAction ??
     reviewItem?.nextAction ??
-    "Manual seed-copy review is ready; database import remains future-gated and public promotion remains blocked until evidence review.";
+    "Manual seed-copy review is ready; database import remains not yet enabled and public promotion remains blocked until evidence review.";
 
   return {
     generatedAt: generatedAt.toISOString(),
@@ -282,8 +282,8 @@ function importAssistantItemForPlan({
     status === "blocked"
       ? seedDiffItem.importPlan.seedCopy.nextAction
       : status === "manual-review-required"
-        ? "Complete manual copy review before seed copy. Database import remains future-gated."
-        : "Manual seed copy is ready after review; database import remains future-gated.";
+        ? "Complete manual copy review before seed copy. Database import remains not yet enabled."
+        : "Manual seed copy is ready after review; database import remains not yet enabled.";
 
   return {
     blockers: seedDiffItem.blockers,
@@ -292,8 +292,8 @@ function importAssistantItemForPlan({
       nextAction: seedDiffItem.importPlan.databaseImport.nextAction,
       noImportCommand: true,
       plannedRecords,
-      requiredFutureGates: DATABASE_IMPORT_FUTURE_GATES,
-      status: "future-gated",
+      requiredFutureApprovals: DATABASE_IMPORT_FUTURE_APPROVALS,
+      status: "not-yet-enabled",
       supportedNow: false
     },
     humanOwned: true,
@@ -466,11 +466,11 @@ function importAssistantItemMarkdown(item: SupplementOnboardingImportAssistantIt
         `- ${record.model} \`${record.id}\` (${record.status}; ${Object.keys(record.fieldPreview).length} fields previewed)`
     ),
     "",
-    "Required future gates for database import:",
-    ...item.databaseImport.requiredFutureGates.map((gate) => `- ${gate}`),
+    "Required future approvals for database import:",
+    ...item.databaseImport.requiredFutureApprovals.map((approval) => `- ${approval}`),
     "",
     "Public promotion prerequisites:",
-    ...item.publicPromotion.requiredPrerequisites.map((gate) => `- ${gate}`),
+    ...item.publicPromotion.requiredPrerequisites.map((approval) => `- ${approval}`),
     "",
     "Blockers:",
     ...markdownBullets(item.blockers),

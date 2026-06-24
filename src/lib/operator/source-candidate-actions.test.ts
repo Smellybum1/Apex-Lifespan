@@ -6,6 +6,7 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  confirmSourceCandidateHumanReview,
   extractAcceptedSourceCandidateStudy,
   getSourceCandidateByDedupeKey,
   getSourceCandidateCurationStatus,
@@ -15,6 +16,7 @@ import {
 import { prisma } from "@/lib/db/prisma";
 import { assessSourceCandidatePublicPromotion } from "@/lib/operator/curation-promotion";
 import {
+  confirmSourceCandidateHumanReviewAsOperator,
   extractSourceCandidateStudyAsOperator,
   linkSourceCandidateClaimAsOperator,
   promoteSourceCandidatePublicEvidenceAsOperator,
@@ -24,6 +26,7 @@ import type { OperatorPrincipal } from "@/lib/operator/authorization";
 import type { Reference, SourceCandidate } from "@/lib/types";
 
 vi.mock("@/lib/data/source-candidates", () => ({
+  confirmSourceCandidateHumanReview: vi.fn(),
   extractAcceptedSourceCandidateStudy: vi.fn(),
   getSourceCandidateByDedupeKey: vi.fn(),
   getSourceCandidateCurationStatus: vi.fn(),
@@ -31,23 +34,46 @@ vi.mock("@/lib/data/source-candidates", () => ({
   recordSourceCandidateDecision: vi.fn()
 }));
 
-vi.mock("@/lib/db/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/db/prisma", () => {
+  const prismaMock = {
+    $transaction: vi.fn(),
     claim: {
       findUnique: vi.fn(),
       update: vi.fn()
     },
+    claimScoreSnapshot: {
+      findFirst: vi.fn(),
+      create: vi.fn()
+    },
+    claimScoreHistory: {
+      create: vi.fn()
+    },
     operatorAuditEvent: {
       create: vi.fn()
+    },
+    publicChangelogEntry: {
+      create: vi.fn()
+    },
+    reviewEvent: {
+      create: vi.fn()
     }
-  }
-}));
+  };
+
+  prismaMock.$transaction.mockImplementation(async (callback) =>
+    callback(prismaMock)
+  );
+
+  return {
+    prisma: prismaMock
+  };
+});
 
 vi.mock("@/lib/operator/curation-promotion", () => ({
   assessSourceCandidatePublicPromotion: vi.fn()
 }));
 
 const getSourceCandidateByDedupeKeyMock = vi.mocked(getSourceCandidateByDedupeKey);
+const confirmSourceCandidateHumanReviewMock = vi.mocked(confirmSourceCandidateHumanReview);
 const getSourceCandidateCurationStatusMock = vi.mocked(getSourceCandidateCurationStatus);
 const recordSourceCandidateDecisionMock = vi.mocked(recordSourceCandidateDecision);
 const linkAcceptedSourceCandidateClaimMock = vi.mocked(linkAcceptedSourceCandidateClaim);
@@ -57,7 +83,12 @@ const extractAcceptedSourceCandidateStudyMock = vi.mocked(
 const assessPromotionMock = vi.mocked(assessSourceCandidatePublicPromotion);
 const claimFindUniqueMock = vi.mocked(prisma.claim.findUnique);
 const claimUpdateMock = vi.mocked(prisma.claim.update);
+const claimScoreSnapshotFindFirstMock = vi.mocked(prisma.claimScoreSnapshot.findFirst);
+const claimScoreSnapshotCreateMock = vi.mocked(prisma.claimScoreSnapshot.create);
+const claimScoreHistoryCreateMock = vi.mocked(prisma.claimScoreHistory.create);
 const operatorAuditCreateMock = vi.mocked(prisma.operatorAuditEvent.create);
+const publicChangelogEntryCreateMock = vi.mocked(prisma.publicChangelogEntry.create);
+const reviewEventCreateMock = vi.mocked(prisma.reviewEvent.create);
 
 const writesEnabled = {
   APEX_OPERATOR_WRITES_ENABLED: "true"
@@ -110,7 +141,20 @@ const acceptedCandidate: SourceCandidate = {
 describe("operator source-candidate actions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    claimScoreHistoryCreateMock.mockResolvedValue({ id: "score-history" } as never);
+    claimScoreSnapshotFindFirstMock.mockResolvedValue({
+      compositeScore: "8.1",
+      finalLabel: "CORE_EVIDENCE_BASED",
+      id: "previous-score-snapshot"
+    } as never);
+    claimScoreSnapshotCreateMock.mockResolvedValue({
+      compositeScore: "8.4",
+      finalLabel: "CORE_EVIDENCE_BASED",
+      id: "score-snapshot"
+    } as never);
     operatorAuditCreateMock.mockResolvedValue({ id: "audit-event" } as never);
+    publicChangelogEntryCreateMock.mockResolvedValue({ id: "changelog-entry" } as never);
+    reviewEventCreateMock.mockResolvedValue({ id: "review-event" } as never);
   });
 
   it("reviews a candidate and appends an audit event", async () => {
@@ -134,16 +178,112 @@ describe("operator source-candidate actions", () => {
       acceptedReferenceId: reference.id,
       decision: "Accepted",
       dedupeKey: pendingCandidate.dedupeKey,
-      reviewNote: "Matches PMID and claim context."
+      reviewNote: "Matches PMID and claim context.",
+      reviewStatus: "AI reviewed"
     });
     expect(operatorAuditCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
-          action: "sourceCandidate.reviewDecision",
+          action: "sourceCandidate.aiReview",
           actorEmail: reviewer.email,
           actorRole: reviewer.role,
           actorUserId: reviewer.userId,
           targetId: pendingCandidate.dedupeKey,
+          targetType: "SourceCandidate"
+        })
+      })
+    );
+  });
+
+  it("records Codex AI candidate review metadata", async () => {
+    const rejectedCandidate: SourceCandidate = {
+      ...pendingCandidate,
+      decision: "Rejected",
+      reviewStatus: "AI reviewed"
+    };
+    getSourceCandidateByDedupeKeyMock.mockResolvedValue(pendingCandidate);
+    recordSourceCandidateDecisionMock.mockResolvedValue(rejectedCandidate);
+
+    await expect(
+      reviewSourceCandidateAsOperator(
+        reviewer,
+        {
+          aiReviewSummary: "AI recommends rejected",
+          approvalBasis: "codex-ai-candidate-review",
+          decision: "Rejected",
+          dedupeKey: pendingCandidate.dedupeKey,
+          reviewNote: "Codex applied AI rejection."
+        },
+        writesEnabled
+      )
+    ).resolves.toEqual(rejectedCandidate);
+
+    expect(recordSourceCandidateDecisionMock).toHaveBeenCalledWith({
+      decision: "Rejected",
+      dedupeKey: pendingCandidate.dedupeKey,
+      reviewNote: "Codex applied AI rejection.",
+      reviewStatus: "AI reviewed"
+    });
+    expect(operatorAuditCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "sourceCandidate.aiReview",
+          metadata: expect.objectContaining({
+            aiReviewSummary: "AI recommends rejected",
+            approvalBasis: "codex-ai-candidate-review",
+            noExtractionWrite: true,
+            noPromotion: true,
+            source: "PubMed"
+          }),
+          note: "Codex applied AI rejection.",
+          targetId: pendingCandidate.dedupeKey,
+          targetType: "SourceCandidate"
+        })
+      })
+    );
+  });
+
+  it("confirms an AI-reviewed candidate as human reviewed and appends an audit event", async () => {
+    const aiReviewedCandidate: SourceCandidate = {
+      ...acceptedCandidate,
+      reviewStatus: "AI reviewed"
+    };
+    const humanReviewedCandidate: SourceCandidate = {
+      ...acceptedCandidate,
+      reviewNote: "Human confirmed the Codex AI-reviewed decision.",
+      reviewStatus: "Human reviewed"
+    };
+    getSourceCandidateByDedupeKeyMock.mockResolvedValue(aiReviewedCandidate);
+    confirmSourceCandidateHumanReviewMock.mockResolvedValue(humanReviewedCandidate);
+
+    await expect(
+      confirmSourceCandidateHumanReviewAsOperator(
+        reviewer,
+        {
+          dedupeKey: acceptedCandidate.dedupeKey,
+          reviewNote: "Human confirmed the Codex AI-reviewed decision."
+        },
+        writesEnabled
+      )
+    ).resolves.toEqual(humanReviewedCandidate);
+
+    expect(confirmSourceCandidateHumanReviewMock).toHaveBeenCalledWith({
+      dedupeKey: acceptedCandidate.dedupeKey,
+      reviewNote: "Human confirmed the Codex AI-reviewed decision."
+    });
+    expect(operatorAuditCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: "sourceCandidate.humanReview",
+          actorEmail: reviewer.email,
+          metadata: expect.objectContaining({
+            approvalBasis: "manual-operator-review",
+            noExtractionWrite: true,
+            noPromotion: true,
+            source: "PubMed"
+          }),
+          note: "Human confirmed the Codex AI-reviewed decision.",
+          targetId: acceptedCandidate.dedupeKey,
           targetType: "SourceCandidate"
         })
       })
@@ -344,9 +484,13 @@ describe("operator source-candidate actions", () => {
     expect(claimFindUniqueMock).not.toHaveBeenCalled();
     expect(claimUpdateMock).not.toHaveBeenCalled();
     expect(operatorAuditCreateMock).not.toHaveBeenCalled();
+    expect(claimScoreHistoryCreateMock).not.toHaveBeenCalled();
+    expect(claimScoreSnapshotCreateMock).not.toHaveBeenCalled();
+    expect(publicChangelogEntryCreateMock).not.toHaveBeenCalled();
+    expect(reviewEventCreateMock).not.toHaveBeenCalled();
   });
 
-  it("promotes a ready candidate by marking the claim human-reviewed and auditing it", async () => {
+  it("promotes a ready candidate by marking the claim AI-reviewed and auditing it", async () => {
     const promotedAt = new Date("2026-06-11T14:00:00.000Z");
     assessPromotionMock.mockResolvedValue({
       blockers: [],
@@ -372,13 +516,23 @@ describe("operator source-candidate actions", () => {
     });
     claimFindUniqueMock.mockResolvedValue({
       id: "creatine-strength",
+      evidenceDirectnessScore: 9,
+      evidenceRigorScore: 9,
+      effectSizeScore: 7,
+      finalLabel: "CORE_EVIDENCE_BASED",
+      hypePenalty: 2,
+      interventionId: "creatine",
       lastReviewedAt: null,
+      measurabilityScore: 9,
+      productQualityScore: 4,
+      regulatoryRiskScore: 1,
+      safetyScore: 8,
       reviewStatus: DbReviewStatus.UNREVIEWED_AI_DRAFT
     } as never);
     claimUpdateMock.mockResolvedValue({
       id: "creatine-strength",
       lastReviewedAt: promotedAt,
-      reviewStatus: DbReviewStatus.HUMAN_REVIEWED
+      reviewStatus: DbReviewStatus.AI_REVIEWED
     } as never);
 
     await expect(
@@ -387,7 +541,7 @@ describe("operator source-candidate actions", () => {
         {
           dedupeKey: acceptedCandidate.dedupeKey,
           promotedAt,
-          promotionNote: "Human reviewed the curation packet."
+          promotionNote: "Codex reviewed the curation packet."
         },
         writesEnabled
       )
@@ -395,7 +549,7 @@ describe("operator source-candidate actions", () => {
       claim: {
         id: "creatine-strength",
         lastReviewedAt: "2026-06-11T14:00:00.000Z",
-        reviewStatus: "Human reviewed"
+        reviewStatus: "AI reviewed"
       },
       dedupeKey: acceptedCandidate.dedupeKey,
       referenceId: reference.id,
@@ -405,7 +559,7 @@ describe("operator source-candidate actions", () => {
     expect(claimUpdateMock).toHaveBeenCalledWith({
       data: {
         lastReviewedAt: promotedAt,
-        reviewStatus: DbReviewStatus.HUMAN_REVIEWED
+        reviewStatus: DbReviewStatus.AI_REVIEWED
       },
       select: {
         id: true,
@@ -416,6 +570,67 @@ describe("operator source-candidate actions", () => {
         id: "creatine-strength"
       }
     });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(reviewEventCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actorEmail: admin.email,
+        actorUserId: admin.userId,
+        claimId: "creatine-strength",
+        createdAt: promotedAt,
+        entityId: "creatine-strength",
+        entityType: "Claim",
+        eventType: "AI_REVIEWED",
+        metadata: expect.objectContaining({
+          candidateExternalId: acceptedCandidate.externalId,
+          publicSourcePacketReady: true,
+          sourceCandidateDedupeKey: acceptedCandidate.dedupeKey,
+          studyIds: ["study-42141930"],
+          workflow: "sourceCandidate.publicEvidencePromotion"
+        }),
+        note: "Codex reviewed the curation packet.",
+        referenceId: reference.id,
+        reviewStatus: DbReviewStatus.AI_REVIEWED
+      })
+    });
+    expect(claimScoreSnapshotCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        claimId: "creatine-strength",
+        compositeScore: 8.4,
+        computedAt: promotedAt,
+        finalLabel: "CORE_EVIDENCE_BASED",
+        rationale: "Source-candidate public promotion: Codex reviewed the curation packet.",
+        reviewStatus: DbReviewStatus.AI_REVIEWED,
+        scoreVersion: "v1"
+      })
+    });
+    expect(claimScoreHistoryCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        changedByUserId: admin.userId,
+        claimId: "creatine-strength",
+        createdAt: promotedAt,
+        newCompositeScore: "8.4",
+        newLabel: "CORE_EVIDENCE_BASED",
+        newSnapshotId: "score-snapshot",
+        oldCompositeScore: "8.1",
+        oldLabel: "CORE_EVIDENCE_BASED",
+        previousSnapshotId: "previous-score-snapshot",
+        rationale: "Source-candidate public promotion: Codex reviewed the curation packet.",
+        reason: "MANUAL_REVIEW",
+        referenceId: reference.id
+      })
+    });
+    expect(publicChangelogEntryCreateMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        claimId: "creatine-strength",
+        date: promotedAt,
+        interventionId: "creatine",
+        kind: "EVIDENCE_CARD",
+        publishedAt: null,
+        scoreHistoryId: "score-history",
+        slug: "claim-review-creatine-strength-score-history",
+        title: "Source-candidate evidence promotion recorded"
+      })
+    });
     expect(operatorAuditCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -424,10 +639,10 @@ describe("operator source-candidate actions", () => {
           afterSummary: expect.objectContaining({
             claimId: "creatine-strength",
             referenceId: reference.id,
-            reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+            reviewStatus: DbReviewStatus.AI_REVIEWED,
             studyIds: ["study-42141930"]
           }),
-          note: "Human reviewed the curation packet.",
+          note: "Codex reviewed the curation packet.",
           targetId: acceptedCandidate.dedupeKey,
           targetType: "SourceCandidate"
         })

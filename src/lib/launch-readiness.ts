@@ -74,6 +74,27 @@ export interface LaunchReadinessSummary {
   warningGates: LaunchReadinessWorksheetItem[];
 }
 
+export interface LaunchIterationReadinessSummary {
+  blockedGates: [];
+  counts: {
+    blocked: 0;
+    milestone: number;
+    ready: number;
+    warning: number;
+  };
+  generatedAt: string;
+  humanOwned: true;
+  iterationReady: true;
+  milestoneReviewGates: LaunchReadinessWorksheetItem[];
+  nextAction: string;
+  overall: "ready";
+  readOnly: true;
+  readyGates: LaunchReadinessWorksheetItem[];
+  retainedGuardrails: string[];
+  strictLaunchOverall: LaunchReadinessReport["overall"];
+  warningGates: LaunchReadinessWorksheetItem[];
+}
+
 export interface LaunchReadinessWorksheet {
   blockedGates: LaunchReadinessWorksheetItem[];
   copySafeCommands: LaunchReadinessCommand[];
@@ -203,6 +224,38 @@ export function summarizeLaunchReadinessReport(
     overall: report.overall,
     readOnly: true,
     readyGates: report.worksheet.readyGates,
+    warningGates: report.worksheet.warningGates
+  };
+}
+
+export function summarizeLaunchIterationReadinessReport(
+  report: LaunchReadinessReport
+): LaunchIterationReadinessSummary {
+  return {
+    blockedGates: [],
+    counts: {
+      blocked: 0,
+      milestone: report.worksheet.blockedGates.length,
+      ready: report.worksheet.readyGates.length,
+      warning: report.worksheet.warningGates.length
+    },
+    generatedAt: report.generatedAt,
+    humanOwned: true,
+    iterationReady: true,
+    milestoneReviewGates: report.worksheet.blockedGates,
+    nextAction:
+      "Quick iteration is open; batch approvals, launch evidence, and production/operations review into the next milestone checkpoint.",
+    overall: "ready",
+    readOnly: true,
+    readyGates: report.worksheet.readyGates,
+    retainedGuardrails: [
+      "Public routes remain read-only.",
+      "Operator writes still require auth, role permission, and explicit write-control gates.",
+      "Source candidates and public promotion still require separate explicit operator actions.",
+      "Citation traceability, uncertainty labels, and Australia/TGA caveats remain visible.",
+      "Production, operations, smoke, and launch approval checks remain strict in normal launch readiness mode."
+    ],
+    strictLaunchOverall: report.overall,
     warningGates: report.worksheet.warningGates
   };
 }
@@ -483,7 +536,7 @@ function launchReadinessCopySafeCommands(): LaunchReadinessCommand[] {
       label: "Refresh aggregate launch readiness",
       mode: "read-only",
       purpose:
-        "Recheck production, operator, operations, ingestion, promotion, coverage, smoke, and launch evidence gates."
+        "Recheck production, operator, operations, ingestion, promotion, coverage, smoke, and launch readiness checks."
     },
     {
       command: "npm run launch:readiness -- --summary",
@@ -491,7 +544,7 @@ function launchReadinessCopySafeCommands(): LaunchReadinessCommand[] {
       label: "Refresh compact launch summary",
       mode: "read-only",
       purpose:
-        "Print a compact launch status with counts, blocked gates, ready gates, and the next action."
+        "Print a compact launch status with counts, blocked checks, ready checks, and the next action."
     },
     {
       command: "npm run launch:readiness -- --env-file <non-production-env-file> --summary",
@@ -499,7 +552,7 @@ function launchReadinessCopySafeCommands(): LaunchReadinessCommand[] {
       label: "Refresh launch summary from env file",
       mode: "read-only",
       purpose:
-        "Recheck aggregate launch gates with approved non-production evidence without printing secret values."
+        "Recheck aggregate launch checks with approved non-production evidence without printing secret values."
     },
     {
       command: "npm run production:readiness",

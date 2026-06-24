@@ -46,7 +46,7 @@ describe("supplement onboarding seed diff", () => {
       importPlan: {
         databaseImport: {
           noImportCommand: true,
-          status: "future-gated",
+          status: "not-yet-enabled",
           supportedNow: false
         },
         noAutoPromotion: true,
@@ -90,7 +90,7 @@ describe("supplement onboarding seed diff", () => {
         {
           claimCount: 1,
           importPlan: {
-            databaseImportStatus: "future-gated",
+            databaseImportStatus: "not-yet-enabled",
             noAutoWrite: true,
             noDatabaseWrite: true,
             recommendedPath: "manual-seed-copy",
@@ -190,7 +190,7 @@ describe("supplement onboarding seed diff", () => {
     expect(markdown).toContain("npm run db:validate");
     expect(markdown).toContain("### Magnesium glycinate");
     expect(markdown).toContain("Draft import plan:");
-    expect(markdown).toContain("database import: future-gated; supported now: false");
+    expect(markdown).toContain("database import: not-yet-enabled; supported now: false");
     expect(markdown).toContain("no database write: true");
     expect(markdown).toContain("Seed snippet:");
     expect(markdown).toContain("satisfies AustraliaRegulatoryStatus");

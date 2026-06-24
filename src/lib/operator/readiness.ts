@@ -111,6 +111,8 @@ const FILE_PATHS: Record<keyof OperatorReadinessFiles, string> = {
 };
 const VERCEL_DATABASE_CONFIGURED_KEY = "APEX_VERCEL_DATABASE_CONFIGURED_AT";
 const VERCEL_OPERATOR_AUTH_CONFIGURED_KEY = "APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT";
+const PUBLIC_CHANGELOG_PUBLICATION_REVIEW_KEY =
+  "APEX_PUBLIC_CHANGELOG_PUBLISH_REVIEWED_AT";
 
 export function buildOperatorReadinessReport(
   context: OperatorReadinessContext
@@ -219,7 +221,8 @@ export function buildOperatorReadinessReport(
       label: "Browser write controls approval",
       nextAction:
         "Approve browser write controls only after non-production audited write QA in docs/codex/operator-manual-qa-checklist.md, then record APEX_OPERATOR_BROWSER_WRITE_CONTROLS_APPROVED_AT."
-    })
+    }),
+    currentPublicChangelogPublicationReviewCheck(context.env)
   ];
   const counts = countStatuses(checks);
 
@@ -450,21 +453,47 @@ function timestampEvidenceCheck({
 function currentWriteGateCheck(env: Record<string, string | undefined>): OperatorReadinessCheck {
   if (readEnv(env, "APEX_OPERATOR_WRITES_ENABLED") === "true") {
     return {
-      id: "operator-write-gate",
-      label: "Current write gate",
+      id: "operator-write-approval",
+      label: "Current write control",
       status: "warning",
       detail: "APEX_OPERATOR_WRITES_ENABLED=true in the current environment.",
       evidenceKeys: ["APEX_OPERATOR_WRITES_ENABLED"],
       nextAction:
-        "Use this only for controlled non-production QA; keep public production writes disabled until launch approval."
+        "Use this only for controlled non-production QA; keep public production writes disabled until the exact launch execution decision."
     };
   }
 
   return {
-    id: "operator-write-gate",
-    label: "Current write gate",
+    id: "operator-write-approval",
+    label: "Current write control",
     status: "ready",
     detail: "Operator writes are disabled in the current environment."
+  };
+}
+
+function currentPublicChangelogPublicationReviewCheck(
+  env: Record<string, string | undefined>
+): OperatorReadinessCheck {
+  if (readEnv(env, PUBLIC_CHANGELOG_PUBLICATION_REVIEW_KEY)) {
+    return {
+      id: "public-changelog-publication-review",
+      label: "Public changelog publication review",
+      status: "warning",
+      detail:
+        `${PUBLIC_CHANGELOG_PUBLICATION_REVIEW_KEY} is recorded in the current environment.`,
+      evidenceKeys: [PUBLIC_CHANGELOG_PUBLICATION_REVIEW_KEY],
+      nextAction:
+        "Use this only for an exact reviewed public changelog publication request; remove it from ordinary local/operator sessions after the execution decision."
+    };
+  }
+
+  return {
+    id: "public-changelog-publication-review",
+    label: "Public changelog publication review",
+    status: "ready",
+    detail:
+      "No public changelog publication review evidence is recorded in the current environment.",
+    evidenceKeys: [PUBLIC_CHANGELOG_PUBLICATION_REVIEW_KEY]
   };
 }
 

@@ -118,6 +118,15 @@ describe("source candidate ingestion helpers", () => {
           hasResults: false,
           resultsFirstPostDate: null,
           sponsor: "Example University",
+          trialAlertDetail:
+            "This direct-match registry row is active or recruiting. Monitor for status/results changes; do not promote it into evidence automatically.",
+          trialAlertLabel: "Monitor active trial",
+          trialRelevanceDetail:
+            "The query intervention appears in the registered intervention metadata; still confirm dose, form, comparator, and outcome.",
+          trialRelevanceLabel: "Direct match",
+          trialResultDetail:
+            "The record is not completed with posted results in the captured metadata; treat as an unreviewed registry lead.",
+          trialResultLabel: "Unreviewed lead",
           triageScore: 80,
           triageReasons: ["Matches query context"],
           url: "https://clinicaltrials.gov/study/NCT06606704"
@@ -141,6 +150,9 @@ describe("source candidate ingestion helpers", () => {
         externalId: "NCT06606704",
         sourceType: "Interventional",
         triageScore: 80,
+        metadata: expect.objectContaining({
+          trialAlertLabel: "Monitor active trial"
+        }),
         decision: "Pending review",
         reviewStatus: "Unreviewed AI draft"
       })

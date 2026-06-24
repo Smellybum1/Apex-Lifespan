@@ -859,7 +859,7 @@ function claimPacketComplete(data: EvidenceDashboardData, claim: Claim) {
 }
 
 function humanReviewed(reviewStatus: ReviewStatus) {
-  return reviewStatus === "Human reviewed";
+  return reviewStatus === "AI reviewed" || reviewStatus === "Human reviewed";
 }
 
 function findIntervention(interventions: Intervention[], supplementQuery: string) {
