@@ -1,0 +1,68 @@
+{
+  "supplements": [
+    {
+      "name": "Vitamin C",
+      "category": "Vitamin/mineral",
+      "claimTemplateIds": ["safety", "immune", "cv-events", "joint-skin"],
+      "synonyms": ["ascorbic acid", "L-ascorbic acid"]
+    },
+    {
+      "name": "Calcium",
+      "category": "Vitamin/mineral",
+      "claimTemplateIds": ["safety", "joint-skin", "blood-pressure", "lifespan"],
+      "synonyms": ["calcium carbonate", "calcium citrate"]
+    },
+    {
+      "name": "Lion's mane",
+      "category": "Nootropic",
+      "claimTemplateIds": ["safety", "cognition", "mood-stress"],
+      "synonyms": ["Hericium erinaceus", "lion mane mushroom"]
+    },
+    {
+      "name": "Ginseng",
+      "category": "Botanical/herbal",
+      "claimTemplateIds": ["safety", "mood-stress", "cognition", "glucose"],
+      "synonyms": ["Panax ginseng", "Asian ginseng", "Korean ginseng"]
+    },
+    {
+      "name": "NMN/NR",
+      "category": "Drug/geroprotector watchlist",
+      "claimTemplateIds": ["safety", "aging-clocks", "lifespan"],
+      "synonyms": [
+        "nicotinamide mononucleotide",
+        "nicotinamide riboside",
+        "NAD+ precursor"
+      ]
+    },
+    {
+      "name": "Resveratrol",
+      "category": "Drug/geroprotector watchlist",
+      "claimTemplateIds": ["safety", "aging-clocks", "lipids", "cv-events"],
+      "synonyms": ["trans-resveratrol"]
+    },
+    {
+      "name": "Quercetin",
+      "category": "Botanical/herbal",
+      "claimTemplateIds": ["safety", "immune", "inflammation"],
+      "synonyms": ["quercetin dihydrate"]
+    },
+    {
+      "name": "Glycine",
+      "category": "Amino acid",
+      "claimTemplateIds": ["safety", "sleep", "joint-skin"],
+      "synonyms": ["aminoacetic acid"]
+    },
+    {
+      "name": "Green tea extract",
+      "category": "Food/beverage",
+      "claimTemplateIds": ["safety", "lipids", "glucose", "cognition"],
+      "synonyms": ["EGCG", "Camellia sinensis", "green tea polyphenols"]
+    },
+    {
+      "name": "Astaxanthin",
+      "category": "Botanical/herbal",
+      "claimTemplateIds": ["safety", "eye-health", "joint-skin", "inflammation"],
+      "synonyms": ["haematococcus algae", "carotenoid antioxidant"]
+    }
+  ]
+}

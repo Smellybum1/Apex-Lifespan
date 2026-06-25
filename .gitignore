@@ -31,6 +31,9 @@ docs/codex/onboarding/fulltext-connector-review.md
 docs/codex/onboarding/fulltext-fixtures/*.local.json
 docs/codex/onboarding/fulltext-source-review-*.md
 
+# local agent run history
+.ai/
+
 # misc
 .DS_Store
 Thumbs.db

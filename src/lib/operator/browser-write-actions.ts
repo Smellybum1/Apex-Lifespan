@@ -9,6 +9,7 @@ import {
   promoteSourceCandidatePublicEvidenceAsOperator,
   reviewSourceCandidateAsOperator
 } from "@/lib/operator/source-candidate-actions";
+import { recomputeClaimScoreAsOperator } from "@/lib/operator/claim-score-recompute";
 import {
   importSupplementOnboardingDraftAsOperator,
   saveSupplementOnboardingDraftAsOperator
@@ -122,6 +123,28 @@ export async function promoteCandidateFromBrowserForm(
     {
       dedupeKey: requiredFormString(formData, "dedupeKey"),
       promotionNote: requiredFormString(formData, "promotionNote")
+    },
+    env
+  );
+}
+
+export async function recomputeClaimScoreFromBrowserForm(
+  principal: OperatorPrincipal,
+  formData: FormData,
+  env?: OperatorBrowserWriteControlEnv
+) {
+  const mode = requiredFormString(formData, "mode");
+
+  if (mode !== "dry-run") {
+    requireBrowserControl(principal, "public-promotion", env);
+  }
+
+  return recomputeClaimScoreAsOperator(
+    principal,
+    {
+      claimId: requiredFormString(formData, "claimId"),
+      dryRun: mode === "dry-run",
+      rationale: requiredFormString(formData, "rationale")
     },
     env
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type ColumnDef,
   flexRender,
@@ -11,26 +11,20 @@ import {
 } from "@tanstack/react-table";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   ArrowUpDown,
+  ChevronDown,
   CircleHelp,
   ClipboardCheck,
   ExternalLink,
-  FileSearch,
   Filter,
   FlaskConical,
-  Search,
-  ShieldCheck
+  Search
 } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
+import { TrialClassificationBadge } from "@/components/trial-classification-badge";
 
+import { labelTrialWatchItem } from "@/lib/trial-registry-labels";
 import { projectConfig } from "@/lib/config/project";
 import type {
   ClinicalTrialSearchItem,
@@ -46,8 +40,7 @@ import {
 } from "@/lib/live-source-request";
 import {
   australiaRegulatoryKindDescription,
-  australiaRegulatoryTone,
-  getPrimaryAustraliaStatus
+  australiaRegulatoryTone
 } from "@/lib/regulatory";
 import {
   buildProductAustraliaRegulatoryVerifications,
@@ -56,7 +49,6 @@ import {
 import {
   analyzeLabel,
   compositeScore,
-  getClaimScoreRows,
   labelTone,
   scoreBand,
   severityTone
@@ -85,6 +77,7 @@ import type {
   TrialWatchItem
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { SUPPLEMENT_ONBOARDING_CLAIM_TEMPLATES } from "@/lib/supplement-onboarding";
 
 type ClaimTableRow = {
   id: string;
@@ -111,7 +104,6 @@ const CODEX_REVIEW_TOKEN_KEY = "apexCodexReviewToken";
 const DEFAULT_CODEX_REVIEW_SIDECAR_URL = "http://127.0.0.1:3217/codex/review";
 const HUMAN_REVIEWED_TOOLTIP =
   "Human reviewed means a human reviewer checked the source packet against the scoped claim. It does not mean clinical guideline endorsement.";
-const scoreColors = ["#1d4ed8", "#0f766e", "#b7791f", "#334155", "#7c3aed", "#b91c1c"];
 const compositeScoreFormula =
   "Composite = directness + rigor + impact + safety + measurability - hype/regulatory penalty.";
 const compositeScoreDetail =
@@ -200,6 +192,290 @@ const scoreExplanations: Record<ScoreExplanationKind, ScoreExplanation> = {
   }
 };
 
+type DashboardTabId =
+  | "claim-scores"
+  | "evidence-cards"
+  | "product-labels"
+  | "safety-center"
+  | "sources"
+  | "trial-watcher";
+
+const EVIDENCE_CARD_PREVIEW_LIMIT = 5;
+
+type SelectClaimHandler = (claimId: string, options?: { scrollToDetail?: boolean }) => void;
+
+function dashboardPanelShellClassName(embedded?: boolean) {
+  return cn("min-w-0", !embedded && "rounded-lg border border-line bg-white p-4 shadow-panel");
+}
+
+function formatEvidenceMapFilterSummary({
+  filteredClaimCount,
+  filteredInterventionCount,
+  totalClaimCount,
+  totalInterventionCount
+}: {
+  filteredClaimCount: number;
+  filteredInterventionCount: number;
+  totalClaimCount: number;
+  totalInterventionCount: number;
+}) {
+  const interventionsLabel =
+    filteredInterventionCount === totalInterventionCount
+      ? `${totalInterventionCount} interventions`
+      : `${filteredInterventionCount} of ${totalInterventionCount} interventions`;
+  const claimsLabel =
+    filteredClaimCount === totalClaimCount
+      ? `${totalClaimCount} scoped claims`
+      : `${filteredClaimCount} of ${totalClaimCount} scoped claims`;
+
+  return `Showing ${interventionsLabel} · ${claimsLabel}`;
+}
+
+function ActiveClaimContextBar({
+  activeClaim,
+  activeIntervention
+}: {
+  activeClaim: Claim;
+  activeIntervention?: Intervention;
+}) {
+  const score = compositeScore(activeClaim.scores);
+
+  return (
+    <div className="mb-3 rounded-lg border border-signal/25 bg-blue-50 px-3 py-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-signal">Selected claim</p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-700">
+        <span className="font-semibold text-ink">
+          {activeIntervention?.name ?? "Unknown intervention"} · {shortOutcome(activeClaim.outcome)}
+        </span>
+        <span>
+          {compositeLabel(activeClaim)} {score.toFixed(1)}/10
+        </span>
+        <span className={cn("rounded-md border px-2 py-0.5 text-xs font-semibold", labelTone(activeClaim.finalLabel))}>
+          {activeClaim.finalLabel}
+        </span>
+        <span className="text-xs text-slate-600">{reviewStatusLabel(activeClaim.reviewStatus)}</span>
+        {activeIntervention ? (
+          <a
+            className="text-xs font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+            href={`/interventions/${activeIntervention.slug}`}
+          >
+            Intervention detail
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function EvidenceDashboardTabbedPanels({
+  activeClaim,
+  activeClaimId,
+  activeIntervention,
+  filteredClaims,
+  hasFilteredClaims,
+  interventionsById,
+  labelFindings,
+  labelText,
+  onOpenChange,
+  onSelectClaim,
+  open,
+  productAustraliaVerificationById,
+  productSignals,
+  referencesById,
+  safetyAlerts,
+  setLabelText,
+  studies,
+  tableRows,
+  trialWatchItems
+}: {
+  activeClaim: Claim | null;
+  activeClaimId: string;
+  activeIntervention?: Intervention;
+  filteredClaims: Claim[];
+  hasFilteredClaims: boolean;
+  interventionsById: Map<string, Intervention>;
+  labelFindings: ReturnType<typeof analyzeLabel>;
+  labelText: string;
+  onOpenChange: (open: boolean) => void;
+  onSelectClaim: SelectClaimHandler;
+  open: boolean;
+  productAustraliaVerificationById: Map<string, ProductAustraliaRegulatoryVerification>;
+  productSignals: ProductSignal[];
+  referencesById: Map<string, Reference>;
+  safetyAlerts: SafetyAlert[];
+  setLabelText: (value: string) => void;
+  studies: Study[];
+  tableRows: ClaimTableRow[];
+  trialWatchItems: TrialWatchItem[];
+}) {
+  const [activeTab, setActiveTab] = useState<DashboardTabId>("claim-scores");
+  const tabs: Array<{
+    badge?: string;
+    id: DashboardTabId;
+    label: string;
+  }> = [
+    { badge: String(tableRows.length), id: "claim-scores", label: "Claim Scores" },
+    { badge: String(safetyAlerts.length), id: "safety-center", label: "Safety Center" },
+    { badge: String(filteredClaims.length), id: "evidence-cards", label: "Evidence Cards" },
+    { id: "product-labels", label: "Product Labels" },
+    { badge: String(trialWatchItems.length), id: "trial-watcher", label: "Trial Watcher" },
+    { id: "sources", label: "Sources" }
+  ];
+
+  return (
+    <section className="min-w-0 rounded-lg border border-line bg-white shadow-panel">
+      <button
+        type="button"
+        aria-controls="dashboard-detail-panels"
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left outline-none transition hover:bg-mist focus:ring-4 focus:ring-inset focus:ring-signal/20"
+        onClick={() => onOpenChange(!open)}
+      >
+        <div className="min-w-0">
+          <p className="text-base font-semibold text-ink">Claim details</p>
+          <p className="mt-0.5 text-xs text-slate-600">
+            Scores, safety, evidence cards, product labels, trials, and sources
+          </p>
+        </div>
+        <ChevronDown
+          aria-hidden="true"
+          className={cn("h-4 w-4 shrink-0 text-slate-600 transition", open && "rotate-180")}
+        />
+      </button>
+
+      {open ? (
+        <div id="dashboard-detail-panels">
+      <div
+        aria-label="Dashboard detail sections"
+        className="flex flex-wrap gap-1 border-t border-line p-2"
+        role="tablist"
+      >
+        {tabs.map((tab) => {
+          const selected = activeTab === tab.id;
+
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              id={`dashboard-tab-button-${tab.id}`}
+              role="tab"
+              aria-controls={`dashboard-tab-panel-${tab.id}`}
+              aria-selected={selected}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold outline-none transition focus:ring-4 focus:ring-signal/20",
+                selected
+                  ? "border-signal bg-blue-50 text-signal"
+                  : "border-transparent bg-white text-slate-700 hover:border-line hover:bg-mist"
+              )}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <span>{tab.label}</span>
+              {tab.badge ? (
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 py-0.5 text-[11px] font-semibold",
+                    selected ? "bg-white text-signal" : "bg-mist text-slate-600"
+                  )}
+                >
+                  {tab.badge}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="p-4">
+        <div
+          aria-labelledby="dashboard-tab-button-claim-scores"
+          hidden={activeTab !== "claim-scores"}
+          id="dashboard-tab-panel-claim-scores"
+          role="tabpanel"
+        >
+          <ClaimTable
+            embedded
+            rows={tableRows}
+            onSelectClaim={onSelectClaim}
+            activeClaimId={activeClaimId}
+          />
+        </div>
+        <div
+          aria-labelledby="dashboard-tab-button-safety-center"
+          hidden={activeTab !== "safety-center"}
+          id="dashboard-tab-panel-safety-center"
+          role="tabpanel"
+        >
+          <SafetyPanel embedded interventionsById={interventionsById} safetyAlerts={safetyAlerts} />
+        </div>
+        <div
+          aria-labelledby="dashboard-tab-button-evidence-cards"
+          hidden={activeTab !== "evidence-cards"}
+          id="dashboard-tab-panel-evidence-cards"
+          role="tabpanel"
+        >
+          <EvidenceCards
+            embedded
+            claims={filteredClaims}
+            interventionsById={interventionsById}
+            referencesById={referencesById}
+            studies={studies}
+            activeClaimId={activeClaimId}
+            onSelectClaim={onSelectClaim}
+          />
+        </div>
+        <div
+          aria-labelledby="dashboard-tab-button-product-labels"
+          hidden={activeTab !== "product-labels"}
+          id="dashboard-tab-panel-product-labels"
+          role="tabpanel"
+        >
+          <LabelAnalyzer
+            embedded
+            labelText={labelText}
+            setLabelText={setLabelText}
+            findings={labelFindings}
+            productSignals={productSignals}
+            productAustraliaVerificationById={productAustraliaVerificationById}
+          />
+        </div>
+        <div
+          aria-labelledby="dashboard-tab-button-trial-watcher"
+          hidden={activeTab !== "trial-watcher"}
+          id="dashboard-tab-panel-trial-watcher"
+          role="tabpanel"
+        >
+          <TrialWatcher embedded interventionsById={interventionsById} trialWatchItems={trialWatchItems} />
+        </div>
+        <div
+          aria-labelledby="dashboard-tab-button-sources"
+          hidden={activeTab !== "sources"}
+          id="dashboard-tab-panel-sources"
+          role="tabpanel"
+        >
+          {hasFilteredClaims && activeClaim ? (
+            <SourceAndStudyPanel
+              embedded
+              key={activeClaim.id}
+              activeClaim={activeClaim}
+              activeIntervention={activeIntervention}
+              referencesById={referencesById}
+              studies={studies}
+            />
+          ) : (
+            <FilteredClaimDetailEmptyState
+              embedded
+              title="Sources and Review Queue"
+              detail="Source packets and live search suggestions appear after the current filters match a local scored claim."
+            />
+          )}
+        </div>
+      </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const {
     claims,
@@ -212,10 +488,25 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   } = data;
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
+  const [labelFilter, setLabelFilter] = useState("All");
+  const [outcomeFilter, setOutcomeFilter] = useState("All");
   const [activeClaimId, setActiveClaimId] = useState(claims[0]?.id ?? "");
   const [labelText, setLabelText] = useState(
     "Creatine monohydrate 5 g\nNSF Certified for Sport\nNo proprietary blend"
   );
+  const detailSectionRef = useRef<HTMLElement>(null);
+  const [detailPanelsOpen, setDetailPanelsOpen] = useState(false);
+
+  const handleSelectClaim = useCallback<SelectClaimHandler>((claimId, options) => {
+    setActiveClaimId(claimId);
+
+    if (options?.scrollToDetail) {
+      setDetailPanelsOpen(true);
+      requestAnimationFrame(() => {
+        detailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
+  }, []);
 
   const referencesById = useMemo(
     () => new Map(references.map((reference) => [reference.id, reference])),
@@ -230,6 +521,16 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const categories = useMemo(
     () => ["All", ...Array.from(new Set(interventions.map((item) => item.category)))],
     [interventions]
+  );
+
+  const evidenceLabels = useMemo(
+    () => ["All", ...Array.from(new Set(claims.map((claim) => claim.finalLabel))).sort()],
+    [claims]
+  );
+
+  const outcomeAreas = useMemo(
+    () => ["All", ...Array.from(new Set(claims.map((claim) => claim.outcome))).sort()],
+    [claims]
   );
 
   const filteredInterventions = useMemo(() => {
@@ -252,8 +553,14 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   );
 
   const filteredClaims = useMemo(
-    () => claims.filter((claim) => visibleInterventionIds.has(claim.interventionId)),
-    [claims, visibleInterventionIds]
+    () =>
+      claims.filter((claim) => {
+        const labelMatch = labelFilter === "All" || claim.finalLabel === labelFilter;
+        const outcomeMatch = outcomeFilter === "All" || claim.outcome === outcomeFilter;
+
+        return labelMatch && outcomeMatch && visibleInterventionIds.has(claim.interventionId);
+      }),
+    [claims, labelFilter, outcomeFilter, visibleInterventionIds]
   );
   const hasFilteredClaims = filteredClaims.length > 0;
 
@@ -279,9 +586,6 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const activeIntervention = activeClaim
     ? interventionsById.get(activeClaim.interventionId)
     : undefined;
-  const activeAustraliaStatus = activeIntervention
-    ? getPrimaryAustraliaStatus(data.australiaRegulatoryStatuses, activeIntervention.id)
-    : undefined;
   const productAustraliaVerifications = useMemo(
     () => buildProductAustraliaRegulatoryVerifications(data),
     [data]
@@ -297,17 +601,6 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     [productAustraliaVerifications]
   );
   const labelFindings = analyzeLabel(labelText);
-  const reviewSummary = useMemo(() => summarizeReviewStatus(claims), [claims]);
-  const sourcePacketSummary = useMemo(
-    () =>
-      summarizeClaimSourcePackets({
-        claims,
-        referencesById,
-        studies
-      }),
-    [claims, referencesById, studies]
-  );
-
   const tableRows = useMemo(
     () =>
       filteredClaims.map((claim) => {
@@ -339,35 +632,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
       <div className="mx-auto flex w-full min-w-0 max-w-[1500px] flex-col gap-4">
         <Header data={data} />
 
-        <section className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <MetricPanel
-            icon={<FileSearch aria-hidden="true" className="h-4 w-4" />}
-            label="Interventions"
-            value={interventions.length}
-            detail={`${claims.length} scored claims`}
-          />
-          <MetricPanel
-            icon={<ShieldCheck aria-hidden="true" className="h-4 w-4" />}
-            label="Human reviewed"
-            title={HUMAN_REVIEWED_TOOLTIP}
-            value={reviewSummary.humanReviewed}
-            detail={`${reviewSummary.unreviewedDrafts} drafts awaiting review`}
-          />
-          <MetricPanel
-            icon={<AlertTriangle aria-hidden="true" className="h-4 w-4" />}
-            label="Safety alerts"
-            value={safetyAlerts.length}
-            detail={`${safetyAlerts.filter((alert) => alert.severity !== "Low").length} moderate+`}
-          />
-          <MetricPanel
-            icon={<FlaskConical aria-hidden="true" className="h-4 w-4" />}
-            label="Source packets"
-            value={`${sourcePacketSummary.completeClaims}/${sourcePacketSummary.totalClaims}`}
-            detail={sourcePacketSummaryDetail(sourcePacketSummary)}
-          />
-        </section>
-
-        <section className="grid min-w-0 items-start gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+        <section className="min-w-0">
           <div className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -375,8 +640,16 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
                 <p className="mt-1 text-sm text-slate-600">
                   Claim cells show composite evidence confidence, with safety and hype penalties included.
                 </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  {formatEvidenceMapFilterSummary({
+                    filteredClaimCount: filteredClaims.length,
+                    filteredInterventionCount: filteredInterventions.length,
+                    totalClaimCount: claims.length,
+                    totalInterventionCount: interventions.length
+                  })}
+                </p>
               </div>
-              <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(220px,1fr)_220px]">
+              <div className="grid min-w-0 gap-2 lg:grid-cols-2 xl:grid-cols-4">
                 <label className="relative" htmlFor="evidence-map-search">
                   <Search
                     aria-hidden="true"
@@ -408,6 +681,44 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
                     ))}
                   </select>
                 </label>
+                <label className="relative" htmlFor="evidence-map-label">
+                  <Filter
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                  />
+                  <span className="sr-only">Filter by evidence label</span>
+                  <select
+                    id="evidence-map-label"
+                    value={labelFilter}
+                    onChange={(event) => setLabelFilter(event.target.value)}
+                    className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                  >
+                    {evidenceLabels.map((item) => (
+                      <option key={item} value={item}>
+                        {item === "All" ? "All labels" : item}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="relative" htmlFor="evidence-map-outcome">
+                  <Filter
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                  />
+                  <span className="sr-only">Filter by outcome area</span>
+                  <select
+                    id="evidence-map-outcome"
+                    value={outcomeFilter}
+                    onChange={(event) => setOutcomeFilter(event.target.value)}
+                    className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                  >
+                    {outcomeAreas.map((item) => (
+                      <option key={item} value={item}>
+                        {item === "All" ? "All outcomes" : shortOutcome(item as OutcomeArea)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
             </div>
 
@@ -415,70 +726,40 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
               claims={filteredClaims}
               interventions={filteredInterventions}
               activeClaimId={activeClaimIdForDisplay}
-              onSelectClaim={setActiveClaimId}
+              onSelectClaim={handleSelectClaim}
             />
           </div>
-
-          {hasFilteredClaims && activeClaim ? (
-            <ScorePanel
-              australiaStatus={activeAustraliaStatus}
-              claim={activeClaim}
-              intervention={activeIntervention}
-            />
-          ) : (
-            <FilteredClaimDetailEmptyState
-              title="Active Evidence Card"
-              detail="No active evidence card is selected because the current filters do not match local scored claims."
-            />
-          )}
         </section>
 
-        <section className="grid min-w-0 items-start gap-4 xl:grid-cols-[1fr_0.8fr]">
-          <ClaimTable
-            rows={tableRows}
-            onSelectClaim={setActiveClaimId}
-            activeClaimId={activeClaimIdForDisplay}
-          />
-          <SafetyPanel interventionsById={interventionsById} safetyAlerts={safetyAlerts} />
-        </section>
-
-        <section className="grid min-w-0 items-start gap-4 xl:grid-cols-[1fr_1fr]">
-          <EvidenceCards
-            claims={filteredClaims}
-            interventionsById={interventionsById}
-            referencesById={referencesById}
-            studies={studies}
-            activeClaimId={activeClaimIdForDisplay}
-            onSelectClaim={setActiveClaimId}
-          />
-          <LabelAnalyzer
-            labelText={labelText}
-            setLabelText={setLabelText}
-            findings={labelFindings}
-            productSignals={productSignals}
-            productAustraliaVerificationById={productAustraliaVerificationById}
-          />
-        </section>
-
-        <section className="grid min-w-0 items-start gap-4 xl:grid-cols-[0.8fr_1fr]">
-          <TrialWatcher
-            interventionsById={interventionsById}
-            trialWatchItems={trialWatchItems}
-          />
-          {hasFilteredClaims && activeClaim ? (
-            <SourceAndStudyPanel
-              key={activeClaim.id}
-              activeClaim={activeClaim}
-              activeIntervention={activeIntervention}
-              referencesById={referencesById}
-              studies={studies}
-            />
-          ) : (
-            <FilteredClaimDetailEmptyState
-              title="Sources and Review Queue"
-              detail="Source packets and live search suggestions appear after the current filters match a local scored claim."
-            />
-          )}
+        <section
+          ref={detailSectionRef}
+          aria-label="Selected claim details"
+          className="min-w-0 scroll-mt-4"
+        >
+          {activeClaim ? (
+            <ActiveClaimContextBar activeClaim={activeClaim} activeIntervention={activeIntervention} />
+          ) : null}
+          <EvidenceDashboardTabbedPanels
+          activeClaim={activeClaim}
+          activeClaimId={activeClaimIdForDisplay}
+          activeIntervention={activeIntervention}
+          filteredClaims={filteredClaims}
+          hasFilteredClaims={hasFilteredClaims}
+          interventionsById={interventionsById}
+          labelFindings={labelFindings}
+          labelText={labelText}
+          onOpenChange={setDetailPanelsOpen}
+          onSelectClaim={handleSelectClaim}
+          open={detailPanelsOpen}
+          productAustraliaVerificationById={productAustraliaVerificationById}
+          productSignals={productSignals}
+          referencesById={referencesById}
+          safetyAlerts={safetyAlerts}
+          setLabelText={setLabelText}
+          studies={studies}
+          tableRows={tableRows}
+          trialWatchItems={trialWatchItems}
+        />
         </section>
       </div>
     </main>
@@ -487,16 +768,18 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
 
 function FilteredClaimDetailEmptyState({
   detail,
+  embedded,
   title
 }: {
   detail: string;
+  embedded?: boolean;
   title: string;
 }) {
   return (
-    <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
+    <section className={dashboardPanelShellClassName(embedded)}>
       <h2 className="text-base font-semibold text-ink">{title}</h2>
       <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-        {detail} Clear the search or category filter to return to the full local evidence set.
+        {detail} Clear the search, category, label, or outcome filter to return to the full local evidence set.
       </p>
     </section>
   );
@@ -742,17 +1025,21 @@ function Header({ data }: { data: EvidenceDashboardData }) {
             and separate from individualized medical advice.
           </p>
           <div
-            aria-label="Prototype and seed dataset status"
+            aria-label={
+              data.dataSource === "database"
+                ? "Local database catalog status"
+                : "Prototype and seed dataset status"
+            }
             className="mt-3 max-w-4xl border-l-4 border-signal bg-mist px-3 py-2"
             role="note"
           >
             <p className="text-xs font-semibold uppercase tracking-wide text-signal">
-              Prototype / seed dataset
+              {data.dataSource === "database" ? "Local database catalog" : "Prototype / seed dataset"}
             </p>
             <p className="mt-1 text-sm leading-6 text-slate-700">
-              Apex Lifespan is in early public prototype. Current scores are based on a small
-              curated seed dataset and live source-search previews. Scores are review aids, not
-              medical advice.
+              {data.dataSource === "database"
+                ? `Apex Lifespan is running against your local catalog (${data.interventions.length} interventions, ${data.claims.length} scoped claims). Scores and packets are review aids, not medical advice.`
+                : "Apex Lifespan is in early public prototype. Current scores are based on a small curated seed dataset and live source-search previews. Scores are review aids, not medical advice."}
             </p>
           </div>
         </div>
@@ -1025,39 +1312,6 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
   );
 }
 
-function MetricPanel({
-  icon,
-  label,
-  title,
-  value,
-  detail
-}: {
-  icon: React.ReactNode;
-  label: string;
-  title?: string;
-  value: React.ReactNode;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-lg border border-line bg-white p-4 shadow-panel">
-      <div className="flex items-center justify-between gap-3">
-        <div className="rounded-md border border-line bg-mist p-2 text-signal">{icon}</div>
-        <span className="text-2xl font-semibold text-ink">{value}</span>
-      </div>
-      <div className="mt-3">
-        <p
-          aria-label={title ? `${label}: ${title}` : undefined}
-          className="text-sm font-semibold text-ink"
-          title={title}
-        >
-          {label}
-        </p>
-        <p className="mt-1 text-xs text-slate-600">{detail}</p>
-      </div>
-    </div>
-  );
-}
-
 function sourcePacketSummaryDetail(summary: ClaimSourcePacketSummary) {
   if (summary.totalClaims === 0) {
     return "No scored claims yet";
@@ -1180,6 +1434,86 @@ export function buildCodexReviewPacket(data: EvidenceDashboardData) {
   ].join("\n");
 }
 
+type EvidenceMapSort =
+  | {
+      direction: "asc" | "desc";
+      outcome: OutcomeArea;
+    }
+  | null;
+
+function cycleEvidenceMapSort(
+  current: EvidenceMapSort,
+  outcome: OutcomeArea
+): EvidenceMapSort {
+  if (current?.outcome !== outcome) {
+    return { direction: "desc", outcome };
+  }
+
+  if (current.direction === "desc") {
+    return { direction: "asc", outcome };
+  }
+
+  return null;
+}
+
+function sortEvidenceMapInterventions({
+  claims,
+  interventions,
+  sort
+}: {
+  claims: Claim[];
+  interventions: Intervention[];
+  sort: EvidenceMapSort;
+}) {
+  const sorted = [...interventions];
+
+  if (!sort) {
+    return sorted.sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  const scoreFor = (interventionId: string) => {
+    const claim = claims.find(
+      (item) => item.interventionId === interventionId && item.outcome === sort.outcome
+    );
+
+    return claim ? compositeScore(claim.scores) : null;
+  };
+
+  return sorted.sort((left, right) => {
+    const leftScore = scoreFor(left.id);
+    const rightScore = scoreFor(right.id);
+
+    if (leftScore === null && rightScore === null) {
+      return left.name.localeCompare(right.name);
+    }
+
+    if (leftScore === null) {
+      return 1;
+    }
+
+    if (rightScore === null) {
+      return -1;
+    }
+
+    const scoreDelta =
+      sort.direction === "desc" ? rightScore - leftScore : leftScore - rightScore;
+
+    return scoreDelta !== 0 ? scoreDelta : left.name.localeCompare(right.name);
+  });
+}
+
+function evidenceMapSortAriaLabel(sort: EvidenceMapSort, outcome: OutcomeArea) {
+  if (sort?.outcome !== outcome) {
+    return `Sort supplements by ${outcome}, highest score first`;
+  }
+
+  if (sort.direction === "desc") {
+    return `Sort supplements by ${outcome}, lowest score first`;
+  }
+
+  return `Clear ${outcome} sort and return to alphabetical order`;
+}
+
 function EvidenceMap({
   claims: visibleClaims,
   interventions: visibleInterventions,
@@ -1189,17 +1523,27 @@ function EvidenceMap({
   claims: Claim[];
   interventions: Intervention[];
   activeClaimId: string;
-  onSelectClaim: (claimId: string) => void;
+  onSelectClaim: SelectClaimHandler;
 }) {
+  const [sort, setSort] = useState<EvidenceMapSort>(null);
   const outcomes = useMemo(
     () => Array.from(new Set(visibleClaims.map((claim) => claim.outcome))),
     [visibleClaims]
+  );
+  const sortedInterventions = useMemo(
+    () =>
+      sortEvidenceMapInterventions({
+        claims: visibleClaims,
+        interventions: visibleInterventions,
+        sort
+      }),
+    [sort, visibleClaims, visibleInterventions]
   );
 
   if (visibleClaims.length === 0) {
     return (
       <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-        No local scored claims match the current filters. Clear the search or category filter to
+        No local scored claims match the current filters. Clear the search, category, label, or outcome filter to
         rebuild the evidence map.
       </p>
     );
@@ -1208,10 +1552,10 @@ function EvidenceMap({
   return (
     <div className="mt-4">
       <div className="max-w-full overflow-x-auto">
-        <table
-          aria-describedby="evidence-map-legend"
-          className="w-full min-w-[880px] border-separate border-spacing-1 text-sm"
-        >
+      <table
+        aria-describedby="evidence-map-legend"
+        className="w-full min-w-0 border-separate border-spacing-1 text-sm"
+      >
           <caption className="sr-only">
             Evidence map. Rows are interventions and columns are outcomes. Unassessed cells do not
             imply absence of evidence.
@@ -1219,24 +1563,79 @@ function EvidenceMap({
           <thead>
             <tr>
               <th
-                className="w-[220px] rounded-md border border-transparent px-2 py-2 text-left text-xs font-semibold text-slate-600"
+                className="sticky left-0 z-20 w-[220px] rounded-md border border-transparent bg-mist px-2 py-2 text-left text-xs font-semibold text-slate-600"
                 scope="col"
               >
-                Intervention
-              </th>
-              {outcomes.map((outcome) => (
-                <th
-                  key={outcome}
-                  className="rounded-md border border-line bg-mist px-2 py-2 text-left text-xs font-semibold text-slate-700"
-                  scope="col"
+                <button
+                  type="button"
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-left outline-none transition hover:text-signal focus:ring-4 focus:ring-signal/20",
+                    sort === null && "text-signal"
+                  )}
+                  onClick={() => setSort(null)}
+                  aria-label="Sort supplements alphabetically by name"
+                  title="Sort alphabetically by intervention name"
                 >
-                  {shortOutcome(outcome)}
-                </th>
-              ))}
+                  Intervention
+                  {sort === null ? (
+                    <ArrowUpDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                  ) : null}
+                </button>
+              </th>
+              {outcomes.map((outcome) => {
+                const isActive = sort?.outcome === outcome;
+
+                return (
+                  <th
+                    key={outcome}
+                    aria-sort={
+                      isActive
+                        ? sort.direction === "desc"
+                          ? "descending"
+                          : "ascending"
+                        : "none"
+                    }
+                    className="w-[4.25rem] min-w-[4.25rem] max-w-[4.75rem] rounded-md border border-line bg-mist px-0.5 py-1 text-center text-xs font-semibold text-slate-700"
+                    scope="col"
+                  >
+                    <div className="flex flex-col items-center gap-1 py-0.5">
+                      <div className="flex items-center justify-center gap-0.5">
+                        <button
+                          type="button"
+                          className={cn(
+                            "inline-flex h-5 w-5 items-center justify-center rounded-md outline-none transition hover:bg-white focus:ring-4 focus:ring-signal/20",
+                            isActive && "bg-white text-signal"
+                          )}
+                          onClick={() => setSort((current) => cycleEvidenceMapSort(current, outcome))}
+                          aria-label={evidenceMapSortAriaLabel(sort, outcome)}
+                          title={evidenceMapSortAriaLabel(sort, outcome)}
+                        >
+                          <EvidenceMapSortIndicator
+                            direction={isActive ? sort.direction : null}
+                          />
+                        </button>
+                        <OutcomeColumnTooltip outcome={outcome} />
+                      </div>
+                      <button
+                        type="button"
+                        className={cn(
+                          "w-full rounded-md px-0.5 py-0.5 text-center text-[11px] leading-tight outline-none transition hover:bg-white hover:text-signal focus:ring-4 focus:ring-signal/20",
+                          isActive && "text-signal"
+                        )}
+                        onClick={() => setSort((current) => cycleEvidenceMapSort(current, outcome))}
+                        aria-label={evidenceMapSortAriaLabel(sort, outcome)}
+                        title={evidenceMapSortAriaLabel(sort, outcome)}
+                      >
+                        {shortOutcome(outcome)}
+                      </button>
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
-            {visibleInterventions.map((intervention) => (
+            {sortedInterventions.map((intervention) => (
               <EvidenceMapRow
                 key={intervention.id}
                 intervention={intervention}
@@ -1273,7 +1672,107 @@ function EvidenceMapLegend() {
       <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-amberline">
         Unassessed cells do not imply absence of evidence.
       </span>
+      <span className="rounded-md border border-line bg-mist px-2 py-1">
+        Click an outcome column to sort rows high to low, then low to high, then alphabetical again.
+      </span>
     </div>
+  );
+}
+
+function OutcomeColumnTooltip({ outcome }: { outcome: OutcomeArea }) {
+  const label = `About ${outcome} column`;
+  const template = SUPPLEMENT_ONBOARDING_CLAIM_TEMPLATES.find((item) => item.outcome === outcome);
+  const detail =
+    template?.claimText ??
+    "Each cell summarizes a scoped draft claim for this outcome when one exists in the catalog.";
+
+  return (
+    <span
+      className="group relative inline-flex shrink-0"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        aria-label={label}
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-signal/25 bg-white text-signal outline-none transition hover:border-signal hover:bg-blue-50 focus:border-signal focus:ring-4 focus:ring-signal/20"
+        title={label}
+      >
+        <CircleHelp aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-72 -translate-x-1/2 rounded-md border border-line bg-white p-3 text-left text-xs font-normal leading-5 text-slate-700 shadow-panel group-focus-within:block group-hover:block"
+      >
+        <span className="block font-semibold text-ink">{outcome}</span>
+        <span className="mt-2 block">{detail}</span>
+        <span className="mt-2 block text-slate-600">
+          Cells show a draft composite score when a scoped claim exists. A dash means not yet
+          assessed, not evidence of absence.
+        </span>
+      </span>
+    </span>
+  );
+}
+
+function EvidenceMapSortIndicator({
+  direction
+}: {
+  direction: "asc" | "desc" | null;
+}) {
+  if (direction === "desc") {
+    return <ArrowDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />;
+  }
+
+  if (direction === "asc") {
+    return <ArrowUp aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />;
+  }
+
+  return <ArrowUpDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-400" />;
+}
+
+function InterventionRowTooltip({ intervention }: { intervention: Intervention }) {
+  const label = `About ${intervention.name}`;
+
+  return (
+    <span
+      className="group relative inline-flex shrink-0"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        aria-label={label}
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-signal/25 bg-white text-signal outline-none transition hover:border-signal hover:bg-blue-50 focus:border-signal focus:ring-4 focus:ring-signal/20"
+        title={label}
+      >
+        <CircleHelp aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-80 rounded-md border border-line bg-white p-3 text-left text-xs font-normal leading-5 text-slate-700 shadow-panel group-focus-within:block group-hover:block"
+      >
+        <span className="block font-semibold text-ink">{intervention.name}</span>
+        <span className="mt-2 block">
+          <span className="font-semibold text-slate-600">Category:</span> {intervention.category}
+        </span>
+        {intervention.synonyms.length > 0 ? (
+          <span className="mt-1 block">
+            <span className="font-semibold text-slate-600">Also known as:</span>{" "}
+            {shortList(intervention.synonyms)}
+          </span>
+        ) : null}
+        <span className="mt-1 block">
+          <span className="font-semibold text-slate-600">Common forms:</span>{" "}
+          {shortList(intervention.commonForms)}
+        </span>
+        <span className="mt-2 block">{intervention.evidenceSummary}</span>
+        <span className="mt-2 block text-slate-600">{intervention.safetySummary}</span>
+        <span className="mt-2 block text-slate-600">
+          Open the intervention name link for claim-level evidence cards and source packets.
+        </span>
+      </span>
+    </span>
   );
 }
 
@@ -1288,15 +1787,23 @@ function EvidenceMapRow({
   outcomes: OutcomeArea[];
   claims: Claim[];
   activeClaimId: string;
-  onSelectClaim: (claimId: string) => void;
+  onSelectClaim: SelectClaimHandler;
 }) {
   return (
     <tr>
       <th
-        className="h-14 rounded-md border border-line bg-white px-2 text-left text-sm font-semibold text-ink"
+        className="sticky left-0 z-10 h-14 rounded-md border border-line bg-white px-2 text-left text-sm font-semibold text-ink"
         scope="row"
       >
-        {intervention.name}
+        <div className="flex items-start gap-1.5">
+          <a
+            className="min-w-0 text-ink underline decoration-slate-300 underline-offset-2 hover:text-signal hover:decoration-signal"
+            href={`/interventions/${intervention.slug}`}
+          >
+            {intervention.name}
+          </a>
+          <InterventionRowTooltip intervention={intervention} />
+        </div>
       </th>
       {outcomes.map((outcome) => {
         const claim = visibleClaims.find(
@@ -1308,7 +1815,7 @@ function EvidenceMapRow({
             <td
               key={`${intervention.id}-${outcome}`}
               aria-label={`${intervention.name}, ${outcome}: not yet assessed; this does not mean no evidence exists.`}
-              className="h-14 rounded-md border border-dashed border-line bg-slate-50 px-2 text-center text-xs text-slate-400"
+              className="h-14 w-[4.25rem] min-w-[4.25rem] max-w-[4.75rem] rounded-md border border-dashed border-line bg-slate-50 px-1 text-center text-xs text-slate-400"
               title="Not yet assessed; this does not mean no evidence exists."
             >
               <span aria-hidden="true">—</span>
@@ -1322,12 +1829,12 @@ function EvidenceMapRow({
         const score = compositeScore(claim.scores);
 
         return (
-          <td key={claim.id} className="h-14 p-0 align-middle">
+          <td key={claim.id} className="h-14 w-[4.25rem] min-w-[4.25rem] max-w-[4.75rem] p-0 align-middle">
             <button
               type="button"
-              onClick={() => onSelectClaim(claim.id)}
+              onClick={() => onSelectClaim(claim.id, { scrollToDetail: true })}
               className={cn(
-                "flex h-14 w-full flex-col items-start justify-center rounded-md border px-2 text-left text-xs transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20",
+                "flex h-14 w-full flex-col items-center justify-center rounded-md border px-1 text-center text-[11px] leading-tight transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20",
                 labelTone(claim.finalLabel),
                 activeClaimId === claim.id && "border-signal ring-2 ring-signal/25"
               )}
@@ -1353,246 +1860,16 @@ function EvidenceMapRow({
   );
 }
 
-function ScorePanel({
-  australiaStatus,
-  claim,
-  intervention
-}: {
-  australiaStatus?: AustraliaRegulatoryStatus;
-  claim: Claim;
-  intervention?: Intervention;
-}) {
-  const chartRef = useRef<HTMLDivElement>(null);
-  const [chartReady, setChartReady] = useState(false);
-  const [chartWidth, setChartWidth] = useState(0);
-  const scoreRows = getClaimScoreRows(claim);
-  const composite = compositeScore(claim.scores);
-
-  useEffect(() => {
-    setChartReady(true);
-  }, []);
-
-  useEffect(() => {
-    const node = chartRef.current;
-
-    if (!node) {
-      return;
-    }
-
-    const updateWidth = () => {
-      setChartWidth(Math.max(0, Math.floor(node.getBoundingClientRect().width)));
-    };
-
-    updateWidth();
-
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(node);
-
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Active evidence card
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-ink">{intervention?.name}</h2>
-          {intervention ? (
-            <a
-              className="mt-2 inline-flex rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-signal hover:border-signal"
-              href={`/interventions/${intervention.slug}`}
-            >
-              Intervention detail
-            </a>
-          ) : null}
-          <p className="mt-1 text-sm text-slate-600">{claim.claimText}</p>
-        </div>
-        <div className="rounded-md border border-line bg-mist px-3 py-2 text-right">
-          <p className="inline-flex items-center justify-end gap-1 text-xs text-slate-600">
-            {compositeLabel(claim)}
-            <ScoreExplainer explanationKind="composite" value={`${composite.toFixed(1)}/10`} />
-          </p>
-          <p className="text-2xl font-semibold text-ink">{composite.toFixed(1)}</p>
-        </div>
-      </div>
-      <p className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
-        {compositeScoreFormula} The weighting is partly heuristic, so scores are review aids rather
-        than medical advice.
-      </p>
-      <NonProofBox claim={claim} intervention={intervention} />
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", labelTone(claim.finalLabel))}>
-          {classificationLabel(claim)}: {claim.finalLabel}
-        </span>
-        <ReviewStatusBadge status={claim.reviewStatus} />
-      </div>
-
-      <div ref={chartRef} className="mt-4 h-64">
-        {chartReady && chartWidth > 0 ? (
-            <BarChart
-              data={scoreRows}
-              height={250}
-              layout="vertical"
-              margin={{ left: 8, right: 16, top: 8, bottom: 8 }}
-              width={chartWidth}
-            >
-              <CartesianGrid stroke="#e2e8f0" horizontal={false} />
-              <XAxis type="number" domain={[0, 10]} hide />
-              <YAxis
-                dataKey="label"
-                type="category"
-                width={92}
-                tick={{ fill: "#475569", fontSize: 12 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                cursor={{ fill: "rgba(29, 78, 216, 0.08)" }}
-                content={<ScoreBarTooltip />}
-              />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]} isAnimationActive={false}>
-                {scoreRows.map((row, index) => (
-                  <Cell key={row.label} fill={scoreColors[index % scoreColors.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-        ) : (
-          <div className="grid h-full content-center gap-3">
-            {scoreRows.map((row, index) => (
-              <div key={row.label} className="grid grid-cols-[92px_1fr_34px] items-center gap-2 text-xs">
-                <span className="inline-flex items-center gap-1 text-slate-600">
-                  {row.label}
-                  <ScoreExplainer
-                    explanationKind={scoreExplanationKindForLabel(row.label)}
-                    value={`${row.value}/10`}
-                  />
-                </span>
-                <span className="h-3 overflow-hidden rounded-full bg-slate-100">
-                  <span
-                    className="block h-full rounded-full"
-                    style={{
-                      width: `${row.value * 10}%`,
-                      backgroundColor: scoreColors[index % scoreColors.length]
-                    }}
-                  />
-                </span>
-                <span className="text-right font-semibold text-slate-700">{row.value}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <dl className="grid gap-2 text-sm">
-        <DetailRow label="Population" value={claim.populationStudied} />
-        <AustraliaRegulatoryDetail status={australiaStatus} />
-        <DetailRow label="Dose/form" value={claim.doseFormStudied} />
-        <DetailRow label="Safety" value={claim.safetyNotes} />
-        <DetailRow label="Score mover" value={claim.whatWouldChangeScore} />
-      </dl>
-    </section>
-  );
-}
-
-function ScoreBarTooltip({
-  active,
-  payload
-}: {
-  active?: boolean;
-  payload?: Array<{
-    payload?: {
-      label?: string;
-      value?: number;
-    };
-  }>;
-}) {
-  const row = payload?.[0]?.payload;
-
-  if (!active || !row?.label || typeof row.value !== "number") {
-    return null;
-  }
-
-  const explanation = scoreExplanations[scoreExplanationKindForLabel(row.label)];
-
-  return (
-    <div className="max-w-xs rounded-md border border-line bg-white p-3 text-xs leading-5 text-slate-700 shadow-panel">
-      <p className="font-semibold text-ink">{row.label}</p>
-      <p className="mt-1 font-semibold text-signal">{row.value}/10</p>
-      <p className="mt-1">{explanation.detail}</p>
-    </div>
-  );
-}
-
-function AustraliaRegulatoryDetail({
-  status
-}: {
-  status?: AustraliaRegulatoryStatus;
-}) {
-  if (!status) {
-    return (
-      <DetailRow
-        label="AU/TGA"
-        value="Australian regulatory status has not been captured for this intervention yet."
-      />
-    );
-  }
-
-  return (
-    <div className="grid gap-2 rounded-md border border-line bg-mist p-3 sm:grid-cols-[120px_1fr]">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-600">AU/TGA</dt>
-      <dd className="text-sm text-slate-700">
-        <span
-          className={cn(
-            "mb-2 inline-flex rounded-md border px-2 py-1 text-xs font-semibold",
-            australiaRegulatoryTone(status.kind)
-          )}
-        >
-          {status.kind}
-        </span>
-        <p className="leading-6">{status.status}</p>
-        <p className="mt-1 leading-6 text-slate-600">{status.supplySummary}</p>
-        <details className="mt-2">
-          <summary className="cursor-pointer text-xs font-semibold text-signal">
-            Research detail
-          </summary>
-          <p className="mt-2 leading-6 text-slate-600">
-            {australiaRegulatoryKindDescription(status.kind)}
-          </p>
-          <p className="mt-2 leading-6 text-slate-600">{status.evidenceRequirement}</p>
-          <a
-            href={status.sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
-          >
-            TGA source <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-          </a>
-        </details>
-      </dd>
-    </div>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid gap-1 rounded-md border border-line bg-mist p-3 sm:grid-cols-[120px_1fr]">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-600">{label}</dt>
-      <dd className="text-sm text-slate-700">{value}</dd>
-    </div>
-  );
-}
-
 function ClaimTable({
-  rows,
   activeClaimId,
-  onSelectClaim
+  embedded,
+  onSelectClaim,
+  rows
 }: {
-  rows: ClaimTableRow[];
   activeClaimId: string;
-  onSelectClaim: (claimId: string) => void;
+  embedded?: boolean;
+  onSelectClaim: SelectClaimHandler;
+  rows: ClaimTableRow[];
 }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "composite", desc: true }]);
 
@@ -1675,7 +1952,7 @@ function ClaimTable({
   });
 
   return (
-    <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
+    <section className={dashboardPanelShellClassName(embedded)}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-ink">Claim Scores</h2>
@@ -1741,7 +2018,7 @@ function ClaimTable({
         </div>
       ) : (
         <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-          No local scored claims match the current filters. Clear the search or category filter to
+          No local scored claims match the current filters. Clear the search, category, label, or outcome filter to
           return to the full local evidence set.
         </p>
       )}
@@ -1750,14 +2027,16 @@ function ClaimTable({
 }
 
 function SafetyPanel({
+  embedded,
   interventionsById,
   safetyAlerts
 }: {
+  embedded?: boolean;
   interventionsById: Map<string, Intervention>;
   safetyAlerts: SafetyAlert[];
 }) {
   return (
-    <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
+    <section className={dashboardPanelShellClassName(embedded)}>
       <h2 className="text-base font-semibold text-ink">Safety Center</h2>
       <div className="mt-4 grid gap-3">
         {safetyAlerts.length > 0 ? (
@@ -1799,26 +2078,55 @@ function SafetyPanel({
 }
 
 function EvidenceCards({
-  claims: visibleClaims,
-  interventionsById,
-  referencesById,
-  studies,
   activeClaimId,
-  onSelectClaim
+  claims: visibleClaims,
+  embedded,
+  interventionsById,
+  onSelectClaim,
+  referencesById,
+  studies
 }: {
+  activeClaimId: string;
   claims: Claim[];
+  embedded?: boolean;
   interventionsById: Map<string, Intervention>;
+  onSelectClaim: SelectClaimHandler;
   referencesById: Map<string, Reference>;
   studies: Study[];
-  activeClaimId: string;
-  onSelectClaim: (claimId: string) => void;
 }) {
+  const [showAllEvidenceCards, setShowAllEvidenceCards] = useState(false);
+  const orderedClaims = useMemo(() => {
+    const activeClaim = visibleClaims.find((claim) => claim.id === activeClaimId);
+    const remainingClaims = visibleClaims.filter((claim) => claim.id !== activeClaimId);
+
+    return activeClaim ? [activeClaim, ...remainingClaims] : remainingClaims;
+  }, [activeClaimId, visibleClaims]);
+  const displayClaims = showAllEvidenceCards
+    ? orderedClaims
+    : orderedClaims.slice(0, EVIDENCE_CARD_PREVIEW_LIMIT);
+  const hiddenEvidenceCardCount = Math.max(
+    orderedClaims.length - EVIDENCE_CARD_PREVIEW_LIMIT,
+    0
+  );
+
+  useEffect(() => {
+    setShowAllEvidenceCards(false);
+  }, [activeClaimId, visibleClaims.length]);
+
   return (
-    <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
-      <h2 className="text-base font-semibold text-ink">Evidence Cards</h2>
+    <section className={dashboardPanelShellClassName(embedded)}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold text-ink">Evidence Cards</h2>
+        {visibleClaims.length > 0 ? (
+          <p className="text-xs text-slate-600">
+            {visibleClaims.length} local evidence card{visibleClaims.length === 1 ? "" : "s"}
+          </p>
+        ) : null}
+      </div>
       <div className="mt-4 grid gap-3">
         {visibleClaims.length > 0 ? (
-          visibleClaims.map((claim) => {
+          <>
+            {displayClaims.map((claim) => {
             const intervention = interventionsById.get(claim.interventionId);
             const claimReferences = claim.keyReferenceIds
               .map((referenceId) => referencesById.get(referenceId))
@@ -1919,10 +2227,24 @@ function EvidenceCards({
                 </details>
               </article>
             );
-          })
+          })}
+            {hiddenEvidenceCardCount > 0 ? (
+              <button
+                type="button"
+                className="rounded-md border border-line bg-mist px-3 py-2 text-left text-xs font-semibold text-signal hover:bg-white"
+                onClick={() => setShowAllEvidenceCards((current) => !current)}
+              >
+                {showAllEvidenceCards
+                  ? "Show fewer evidence cards"
+                  : `Show ${hiddenEvidenceCardCount} more evidence card${
+                      hiddenEvidenceCardCount === 1 ? "" : "s"
+                    }`}
+              </button>
+            ) : null}
+          </>
         ) : (
           <p className="rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-            No evidence cards match the current filters. Clear the search or category filter to
+            No evidence cards match the current filters. Clear the search, category, or label filter to
             review the full local evidence set.
           </p>
         )}
@@ -1932,20 +2254,22 @@ function EvidenceCards({
 }
 
 function LabelAnalyzer({
-  labelText,
-  setLabelText,
+  embedded,
   findings,
+  labelText,
   productAustraliaVerificationById,
-  productSignals
+  productSignals,
+  setLabelText
 }: {
-  labelText: string;
-  setLabelText: (value: string) => void;
+  embedded?: boolean;
   findings: ReturnType<typeof analyzeLabel>;
+  labelText: string;
   productAustraliaVerificationById: Map<string, ProductAustraliaRegulatoryVerification>;
   productSignals: ProductSignal[];
+  setLabelText: (value: string) => void;
 }) {
   return (
-    <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
+    <section className={dashboardPanelShellClassName(embedded)}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-ink">Product Label Analyzer</h2>
@@ -2182,45 +2506,95 @@ function australiaVerificationStateTone(state: ProductAustraliaRegulatoryVerific
 }
 
 function TrialWatcher({
+  embedded,
   interventionsById,
   trialWatchItems
 }: {
+  embedded?: boolean;
   interventionsById: Map<string, Intervention>;
   trialWatchItems: TrialWatchItem[];
 }) {
+  const [showAllTrials, setShowAllTrials] = useState(false);
+  const trialPreviewLimit = 6;
+  const visibleTrials = showAllTrials
+    ? trialWatchItems
+    : trialWatchItems.slice(0, trialPreviewLimit);
+  const hiddenTrialCount = Math.max(trialWatchItems.length - trialPreviewLimit, 0);
+
   return (
-    <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
-      <h2 className="text-base font-semibold text-ink">Trial Watcher</h2>
+    <section className={dashboardPanelShellClassName(embedded)}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold text-ink">Trial Watcher</h2>
+        {trialWatchItems.length > 0 ? (
+          <p className="text-xs text-slate-600">
+            {trialWatchItems.length} local registry lead
+            {trialWatchItems.length === 1 ? "" : "s"}
+          </p>
+        ) : null}
+      </div>
       <div className="mt-4 grid gap-3">
         {trialWatchItems.length > 0 ? (
-          trialWatchItems.map((item) => (
-            <article key={item.id} className="rounded-lg border border-line bg-white p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-semibold text-ink">{item.title}</h3>
-                  <p className="mt-1 text-xs text-slate-600">
-                    {interventionsById.get(item.interventionId)?.name} - {item.lastUpdateDate}
+          <>
+            {visibleTrials.map((item) => {
+              const intervention = interventionsById.get(item.interventionId);
+              const labels = labelTrialWatchItem(item, intervention);
+
+              return (
+                <article key={item.id} className="rounded-lg border border-line bg-white p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-ink">{item.title}</h3>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {intervention?.name ?? "Unknown intervention"} - {item.lastUpdateDate}
+                      </p>
+                    </div>
+                    <span className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
+                      {item.evidenceImpact}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <TrialClassificationBadge
+                      detail={labels.trialRelevanceDetail}
+                      label={labels.trialRelevanceLabel}
+                    />
+                    <TrialClassificationBadge
+                      detail={labels.trialResultDetail}
+                      label={labels.trialResultLabel}
+                    />
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+                    <MiniStat label="Status" value={item.status} />
+                    <MiniStat label="Phase" value={item.phase} />
+                    <MiniStat label="Scope" value={item.enrollment} />
+                  </div>
+                  <p className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+                    Registry records are review leads only; relevance labels do not prove benefit or
+                    safety.
                   </p>
-                </div>
-                <span className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
-                  {item.evidenceImpact}
-                </span>
-              </div>
-              <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
-                <MiniStat label="Status" value={item.status} />
-                <MiniStat label="Phase" value={item.phase} />
-                <MiniStat label="Scope" value={item.enrollment} />
-              </div>
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
+                  >
+                    {item.nctId ?? "Source"}{" "}
+                    <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                  </a>
+                </article>
+              );
+            })}
+            {hiddenTrialCount > 0 ? (
+              <button
+                type="button"
+                className="rounded-md border border-line bg-mist px-3 py-2 text-left text-xs font-semibold text-signal hover:bg-white"
+                onClick={() => setShowAllTrials((current) => !current)}
               >
-                Source <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-              </a>
-            </article>
-          ))
+                {showAllTrials
+                  ? "Show fewer trial records"
+                  : `Show ${hiddenTrialCount} more trial record${hiddenTrialCount === 1 ? "" : "s"}`}
+              </button>
+            ) : null}
+          </>
         ) : (
           <p className="rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
             No local trial-watch records were captured for this dataset. Check current
@@ -2236,11 +2610,13 @@ function TrialWatcher({
 function SourceAndStudyPanel({
   activeClaim,
   activeIntervention,
+  embedded,
   referencesById,
   studies
 }: {
   activeClaim: Claim;
   activeIntervention?: Intervention;
+  embedded?: boolean;
   referencesById: Map<string, Reference>;
   studies: Study[];
 }) {
@@ -2436,7 +2812,7 @@ function SourceAndStudyPanel({
   };
 
   return (
-    <section className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
+    <section className={dashboardPanelShellClassName(embedded)}>
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-base font-semibold text-ink">Sources and Review Queue</h2>
@@ -3128,41 +3504,6 @@ function ClinicalTrialsPreviewCard({ study }: { study: ClinicalTrialSearchItem }
       </a>
     </article>
   );
-}
-
-function TrialClassificationBadge({ detail, label }: { detail: string; label: string }) {
-  return (
-    <span
-      aria-label={`${label}: ${detail}`}
-      className={cn(
-        "rounded-md border px-2 py-1 text-xs font-semibold",
-        trialClassificationTone(label)
-      )}
-      title={detail}
-    >
-      {label}
-    </span>
-  );
-}
-
-function trialClassificationTone(label: string) {
-  if (label === "Direct match" || label === "Results posted") {
-    return "border-spruce/30 bg-teal-50 text-spruce";
-  }
-
-  if (label === "Combination product") {
-    return "border-signal/25 bg-blue-50 text-signal";
-  }
-
-  if (label === "Related outcome only" || label === "Completed, no results posted") {
-    return "border-amberline/30 bg-amber-50 text-amberline";
-  }
-
-  if (label === "Wrong population" || label === "Terminated/unknown") {
-    return "border-danger/30 bg-red-50 text-danger";
-  }
-
-  return "border-slate-300 bg-slate-50 text-slate-700";
 }
 
 function MiniStat({ label, value }: { label: string; value: string }) {

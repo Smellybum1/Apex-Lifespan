@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 
 import { DashboardDataUnavailable } from "@/app/dashboard-data-unavailable";
+import { InterventionTrialList } from "@/components/intervention-trial-list";
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import { australiaRegulatoryKindDescription, australiaRegulatoryTone } from "@/lib/regulatory";
 import {
@@ -26,8 +28,7 @@ import type {
   ProductSignal,
   Reference,
   SafetyAlert,
-  Study,
-  TrialWatchItem
+  Study
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -78,6 +79,15 @@ export default async function InterventionDetailPage({ params }: InterventionDet
     (status) => status.interventionId === intervention.id
   );
   const productSignals = productSignalsForIntervention(data.productSignals, intervention);
+  const claimIds = new Set(claims.map((claim) => claim.id));
+  const snapshotsByClaimId = new Map(
+    (data.claimScoreSnapshots ?? [])
+      .filter((snapshot) => claimIds.has(snapshot.claimId))
+      .map((snapshot) => [snapshot.claimId, snapshot])
+  );
+  const scoreHistory = (data.claimScoreHistory ?? [])
+    .filter((entry) => claimIds.has(entry.claimId))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 
   return (
     <main className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
@@ -123,16 +133,20 @@ export default async function InterventionDetailPage({ params }: InterventionDet
           ) : null}
         </header>
 
-        <Section title="Intervention Summary">
+        <CollapsibleSection defaultOpen title="Intervention Summary">
           <div className="grid gap-3 md:grid-cols-2">
             <InfoCard label="Common forms" value={intervention.commonForms.join(", ")} />
             <InfoCard label="Regulatory status" value={intervention.regulatoryStatus} />
             <InfoCard label="Safety summary" value={intervention.safetySummary} />
             <InfoCard label="Interaction summary" value={intervention.interactionSummary} />
           </div>
-        </Section>
+        </CollapsibleSection>
 
-        <Section title="Evidence Map Row">
+        <CollapsibleSection
+          badge={`${claims.length} outcomes`}
+          defaultOpen
+          title="Evidence scores by outcome"
+        >
           {claims.length > 0 ? (
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
               {claims.map((claim) => {
@@ -141,6 +155,7 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                 return (
                   <article
                     className={cn("rounded-lg border p-3", labelTone(claim.finalLabel))}
+                    id={`claim-${claim.id}`}
                     key={claim.id}
                   >
                     <p className="text-xs font-semibold uppercase tracking-wide">
@@ -160,9 +175,9 @@ export default async function InterventionDetailPage({ params }: InterventionDet
           ) : (
             <EmptyState>No scored claim rows are attached to this intervention yet.</EmptyState>
           )}
-        </Section>
+        </CollapsibleSection>
 
-        <Section title="Claim Cards">
+        <CollapsibleSection badge={`${claims.length}`} defaultOpen title="Claim cards">
           <div className="grid gap-3">
             {claims.map((claim) => (
               <ClaimCard
@@ -173,9 +188,9 @@ export default async function InterventionDetailPage({ params }: InterventionDet
               />
             ))}
           </div>
-        </Section>
+        </CollapsibleSection>
 
-        <Section title="Source Packets">
+        <CollapsibleSection badge={`${claims.length}`} title="Source packets">
           <div className="grid gap-3">
             {sourcePackets.map(({ claim, packet }) => (
               <SourcePacketCard
@@ -186,9 +201,9 @@ export default async function InterventionDetailPage({ params }: InterventionDet
               />
             ))}
           </div>
-        </Section>
+        </CollapsibleSection>
 
-        <Section title="Safety Alerts">
+        <CollapsibleSection badge={safetyAlerts.length > 0 ? String(safetyAlerts.length) : undefined} title="Safety alerts">
           {safetyAlerts.length > 0 ? (
             <div className="grid gap-3">
               {safetyAlerts.map((alert) => (
@@ -201,21 +216,16 @@ export default async function InterventionDetailPage({ params }: InterventionDet
               safety, efficacy, or regulatory clearance.
             </EmptyState>
           )}
-        </Section>
+        </CollapsibleSection>
 
-        <Section title="Trial Watcher Records">
-          {trialWatchItems.length > 0 ? (
-            <div className="grid gap-3">
-              {trialWatchItems.map((trial) => (
-                <TrialWatchCard key={trial.id} trial={trial} />
-              ))}
-            </div>
-          ) : (
-            <EmptyState>No local trial watcher records are attached to this intervention.</EmptyState>
-          )}
-        </Section>
+        <CollapsibleSection
+          badge={trialWatchItems.length > 0 ? String(trialWatchItems.length) : undefined}
+          title="Trial watcher"
+        >
+          <InterventionTrialList intervention={intervention} trials={trialWatchItems} />
+        </CollapsibleSection>
 
-        <Section title="AU/TGA And Product Context">
+        <CollapsibleSection title="AU/TGA and product context">
           <div className="grid gap-3">
             {australiaStatuses.length > 0 ? (
               australiaStatuses.map((status) => (
@@ -237,69 +247,107 @@ export default async function InterventionDetailPage({ params }: InterventionDet
               <EmptyState>No matching local product-signal row is attached to this intervention.</EmptyState>
             )}
           </div>
-        </Section>
+        </CollapsibleSection>
 
-        <Section title="Score History">
+        <CollapsibleSection title="Score history">
           {claims.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
-                <thead>
-                  <tr>
-                    {["Claim", "Current score", "Band", "Label", "Snapshot date"].map((heading) => (
-                      <th
-                        className="border-b border-line bg-mist px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600"
-                        key={heading}
-                      >
-                        {heading}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {claims.map((claim) => {
-                    const score = compositeScore(claim.scores);
+            <div className="grid gap-4">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] border-separate border-spacing-0 text-sm">
+                  <thead>
+                    <tr>
+                      {["Claim", "Current score", "Band", "Label", "Snapshot date"].map((heading) => (
+                        <th
+                          className="border-b border-line bg-mist px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600"
+                          key={heading}
+                        >
+                          {heading}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {claims.map((claim) => {
+                      const snapshot = snapshotsByClaimId.get(claim.id);
+                      const score = snapshot?.compositeScore ?? compositeScore(claim.scores);
+                      const finalLabel = snapshot?.finalLabel ?? claim.finalLabel;
+                      const snapshotDate = snapshot
+                        ? formatSnapshotDate(snapshot.computedAt)
+                        : claim.lastUpdated;
 
-                    return (
-                      <tr key={claim.id}>
-                        <td className="border-b border-line px-3 py-3 text-slate-700">
-                          {shortOutcome(claim.outcome)}
-                        </td>
-                        <td className="border-b border-line px-3 py-3 font-semibold text-ink">
-                          {score.toFixed(1)}
-                        </td>
-                        <td className="border-b border-line px-3 py-3 text-slate-700">
-                          {scoreBand(score)}
-                        </td>
-                        <td className="border-b border-line px-3 py-3">
-                          <span
-                            className={cn(
-                              "rounded-md border px-2 py-1 text-xs font-semibold",
-                              labelTone(claim.finalLabel)
-                            )}
-                          >
-                            {claim.finalLabel}
-                          </span>
-                        </td>
-                        <td className="border-b border-line px-3 py-3 text-slate-700">
-                          {claim.lastUpdated}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              <p className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
-                Score history currently shows the latest captured score snapshot for each scoped
-                claim. Decimal scores are provisional review heuristics, not clinical
-                recommendations.
+                      return (
+                        <tr key={claim.id}>
+                          <td className="border-b border-line px-3 py-3 text-slate-700">
+                            {shortOutcome(claim.outcome)}
+                          </td>
+                          <td className="border-b border-line px-3 py-3 font-semibold text-ink">
+                            {score.toFixed(1)}
+                          </td>
+                          <td className="border-b border-line px-3 py-3 text-slate-700">
+                            {scoreBand(score)}
+                          </td>
+                          <td className="border-b border-line px-3 py-3">
+                            <span
+                              className={cn(
+                                "rounded-md border px-2 py-1 text-xs font-semibold",
+                                labelTone(finalLabel)
+                              )}
+                            >
+                              {finalLabel}
+                            </span>
+                          </td>
+                          <td className="border-b border-line px-3 py-3 text-slate-700">
+                            {snapshotDate}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {scoreHistory.length > 0 ? (
+                <div className="grid gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Recorded score changes
+                  </p>
+                  {scoreHistory.map((entry) => (
+                    <div
+                      className="rounded-md border border-line bg-mist px-3 py-2 text-sm leading-6 text-slate-700"
+                      key={entry.id}
+                    >
+                      <p className="font-semibold text-ink">
+                        {shortOutcome(
+                          claims.find((claim) => claim.id === entry.claimId)?.outcome ?? entry.claimId
+                        )}
+                        {entry.oldCompositeScore !== undefined &&
+                        entry.newCompositeScore !== undefined ? (
+                          <>
+                            {" "}
+                            {entry.oldCompositeScore.toFixed(1)} → {entry.newCompositeScore.toFixed(1)}
+                          </>
+                        ) : null}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {formatHistoryReason(entry.reason)} · {formatSnapshotDate(entry.createdAt)}
+                      </p>
+                      <p className="mt-1">{entry.rationale}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <p className="rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+                Score history prefers normalized database snapshots when present. Decimal scores are
+                provisional review heuristics, not clinical recommendations.
               </p>
             </div>
           ) : (
             <EmptyState>No score snapshots are attached to this intervention yet.</EmptyState>
           )}
-        </Section>
+        </CollapsibleSection>
 
-        <Section title="What Would Change The Score">
+        <CollapsibleSection title="What would change the score">
           {claims.length > 0 ? (
             <div className="grid gap-2">
               {claims.map((claim) => (
@@ -313,24 +361,44 @@ export default async function InterventionDetailPage({ params }: InterventionDet
           ) : (
             <EmptyState>No score-change criteria are attached to this intervention yet.</EmptyState>
           )}
-        </Section>
+        </CollapsibleSection>
       </div>
     </main>
   );
 }
 
-function Section({
+function CollapsibleSection({
+  badge,
   children,
+  defaultOpen = false,
   title
 }: {
+  badge?: string;
   children: ReactNode;
+  defaultOpen?: boolean;
   title: string;
 }) {
   return (
-    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-      <h2 className="text-base font-semibold text-ink">{title}</h2>
-      <div className="mt-4">{children}</div>
-    </section>
+    <details
+      className="group/section rounded-lg border border-line bg-white shadow-panel [&_summary::-webkit-details-marker]:hidden"
+      open={defaultOpen || undefined}
+    >
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 outline-none transition hover:bg-mist focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-signal/20">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h2 className="text-base font-semibold text-ink">{title}</h2>
+          {badge ? (
+            <span className="rounded-full bg-mist px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+              {badge}
+            </span>
+          ) : null}
+        </div>
+        <ChevronDown
+          aria-hidden="true"
+          className="h-4 w-4 shrink-0 text-slate-600 transition group-open/section:rotate-180"
+        />
+      </summary>
+      <div className="border-t border-line p-4">{children}</div>
+    </details>
   );
 }
 
@@ -662,35 +730,6 @@ function SafetyAlertCard({ alert }: { alert: SafetyAlert }) {
   );
 }
 
-function TrialWatchCard({ trial }: { trial: TrialWatchItem }) {
-  return (
-    <article className="rounded-lg border border-line bg-white p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="text-sm font-semibold text-ink">{trial.title}</h3>
-          <p className="mt-1 text-xs text-slate-600">
-            {trial.status} - {trial.phase} - {trial.lastUpdateDate}
-          </p>
-        </div>
-        <span className="rounded-md border border-signal/25 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
-          {trial.evidenceImpact}
-        </span>
-      </div>
-      <p className="mt-3 text-sm leading-6 text-slate-700">
-        Enrollment: {trial.enrollment}. Registry records are review leads, not proof of benefit.
-      </p>
-      <a
-        className="mt-3 inline-flex max-w-full items-center gap-1 break-words text-xs font-semibold text-signal hover:underline"
-        href={trial.url}
-        rel="noreferrer"
-        target="_blank"
-      >
-        Trial registry source
-      </a>
-    </article>
-  );
-}
-
 function AustraliaStatusCard({ status }: { status: AustraliaRegulatoryStatus }) {
   return (
     <article className="rounded-lg border border-line bg-white p-3">
@@ -848,4 +887,27 @@ function shortOutcome(outcome: string) {
     .replace("LDL/ApoB/lipids", "Lipids")
     .replace("Joint/tendon/skin", "Joint/skin")
     .replace("Muscle/strength", "Strength");
+}
+
+function formatSnapshotDate(value: string) {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(parsed);
+}
+
+function formatHistoryReason(reason: string) {
+  return reason
+    .toLowerCase()
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }

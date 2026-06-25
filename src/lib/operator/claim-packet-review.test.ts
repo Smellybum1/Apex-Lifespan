@@ -21,6 +21,13 @@ vi.mock("@/lib/db/prisma", () => ({
   }
 }));
 
+vi.mock("@/lib/data/evidence-review-sync", () => ({
+  recordHumanClaimEvidenceReview: vi.fn().mockResolvedValue({
+    snapshot: { created: true, snapshotId: "snapshot-1" },
+    sync: { created: false, sourcePacketId: "packet-1" }
+  })
+}));
+
 const claimFindUniqueMock = vi.mocked(prisma.claim.findUnique);
 const claimUpdateMock = vi.mocked(prisma.claim.update);
 const auditCreateMock = vi.mocked(prisma.operatorAuditEvent.create);

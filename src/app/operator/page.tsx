@@ -14,6 +14,7 @@ import {
   importOnboardingDraftFromBrowserForm,
   linkCandidateClaimFromBrowserForm,
   promoteCandidateFromBrowserForm,
+  recomputeClaimScoreFromBrowserForm,
   reviewCandidateFromBrowserForm,
   saveOnboardingDraftFromBrowserForm
 } from "@/lib/operator/browser-write-actions";
@@ -43,6 +44,8 @@ import {
   type SupplementOnboardingDraftReviewSnapshot
 } from "@/lib/operator/supplement-onboarding-drafts";
 import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
+import { getEvidenceDashboardData } from "@/lib/data/dashboard";
+import type { Claim } from "@/lib/types";
 import {
   australiaRegulatoryStatuses,
   claims,
@@ -112,6 +115,19 @@ async function promoteCandidateFromForm(formData: FormData) {
   }
 
   await promoteCandidateFromBrowserForm(principal, formData);
+  revalidatePath("/operator");
+}
+
+async function recomputeClaimScoreFromForm(formData: FormData) {
+  "use server";
+
+  const principal = await getCurrentOperatorPrincipal();
+
+  if (!principal) {
+    throw new Error("Operator authentication required.");
+  }
+
+  await recomputeClaimScoreFromBrowserForm(principal, formData);
   revalidatePath("/operator");
 }
 
@@ -231,6 +247,9 @@ export default async function OperatorPage() {
   const auditTrail = canReadAudit
     ? await getOperatorAuditTrailSnapshot(5)
     : { eventCount: 0, rows: [] };
+  const scoreSnapshotClaims = canReviewPromotion
+    ? (await getEvidenceDashboardData()).claims.slice(0, 12)
+    : [];
 
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-8 text-slate-950">
@@ -315,6 +334,14 @@ export default async function OperatorPage() {
             promotionControl={promotionControl}
             snapshot={promotionReadiness}
             studyExtractionControl={studyExtractionControl}
+          />
+        ) : null}
+
+        {canReviewPromotion ? (
+          <ScoreSnapshotPanel
+            claims={scoreSnapshotClaims}
+            promotionControl={promotionControl}
+            recomputeAction={recomputeClaimScoreFromForm}
           />
         ) : null}
 
@@ -1257,6 +1284,93 @@ function CandidateReviewQueuePanel({
             No pending candidates are visible for this operator role.
           </p>
         )}
+      </div>
+    </section>
+  );
+}
+
+function ScoreSnapshotPanel({
+  claims,
+  promotionControl,
+  recomputeAction
+}: {
+  claims: Claim[];
+  promotionControl: OperatorBrowserWriteControlState;
+  recomputeAction: (formData: FormData) => void | Promise<void>;
+}) {
+  return (
+    <section className="rounded-md border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-normal">Score snapshot tools</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Capture normalized score snapshots and history without changing claim score fields.
+          </p>
+        </div>
+        <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
+          {promotionControl.enabled ? "Write enabled" : "Locked"}
+        </span>
+      </div>
+
+      <div className="space-y-2 px-4 py-4">
+        {claims.length > 0 ? (
+          <form action={recomputeAction} className="space-y-3">
+            <label className="block text-sm font-semibold text-slate-700">
+              Claim
+              <select
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                name="claimId"
+                required
+              >
+                <option value="">Select a claim</option>
+                {claims.map((claim) => (
+                  <option key={claim.id} value={claim.id}>
+                    {claim.id} · {claim.outcome}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm font-semibold text-slate-700">
+              Mode
+              <select
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                name="mode"
+                required
+              >
+                <option value="dry-run">Dry run</option>
+                {promotionControl.enabled ? (
+                  <option value="apply">Apply snapshot</option>
+                ) : null}
+              </select>
+            </label>
+            <label className="block text-sm font-semibold text-slate-700">
+              Rationale
+              <textarea
+                className="mt-1 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                name="rationale"
+                placeholder="Why is this snapshot being captured or recomputed?"
+                required
+              />
+            </label>
+            <button
+              className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900"
+              type="submit"
+            >
+              Run score snapshot action
+            </button>
+          </form>
+        ) : (
+          <p className="text-sm text-slate-600">No claims are available for score snapshot tools.</p>
+        )}
+
+        {!promotionControl.enabled ? (
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+            <p>Dry run is available to admin/owner operators. Apply snapshot requires browser-write gates:</p>
+            {promotionControl.blockers.map((blocker) => (
+              <p key={blocker}>- {blocker}</p>
+            ))}
+          </div>
+        ) : null}
       </div>
     </section>
   );

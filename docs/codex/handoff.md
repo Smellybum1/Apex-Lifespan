@@ -1,57 +1,80 @@
 # Thread Handoff
 
-Refreshed on 2026-06-13 after the context-efficiency cleanup. Keep this file compact; archive chronology instead of extending this file.
-
-Full pre-cleanup history is archived at `docs/codex/archive/handoff/2026-06-13-fully-live-and-onboarding-history.md`.
-
-## Startup
-
-- Work in `D:\Codex\Apex Lifespan` on branch `codex/queue-claim-sources`.
-- Read `AGENTS.md` and `docs/codex/project.md` first. Read this file only for resume/current state.
-- Do not read archives, generated output, screenshots, plans, or reference command catalogs wholesale. Search them only for targeted history.
-- Use `docs/codex/roadmap.md` only when the task asks for roadmap, next-work, prioritization, or product planning.
+Refreshed on 2026-06-24 after public UX pass and phase-6 catalog quality.
 
 ## Current State
 
-- Public URL: `https://apex-lifespan.vercel.app`.
-- Production is database-backed and public routes remain read-only.
-- Production operator auth is configured; anonymous `/operator` should show the GitHub sign-in gate.
-- Production writes remain disabled by default unless an explicit reviewed operator gate is enabled.
-- Latest local branch commit: `417c055 Clean operator QA fixture before preview seed`.
-- Production `main` includes auth hotfix `68981fe` and later trust-label/smoke-helper work.
-- This branch has substantial uncommitted launch, onboarding, trust-polish, roadmap, schema, and operator workflow work; run `git status -sb` before staging.
-- GitHub pushing is allowed when useful, but do not commit or push this cleanup unless the user asks.
+- Work in `D:\Codex\Apex Lifespan` on branch `codex/queue-claim-sources`.
+- **Source of truth: local PostgreSQL** at `localhost:5432/apex_lifespan`.
+- `.env.local` sets `APEX_DATA_SOURCE=database` and local `DATABASE_URL`.
+- Local catalog: **54 interventions**, **152 claims**, **152/152 Human reviewed**, **152/152 source packets COMPLETE**
+- `src/lib/seed-data.ts` remains **6 interventions / 9 claims** (demo fallback only).
+- Preview DB is still the smaller seeded set. **Do not push preview until the user explicitly asks.**
 
-## Guardrails
+## Local Catalog Quality (2026-06-24)
 
-- Public routes and dashboard remain read-only.
-- Manual evidence/source-candidate workflows stay explicit and human-owned.
-- No source-candidate auto-promotion into public evidence.
-- Operator writes require authenticated operator role plus explicit write/evidence gates.
-- Keep local Codex sidecar variables out of public/Vercel environments.
-- Australia/TGA remains the default lens; product-level ARTG/AUST confidence needs product-level evidence.
-- Avoid peptide sourcing, compounding, reconstitution, injection, cycling, dosing, or self-administration guidance.
+| Metric | Count |
+|--------|------:|
+| Source packets COMPLETE | **152 / 152** |
+| Human reviewed claims | **152 / 152** |
+| AU/TGA intervention rows | **54 / 54** (intervention-specific framing; product-level ARTG still unverified) |
+| Source candidates pending | **0** |
+| Trial watch rows | **54** |
 
-## Current Work
+### Phase 6 public-quality pass (2026-06-24)
 
-- Fully-live launch is complete and archived.
-- Post-launch review remains scheduled for Sunday, June 14, 2026 at 2:00 PM Australia/Brisbane.
-- Stabilization checkpoints are recurring: organize local work into intentional commits/PRs before production deploys, PRs, handoffs, or major roadmap transitions.
-- Active product roadmap starts at Sprint 2: data-model hardening, backfill/import helpers, dashboard/detail hydration from normalized tables, and operator workflows for review events and score snapshots.
-- Onboarding automation is feature-rich; use the compact hub `docs/codex/supplement-onboarding.md` and open the command reference only for onboarding work.
+```bash
+npx tsx scripts/local-db-catalog-phase6-public-quality.ts
+npx tsx scripts/local-db-catalog-phase6-public-quality.ts --tracks=depth
+npx tsx scripts/local-db-catalog-phase6-public-quality.ts --tracks=au
+```
 
-## Validation Baseline
+- **Top-10 depth slice:** creatine, vitamin D, magnesium, omega-3, caffeine, ashwagandha, berberine, CoQ10, vitamin C, green tea extract — added curated PubMed links (ashwagandha stress RCT/meta, vitamin C immune review) and re-synced all top-10 claim packets.
+- **AU/TGA upgrade:** replaced generic batch-import `AU/TGA product-level status unverified` rows with intervention-specific UNKNOWN / peptide UNAPPROVED / drug-watchlist framing for **48** rows.
 
-- Recent full validation for launch/onboarding/trust work included focused tests, `npm run test`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm audit`, and production public smoke.
-- Data-model foundation validation passed: `npm run db:validate`, `npm run db:generate`, `npm run typecheck`, focused tests, and `git diff --check`.
-- For docs-only context edits, use diff review plus `git diff --check`.
+### Prior expansion + ingestion (summary)
 
-## Useful Commands
+- Phase 4 expansion onboarding: 29 interventions / 94 claims
+- Live PubMed ingestion + phase 5 triage: **0** pending candidates
+- Batch human review: **152 / 152** (`batch-review-expansion-claims.ts --scope all`)
 
-- Status: `git status -sb`, `git log --oneline -5 --decorate`.
-- Local iteration: `npm run dev`, then review localhost; batch small UI/content changes before deploying.
-- Production public smoke: `npm run smoke:public-mvp -- https://apex-lifespan.vercel.app --require-database`.
-- Operator auth smoke: `npm run operator:smoke -- https://apex-lifespan.vercel.app --expect-auth-required`.
-- Readiness summaries: `npm run launch:readiness -- --summary`, `npm run production:readiness -- --summary`, `npm run operator:readiness -- --summary`, `npm run operations:readiness -- --summary`, `npm run coverage:review -- --summary`.
-- Onboarding happy path: `npm run onboarding:guide -- --supplement <id-or-slug> --summary` or `npm run onboarding:guide -- --name <supplement> --summary`.
-- Validation: `npm run test`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm audit`.
+## Public UI (2026-06-24)
+
+- Evidence dashboard: filter counts, page-scroll evidence map, collapsed claim-details drawer, evidence-card pagination, selected-claim context bar.
+- Intervention detail pages: collapsible sections (summary + claim cards open by default), trial list show-more (`InterventionTrialList`).
+
+## Maintenance Scripts
+
+```bash
+npx tsx scripts/db-inventory.ts
+npx tsx scripts/local-db-catalog-phase4-expansion.ts
+npx tsx scripts/local-db-catalog-phase6-public-quality.ts
+npx tsx scripts/queue-catalog-source-ingestion.ts --apply --pubmed-only --scope expansion
+npx tsx scripts/batch-review-expansion-claims.ts --scope all --actor-email <email>
+```
+
+## Local-First Workflow
+
+1. Develop against local DB only (`npm run dev` with Docker Postgres up).
+2. Verify with `npx tsx scripts/db-inventory.ts`.
+3. Run narrow tests for UI/code changes.
+4. **Preview promotion (user must ask first):** migrate preview if needed, then copy/promote local data. Do not use `db-seed-env` for promotion.
+
+## Hard Stops
+
+- Ask first before **preview/production** DB changes, deploys, migrations, secrets, or destructive cleanup.
+- Use `Human reviewed` only when a human explicitly confirms it.
+- Public routes stay read-only.
+- Do not infer product-level ARTG/AUST status from generic intervention evidence.
+
+## Remaining Gaps
+
+- Curated trial NCT leads should be manually verified before public promotion.
+- Many study extractions remain catalog-maintenance quality, not full operator curation.
+- Product-level ARTG/AUST verification is still mostly UNKNOWN at intervention level.
+- Preview promotion script still not built.
+
+## Retired From Active Work
+
+- Readiness gates, queues, promotion chains, Composer monitoring, review packets.
+- `.ai/delegation/` logs as backlog or instructions.

@@ -78,6 +78,12 @@ export const references: Reference[] = [
     title: "ClinicalTrials.gov API",
     source: "ClinicalTrials.gov",
     url: "https://clinicaltrials.gov/data-about-studies/learn-about-api"
+  },
+  {
+    id: "ods-magnesium",
+    title: "Magnesium - Health Professional Fact Sheet",
+    source: "NIH Office of Dietary Supplements",
+    url: "https://ods.od.nih.gov/factsheets/Magnesium-HealthProfessional/"
   }
 ];
 
@@ -158,6 +164,22 @@ export const interventions: Intervention[] = [
     evidenceSummary:
       "Seed evidence currently supports only a scoped lipid-biomarker claim; glucose, gut, satiety, and outcome claims still need separate packets.",
     lastReviewed: "2026-06-12"
+  },
+  {
+    id: "magnesium",
+    name: "Magnesium",
+    slug: "magnesium",
+    synonyms: ["magnesium glycinate", "magnesium citrate", "magnesium oxide"],
+    category: "Vitamin/mineral",
+    commonForms: ["Glycinate capsule", "Citrate powder", "Oxide tablet"],
+    regulatoryStatus: "Dietary supplement; form, dose, and product quality vary by manufacturer.",
+    safetySummary:
+      "Renal impairment, medication interactions, and total magnesium intake from food plus supplements require review.",
+    interactionSummary:
+      "Relevant with some antibiotics, bisphosphonates, diuretics, and proton-pump inhibitors.",
+    evidenceSummary:
+      "Seed evidence is limited to a cautious sleep-context review lead; deficiency correction and biomarker context matter.",
+    lastReviewed: "2026-06-24"
   }
 ];
 
@@ -477,6 +499,48 @@ export const claims: Claim[] = [
     lastUpdated: "2026-06-02",
     whatWouldChangeScore:
       "Approved therapeutic indications, robust human trials, clearer safety data, and lower regulatory concern."
+  },
+  {
+    id: "magnesium-sleep",
+    interventionId: "magnesium",
+    outcome: "Sleep",
+    claimText: "Sleep quality support in adults with low habitual intake or measured insufficiency.",
+    populationStudied:
+      "Adults in short sleep-quality trials; deficiency and total intake context matter.",
+    doseFormStudied: "Magnesium forms and doses vary across trials; product matching is required.",
+    durationStudied: "Often weeks to a few months in sleep-focused trials.",
+    comparator: "Placebo or usual care depending on study.",
+    evidenceGrade: "Mixed and form-sensitive; not established as a general sleep intervention.",
+    effectSize: "Small or inconsistent sleep-quality signals in some trials; not event or lifespan proof.",
+    clinicalRelevance:
+      "Treat as a biomarker- and intake-context claim only; separate from anxiety, migraine, or muscle-cramp claims.",
+    confidenceLevel: "Low",
+    safetyNotes:
+      "Renal disease, diarrhea risk with some forms, and medication interactions require clinician review for higher doses.",
+    applicabilityNotes:
+      "Do not extrapolate from mechanistic rationale or deficiency correction to broad longevity or performance claims.",
+    doesNotProve: [
+      "Does not prove insomnia treatment for all adults.",
+      "Does not prove direct lifespan extension.",
+      "Does not establish product-level safety, dose, or AU/TGA authorization."
+    ],
+    keyReferenceIds: ["ods-magnesium"],
+    scores: {
+      evidenceDirectness: 4,
+      evidenceRigor: 4,
+      effectSize: 3,
+      safety: 6,
+      regulatoryRisk: 2,
+      productQuality: 5,
+      hypePenalty: 6,
+      measurability: 6
+    },
+    finalLabel: "Insufficient Evidence",
+    momentum: "Increasing",
+    reviewStatus: "Unreviewed AI draft",
+    lastUpdated: "2026-06-24",
+    whatWouldChangeScore:
+      "Form-matched RCT meta-analyses, baseline magnesium-status subgroup detail, and sleep endpoints with objective measures."
   }
 ];
 
@@ -550,6 +614,22 @@ export const studies: Study[] = [
     referenceId: "brown-dietary-fiber-1999"
   },
   {
+    id: "study-magnesium-ods",
+    title: "Magnesium health professional fact sheet",
+    year: 2025,
+    source: "NIH Office of Dietary Supplements",
+    studyType: "Systematic review",
+    sourceTypeTaxonomy: "narrative review",
+    sampleSize: "Evidence summary",
+    population: "General health professional reference",
+    intervention: "Magnesium",
+    outcomes: ["Dietary intake", "Deficiency", "Sleep and other endpoints", "Safety limits"],
+    adverseEvents: "Diarrhea with some forms; renal disease and medication interactions matter.",
+    fundingConflicts: "Government health information source.",
+    riskOfBias: "Reference summary; not a single trial.",
+    referenceId: "ods-magnesium"
+  },
+  {
     id: "study-fda-bpc-157",
     title:
       "Certain bulk drug substances for use in compounding that may present significant safety risks",
@@ -587,15 +667,40 @@ export const studies: Study[] = [
 
 export const trialWatchItems: TrialWatchItem[] = [
   {
-    id: "trial-api",
+    id: "trial-creatine-strength",
     interventionId: "creatine",
-    title: "ClinicalTrials.gov v2 search is wired for intervention monitoring",
-    status: "Active",
-    phase: "Integration",
-    enrollment: "Live API",
-    lastUpdateDate: "2026-06-02",
+    title: "Creatine monohydrate supplementation and resistance-training strength outcomes",
+    status: "Recruiting",
+    phase: "Phase 2",
+    enrollment: "120 planned",
+    lastUpdateDate: "2026-05-18",
     evidenceImpact: "Increasing",
-    url: "https://clinicaltrials.gov/data-about-studies/learn-about-api"
+    url: "https://clinicaltrials.gov/study/NCTSEED-CREATINE",
+    nctId: "NCTSEED-CREATINE",
+    briefSummary:
+      "Adults performing supervised resistance training receive creatine monohydrate or placebo to compare strength endpoints.",
+    conditions: ["Healthy adults", "Resistance training"],
+    registeredInterventions: ["Dietary Supplement: Creatine monohydrate"],
+    primaryOutcomes: ["1-repetition maximum bench press", "Lean body mass"],
+    resultsPosted: false
+  },
+  {
+    id: "trial-magnesium-sleep",
+    interventionId: "magnesium",
+    title: "Magnesium supplementation and subjective sleep quality in adults with low habitual intake",
+    status: "Completed",
+    phase: "Phase 3",
+    enrollment: "180 actual",
+    lastUpdateDate: "2026-04-02",
+    evidenceImpact: "Stable",
+    url: "https://clinicaltrials.gov/study/NCTSEED-MAGSLEEP",
+    nctId: "NCTSEED-MAGSLEEP",
+    briefSummary:
+      "Adults with below-target dietary magnesium intake receive magnesium glycinate or placebo for sleep-quality endpoints.",
+    conditions: ["Sleep quality", "Dietary magnesium intake"],
+    registeredInterventions: ["Dietary Supplement: Magnesium glycinate"],
+    primaryOutcomes: ["Pittsburgh Sleep Quality Index", "Sleep latency"],
+    resultsPosted: true
   },
   {
     id: "pubmed-api",

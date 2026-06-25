@@ -25,6 +25,7 @@ import {
 } from "../src/lib/seed-data";
 import {
   assertSeedIntegrity,
+  findSeedIntegrityIssues,
   type SeedIntegrityCollection
 } from "../src/lib/seed-integrity";
 import type {
@@ -419,7 +420,12 @@ async function main() {
         enrollment: trial.enrollment,
         lastUpdateDate: dateOrNull(trial.lastUpdateDate),
         evidenceImpact: momentumMap[trial.evidenceImpact],
-        url: trial.url
+        url: trial.url,
+        nctId: trial.nctId ?? null,
+        conditions: trial.conditions ?? [],
+        interventions: trial.registeredInterventions ?? [],
+        outcomes: trial.primaryOutcomes ?? [],
+        resultsPosted: trial.resultsPosted ?? false
       },
       create: {
         id: trial.id,
@@ -428,12 +434,14 @@ async function main() {
         status: trialStatusMap[trial.status],
         phase: trial.phase,
         enrollment: trial.enrollment,
-        conditions: [],
-        interventions: [],
-        outcomes: [],
+        conditions: trial.conditions ?? [],
+        interventions: trial.registeredInterventions ?? [],
+        outcomes: trial.primaryOutcomes ?? [],
         lastUpdateDate: dateOrNull(trial.lastUpdateDate),
         evidenceImpact: momentumMap[trial.evidenceImpact],
-        url: trial.url
+        url: trial.url,
+        nctId: trial.nctId ?? null,
+        resultsPosted: trial.resultsPosted ?? false
       }
     });
   }
@@ -542,10 +550,118 @@ async function main() {
     skipDuplicates: true
   });
 
+  await pruneStaleSeedOwnedRows();
   await assertDatabaseSeedIntegrity();
 }
 
-async function assertDatabaseSeedIntegrity() {
+async function pruneStaleSeedOwnedRows() {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const collections = await loadSeedIntegrityCollections();
+    const issues = findSeedIntegrityIssues(collections).filter(
+      (issue) => issue.staleSeedOwnedIds.length > 0
+    );
+
+    if (issues.length === 0) {
+      return;
+    }
+
+    for (const issue of sortPruneIssues(issues)) {
+      await deleteStaleSeedOwnedRows(issue.name, issue.staleSeedOwnedIds);
+    }
+  }
+
+  const remaining = findSeedIntegrityIssues(await loadSeedIntegrityCollections()).filter(
+    (issue) => issue.staleSeedOwnedIds.length > 0
+  );
+
+  if (remaining.length > 0) {
+    throw new Error(
+      `Unable to prune stale seed-owned rows after retries: ${remaining
+        .map((issue) => `${issue.name} (${issue.staleSeedOwnedIds.join(", ")})`)
+        .join("; ")}`
+    );
+  }
+}
+
+async function deleteStaleSeedOwnedRows(
+  collectionName: string,
+  staleSeedOwnedIds: readonly string[]
+) {
+  switch (collectionName) {
+    case "ClaimReference":
+      for (const key of staleSeedOwnedIds) {
+        const separatorIndex = key.indexOf(":");
+        if (separatorIndex === -1) {
+          continue;
+        }
+
+        const claimId = key.slice(0, separatorIndex);
+        const referenceId = key.slice(separatorIndex + 1);
+        await prisma.claimReference.deleteMany({
+          where: { claimId, referenceId }
+        });
+      }
+      return;
+    case "Reference":
+      await prisma.reference.deleteMany({
+        where: { id: { in: [...staleSeedOwnedIds] } }
+      });
+      return;
+    case "Study":
+      await prisma.study.deleteMany({
+        where: { id: { in: [...staleSeedOwnedIds] } }
+      });
+      return;
+    case "Trial":
+      await prisma.trial.deleteMany({
+        where: { id: { in: [...staleSeedOwnedIds] } }
+      });
+      return;
+    case "Claim":
+      await prisma.claim.deleteMany({
+        where: { id: { in: [...staleSeedOwnedIds] } }
+      });
+      return;
+    case "Intervention":
+      await prisma.intervention.deleteMany({
+        where: { id: { in: [...staleSeedOwnedIds] } }
+      });
+      return;
+    case "SafetyAlert":
+      await prisma.safetyAlert.deleteMany({
+        where: { id: { in: [...staleSeedOwnedIds] } }
+      });
+      return;
+    case "Product":
+      await prisma.product.deleteMany({
+        where: { id: { in: [...staleSeedOwnedIds] } }
+      });
+      return;
+    case "AustraliaRegulatoryStatus":
+      await prisma.australiaRegulatoryStatus.deleteMany({
+        where: { id: { in: [...staleSeedOwnedIds] } }
+      });
+      return;
+    case "IngestionJob":
+      for (const key of staleSeedOwnedIds) {
+        const [source, region, ...queryParts] = key.split(":");
+        const query = queryParts.join(":");
+
+        await prisma.ingestionJob.deleteMany({
+          where: {
+            source: source as PrismaSourceKind,
+            region,
+            query
+          }
+        });
+      }
+      return;
+    default:
+      throw new Error(`No prune handler for stale seed-owned collection: ${collectionName}`);
+  }
+}
+
+async function loadSeedIntegrityCollections(): Promise<SeedIntegrityCollection[]> {
   const [
     dbReferences,
     dbInterventions,
@@ -570,7 +686,7 @@ async function assertDatabaseSeedIntegrity() {
     prisma.ingestionJob.findMany({ select: { source: true, query: true, region: true } })
   ]);
 
-  assertSeedIntegrity([
+  return [
     seedCollection("Reference", ids(references), ids(dbReferences), [
       "issn-",
       "ods-",
@@ -586,7 +702,8 @@ async function assertDatabaseSeedIntegrity() {
       "vitamin-d-",
       "omega-3-",
       "psyllium-",
-      "bpc-157-"
+      "bpc-157-",
+      "magnesium-"
     ]),
     seedCollection(
       "ClaimReference",
@@ -596,7 +713,7 @@ async function assertDatabaseSeedIntegrity() {
       dbClaimReferences.map((reference) =>
         claimReferenceKey(reference.claimId, reference.referenceId)
       ),
-      ["creatine-", "vitamin-d-", "omega-3-", "psyllium-", "bpc-157-"]
+      ["creatine-", "vitamin-d-", "omega-3-", "psyllium-", "bpc-157-", "magnesium-"]
     ),
     seedCollection("Study", ids(studies), ids(dbStudies), ["study-"]),
     seedCollection("Trial", ids(trialWatchItems), ids(dbTrials), ["trial-", "pubmed-"]),
@@ -618,9 +735,35 @@ async function assertDatabaseSeedIntegrity() {
       seedIngestionJobs.map(ingestionJobKey),
       dbIngestionJobs.map(ingestionJobKey)
     )
-  ]);
+  ];
+}
 
+async function assertDatabaseSeedIntegrity() {
+  assertSeedIntegrity(await loadSeedIntegrityCollections());
   console.log("Seed integrity verified.");
+}
+
+const pruneCollectionOrder = [
+  "ClaimReference",
+  "Study",
+  "Trial",
+  "Claim",
+  "SafetyAlert",
+  "Product",
+  "AustraliaRegulatoryStatus",
+  "Reference",
+  "Intervention",
+  "IngestionJob"
+] as const;
+
+function sortPruneIssues<T extends { name: string }>(issues: readonly T[]) {
+  return [...issues].sort((left, right) => {
+    const leftIndex = pruneCollectionOrder.indexOf(left.name as (typeof pruneCollectionOrder)[number]);
+    const rightIndex = pruneCollectionOrder.indexOf(right.name as (typeof pruneCollectionOrder)[number]);
+
+    return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) -
+      (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
+  });
 }
 
 function seedCollection(

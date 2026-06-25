@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import type { ChangelogEntry } from "@/lib/changelog";
 import {
   formatChangelogDate,
-  publicChangelogEntries,
-  type ChangelogEntry
-} from "@/lib/changelog";
+  getPublicChangelogEntries
+} from "@/lib/data/public-changelog";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -13,7 +13,9 @@ export const metadata: Metadata = {
   description: "Public changelog for Apex Lifespan evidence, scoring, and trust updates."
 };
 
-export default function ChangelogPage() {
+export default async function ChangelogPage() {
+  const entries = await getPublicChangelogEntries();
+
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
       <article className="mx-auto max-w-4xl">
@@ -39,7 +41,7 @@ export default function ChangelogPage() {
         </header>
 
         <section className="mt-6 grid gap-4">
-          {publicChangelogEntries.map((entry) => (
+          {entries.map((entry) => (
             <ChangelogEntryCard entry={entry} key={entry.id} />
           ))}
         </section>

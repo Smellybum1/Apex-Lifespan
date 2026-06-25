@@ -48,8 +48,19 @@ describe("EvidenceDashboard", () => {
     const html = renderToStaticMarkup(<EvidenceDashboard data={emptyDashboardData()} />);
 
     expect(html).toContain("No local scored claims match the current filters.");
-    expect(html).toContain("No active evidence card is selected");
-    expect(html).toContain("Sources and Review Queue");
+    expect(html).toContain("Claim details");
+  });
+
+  it("renders database catalog banner when dashboard data comes from local DB", () => {
+    const data: EvidenceDashboardData = {
+      ...seedDashboardData(),
+      dataSource: "database"
+    };
+    const html = renderToStaticMarkup(<EvidenceDashboard data={data} />);
+
+    expect(html).toContain("Local database catalog");
+    expect(html).toContain("local catalog (6 interventions, 9 scoped claims)");
+    expect(html).toContain("Database-backed");
   });
 
   it("renders the seed-backed dashboard with active claim and source-packet cues", () => {
@@ -62,61 +73,37 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("curated seed dataset and live source-search previews");
     expect(html).toContain("Scores are review aids, not");
     expect(html).toContain("medical advice");
-    expect(html).toContain(
-      "Composite = directness + rigor + impact + safety + measurability - hype/regulatory penalty."
-    );
-    expect(html).toContain("The weighting is partly heuristic");
-    expect(html).toContain("Weighted 0-10 review aid");
-    expect(html).toContain("Low regulatory risk");
-    expect(html).toContain("Regulatory-risk score");
-    expect(html).toContain("Product-quality score");
     expect(html).toContain("<table");
     expect(html).toContain("Evidence map. Rows are interventions and columns are outcomes.");
+    expect(html).toContain("About Creatine monohydrate");
+    expect(html).toContain("About Muscle/strength column");
+    expect(html).toContain("Strength, power, lean-mass, or functional performance support.");
+    expect(html).toContain("Sort supplements by Muscle/strength, highest score first");
+    expect(html).toContain(
+      "Click an outcome column to sort rows high to low, then low to high, then alphabetical again."
+    );
     expect(html).toContain("Creatine monohydrate, Muscle/strength: Draft composite 8.4 out of 10");
     expect(html).toContain("AI Draft Classification Core Evidence-Based");
     expect(html).toContain("review status Pending human review");
-    expect(html).toContain("Draft composite");
-    expect(html).toContain("AI Draft Classification: Core Evidence-Based");
-    expect(html).toContain("Pending human review");
     expect(html).toContain(
       "BPC-157, Muscle/strength: not yet assessed; this does not mean no evidence exists."
     );
-    expect(html).toContain("1 source packet");
-    expect(html).toContain("1 review/position-stand source extracted");
-    expect(html).toContain("1 meta-analysis extracted");
-    expect(html).toContain("0 individual human trial rows extracted");
-    expect(html).toContain("2 regulatory-only sources");
     expect(html).toContain("—</strong> = not yet assessed");
     expect(html).toContain("N/A</strong> = not applicable");
     expect(html).toContain("No evidence found</strong> = searched and no credible evidence found");
     expect(html).toContain("Unassessed cells do not imply absence of evidence.");
-    expect(html).toContain(
-      "Human reviewed means a human reviewer checked the source packet against the scoped claim. It does not mean clinical guideline endorsement."
-    );
+    expect(html).toContain("review status Pending human review");
     expect(html).toContain('href="/interventions/creatine-monohydrate"');
-    expect(html.match(/What this does not prove/g)?.length ?? 0).toBeGreaterThanOrEqual(
-      data.claims.length
-    );
-    expect(html).toContain("Does not prove direct lifespan extension.");
-    expect(html).toContain(
-      "Does not prove high-dose vitamin D improves longevity in already-sufficient adults."
-    );
-    expect(html).toContain("Does not prove safe or effective human use.");
-    expect(html).toContain("Creatine monohydrate");
-    expect(html).toContain("Muscle/strength");
-    expect(html).toContain("Active card source packet");
-    expect(html).toContain("Extraction complete");
-    expect(html).toContain("Suggested searches");
-    expect(html).toContain("scores rank review priority, not evidence quality");
-    expect(html).toContain("Demo profile");
-    expect(html).toContain("Demo profiles are not");
-    expect(html).toContain("verified product recommendations");
-    expect(html).toContain("Demo only - not a verified product recommendation");
-    expect(html).toContain("Product quality, efficacy evidence, and AU/TGA/ARTG status are separate");
-    expect(html).toContain("Certification does not imply medical proof or Australian authorization");
-    expect(html).toContain("Product quality 8/10");
-    expect(html).toContain("Product-level status unknown");
-    expect(html).toContain("AU confidence: Very low");
+    expect(html).toContain('id="evidence-map-label"');
+    expect(html).toContain('id="evidence-map-outcome"');
+    expect(html).toContain("All labels");
+    expect(html).toContain("All outcomes");
+    expect(html).toContain("Claim details");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain("Selected claim");
+    expect(html).toContain("Showing 6 interventions · 9 scoped claims");
+    expect(html).not.toContain("Dashboard detail sections");
+    expect(html).not.toContain("Active card source packet");
     expect(html).toContain('href="/privacy"');
     expect(html).toContain('href="/methodology"');
     expect(html).toContain('href="/changelog"');
@@ -130,17 +117,8 @@ describe("EvidenceDashboard", () => {
     const sourcePacketSummary = sourcePacketSummaryFor(data);
     const html = renderToStaticMarkup(<EvidenceDashboard data={data} />);
 
-    expect(html).toContain("Human reviewed");
-    expect(html).toContain(`${data.claims.length} drafts awaiting review`);
-    expect(html).toContain("Source packets");
-    expect(html).toContain(
-      `${sourcePacketSummary.completeClaims}/${sourcePacketSummary.totalClaims}`
-    );
-    expect(html).toContain(
-      `${sourcePacketSummary.extractedReferences}/${sourcePacketSummary.totalReferences} linked refs extracted`
-    );
     expect(html).toContain("Pending human review");
-    expect(html).toContain("Extraction complete");
+    expect(sourcePacketSummary.completeClaims).toBeGreaterThan(0);
   });
 
   it("renders sanitized seed fallback reasons in the public header", () => {

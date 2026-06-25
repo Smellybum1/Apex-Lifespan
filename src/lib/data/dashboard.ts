@@ -26,6 +26,13 @@ import { Socket } from "node:net";
 import { projectConfig } from "@/lib/config/project";
 import { prisma } from "@/lib/db/prisma";
 import {
+  listClaimScoreHistory,
+  listLatestClaimScoreSnapshots,
+  mapClaimScoreHistoryRow,
+  mapClaimScoreSnapshotRow
+} from "@/lib/data/score-history";
+import { listCurrentSourcePackets } from "@/lib/data/source-packets";
+import {
   australiaRegulatoryStatuses,
   claims,
   interventions,
@@ -248,7 +255,10 @@ async function getPrismaDashboardData({
     dbTrials,
     dbSafetyAlerts,
     dbProducts,
-    dbAustraliaRegulatoryStatuses
+    dbAustraliaRegulatoryStatuses,
+    dbSourcePackets,
+    dbScoreSnapshots,
+    dbScoreHistory
   ] = await Promise.all([
     prisma.reference.findMany({ orderBy: [{ source: "asc" }, { title: "asc" }] }),
     prisma.intervention.findMany({ orderBy: { name: "asc" } }),
@@ -262,7 +272,10 @@ async function getPrismaDashboardData({
     prisma.product.findMany({ orderBy: [{ qualityScore: "desc" }, { name: "asc" }] }),
     prisma.australiaRegulatoryStatus.findMany({
       orderBy: [{ region: "asc" }, { kind: "asc" }, { status: "asc" }]
-    })
+    }),
+    listCurrentSourcePackets(),
+    listLatestClaimScoreSnapshots(),
+    listClaimScoreHistory(undefined, 200)
   ]);
 
   if (dbInterventions.length === 0 || dbClaims.length === 0) {
@@ -284,6 +297,9 @@ async function getPrismaDashboardData({
     safetyAlerts: dbSafetyAlerts.map(mapSafetyAlert),
     productSignals: dbProducts.map(mapProduct),
     australiaRegulatoryStatuses: dbAustraliaRegulatoryStatuses.map(mapAustraliaRegulatoryStatus),
+    normalizedSourcePackets: dbSourcePackets,
+    claimScoreSnapshots: dbScoreSnapshots.map(mapClaimScoreSnapshotRow),
+    claimScoreHistory: dbScoreHistory.map(mapClaimScoreHistoryRow),
     dataSource: "database"
   };
 }
@@ -437,7 +453,12 @@ function mapTrial(trial: DbTrial): TrialWatchItem {
     enrollment: trial.enrollment,
     lastUpdateDate: formatDate(trial.lastUpdateDate),
     evidenceImpact: momentumMap[trial.evidenceImpact],
-    url: trial.url
+    url: trial.url,
+    conditions: trial.conditions,
+    nctId: trial.nctId ?? undefined,
+    primaryOutcomes: trial.outcomes,
+    registeredInterventions: trial.interventions,
+    resultsPosted: trial.resultsPosted
   };
 }
 

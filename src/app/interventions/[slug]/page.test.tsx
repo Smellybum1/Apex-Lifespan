@@ -50,14 +50,14 @@ describe("intervention detail page", () => {
 
     expect(html).toContain("Creatine monohydrate");
     expect(html).toContain("Intervention Summary");
-    expect(html).toContain("Evidence Map Row");
-    expect(html).toContain("Claim Cards");
-    expect(html).toContain("Source Packets");
-    expect(html).toContain("Safety Alerts");
-    expect(html).toContain("Trial Watcher Records");
-    expect(html).toContain("AU/TGA And Product Context");
-    expect(html).toContain("Score History");
-    expect(html).toContain("What Would Change The Score");
+    expect(html).toContain("Evidence scores by outcome");
+    expect(html).toContain("Claim cards");
+    expect(html).toContain("Source packets");
+    expect(html).toContain("Safety alerts");
+    expect(html).toContain("Trial watcher");
+    expect(html).toContain("AU/TGA and product context");
+    expect(html).toContain("Score history");
+    expect(html).toContain("What would change the score");
     expect(html).toContain("Component score breakdown");
     expect(html).toContain("Draft composite");
     expect(html).toContain("AI Draft Classification: Core Evidence-Based");
@@ -75,10 +75,34 @@ describe("intervention detail page", () => {
     expect(html).toContain("What this does not prove");
     expect(html).toContain("review/position-stand source extracted");
     expect(html).toContain("This does not mean no human trials exist");
+    expect(html).toContain("Direct match");
+    expect(html).toContain("Registry records are review leads only");
+    expect(html).toContain("NCTSEED-CREATINE");
     expect(html).toContain('tabindex="0"');
     expect(html).toContain("position stand");
     expect(html).toContain("PMID: 28615996");
     expect(html).toContain("https://pubmed.ncbi.nlm.nih.gov/28615996/");
     expect(html).toContain("not clinical recommendations");
+  });
+
+  it("renders magnesium sleep coverage with trial registry labels", async () => {
+    getEvidenceDashboardDataMock.mockResolvedValue(seedDashboardData());
+
+    const html = renderToStaticMarkup(
+      await InterventionDetailPage({ params: Promise.resolve({ slug: "magnesium" }) })
+    );
+
+    expect(html).toContain("Magnesium");
+    expect(html).toContain("Sleep quality support in adults with low habitual intake or measured insufficiency.");
+    expect(html).toContain("AI Draft Classification: Insufficient Evidence");
+    expect(html).toContain("Does not prove insomnia treatment for all adults.");
+    expect(html).toContain("Trial watcher");
+    expect(html).toContain("NCTSEED-MAGSLEEP");
+    expect(html).toContain("Direct match");
+    expect(html).toContain("Results posted");
+    expect(html).toContain("Pittsburgh Sleep Quality Index");
+    expect(html).toContain("review/position-stand source extracted");
+    expect(html).toContain("Magnesium health professional fact sheet");
+    expect(html).toContain("https://ods.od.nih.gov/factsheets/Magnesium-HealthProfessional/");
   });
 });

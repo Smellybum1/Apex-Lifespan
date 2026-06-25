@@ -1,0 +1,52 @@
+{
+  "supplements": [
+    {
+      "name": "TB-500",
+      "category": "Peptide/biologic",
+      "claimTemplateIds": ["safety", "joint-skin", "lifespan"],
+      "synonyms": ["thymosin beta-4", "Tβ4"]
+    },
+    {
+      "name": "GHK-Cu",
+      "category": "Peptide/biologic",
+      "claimTemplateIds": ["safety", "joint-skin", "lifespan"],
+      "synonyms": ["copper peptide", "glycyl-L-histidyl-L-lysine copper"]
+    },
+    {
+      "name": "Ipamorelin",
+      "category": "Peptide/biologic",
+      "claimTemplateIds": ["safety", "lifespan"],
+      "synonyms": ["growth hormone secretagogue peptide"]
+    },
+    {
+      "name": "CJC-1295",
+      "category": "Peptide/biologic",
+      "claimTemplateIds": ["safety", "lifespan"],
+      "synonyms": ["modified growth hormone releasing factor"]
+    },
+    {
+      "name": "Epitalon",
+      "category": "Peptide/biologic",
+      "claimTemplateIds": ["safety", "lifespan"],
+      "synonyms": ["epithalon", "AEDG peptide"]
+    },
+    {
+      "name": "MOTS-c",
+      "category": "Peptide/biologic",
+      "claimTemplateIds": ["safety", "lifespan"],
+      "synonyms": ["mitochondrial open reading frame peptide"]
+    },
+    {
+      "name": "Semax",
+      "category": "Peptide/biologic",
+      "claimTemplateIds": ["safety", "cognition", "mood-stress"],
+      "synonyms": ["ACTH 4-10 analog"]
+    },
+    {
+      "name": "Selank",
+      "category": "Peptide/biologic",
+      "claimTemplateIds": ["safety", "mood-stress", "cognition"],
+      "synonyms": ["TP-7", "peptide anxiolytic research record"]
+    }
+  ]
+}

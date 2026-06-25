@@ -558,6 +558,36 @@ function isClinicalTrialsApiStudy(value: unknown): value is ClinicalTrialsApiStu
   return isRecord(value);
 }
 
+export function labelTrialRegistryRecord(
+  record: {
+    briefSummary?: string;
+    conditions?: string[];
+    hasResults?: boolean;
+    registeredInterventions?: string[];
+    primaryOutcomes?: string[];
+    status: string;
+    title: string;
+  },
+  searchTerm: string
+) {
+  return {
+    ...classifyClinicalTrialRelevance(
+      {
+        briefSummary: record.briefSummary ?? "",
+        conditions: record.conditions ?? [],
+        interventions: record.registeredInterventions ?? [],
+        primaryOutcomes: record.primaryOutcomes ?? [],
+        title: record.title
+      },
+      searchTerm
+    ),
+    ...classifyClinicalTrialResultStatus({
+      hasResults: record.hasResults ?? false,
+      status: record.status
+    })
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && !Array.isArray(value) && typeof value === "object";
 }

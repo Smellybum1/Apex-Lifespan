@@ -199,6 +199,12 @@ export interface TrialWatchItem {
   lastUpdateDate: string;
   evidenceImpact: EvidenceMomentum;
   url: string;
+  briefSummary?: string;
+  conditions?: string[];
+  nctId?: string;
+  primaryOutcomes?: string[];
+  registeredInterventions?: string[];
+  resultsPosted?: boolean;
 }
 
 export interface SafetyAlert {
@@ -256,6 +262,38 @@ export interface AustraliaRegulatoryStatus {
   notes: string;
 }
 
+export interface NormalizedSourcePacketRow {
+  claimId: string;
+  current: boolean;
+  referenceIds: string[];
+  reviewStatus: ReviewStatus;
+  sourcePacketId: string;
+  status: "complete" | "extraction_pending" | "missing_sources" | "not_linked";
+}
+
+export interface ClaimScoreSnapshotRow {
+  claimId: string;
+  compositeScore: number;
+  computedAt: string;
+  finalLabel: EvidenceLabel;
+  reviewStatus: ReviewStatus;
+  scores: ScoreSet;
+  scoreVersion: string;
+  snapshotId: string;
+}
+
+export interface ClaimScoreHistoryRow {
+  claimId: string;
+  createdAt: string;
+  id: string;
+  newCompositeScore?: number;
+  newLabel?: EvidenceLabel;
+  oldCompositeScore?: number;
+  oldLabel?: EvidenceLabel;
+  rationale: string;
+  reason: string;
+}
+
 export interface EvidenceDashboardData {
   references: Reference[];
   interventions: Intervention[];
@@ -265,6 +303,9 @@ export interface EvidenceDashboardData {
   safetyAlerts: SafetyAlert[];
   productSignals: ProductSignal[];
   australiaRegulatoryStatuses: AustraliaRegulatoryStatus[];
+  normalizedSourcePackets?: NormalizedSourcePacketRow[];
+  claimScoreSnapshots?: ClaimScoreSnapshotRow[];
+  claimScoreHistory?: ClaimScoreHistoryRow[];
   dataSource: "database" | "seed";
   fallbackReason?: string;
 }

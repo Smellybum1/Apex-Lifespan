@@ -37,6 +37,12 @@ const prismaFindManyMocks = vi.hoisted(() => ({
   trial: vi.fn()
 }));
 
+const normalizedDataMocks = vi.hoisted(() => ({
+  listClaimScoreHistory: vi.fn(),
+  listCurrentSourcePackets: vi.fn(),
+  listLatestClaimScoreSnapshots: vi.fn()
+}));
+
 vi.mock("node:net", () => ({
   Socket: vi.fn(function Socket() {
     const socket = new netSocketMocks.Socket();
@@ -58,6 +64,29 @@ vi.mock("@/lib/db/prisma", () => ({
   }
 }));
 
+vi.mock("@/lib/data/source-packets", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/data/source-packets")>(
+    "@/lib/data/source-packets"
+  );
+
+  return {
+    ...actual,
+    listCurrentSourcePackets: normalizedDataMocks.listCurrentSourcePackets
+  };
+});
+
+vi.mock("@/lib/data/score-history", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/data/score-history")>(
+    "@/lib/data/score-history"
+  );
+
+  return {
+    ...actual,
+    listClaimScoreHistory: normalizedDataMocks.listClaimScoreHistory,
+    listLatestClaimScoreSnapshots: normalizedDataMocks.listLatestClaimScoreSnapshots
+  };
+});
+
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import { claims, interventions } from "@/lib/seed-data";
 import { buildClaimSourcePacket } from "@/lib/source-packet";
@@ -74,6 +103,9 @@ describe("getEvidenceDashboardData data source behavior", () => {
     vi.clearAllMocks();
     netSocketMocks.instances.length = 0;
     netSocketMocks.state.nextEvent = "connect";
+    normalizedDataMocks.listCurrentSourcePackets.mockResolvedValue([]);
+    normalizedDataMocks.listLatestClaimScoreSnapshots.mockResolvedValue([]);
+    normalizedDataMocks.listClaimScoreHistory.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -305,6 +337,9 @@ function expectPrismaFindManyNotCalled() {
   Object.values(prismaFindManyMocks).forEach((findMany) => {
     expect(findMany).not.toHaveBeenCalled();
   });
+  expect(normalizedDataMocks.listCurrentSourcePackets).not.toHaveBeenCalled();
+  expect(normalizedDataMocks.listLatestClaimScoreSnapshots).not.toHaveBeenCalled();
+  expect(normalizedDataMocks.listClaimScoreHistory).not.toHaveBeenCalled();
 }
 
 function mockEmptyDatabase() {

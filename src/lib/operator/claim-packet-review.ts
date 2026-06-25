@@ -1,6 +1,7 @@
 import { ReviewStatus as DbReviewStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
+import { recordHumanClaimEvidenceReview } from "@/lib/data/evidence-review-sync";
 import type { OperatorPrincipal, OperatorWriteEnv } from "@/lib/operator/authorization";
 import { requireOperatorPermission } from "@/lib/operator/authorization";
 import { recordOperatorAuditEvent } from "@/lib/operator/audit";
@@ -69,6 +70,12 @@ export async function reviewClaimPacketAsOperator(
     where: {
       id: claimId
     }
+  });
+
+  await recordHumanClaimEvidenceReview({
+    claimId,
+    principal,
+    reviewNote
   });
 
   await recordOperatorAuditEvent(principal, {
