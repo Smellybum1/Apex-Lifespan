@@ -9,6 +9,7 @@ import {
   summarizeSourceCandidateIngestionJobs
 } from "@/lib/data/source-candidate-jobs";
 import { buildSourceSearchQueries } from "@/lib/source-queries";
+import type { OutcomeArea } from "@/lib/types";
 
 import { EXPANSION_INTERVENTION_IDS } from "./local-db-catalog-phase4-expansion-data";
 
@@ -260,7 +261,7 @@ function readScope(value: string): Scope {
   throw new Error('--scope must be "expansion" or "all".');
 }
 
-const outcomeLabels: Record<string, string> = {
+const outcomeLabels: Record<string, OutcomeArea> = {
   MORTALITY_LIFESPAN: "Mortality/lifespan",
   CARDIOVASCULAR_EVENTS: "Cardiovascular events",
   LDL_APOB_LIPIDS: "LDL/ApoB/lipids",
@@ -280,8 +281,12 @@ const outcomeLabels: Record<string, string> = {
   BIOLOGICAL_AGING_CLOCKS: "Biological aging clocks"
 };
 
-function outcomeLabel(outcome: string) {
-  return outcomeLabels[outcome] ?? outcome;
+function outcomeLabel(outcome: string): OutcomeArea {
+  const label = outcomeLabels[outcome];
+  if (!label) {
+    throw new Error(`Unknown outcome enum value: ${outcome}`);
+  }
+  return label;
 }
 
 function readRequiredValue(args: string[], index: number, option: string) {

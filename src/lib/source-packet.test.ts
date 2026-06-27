@@ -87,14 +87,14 @@ describe("buildClaimSourcePacket", () => {
         studies
       })
     ).toEqual({
-      completeClaims: 8,
+      completeClaims: 9,
       extractionPendingClaims: 0,
-      extractedReferences: 9,
+      extractedReferences: 10,
       missingReferences: 0,
       missingSourceClaims: 0,
       pendingReferences: 0,
-      totalClaims: 8,
-      totalReferences: 9,
+      totalClaims: 9,
+      totalReferences: 10,
       unlinkedClaims: 0
     });
   });

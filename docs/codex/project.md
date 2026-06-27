@@ -25,9 +25,10 @@ Compact, stable Codex state. Keep this file small. This project is a hobby proje
 - Install/dev: `npm install`, `npm run dev`, `npm run dev:stop`.
 - Test/build: `npm run test`, `npm run lint`, `npm run typecheck`, `npm run build`.
 - Database: `npm run db:validate`, `npm run db:generate`, `npm run db:migrate`, `npm run db:push`, `npm run db:seed`.
-- Local inventory: `npx tsx scripts/db-inventory.ts` (add `--env-file .env.vercel.preview.local` to compare preview).
+- Local inventory: `npx tsx scripts/db-inventory.ts` and `npx tsx scripts/local-catalog-quality.ts` (add `--env-file .env.vercel.preview.local` to compare preview where supported).
+- Trial lead check: `npx tsx scripts/verify-local-trial-leads.ts --summary`.
 - Preview seed only when explicitly promoting local work: `npx tsx scripts/db-seed-env.ts --env-file .env.vercel.preview.local`.
-- Evidence/source intake stays simple: use `npm run ingest:sources -- --help` only when you are actually ingesting sources.
+- Evidence/source intake stays simple: use `npx tsx scripts/local-evidence-intake.ts --intervention <slug-or-id>` to prep search terms and capture fields, and use `npm run ingest:sources -- --help` only when you are actually ingesting sources.
 - Do not recreate readiness, queue, promotion, Composer, launch, or review-gate command chains.
 
 ## Hard Stops

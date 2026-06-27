@@ -68,6 +68,11 @@ describe("EvidenceDashboard", () => {
     const html = renderToStaticMarkup(<EvidenceDashboard data={data} />);
 
     expect(html).toContain("Apex Lifespan");
+    expect(html).toContain("Local catalog trust");
+    expect(html).toContain("9 scoped claims");
+    expect(html).toContain("Source packets");
+    expect(html).toContain("Product AU/TGA");
+    expect(html).toContain("2 product profiles need exact AU/TGA product status");
     expect(html).toContain("Prototype / seed dataset");
     expect(html).toContain("Current scores are based on a small");
     expect(html).toContain("curated seed dataset and live source-search previews");

@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-06-24
+Last updated: 2026-06-27
 
 Compact product roadmap. The old internal artifact chain is not active roadmap work.
 
@@ -20,12 +20,14 @@ Make Apex Lifespan a useful evidence intelligence product for supplements, pepti
 
 **Local setup:** `APEX_DATA_SOURCE=database` in `.env.local` (and `.env` for CLI). Docker Postgres must be running for `npm run dev`.
 
-**Check catalog state:** `npx tsx scripts/db-inventory.ts`  
+**Check catalog state:** `npx tsx scripts/db-inventory.ts` and `npx tsx scripts/local-catalog-quality.ts`
+**Live-check local trial leads:** `npx tsx scripts/verify-local-trial-leads.ts --summary`
+**Prep evidence intake:** `npx tsx scripts/local-evidence-intake.ts --intervention <slug-or-id>`
 **Compare preview (read-only check):** `npx tsx scripts/db-inventory.ts --env-file .env.vercel.preview.local`
 
 **Done developing locally when:** the user is happy with intervention/claim coverage, source packets, scores, and UI behavior against the full local catalog — not the 6-item seed set.
 
-**Promotion to preview (user must ask first):** export or copy local data to preview, apply migrations if needed, then run Sprint 2 backfill on preview. Do **not** use `db-seed-env` for promotion — it would replace preview with the tiny seed file.
+**Promotion to preview (user must ask first):** run `npx tsx scripts/local-preview-promotion-plan.ts`, export or copy local data to preview, apply migrations if needed, then run Sprint 2 backfill on preview. Do **not** use `db-seed-env` for promotion because it would replace preview with the tiny seed file.
 
 ## Hard Stops
 
@@ -49,7 +51,7 @@ Done when the public app feels useful without operator knowledge on real local d
 
 Improve the local catalog: fill gaps, fix duplicate/shell rows, add citations, scoped claims, uncertainty labels, and AU/TGA/product caveats. Prefer editing local evidence data over expanding seed.
 
-Done when the local database is coherent, traceable, and broad enough to promote — not when seed file row count increases.
+Done when the local database is coherent, traceable, and broad enough to promote, not when seed file row count increases.
 
 ### 3. Make Evidence Intake Simple
 

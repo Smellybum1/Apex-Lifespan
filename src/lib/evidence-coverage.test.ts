@@ -160,6 +160,23 @@ describe("evidence coverage summary", () => {
           reviewStatus: "Unreviewed AI draft"
         },
         {
+          claimId: "magnesium-sleep",
+          confidenceLevel: "Low",
+          extractedReferences: 1,
+          finalLabel: "Insufficient Evidence",
+          interventionId: "magnesium",
+          nextAction: "Human review the complete source packet before upgrading review status.",
+          outcome: "Sleep",
+          packetStatus: "complete",
+          priority: 150,
+          priorityReasons: [
+            "Unreviewed draft claim",
+            "Complete source packet ready for human review"
+          ],
+          referenceCount: 1,
+          reviewStatus: "Unreviewed AI draft"
+        },
+        {
           claimId: "vitamin-d-longevity",
           confidenceLevel: "Low",
           extractedReferences: 1,
@@ -177,7 +194,7 @@ describe("evidence coverage summary", () => {
           reviewStatus: "Unreviewed AI draft"
         }
       ],
-      completeSourcePackets: 8,
+      completeSourcePackets: 9,
       humanReviewedClaims: 0,
       incompleteClaims: claims.map((claim) => ({
         claimId: claim.id,
@@ -186,7 +203,7 @@ describe("evidence coverage summary", () => {
         reviewStatus: "Unreviewed AI draft"
       })),
       interventionGaps: [],
-      interventionsWithClaims: 5,
+      interventionsWithClaims: 6,
       interventionsWithoutClaims: [],
       reviewSamplingPlan: {
         batchSize: 3,
@@ -288,11 +305,11 @@ describe("evidence coverage summary", () => {
         ],
         nextAction:
           "Human review this sampled batch first; do not update review status until the cited packet and extraction are checked.",
-        readyClaims: 8
+        readyClaims: 9
       },
-      totalClaims: 8,
-      totalInterventions: 5,
-      unreviewedClaims: 8,
+      totalClaims: 9,
+      totalInterventions: 6,
+      unreviewedClaims: 9,
       worksheet: {
         coverageGaps: [],
         copySafeCommands: [
@@ -441,17 +458,17 @@ describe("evidence coverage summary", () => {
 
     expect(summary).toEqual({
       counts: {
-        completeSourcePackets: 8,
+        completeSourcePackets: 9,
         coverageGaps: 0,
         humanReviewedClaims: 0,
-        incompleteClaims: 8,
-        interventionsWithClaims: 5,
+        incompleteClaims: 9,
+        interventionsWithClaims: 6,
         interventionsWithoutClaims: 0,
         readyReviewBatch: 3,
-        readySourcePackets: 8,
-        totalClaims: 8,
-        totalInterventions: 5,
-        unreviewedClaims: 8
+        readySourcePackets: 9,
+        totalClaims: 9,
+        totalInterventions: 6,
+        unreviewedClaims: 9
       },
       coverageGaps: [],
       humanOwned: true,

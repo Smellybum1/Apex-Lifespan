@@ -858,6 +858,23 @@ export const australiaRegulatoryStatuses: AustraliaRegulatoryStatus[] = [
       "Do not assume a generic fiber evidence card applies to every Australian product label."
   },
   {
+    id: "au-reg-magnesium-intervention",
+    interventionId: "magnesium",
+    referenceId: "tga-aust-numbers",
+    region: "AU",
+    kind: "Unknown",
+    status: "AUST number varies by product",
+    supplySummary:
+      "Magnesium is tracked as an intervention; Australian supply status must be verified against a specific product and AUST number.",
+    evidenceRequirement:
+      "Record product form, dose, sponsor, and AUST number before showing product-level AU/TGA confidence.",
+    sourceUrl:
+      "https://www.tga.gov.au/how-we-regulate/labelling-and-packaging/medicines-and-biologicals/aust-numbers-medicine-labels",
+    checkedAt: "2026-06-24",
+    notes:
+      "Keep magnesium sleep and deficiency-context evidence separate from product-level market authorisation."
+  },
+  {
     id: "au-reg-seed-creatine-product",
     productId: "seed-creatine-product",
     referenceId: "tga-aust-numbers",

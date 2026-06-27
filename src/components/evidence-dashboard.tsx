@@ -24,6 +24,11 @@ import {
 } from "lucide-react";
 import { TrialClassificationBadge } from "@/components/trial-classification-badge";
 
+import {
+  buildCatalogTrustSummary,
+  isNctIdFormat,
+  type CatalogTrustSummary
+} from "@/lib/catalog-trust";
 import { labelTrialWatchItem } from "@/lib/trial-registry-labels";
 import { projectConfig } from "@/lib/config/project";
 import type {
@@ -38,10 +43,7 @@ import {
   normaliseLiveSourceSearchTerm,
   publicLiveSourceDisplayError
 } from "@/lib/live-source-request";
-import {
-  australiaRegulatoryKindDescription,
-  australiaRegulatoryTone
-} from "@/lib/regulatory";
+import { australiaRegulatoryTone } from "@/lib/regulatory";
 import {
   buildProductAustraliaRegulatoryVerifications,
   type ProductAustraliaRegulatoryVerification
@@ -58,7 +60,6 @@ import {
   buildClaimSourcePacket,
   summarizeClaimSourcePackets,
   type ClaimSourcePacket,
-  type ClaimSourcePacketSummary,
   type EvidenceDepthBadge
 } from "@/lib/source-packet";
 import { buildSourceSearchQueries } from "@/lib/source-queries";
@@ -67,7 +68,6 @@ import type {
   Claim,
   EvidenceDashboardData,
   EvidenceLabel,
-  AustraliaRegulatoryStatus,
   Intervention,
   OutcomeArea,
   ProductSignal,
@@ -496,6 +496,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   );
   const detailSectionRef = useRef<HTMLElement>(null);
   const [detailPanelsOpen, setDetailPanelsOpen] = useState(false);
+  const catalogTrustSummary = useMemo(() => buildCatalogTrustSummary(data), [data]);
 
   const handleSelectClaim = useCallback<SelectClaimHandler>((claimId, options) => {
     setActiveClaimId(claimId);
@@ -631,6 +632,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     <main className="min-h-screen overflow-x-hidden px-4 py-4 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full min-w-0 max-w-[1500px] flex-col gap-4">
         <Header data={data} />
+        <CatalogTrustPanel summary={catalogTrustSummary} />
 
         <section className="min-w-0">
           <div className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
@@ -740,29 +742,97 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             <ActiveClaimContextBar activeClaim={activeClaim} activeIntervention={activeIntervention} />
           ) : null}
           <EvidenceDashboardTabbedPanels
-          activeClaim={activeClaim}
-          activeClaimId={activeClaimIdForDisplay}
-          activeIntervention={activeIntervention}
-          filteredClaims={filteredClaims}
-          hasFilteredClaims={hasFilteredClaims}
-          interventionsById={interventionsById}
-          labelFindings={labelFindings}
-          labelText={labelText}
-          onOpenChange={setDetailPanelsOpen}
-          onSelectClaim={handleSelectClaim}
-          open={detailPanelsOpen}
-          productAustraliaVerificationById={productAustraliaVerificationById}
-          productSignals={productSignals}
-          referencesById={referencesById}
-          safetyAlerts={safetyAlerts}
-          setLabelText={setLabelText}
-          studies={studies}
-          tableRows={tableRows}
-          trialWatchItems={trialWatchItems}
-        />
+            activeClaim={activeClaim}
+            activeClaimId={activeClaimIdForDisplay}
+            activeIntervention={activeIntervention}
+            filteredClaims={filteredClaims}
+            hasFilteredClaims={hasFilteredClaims}
+            interventionsById={interventionsById}
+            labelFindings={labelFindings}
+            labelText={labelText}
+            onOpenChange={setDetailPanelsOpen}
+            onSelectClaim={handleSelectClaim}
+            open={detailPanelsOpen}
+            productAustraliaVerificationById={productAustraliaVerificationById}
+            productSignals={productSignals}
+            referencesById={referencesById}
+            safetyAlerts={safetyAlerts}
+            setLabelText={setLabelText}
+            studies={studies}
+            tableRows={tableRows}
+            trialWatchItems={trialWatchItems}
+          />
         </section>
       </div>
     </main>
+  );
+}
+
+function CatalogTrustPanel({ summary }: { summary: CatalogTrustSummary }) {
+  const hasAttentionItems = summary.previewAttentionItems.length > 0;
+
+  return (
+    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Local catalog trust
+          </p>
+          <h2 className="mt-1 text-lg font-semibold text-ink">
+            {summary.interventions.total} interventions, {summary.claims.total} scoped claims
+          </h2>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
+            This readout checks the local database catalog only. It separates source-packet
+            completeness, trial registry leads, and product-level AU/TGA evidence so generic
+            intervention evidence does not become product authorization.
+          </p>
+        </div>
+        <span
+          className={cn(
+            "w-fit rounded-md border px-2 py-1 text-xs font-semibold",
+            hasAttentionItems
+              ? "border-amberline/30 bg-amber-50 text-amberline"
+              : "border-spruce/30 bg-teal-50 text-spruce"
+          )}
+        >
+          {hasAttentionItems ? "Needs local attention" : "No automated local blockers"}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <MiniStat
+          label="Source packets"
+          value={`${summary.claims.sourcePacketsComplete}/${summary.claims.sourcePacketsTotal} complete`}
+        />
+        <MiniStat
+          label="Trial leads"
+          value={`${summary.trials.nctIdFormat} NCT IDs, ${summary.trials.searchOnly} search-only`}
+        />
+        <MiniStat
+          label="AU/TGA intervention rows"
+          value={summary.australia.interventionCoverage}
+        />
+        <MiniStat
+          label="Product AU/TGA"
+          value={`${summary.australia.productExactStatusCount}/${summary.products.total} exact product statuses`}
+        />
+      </div>
+
+      {hasAttentionItems ? (
+        <div className="mt-4 rounded-md border border-amberline/30 bg-amber-50 px-3 py-2">
+          <p className="text-sm font-semibold text-amber-950">Before preview promotion</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-amber-950">
+            {summary.previewAttentionItems.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <p className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+        Next useful local work: {summary.nextActions[0]}
+      </p>
+    </section>
   );
 }
 
@@ -894,34 +964,6 @@ function scoreExplanationTitle(explanationKind: ScoreExplanationKind, value?: st
   return [explanation.title, value, explanation.formula, explanation.detail]
     .filter(Boolean)
     .join(": ");
-}
-
-function scoreExplanationKindForLabel(label: string): ScoreExplanationKind {
-  if (label === "Directness") {
-    return "directness";
-  }
-
-  if (label === "Rigor") {
-    return "rigor";
-  }
-
-  if (label === "Impact") {
-    return "impact";
-  }
-
-  if (label === "Safety") {
-    return "safety";
-  }
-
-  if (label === "Measurability") {
-    return "measurability";
-  }
-
-  if (label === "Low regulatory risk") {
-    return "lowRegulatoryRisk";
-  }
-
-  return "lowHypeRisk";
 }
 
 function NonProofBox({
@@ -1310,23 +1352,6 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
       ) : null}
     </div>
   );
-}
-
-function sourcePacketSummaryDetail(summary: ClaimSourcePacketSummary) {
-  if (summary.totalClaims === 0) {
-    return "No scored claims yet";
-  }
-
-  const needsWork =
-    summary.extractionPendingClaims +
-    summary.missingSourceClaims +
-    summary.unlinkedClaims;
-
-  if (needsWork === 0) {
-    return `${summary.extractedReferences}/${summary.totalReferences} linked refs extracted`;
-  }
-
-  return `${needsWork} need source work: ${summary.extractionPendingClaims} pending, ${summary.missingSourceClaims} missing, ${summary.unlinkedClaims} unlinked`;
 }
 
 function readBrowserStorage(key: string, fallback: string) {
@@ -2268,6 +2293,18 @@ function LabelAnalyzer({
   productSignals: ProductSignal[];
   setLabelText: (value: string) => void;
 }) {
+  const exactProductStatusCount = productSignals.filter((product) => {
+    const verification = productAustraliaVerificationById.get(product.id);
+    return (
+      verification?.state === "Verified" &&
+      Boolean(verification.status?.austNumber || verification.status?.artgId)
+    );
+  }).length;
+  const unknownProductStatusCount = productSignals.filter((product) => {
+    const verification = productAustraliaVerificationById.get(product.id);
+    return verification?.state === "Unknown" || verification?.state === "Missing";
+  }).length;
+
   return (
     <section className={dashboardPanelShellClassName(embedded)}>
       <div className="flex items-center justify-between gap-3">
@@ -2328,6 +2365,14 @@ function LabelAnalyzer({
         )}
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-line bg-white p-3 sm:col-span-2">
+          <p className="text-sm font-semibold text-ink">Product-level AU/TGA status</p>
+          <p className="mt-1 text-sm leading-6 text-slate-700">
+            {exactProductStatusCount}/{productSignals.length} product profiles have exact
+            AUST/ARTG identifiers captured. {unknownProductStatusCount} remain unknown or missing;
+            do not infer product authorization from intervention evidence or quality scores.
+          </p>
+        </div>
         {productSignals.map((product) => (
           <div key={product.id} className="rounded-lg border border-line bg-mist p-3">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -2520,16 +2565,31 @@ function TrialWatcher({
     ? trialWatchItems
     : trialWatchItems.slice(0, trialPreviewLimit);
   const hiddenTrialCount = Math.max(trialWatchItems.length - trialPreviewLimit, 0);
+  const nctIdFormatCount = trialWatchItems.filter((item) => isNctIdFormat(item.nctId)).length;
+  const searchOnlyCount = trialWatchItems.length - nctIdFormatCount;
+  const resultsPostedCount = trialWatchItems.filter((item) => item.resultsPosted).length;
 
   return (
     <section className={dashboardPanelShellClassName(embedded)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold text-ink">Trial Watcher</h2>
         {trialWatchItems.length > 0 ? (
-          <p className="text-xs text-slate-600">
-            {trialWatchItems.length} local registry lead
-            {trialWatchItems.length === 1 ? "" : "s"}
-          </p>
+          <div className="flex flex-wrap gap-2 text-xs font-semibold">
+            <span className="rounded-md border border-line bg-mist px-2 py-1 text-slate-700">
+              {trialWatchItems.length} local leads
+            </span>
+            <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 text-spruce">
+              {nctIdFormatCount} NCT IDs
+            </span>
+            {searchOnlyCount > 0 ? (
+              <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 text-amberline">
+                {searchOnlyCount} search-only
+              </span>
+            ) : null}
+            <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-700">
+              {resultsPostedCount} results posted
+            </span>
+          </div>
         ) : null}
       </div>
       <div className="mt-4 grid gap-3">
@@ -2567,6 +2627,12 @@ function TrialWatcher({
                     <MiniStat label="Phase" value={item.phase} />
                     <MiniStat label="Scope" value={item.enrollment} />
                   </div>
+                  {!isNctIdFormat(item.nctId) ? (
+                    <p className="mt-3 rounded-md border border-amberline/30 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
+                      This is a search-only registry lead. Pick an NCT record before using it
+                      as curated trial context.
+                    </p>
+                  ) : null}
                   <p className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
                     Registry records are review leads only; relevance labels do not prove benefit or
                     safety.

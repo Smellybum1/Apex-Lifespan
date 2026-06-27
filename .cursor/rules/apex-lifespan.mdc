@@ -1,0 +1,37 @@
+---
+description: Apex Lifespan simplified product workflow for Cursor and Composer
+alwaysApply: true
+---
+
+# Apex Lifespan Cursor Rules
+
+Work in hobby-project mode: read only what matters, make the useful product change, run narrow checks, and summarize plainly.
+
+## Active Context
+
+- Read `AGENTS.md` and `docs/codex/project.md` first.
+- Use `docs/codex/roadmap.md` only for roadmap, prioritization, or choosing next product work.
+- Read `docs/codex/handoff.md` only for resume/current dirty-tree state.
+- **Local PostgreSQL is the development source of truth** (`APEX_DATA_SOURCE=database`). `seed-data.ts` is fallback only.
+- Do not seed or mutate preview/production databases unless the user explicitly asks to promote local work.
+- Current active docs override old handoffs, archived plans, generated logs, `.ai/delegation/`, legacy checklist/runbook/workflow docs, and reference command catalogs.
+
+## What To Build
+
+- Prefer visible public product improvements: evidence map usefulness, intervention detail pages, traceable coverage, AU/TGA caveats, uncertainty/readability, search/filtering, and privacy-safe aggregate signals.
+- If a task mainly creates readiness gates, queues, promotion chains, Composer monitoring, review packets, launch rehearsals, roadmap bookkeeping, or command catalogs, do not do it unless the user explicitly asks.
+- Do not recreate removed npm scripts or process chains.
+
+## Hard Stops
+
+Ask the user first before production deploys, **preview/production database promotion**, database migration on remote envs, secrets, destructive actions, dependency/security changes, or medical/regulatory boundary changes.
+
+Use `Human reviewed` only after explicit human confirmation. Do not infer product-level ARTG/AUST status from generic intervention evidence. Do not provide peptide sourcing, compounding, reconstitution, injection, cycling, dosing, or self-administration guidance.
+
+## Dirty Worktree
+
+The worktree may contain unrelated dirty files. Do not clean, revert, stage, commit, push, or delete unrelated work unless the user explicitly asks.
+
+## Checks
+
+Use the smallest useful check for the changed surface. Common commands are `npm run test`, `npm run lint`, `npm run typecheck`, `npm run build`, `npm run db:validate`, and `npm run db:generate`.

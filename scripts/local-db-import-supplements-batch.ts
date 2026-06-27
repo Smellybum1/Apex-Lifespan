@@ -29,7 +29,7 @@ import type {
 } from "@/lib/types";
 
 const IMPORT_NOTE =
-  "Local catalog expansion batch (2026-06-24); draft claims only — verify before public promotion.";
+  "Local catalog expansion batch (2026-06-24); draft claims only - verify before public promotion.";
 
 const categoryMap: Record<InterventionCategory, DbInterventionCategory> = {
   "Vitamin/mineral": DbInterventionCategory.VITAMIN_MINERAL,
@@ -73,17 +73,22 @@ const confidenceMap: Record<ConfidenceLevel, DbConfidenceLevel> = {
 };
 
 const evidenceLabelMap: Record<EvidenceLabel, DbEvidenceLabel> = {
-  "Strong Support": DbEvidenceLabel.STRONG_SUPPORT,
-  "Moderate Support": DbEvidenceLabel.MODERATE_SUPPORT,
-  "Weak Support": DbEvidenceLabel.WEAK_SUPPORT,
+  "Core Evidence-Based": DbEvidenceLabel.CORE_EVIDENCE_BASED,
+  "Conditional / Biomarker-Gated": DbEvidenceLabel.CONDITIONAL_BIOMARKER_GATED,
+  "Useful for Specific Use Case": DbEvidenceLabel.USEFUL_FOR_SPECIFIC_USE_CASE,
+  "Reasonable N-of-1 Experiment": DbEvidenceLabel.REASONABLE_N_OF_1_EXPERIMENT,
+  "Speculative Watchlist": DbEvidenceLabel.SPECULATIVE_WATCHLIST,
+  "Safety Concern": DbEvidenceLabel.SAFETY_CONCERN,
+  "Avoid / Not Recommended": DbEvidenceLabel.AVOID_NOT_RECOMMENDED,
+  "Requires Clinician Oversight": DbEvidenceLabel.REQUIRES_CLINICIAN_OVERSIGHT,
+  "Regulatory Concern": DbEvidenceLabel.REGULATORY_CONCERN,
   "Insufficient Evidence": DbEvidenceLabel.INSUFFICIENT_EVIDENCE,
-  "Mixed/Conflicting": DbEvidenceLabel.MIXED_CONFLICTING,
-  "Safety Concern Emerging": DbEvidenceLabel.SAFETY_CONCERN_EMERGING
 };
 
 const momentumMap: Record<EvidenceMomentum, DbEvidenceMomentum> = {
-  Improving: DbEvidenceMomentum.IMPROVING,
+  Increasing: DbEvidenceMomentum.INCREASING,
   Stable: DbEvidenceMomentum.STABLE,
+  Conflicting: DbEvidenceMomentum.CONFLICTING,
   Weakening: DbEvidenceMomentum.WEAKENING,
   "Safety concern emerging": DbEvidenceMomentum.SAFETY_CONCERN_EMERGING
 };

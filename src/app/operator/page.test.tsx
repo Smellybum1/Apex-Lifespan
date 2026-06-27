@@ -65,6 +65,24 @@ vi.mock("@/lib/operator/session", () => ({
   getCurrentOperatorPrincipal: vi.fn()
 }));
 
+vi.mock("@/lib/data/dashboard", async () => {
+  const seed = await vi.importActual<typeof import("@/lib/seed-data")>("@/lib/seed-data");
+
+  return {
+    getEvidenceDashboardData: vi.fn(async () => ({
+      australiaRegulatoryStatuses: seed.australiaRegulatoryStatuses,
+      claims: seed.claims,
+      dataSource: "seed",
+      interventions: seed.interventions,
+      productSignals: seed.productSignals,
+      references: seed.references,
+      safetyAlerts: seed.safetyAlerts,
+      studies: seed.studies,
+      trialWatchItems: seed.trialWatchItems
+    }))
+  };
+});
+
 import OperatorPage from "@/app/operator/page";
 import { getOperatorAuditTrailSnapshot } from "@/lib/operator/audit-trail";
 import { getOperatorBrowserWriteControlState } from "@/lib/operator/browser-write-controls";

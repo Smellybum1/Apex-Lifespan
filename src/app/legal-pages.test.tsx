@@ -56,8 +56,8 @@ describe("public legal pages", () => {
     );
   });
 
-  it("renders the public changelog with evidence and scoring updates", () => {
-    const html = renderToStaticMarkup(<ChangelogPage />);
+  it("renders the public changelog with evidence and scoring updates", async () => {
+    const html = renderToStaticMarkup(await ChangelogPage());
 
     expect(html).toContain("Apex Lifespan Changelog");
     expect(html).toContain("Public trust record");

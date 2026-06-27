@@ -1,7 +1,6 @@
 import {
   SourceCandidateDecision as DbSourceCandidateDecision,
-  SourceKind as DbSourceKind,
-  StudyType as DbStudyType
+  SourceKind as DbSourceKind
 } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";

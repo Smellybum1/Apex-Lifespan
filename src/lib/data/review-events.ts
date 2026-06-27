@@ -1,14 +1,8 @@
 import type { Prisma, ReviewEventType } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
-import {
-  mapReviewStatusFromDb,
-  mapReviewStatusToDb,
-  sourcePacketCompletenessFromDb,
-  sourcePacketStatusFromCompleteness
-} from "@/lib/data/evidence-model-mappers";
-import { buildClaimSourcePacket } from "@/lib/source-packet";
-import type { NormalizedSourcePacketRow, Reference, ReviewStatus, Study } from "@/lib/types";
+import { mapReviewStatusToDb } from "@/lib/data/evidence-model-mappers";
+import type { ReviewStatus } from "@/lib/types";
 
 export interface RecordReviewEventInput {
   actorEmail?: string;

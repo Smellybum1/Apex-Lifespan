@@ -1,6 +1,5 @@
 import {
   EvidenceMomentum as DbEvidenceMomentum,
-  Prisma,
   SourceKind as DbSourceKind,
   SourceCandidateDecision as DbSourceCandidateDecision,
   StudyType as DbStudyType,
