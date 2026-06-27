@@ -25,6 +25,7 @@ describe("Vercel database setup", () => {
     const plan = buildVercelDatabaseSetupPlan({
       env: {
         APEX_DATA_SOURCE: "database",
+        APEX_VERCEL_DATABASE_SETUP_APPROVED: "1",
         VERCEL: "1",
         VERCEL_ENV: "preview"
       }
@@ -42,6 +43,7 @@ describe("Vercel database setup", () => {
     const plan = buildVercelDatabaseSetupPlan({
       env: {
         APEX_DATA_SOURCE: "database",
+        APEX_VERCEL_DATABASE_SETUP_APPROVED: "1",
         DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/apex",
         VERCEL: "1",
         VERCEL_ENV: "preview"
@@ -52,12 +54,34 @@ describe("Vercel database setup", () => {
     expect(plan.sanitizedDatabaseTarget).toBe("postgresql://localhost:5432/apex");
   });
 
-  it("runs migrations and seed data for preview database mode", () => {
+  it("skips Vercel database writes unless explicitly approved", () => {
     const calls: string[] = [];
     const result = runVercelDatabaseSetup({
       context: {
         env: {
           APEX_DATA_SOURCE: "database",
+          DATABASE_URL: managedDatabaseUrl,
+          VERCEL: "1",
+          VERCEL_ENV: "preview"
+        }
+      },
+      runner: successfulRunner(calls)
+    });
+
+    expect(result.status).toBe("skipped");
+    expect(result.executed).toBe(false);
+    expect(result.shouldSeedPreview).toBe(false);
+    expect(result.shouldSyncOperatorQaFixture).toBe(false);
+    expect(calls).toEqual([]);
+  });
+
+  it("runs migrations and seed data for approved preview database mode", () => {
+    const calls: string[] = [];
+    const result = runVercelDatabaseSetup({
+      context: {
+        env: {
+          APEX_DATA_SOURCE: "database",
+          APEX_VERCEL_DATABASE_SETUP_APPROVED: "1",
           DATABASE_URL: managedDatabaseUrl,
           VERCEL: "1",
           VERCEL_ENV: "preview"
@@ -84,6 +108,7 @@ describe("Vercel database setup", () => {
       context: {
         env: {
           APEX_DATA_SOURCE: "database",
+          APEX_VERCEL_DATABASE_SETUP_APPROVED: "1",
           DATABASE_URL: managedDatabaseUrl,
           VERCEL: "1",
           VERCEL_ENV: "production"

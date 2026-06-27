@@ -37,6 +37,7 @@ export type VercelDatabaseSetupRunner = (
 ) => VercelDatabaseSetupCommandResult;
 
 const LOCAL_DATABASE_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+const DATABASE_SETUP_APPROVAL_KEY = "APEX_VERCEL_DATABASE_SETUP_APPROVED";
 
 export function buildVercelDatabaseSetupPlan(
   context: VercelDatabaseSetupContext
@@ -52,6 +53,10 @@ export function buildVercelDatabaseSetupPlan(
 
   if (dataSource !== "database") {
     return skippedPlan(`APEX_DATA_SOURCE is ${dataSource ? JSON.stringify(dataSource) : "not configured"}.`);
+  }
+
+  if (readEnv(context.env, DATABASE_SETUP_APPROVAL_KEY) !== "1") {
+    return skippedPlan(`${DATABASE_SETUP_APPROVAL_KEY} is not set to "1"; skipping Vercel database writes.`);
   }
 
   const checks = [
