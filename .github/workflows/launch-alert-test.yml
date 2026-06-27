@@ -1,0 +1,32 @@
+name: Launch Alert Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: Reason shown in the intentional alert test run
+        required: false
+        default: Intentional launch alert routing test
+
+permissions:
+  contents: read
+
+concurrency:
+  group: launch-alert-test
+  cancel-in-progress: false
+
+jobs:
+  intentional-alert:
+    name: Trigger launch-safe alert
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Emit alert test context
+        shell: bash
+        env:
+          ALERT_TEST_REASON: ${{ inputs.reason }}
+        run: |
+          echo "::notice title=Launch alert test::${ALERT_TEST_REASON}"
+          echo "This workflow intentionally fails to verify GitHub Actions failure alert routing."
+          echo "No app deployment, database write, ingestion, promotion, or operator write is performed."
+          exit 1

@@ -1,0 +1,57 @@
+name: Scheduled Ingestion Alert Monitor
+
+on:
+  schedule:
+    - cron: "23,53 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scheduled-ingestion-alert-monitor
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    name: Check scheduled ingestion dry-run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: apex_lifespan
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d apex_lifespan"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APEX_DATA_SOURCE: database
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/apex_lifespan?schema=public
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply migrations
+        run: npm run db:migrate:deploy
+
+      - name: Seed alert-monitor fixture data
+        run: npm run db:seed
+
+      - name: Run scheduled ingestion dry-run
+        run: npm run ingest:scheduled-dry-run -- --summary

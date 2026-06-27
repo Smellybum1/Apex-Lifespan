@@ -1,0 +1,133 @@
+name: Public API Error Monitor
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-api-error-monitor
+  cancel-in-progress: false
+
+jobs:
+  api-guards:
+    name: Check public API error handling
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: https://apex-lifespan.vercel.app
+    steps:
+      - name: Verify public API routes fail closed
+        shell: bash
+        run: |
+          node <<'NODE'
+          const checks = [
+            {
+              label: "health endpoint",
+              path: "/api/health",
+              status: 200,
+              validate: (body) => {
+                expectEqual(body.service, "apex-lifespan", "health service");
+                expectEqual(body.status, "ok", "health status");
+                expectEqual(body.surface, "public-read-only", "health surface");
+              }
+            },
+            {
+              label: "PubMed invalid-term guard",
+              path: "/api/pubmed/search?term=injection%20reconstitution%20vials%20sourcing",
+              status: 400,
+              validate: (body) => {
+                expectEqual(
+                  body.error,
+                  "Term query parameter must include citation-oriented search terms.",
+                  "PubMed invalid-term error"
+                );
+              }
+            },
+            {
+              label: "ClinicalTrials.gov invalid-term guard",
+              path: `/api/trials/search?term=${"a".repeat(241)}`,
+              status: 400,
+              validate: (body) => {
+                expectEqual(
+                  body.error,
+                  "Term query parameter must be 240 characters or fewer.",
+                  "ClinicalTrials.gov invalid-term error"
+                );
+              }
+            }
+          ];
+
+          (async () => {
+            const baseUrl = new URL(process.env.BASE_URL);
+
+            for (const check of checks) {
+              await runCheck(baseUrl, check);
+              console.log(`API error monitor passed: ${check.label}.`);
+            }
+          })().catch((error) => {
+            console.error(error instanceof Error ? error.message : String(error));
+            process.exit(1);
+          });
+
+          async function runCheck(baseUrl, check) {
+            const url = new URL(check.path, baseUrl);
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 15000);
+
+            try {
+              const response = await fetch(url, {
+                headers: {
+                  "User-Agent": "apex-lifespan-public-api-error-monitor"
+                },
+                signal: controller.signal
+              });
+              const text = await response.text();
+
+              if (response.status >= 500) {
+                throw new Error(`${check.label} returned server error ${response.status}.`);
+              }
+
+              if (response.status !== check.status) {
+                throw new Error(
+                  `${check.label} expected HTTP ${check.status}, received ${response.status}.`
+                );
+              }
+
+              expectHeaderIncludes(response, "Cache-Control", "no-store", check.label);
+              expectHeaderIncludes(response, "X-Robots-Tag", "noindex", check.label);
+
+              let body;
+              try {
+                body = JSON.parse(text);
+              } catch {
+                throw new Error(`${check.label} did not return JSON.`);
+              }
+
+              if (!body || typeof body !== "object" || Array.isArray(body)) {
+                throw new Error(`${check.label} JSON must be an object.`);
+              }
+
+              check.validate(body);
+            } finally {
+              clearTimeout(timeout);
+            }
+          }
+
+          function expectHeaderIncludes(response, headerName, value, label) {
+            const headerValue = response.headers.get(headerName);
+
+            if (!headerValue?.toLowerCase().includes(value.toLowerCase())) {
+              throw new Error(`${label} must include ${headerName}: ${value}.`);
+            }
+          }
+
+          function expectEqual(actual, expected, label) {
+            if (actual !== expected) {
+              throw new Error(`${label} expected ${String(expected)} but received ${String(actual)}.`);
+            }
+          }
+          NODE
