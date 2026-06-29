@@ -1,15 +1,19 @@
-import { SourceKind as DbSourceKind } from "@prisma/client";
+import {
+  InterventionCategory as DbInterventionCategory,
+  SourceKind as DbSourceKind
+} from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
 import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
 import {
   queueClaimSourceCandidateIngestionJobs,
+  queueInterventionSourceCandidateDiscoveryJobs,
   queueSourceCandidateIngestionJob,
   runSourceCandidateIngestionJob,
   summarizeSourceCandidateIngestionJobs
 } from "@/lib/data/source-candidate-jobs";
 import { buildSourceSearchQueries } from "@/lib/source-queries";
-import type { OutcomeArea } from "@/lib/types";
+import type { InterventionCategory, OutcomeArea } from "@/lib/types";
 
 import { EXPANSION_INTERVENTION_IDS } from "./local-db-catalog-phase4-expansion-data";
 
@@ -17,6 +21,7 @@ type Scope = "expansion" | "all";
 
 interface Args {
   apply: boolean;
+  discovery: boolean;
   pubMedOnly: boolean;
   region: string;
   run: boolean;
@@ -52,7 +57,12 @@ async function main() {
             scope: args.scope,
             interventionCount: interventionIds.length,
             claimCount: claims.length,
-            estimatedJobsPerClaim: args.pubMedOnly ? 1 : 2,
+            mode: args.discovery ? "intervention-discovery" : "claim-sources",
+            estimatedJobs: args.discovery
+              ? "multiple broad PubMed terms plus one ClinicalTrials.gov term per intervention"
+              : args.pubMedOnly
+                ? "multiple PubMed terms per claim"
+                : "multiple PubMed terms plus one ClinicalTrials.gov term per claim",
             region: args.region
           },
           null,
@@ -73,70 +83,109 @@ async function main() {
       let created = 0;
       let existing = 0;
 
-      for (const claim of claims) {
-        if (args.pubMedOnly) {
-          const claimRow = await prisma.claim.findUnique({
-            where: { id: claim.id },
-            select: {
-              claimText: true,
-              id: true,
-              outcome: true,
-              intervention: { select: { id: true, name: true, synonyms: true } }
+      if (args.discovery) {
+        for (const interventionId of interventionIds) {
+          const result = await queueInterventionSourceCandidateDiscoveryJobs({
+            interventionId,
+            region: args.region
+          });
+
+          for (const job of result.jobs) {
+            if (job.created) created += 1;
+            else existing += 1;
+          }
+
+          queueResults.push({
+            interventionId,
+            pubMedTerms: result.pubMedTerms,
+            trialTerm: result.trialTerm,
+            jobs: result.jobs.map((job) => ({
+              jobId: job.jobId,
+              source: job.source,
+              created: job.created,
+              status: job.status
+            }))
+          });
+        }
+      } else {
+        for (const claim of claims) {
+          if (args.pubMedOnly) {
+            const claimRow = await prisma.claim.findUnique({
+              where: { id: claim.id },
+              select: {
+                claimText: true,
+                id: true,
+                outcome: true,
+                intervention: { select: { category: true, id: true, name: true, synonyms: true } }
+              }
+            });
+
+            if (!claimRow) continue;
+
+            const queries = buildSourceSearchQueries({
+              claim: {
+                claimText: claimRow.claimText,
+                outcome: outcomeLabel(claimRow.outcome)
+              },
+              intervention: {
+                category: categoryLabel(claimRow.intervention.category),
+                name: claimRow.intervention.name,
+                synonyms: claimRow.intervention.synonyms
+              }
+            });
+
+            const jobs = [];
+            for (const pubMedTerm of queries.pubMedTerms) {
+              const job = await queueSourceCandidateIngestionJob({
+                claimId: claimRow.id,
+                interventionId: claimRow.intervention.id,
+                region: args.region,
+                source: "PubMed",
+                query: pubMedTerm
+              });
+
+              if (job.created) created += 1;
+              else existing += 1;
+              jobs.push(job);
             }
+
+            queueResults.push({
+              claimId: claim.id,
+              interventionId: claim.interventionId,
+              pubMedTerm: queries.pubMedTerm,
+              pubMedTerms: queries.pubMedTerms,
+              jobs: jobs.map((job) => ({
+                jobId: job.jobId,
+                source: job.source,
+                created: job.created,
+                status: job.status
+              }))
+            });
+            continue;
+          }
+
+          const result = await queueClaimSourceCandidateIngestionJobs({
+            claimId: claim.id,
+            region: args.region
           });
-
-          if (!claimRow) continue;
-
-          const queries = buildSourceSearchQueries({
-            claim: {
-              claimText: claimRow.claimText,
-              outcome: outcomeLabel(claimRow.outcome)
-            },
-            intervention: {
-              name: claimRow.intervention.name,
-              synonyms: claimRow.intervention.synonyms
-            }
-          });
-
-          const job = await queueSourceCandidateIngestionJob({
-            claimId: claimRow.id,
-            interventionId: claimRow.intervention.id,
-            region: args.region,
-            source: "PubMed",
-            query: queries.pubMedTerm
-          });
-
-          if (job.created) created += 1;
-          else existing += 1;
+          for (const job of result.jobs) {
+            if (job.created) created += 1;
+            else existing += 1;
+          }
           queueResults.push({
             claimId: claim.id,
             interventionId: claim.interventionId,
-            pubMedTerm: queries.pubMedTerm,
-            jobs: [{ jobId: job.jobId, source: job.source, created: job.created, status: job.status }]
+            pubMedTerm: result.pubMedTerm,
+            pubMedTerms: result.pubMedTerms,
+            trialTerm: result.trialTerm,
+            jobs: result.jobs.map((job) => ({
+              jobId: job.jobId,
+              source: job.source,
+              created: job.created,
+              status: job.status
+            }))
           });
-          continue;
         }
-
-        const result = await queueClaimSourceCandidateIngestionJobs({
-          claimId: claim.id,
-          region: args.region
-        });
-        for (const job of result.jobs) {
-          if (job.created) created += 1;
-          else existing += 1;
-        }
-        queueResults.push({
-          claimId: claim.id,
-          interventionId: claim.interventionId,
-          pubMedTerm: result.pubMedTerm,
-          trialTerm: result.trialTerm,
-          jobs: result.jobs.map((job) => ({
-            jobId: job.jobId,
-            source: job.source,
-            created: job.created,
-            status: job.status
-          }))
-        });
       }
 
       summary.queue = {
@@ -164,7 +213,7 @@ async function main() {
         if (!nextJob) break;
 
         const result = await runSourceCandidateIngestionJob(nextJob.id, {
-          pubMedRetmax: 15,
+          pubMedRetmax: 20,
           clinicalTrialPageSize: 10
         });
         runResults.push(result);
@@ -188,6 +237,7 @@ async function main() {
 function readArgs(argv: string[]): Args {
   const parsed: Args = {
     apply: false,
+    discovery: false,
     pubMedOnly: false,
     region: "AU",
     run: false,
@@ -210,6 +260,11 @@ function readArgs(argv: string[]): Args {
 
     if (arg === "--pubmed-only") {
       parsed.pubMedOnly = true;
+      continue;
+    }
+
+    if (arg === "--discovery") {
+      parsed.discovery = true;
       continue;
     }
 
@@ -281,12 +336,30 @@ const outcomeLabels: Record<string, OutcomeArea> = {
   BIOLOGICAL_AGING_CLOCKS: "Biological aging clocks"
 };
 
+const categoryLabels: Record<DbInterventionCategory, InterventionCategory> = {
+  VITAMIN_MINERAL: "Vitamin/mineral",
+  FATTY_ACID: "Fatty acid",
+  AMINO_ACID: "Amino acid",
+  BOTANICAL_HERBAL: "Botanical/herbal",
+  FIBER_PREBIOTIC_PROBIOTIC: "Fiber/prebiotic/probiotic",
+  ERGOGENIC_PERFORMANCE_SUPPLEMENT: "Ergogenic/performance supplement",
+  NOOTROPIC: "Nootropic",
+  HORMONAL_ENDOCRINE_INTERVENTION: "Hormonal/endocrine intervention",
+  PEPTIDE_BIOLOGIC: "Peptide/biologic",
+  DRUG_GEROPROTECTOR_WATCHLIST: "Drug/geroprotector watchlist",
+  FOOD_BEVERAGE: "Food/beverage"
+};
+
 function outcomeLabel(outcome: string): OutcomeArea {
   const label = outcomeLabels[outcome];
   if (!label) {
     throw new Error(`Unknown outcome enum value: ${outcome}`);
   }
   return label;
+}
+
+function categoryLabel(category: DbInterventionCategory): InterventionCategory {
+  return categoryLabels[category];
 }
 
 function readRequiredValue(args: string[], index: number, option: string) {

@@ -248,3 +248,5 @@ main().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });
+// Legacy/reference process script. Not part of ordinary local product work.
+// Prefer the simplified local workflow unless the user explicitly asks for launch readiness.

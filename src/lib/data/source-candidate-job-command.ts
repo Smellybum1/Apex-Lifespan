@@ -1,15 +1,19 @@
 import { Buffer } from "node:buffer";
 
+import { commandUsage } from "@/lib/data/source-candidate-job-command-usage";
 import {
   listSourceCandidateIngestionJobs,
   queueClaimSourceCandidateIngestionJobs,
+  queueInterventionSourceCandidateDiscoveryJobs,
   queueSourceCandidateIngestionJob,
   runNextSourceCandidateIngestionJob,
   runSourceCandidateIngestionJob,
   summarizeSourceCandidateIngestionJobs,
   type QueueClaimSourceCandidateIngestionJobsInput,
+  type QueueInterventionSourceCandidateDiscoveryJobsInput,
   type QueueSourceCandidateIngestionJobInput,
   type QueuedClaimSourceCandidateIngestionJobs,
+  type QueuedInterventionSourceCandidateDiscoveryJobs,
   type QueuedSourceCandidateIngestionJob,
   type SourceCandidateIngestionJobListItem,
   type SourceCandidateIngestionJobListOptions,
@@ -59,6 +63,8 @@ import type {
   SourceCandidateDecision,
   SourceCandidateSource
 } from "@/lib/types";
+
+export { commandUsage };
 
 const SOURCE_CANDIDATE_REVIEW_FLAG_CODES = [
   "broad-safety-query",
@@ -120,6 +126,7 @@ export interface SourceCandidateJobCommandOptions
   linkCandidateClaimDedupeKey?: string;
   limit: number;
   queueClaimSourcesClaimId?: string;
+  queueInterventionSourcesInterventionId?: string;
   queueQuery?: string;
   queueSource?: SourceCandidateSource;
   region?: string;
@@ -127,6 +134,9 @@ export interface SourceCandidateJobCommandOptions
   reviewDecision?: ReviewedSourceCandidateDecision;
   reviewNote?: string;
   runNextJobs?: boolean;
+  watch?: boolean;
+  watchIdleExit?: number;
+  watchIntervalMs?: number;
   studyAbstract?: string;
   studyAdverseEvents?: string;
   studyDose?: string;
@@ -209,6 +219,9 @@ export interface SourceCandidateJobCommandRunners {
   queueClaimSources?: (
     input: QueueClaimSourceCandidateIngestionJobsInput
   ) => Promise<QueuedClaimSourceCandidateIngestionJobs>;
+  queueInterventionSources?: (
+    input: QueueInterventionSourceCandidateDiscoveryJobsInput
+  ) => Promise<QueuedInterventionSourceCandidateDiscoveryJobs>;
   runJobById?: (
     jobId: string,
     options: SourceCandidateIngestionJobOptions
@@ -216,6 +229,7 @@ export interface SourceCandidateJobCommandRunners {
   runNextJob?: (
     options: SourceCandidateIngestionJobOptions
   ) => Promise<SourceCandidateIngestionJobRunResult | null>;
+  sleep?: (ms: number) => Promise<void>;
   recordDecision?: (
     input: RecordSourceCandidateDecisionInput
   ) => Promise<SourceCandidate>;
@@ -237,6 +251,8 @@ interface SourceCandidateReviewPacket {
 
 const DEFAULT_JOB_LIMIT = 1;
 const MAX_JOB_LIMIT = 25;
+const DEFAULT_WATCH_INTERVAL_MS = 5000;
+const MAX_WATCH_INTERVAL_MS = 10 * 60 * 1000;
 const MAX_METADATA_ARRAY_ITEMS = 8;
 const MAX_METADATA_VALUE_LENGTH = 240;
 const MIN_REVIEW_QUERY_TOKENS_FOR_OVERLAP_FLAG = 3;
@@ -318,9 +334,12 @@ export async function runSourceCandidateJobCommand(
   const queueJob = runners.queueJob ?? queueSourceCandidateIngestionJob;
   const queueClaimSources =
     runners.queueClaimSources ?? queueClaimSourceCandidateIngestionJobs;
+  const queueInterventionSources =
+    runners.queueInterventionSources ?? queueInterventionSourceCandidateDiscoveryJobs;
   const recordDecision = runners.recordDecision ?? recordSourceCandidateDecision;
   const runJobById = runners.runJobById ?? runSourceCandidateIngestionJob;
   const runNextJob = runners.runNextJob ?? runNextSourceCandidateIngestionJob;
+  const sleep = runners.sleep ?? defaultSleep;
   const summarizeBacklog = runners.summarizeBacklog ?? summarizeSourceCandidateBacklog;
   const summarizeCurationHandoff =
     runners.summarizeCurationHandoff ?? summarizeSourceCandidateCurationHandoff;
@@ -691,6 +710,16 @@ export async function runSourceCandidateJobCommand(
       return 0;
     }
 
+    if (options.queueInterventionSourcesInterventionId) {
+      const result = await queueInterventionSources({
+        interventionId: options.queueInterventionSourcesInterventionId,
+        region: options.region
+      });
+
+      stdout(formatQueuedInterventionSourceCandidateDiscoveryJobs(result));
+      return 0;
+    }
+
     if (options.summary) {
       const [
         jobSummary,
@@ -719,7 +748,17 @@ export async function runSourceCandidateJobCommand(
       const runnerOptions = sourceCandidateIngestionJobOptions(options);
       const results = options.jobId
         ? [await runJobById(options.jobId, runnerOptions)]
-        : await runNextJobs(options.limit, runnerOptions, runNextJob);
+        : options.watch
+          ? await watchNextJobs({
+              intervalMs: options.watchIntervalMs ?? DEFAULT_WATCH_INTERVAL_MS,
+              idleExit: options.watchIdleExit,
+              limit: options.limit,
+              options: runnerOptions,
+              runNextJob,
+              sleep,
+              stdout
+            })
+          : await runNextJobs(options.limit, runnerOptions, runNextJob);
 
       if (results.length === 0) {
         stdout("No queued PubMed or ClinicalTrials.gov source-candidate jobs found.");
@@ -918,6 +957,26 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--run-next") {
       options.runNextJobs = true;
+      continue;
+    }
+
+    if (arg === "--watch") {
+      options.watch = true;
+      continue;
+    }
+
+    if (arg === "--watch-interval-ms") {
+      options.watchIntervalMs = Math.max(
+        1000,
+        readPositiveInteger(args, index, arg, MAX_WATCH_INTERVAL_MS)
+      );
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--watch-idle-exit") {
+      options.watchIdleExit = readPositiveInteger(args, index, arg, 1000);
+      index += 1;
       continue;
     }
 
@@ -1347,6 +1406,12 @@ export function parseSourceCandidateJobCommandArgs(
       continue;
     }
 
+    if (arg === "--queue-intervention-sources") {
+      setQueueInterventionSourcesOption(options, readRequiredValue(args, index, arg));
+      index += 1;
+      continue;
+    }
+
     if (arg === "--region") {
       options.region = readRequiredValue(args, index, arg);
       index += 1;
@@ -1395,6 +1460,18 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (options.runNextJobs && options.jobId) {
     throw new Error("--run-next cannot be combined with --job-id.");
+  }
+
+  if (options.watch && !options.runNextJobs) {
+    throw new Error("--watch requires --run-next.");
+  }
+
+  if (options.watchIntervalMs !== undefined && !options.watch) {
+    throw new Error("--watch-interval-ms requires --watch.");
+  }
+
+  if (options.watchIdleExit !== undefined && !options.watch) {
+    throw new Error("--watch-idle-exit requires --watch.");
   }
 
   const runOptionProvided =
@@ -2656,6 +2733,15 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (
+    options.queueInterventionSourcesInterventionId &&
+    (options.interventionId || options.claimId)
+  ) {
+    throw new Error(
+      "--intervention-id and --claim-id cannot be combined with --queue-intervention-sources."
+    );
+  }
+
   if (!hasQueueOption(options) && (options.region || options.interventionId || options.claimId)) {
     throw new Error("--region, --intervention-id, and --claim-id require a queue option.");
   }
@@ -2706,86 +2792,6 @@ export function parseSourceCandidateJobCommandArgs(
   return options;
 }
 
-export function commandUsage() {
-  return [
-    "Usage: npm run ingest:sources -- [options]",
-    "",
-    "Options:",
-    "  --env-file <path>                 Load an approved local env file before Prisma-backed source-candidate inspection.",
-    "  --job-id <id>                     Run one specific ingestion job.",
-    "  --run-next                        Run queued PubMed/ClinicalTrials.gov jobs.",
-    "  --limit <count>                   With --run-next, run up to count queued jobs (default 1, max 25).",
-    "  --db-status                       Check local PostgreSQL connectivity without reading review data.",
-    "  --candidate-detail <dedupe-key>   Print one source-candidate detail record with review/curation hints.",
-    "  --candidate-curation-draft <dedupe-key> Print read-only claim-link/study draft fields with command hints.",
-    "  --candidate-curation-status <dedupe-key> Print curation handoff status, next action, and command hints.",
-    "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows, next actions, and command hints.",
-    "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
-    "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
-    "  --candidate-reference-matches <dedupe-key> Print accepted-reference matches and review/curation hints.",
-    "  --candidate-review-flags        Print read-only flagged pending review groups with review/curation hints.",
-    "  --candidate-review-flag <flag>  With --candidate-review-flags, filter by broad-safety-query or low-title-query-overlap.",
-    "  --candidate-review-flags-limit <count> Review flag group count (default 25, max 50).",
-    "  --candidate-review-overview     Print read-only pending review groups with review/curation hints.",
-    "  --candidate-review-overview-limit <count> Review overview group count (default 25, max 50).",
-    "  --candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, sibling/duplicate context, and curation hints.",
-    "  --candidate-siblings <dedupe-key> Print source-candidate siblings with match reasons and review/curation hints.",
-    "  --candidate-siblings-limit <count> Sibling row count (default 25, max 50).",
-    "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
-    "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
-    "  --accepted-reference-id <id>      Required curated reference id for --accept-candidate.",
-    "  --review-note <note>              Human review note; required for --accept-candidate and --reject-candidate.",
-    "  --link-candidate-claim <dedupe-key> Link an accepted candidate reference to its claim.",
-    "  --claim-link-note <note>          Optional note for --link-candidate-claim.",
-    "  --claim-link-relevance <1-5>      Optional relevance for --link-candidate-claim.",
-    "  --extract-candidate-study <dedupe-key> Write structured Study extraction for an accepted, claim-linked candidate.",
-    "  --study-source-type <type>        Optional study type override: meta-analysis, systematic-review, randomized-controlled-trial, observational-cohort, case-report, animal-study, in-vitro-mechanistic, clinical-trial-record, or regulatory-safety-warning.",
-    "  --study-sample-size <text>        Required for --extract-candidate-study.",
-    "  --study-population <text>         Required for --extract-candidate-study.",
-    "  --study-intervention-name <text>  Required for --extract-candidate-study.",
-    "  --study-outcome <text>            Required; repeat for multiple outcomes.",
-    "  --study-adverse-events <text>     Required for --extract-candidate-study.",
-    "  --study-funding-conflicts <text>  Required for --extract-candidate-study.",
-    "  --study-risk-of-bias <text>       Required for --extract-candidate-study.",
-    "  --study-dose <text>               Optional dose field for --extract-candidate-study.",
-    "  --study-duration <text>           Optional duration field for --extract-candidate-study.",
-    "  --study-main-results <text>       Optional main results field for --extract-candidate-study.",
-    "  --study-abstract <text>           Optional abstract field for --extract-candidate-study.",
-    "  --study-relevance <1-5>           Optional relevance score for --extract-candidate-study.",
-    "  --update-existing-study           Update the one existing extraction for this accepted reference.",
-    "  --candidates                      Print read-only source-candidate review rows with review/curation hints.",
-    "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
-    "  <dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse.",
-    "  --candidate-source <source>       Filter candidates, overview, flags, or handoff by source: pubmed or clinical-trials.",
-    "  --candidate-decision <decision>   Candidate decision: pending, accepted, or rejected.",
-    "  --candidate-duplicates            With --candidates, print read-only duplicate source/external-id groups with review/curation hints.",
-    "  --candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id.",
-    "  --candidate-job-id <id>           Filter candidates, overview, flags, or handoff by ingestion job id.",
-    "  --candidate-intervention-id <id>  Filter candidates, overview, flags, or handoff by intervention id.",
-    "  --candidate-intervention-missing  Filter candidates, overview, flags, or handoff to rows without intervention id.",
-    "  --candidate-claim-id <id>         Filter candidates, overview, flags, or handoff by claim id.",
-    "  --candidate-claim-missing         Filter candidates, overview, flags, or handoff to rows without claim id.",
-    "  --candidate-region <region>       Filter candidates, overview, flags, or handoff by region.",
-    "  --jobs                            Print recent source-candidate ingestion jobs with read-only hints.",
-    "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
-    "  --jobs-source <source>            Filter --jobs by source: pubmed or clinical-trials.",
-    "  --jobs-region <region>            Filter --jobs by region.",
-    "  --jobs-intervention-id <id>       Filter --jobs by intervention id.",
-    "  --jobs-claim-id <id>              Filter --jobs by claim id.",
-    "  --jobs-status <status>            Filter --jobs by queued, running, succeeded, failed, or skipped.",
-    "  --queue-pubmed <term>             Queue a PubMed source-candidate job.",
-    "  --queue-clinical-trials <term>    Queue a ClinicalTrials.gov source-candidate job.",
-    "  --queue-claim-sources <claim-id>  Queue PubMed and ClinicalTrials.gov jobs from claim context.",
-    "  --region <region>                 Region metadata for queued jobs (default AU).",
-    "  --intervention-id <id>            Intervention metadata for queued jobs.",
-    "  --claim-id <id>                   Claim metadata for queued jobs.",
-    "  --pubmed-retmax <count>           PubMed result limit passed to NCBI (max 20).",
-    "  --clinical-trial-page-size <count> ClinicalTrials.gov page size (max 20).",
-    "  --summary                         Print read-only workflow counts and next-command hints.",
-    "  --help                            Show this help."
-  ].join("\n");
-}
-
 function sourceCandidateIngestionJobOptions(
   options: SourceCandidateJobCommandOptions
 ): SourceCandidateIngestionJobOptions {
@@ -2820,6 +2826,72 @@ async function runNextJobs(
   }
 
   return results;
+}
+
+async function watchNextJobs({
+  idleExit,
+  intervalMs,
+  limit,
+  options,
+  runNextJob,
+  sleep,
+  stdout
+}: {
+  idleExit?: number;
+  intervalMs: number;
+  limit: number;
+  options: SourceCandidateIngestionJobOptions;
+  runNextJob: NonNullable<SourceCandidateJobCommandRunners["runNextJob"]>;
+  sleep: NonNullable<SourceCandidateJobCommandRunners["sleep"]>;
+  stdout: NonNullable<SourceCandidateJobCommandIo["stdout"]>;
+}) {
+  const results: SourceCandidateIngestionJobRunResult[] = [];
+  let idleCycles = 0;
+
+  stdout(
+    `Watching queued PubMed/ClinicalTrials.gov source-candidate jobs intervalMs=${intervalMs} batchLimit=${limit}`
+  );
+
+  while (true) {
+    let ranThisCycle = 0;
+
+    for (let index = 0; index < limit; index += 1) {
+      const result = await runNextJob(options);
+
+      if (!result) {
+        break;
+      }
+
+      results.push(result);
+      ranThisCycle += 1;
+      stdout(formatSourceCandidateJobResult(result));
+
+      if (index < limit - 1) {
+        await sleep(intervalMs);
+      }
+    }
+
+    if (ranThisCycle > 0) {
+      idleCycles = 0;
+      await sleep(intervalMs);
+      continue;
+    }
+
+    idleCycles += 1;
+    stdout(`No queued source-candidate jobs found idlePoll=${idleCycles}`);
+
+    if (idleExit !== undefined && idleCycles >= idleExit) {
+      return results;
+    }
+
+    await sleep(intervalMs);
+  }
+}
+
+function defaultSleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function formatSourceCandidateJobResult(result: SourceCandidateIngestionJobRunResult) {
@@ -2868,6 +2940,15 @@ function formatQueuedClaimSourceCandidateJobs(
 ) {
   return [
     `Claim source-candidate jobs: ${quote(result.label)} claim=${result.claimId} intervention=${result.interventionId} region=${result.region}`,
+    ...result.jobs.map((job) => `- ${formatQueuedSourceCandidateJob(job)}`)
+  ].join("\n");
+}
+
+function formatQueuedInterventionSourceCandidateDiscoveryJobs(
+  result: QueuedInterventionSourceCandidateDiscoveryJobs
+) {
+  return [
+    `Intervention discovery jobs: ${quote(result.label)} intervention=${result.interventionId} searchTerm=${quote(result.searchTerm)} region=${result.region}`,
     ...result.jobs.map((job) => `- ${formatQueuedSourceCandidateJob(job)}`)
   ].join("\n");
 }
@@ -5781,8 +5862,23 @@ function setQueueClaimSourcesOption(
   options.queueClaimSourcesClaimId = claimId;
 }
 
+function setQueueInterventionSourcesOption(
+  options: SourceCandidateJobCommandOptions,
+  interventionId: string
+) {
+  if (hasQueueOption(options)) {
+    throw new Error("Only one queue option can be used at a time.");
+  }
+
+  options.queueInterventionSourcesInterventionId = interventionId;
+}
+
 function hasQueueOption(options: SourceCandidateJobCommandOptions) {
-  return Boolean(options.queueSource || options.queueClaimSourcesClaimId);
+  return Boolean(
+    options.queueSource ||
+      options.queueClaimSourcesClaimId ||
+      options.queueInterventionSourcesInterventionId
+  );
 }
 
 function setCandidateReviewOption(

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
   groupBy: vi.fn(),
   interventionFindUnique: vi.fn(),
+  sourceCandidateFindMany: vi.fn(),
   update: vi.fn(),
   updateMany: vi.fn(),
   ingestClinicalTrialSourceCandidates: vi.fn(),
@@ -28,6 +29,9 @@ vi.mock("@/lib/db/prisma", () => ({
       update: mocks.update,
       updateMany: mocks.updateMany
     },
+    sourceCandidate: {
+      findMany: mocks.sourceCandidateFindMany
+    },
     intervention: {
       findUnique: mocks.interventionFindUnique
     }
@@ -41,6 +45,8 @@ vi.mock("@/lib/data/source-candidate-ingestion", () => ({
 
 import {
   listSourceCandidateIngestionJobs,
+  queueInterventionSourceCandidateDiscoveryJobs,
+  queuePubMedDeepeningCatchUpJobs,
   queueClaimSourceCandidateIngestionJobs,
   queueSourceCandidateIngestionJob,
   runNextSourceCandidateIngestionJob,
@@ -859,6 +865,32 @@ describe("queueClaimSourceCandidateIngestionJobs", () => {
   });
 
   it("queues PubMed and ClinicalTrials.gov jobs from claim context", async () => {
+    const expectedPubMedTerms = [
+      "Creatine monohydrate randomized clinical trial systematic review meta-analysis",
+      "Creatine monohydrate strength resistance training lean mass gains systematic review meta-analysis",
+      "Creatine monohydrate strength exercise performance systematic review meta-analysis",
+      "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review",
+      "Creatine monohydrate safety adverse effects interactions strength gains resistance training contraindications",
+      "Creatine monohydrate resistance training strength lean mass placebo randomized trial",
+      "Creatine monohydrate trained adults exercise performance renal safety tolerability"
+    ];
+    const expectedTrialTerm =
+      "Creatine monohydrate strength resistance training lean mass gains";
+    const createdJobs = [
+      ...expectedPubMedTerms.map((query, index) =>
+        dbIngestionJob({
+          id: `job-pubmed-creatine-strength-${index + 1}`,
+          query
+        })
+      ),
+      dbIngestionJob({
+        id: "job-trials-creatine-strength",
+        source: "CLINICALTRIALS_GOV",
+        query: expectedTrialTerm
+      })
+    ];
+    let createIndex = 0;
+
     mocks.claimFindUnique
       .mockResolvedValueOnce({
         id: "creatine-strength",
@@ -866,6 +898,7 @@ describe("queueClaimSourceCandidateIngestionJobs", () => {
         outcome: "MUSCLE_STRENGTH",
         intervention: {
           id: "creatine",
+          category: "AMINO_ACID",
           name: "Creatine monohydrate",
           synonyms: ["creatine"]
         }
@@ -874,21 +907,7 @@ describe("queueClaimSourceCandidateIngestionJobs", () => {
         interventionId: "creatine"
       });
     mocks.findFirst.mockResolvedValue(null);
-    mocks.create
-      .mockResolvedValueOnce(
-        dbIngestionJob({
-          id: "job-pubmed-creatine-strength",
-          query:
-            "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review"
-        })
-      )
-      .mockResolvedValueOnce(
-        dbIngestionJob({
-          id: "job-trials-creatine-strength",
-          source: "CLINICALTRIALS_GOV",
-          query: "Creatine monohydrate strength resistance training lean mass gains"
-        })
-      );
+    mocks.create.mockImplementation(async () => createdJobs[createIndex++]);
 
     await expect(
       queueClaimSourceCandidateIngestionJobs({
@@ -901,21 +920,21 @@ describe("queueClaimSourceCandidateIngestionJobs", () => {
       label: "Creatine monohydrate - Muscle/strength",
       pubMedTerm:
         "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review",
+      pubMedTerms: expectedPubMedTerms,
       region: "AU",
-      trialTerm: "Creatine monohydrate strength resistance training lean mass gains",
+      trialTerm: expectedTrialTerm,
       jobs: [
-        {
+        ...expectedPubMedTerms.map((query, index) => ({
           claimId: "creatine-strength",
           contextMismatchFields: [],
           created: true,
           interventionId: "creatine",
-          jobId: "job-pubmed-creatine-strength",
+          jobId: `job-pubmed-creatine-strength-${index + 1}`,
           source: "PUBMED",
-          query:
-            "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review",
+          query,
           region: "AU",
           status: "QUEUED"
-        },
+        })),
         {
           claimId: "creatine-strength",
           contextMismatchFields: [],
@@ -941,32 +960,34 @@ describe("queueClaimSourceCandidateIngestionJobs", () => {
         intervention: {
           select: {
             id: true,
+            category: true,
             name: true,
             synonyms: true
           }
         }
       }
     });
-    expect(mocks.create).toHaveBeenNthCalledWith(1, {
-      data: {
-        source: "PUBMED",
-        status: "QUEUED",
-        query:
-          "Creatine monohydrate strength resistance training lean mass gains randomized trial systematic review",
-        region: "AU",
-        interventionId: "creatine",
-        claimId: "creatine-strength",
-        metadata: {
+    for (const [index, query] of expectedPubMedTerms.entries()) {
+      expect(mocks.create).toHaveBeenNthCalledWith(index + 1, {
+        data: {
+          source: "PUBMED",
+          status: "QUEUED",
+          query,
+          region: "AU",
           interventionId: "creatine",
-          claimId: "creatine-strength"
+          claimId: "creatine-strength",
+          metadata: {
+            interventionId: "creatine",
+            claimId: "creatine-strength"
+          }
         }
-      }
-    });
-    expect(mocks.create).toHaveBeenNthCalledWith(2, {
+      });
+    }
+    expect(mocks.create).toHaveBeenNthCalledWith(expectedPubMedTerms.length + 1, {
       data: {
         source: "CLINICALTRIALS_GOV",
         status: "QUEUED",
-        query: "Creatine monohydrate strength resistance training lean mass gains",
+        query: expectedTrialTerm,
         region: "AU",
         interventionId: "creatine",
         claimId: "creatine-strength",
@@ -1003,6 +1024,188 @@ describe("queueClaimSourceCandidateIngestionJobs", () => {
   });
 });
 
+describe("queueInterventionSourceCandidateDiscoveryJobs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("queues broad benefit discovery jobs against an intervention without preselecting a claim", async () => {
+    let createIndex = 0;
+
+    mocks.interventionFindUnique.mockResolvedValue({
+      id: "astaxanthin",
+      category: "BOTANICAL_HERBAL",
+      name: "Astaxanthin",
+      synonyms: []
+    });
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.create.mockImplementation(async ({ data }) => {
+      createIndex += 1;
+      return dbIngestionJob({
+        id: `job-discovery-${createIndex}`,
+        source: data.source,
+        query: data.query,
+        interventionId: data.interventionId,
+        claimId: data.claimId ?? null,
+        metadata: data.metadata
+      });
+    });
+
+    const result = await queueInterventionSourceCandidateDiscoveryJobs({
+      interventionId: " astaxanthin ",
+      region: "au"
+    });
+
+    expect(result).toMatchObject({
+      interventionId: "astaxanthin",
+      label: "Astaxanthin - broad benefit discovery",
+      region: "AU",
+      searchTerm: "Astaxanthin",
+      trialTerm: "Astaxanthin"
+    });
+    expect(result.pubMedTerms[0]).toBe("Astaxanthin");
+    expect(result.pubMedTerms).toContain("Astaxanthin eye strain randomized placebo");
+    expect(result.jobs.some((job) => job.claimId)).toBe(false);
+    expect(result.jobs.some((job) => job.source === "CLINICALTRIALS_GOV")).toBe(true);
+    expect(mocks.interventionFindUnique).toHaveBeenCalledWith({
+      where: {
+        id: "astaxanthin"
+      },
+      select: {
+        id: true,
+        category: true,
+        name: true,
+        synonyms: true
+      }
+    });
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: {
+        source: "PUBMED",
+        status: "QUEUED",
+        query: "Astaxanthin",
+        region: "AU",
+        interventionId: "astaxanthin",
+        claimId: undefined,
+        metadata: {
+          interventionId: "astaxanthin",
+          sourceCandidateDiscoveryPriority: "supplement-name"
+        }
+      }
+    });
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: {
+        source: "PUBMED",
+        status: "QUEUED",
+        query: "Astaxanthin eye strain randomized placebo",
+        region: "AU",
+        interventionId: "astaxanthin",
+        claimId: undefined,
+        metadata: {
+          interventionId: "astaxanthin"
+        }
+      }
+    });
+  });
+
+  it("queues broad benefit discovery jobs against a saved intervention synonym", async () => {
+    let createIndex = 0;
+
+    mocks.interventionFindUnique.mockResolvedValue({
+      id: "omega-3",
+      category: "FATTY_ACID",
+      name: "Omega-3 EPA/DHA",
+      synonyms: ["fish oil", "EPA DHA"]
+    });
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.create.mockImplementation(async ({ data }) => {
+      createIndex += 1;
+      return dbIngestionJob({
+        id: `job-fish-oil-discovery-${createIndex}`,
+        source: data.source,
+        query: data.query,
+        interventionId: data.interventionId,
+        claimId: data.claimId ?? null,
+        metadata: data.metadata
+      });
+    });
+
+    const result = await queueInterventionSourceCandidateDiscoveryJobs({
+      interventionId: "omega-3",
+      region: "au",
+      searchTerm: "fish oil"
+    });
+
+    expect(result).toMatchObject({
+      interventionId: "omega-3",
+      label: "fish oil - broad benefit discovery",
+      region: "AU",
+      searchTerm: "fish oil",
+      trialTerm: "fish oil"
+    });
+    expect(result.pubMedTerms[0]).toBe("fish oil");
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: {
+        source: "PUBMED",
+        status: "QUEUED",
+        query: "fish oil",
+        region: "AU",
+        interventionId: "omega-3",
+        claimId: undefined,
+        metadata: {
+          interventionId: "omega-3",
+          sourceCandidateDiscoveryPriority: "supplement-name"
+        }
+      }
+    });
+    expect(result.pubMedTerms).toContain("fish oil randomized placebo clinical trial");
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: {
+        source: "PUBMED",
+        status: "QUEUED",
+        query: "fish oil randomized placebo clinical trial",
+        region: "AU",
+        interventionId: "omega-3",
+        claimId: undefined,
+        metadata: {
+          interventionId: "omega-3"
+        }
+      }
+    });
+  });
+
+  it("rejects intervention discovery search terms that are not saved synonyms", async () => {
+    mocks.interventionFindUnique.mockResolvedValue({
+      id: "omega-3",
+      category: "FATTY_ACID",
+      name: "Omega-3 EPA/DHA",
+      synonyms: ["fish oil"]
+    });
+
+    await expect(
+      queueInterventionSourceCandidateDiscoveryJobs({
+        interventionId: "omega-3",
+        searchTerm: "krill oil"
+      })
+    ).rejects.toThrow(
+      "Intervention discovery search term must be the intervention name or a saved synonym."
+    );
+
+    expect(mocks.findFirst).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects missing intervention ids before queueing discovery", async () => {
+    await expect(
+      queueInterventionSourceCandidateDiscoveryJobs({
+        interventionId: " "
+      })
+    ).rejects.toThrow("Intervention id is required to queue intervention discovery jobs.");
+
+    expect(mocks.interventionFindUnique).not.toHaveBeenCalled();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+});
+
 describe("runNextSourceCandidateIngestionJob", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1014,7 +1217,33 @@ describe("runNextSourceCandidateIngestionJob", () => {
 
     await expect(runNextSourceCandidateIngestionJob({ now })).resolves.toBeNull();
 
-    expect(mocks.findFirst).toHaveBeenCalledWith({
+    expect(mocks.findFirst).toHaveBeenNthCalledWith(1, {
+      where: {
+        status: "QUEUED",
+        source: {
+          in: ["PUBMED", "CLINICALTRIALS_GOV"]
+        },
+        metadata: {
+          path: ["sourceCandidateDiscoveryPriority"],
+          equals: "supplement-name"
+        }
+      },
+      orderBy: [{ createdAt: "asc" }]
+    });
+    expect(mocks.findFirst).toHaveBeenNthCalledWith(2, {
+      where: {
+        status: "QUEUED",
+        source: {
+          in: ["PUBMED", "CLINICALTRIALS_GOV"]
+        },
+        metadata: {
+          path: ["sourceCandidateDiscoveryPriority"],
+          equals: "pubmed-deepening"
+        }
+      },
+      orderBy: [{ createdAt: "asc" }]
+    });
+    expect(mocks.findFirst).toHaveBeenNthCalledWith(3, {
       where: {
         status: "QUEUED",
         source: {
@@ -1066,20 +1295,171 @@ describe("runNextSourceCandidateIngestionJob", () => {
       region: "AU",
       interventionId: "creatine",
       claimId: "creatine-strength",
-      ingestionJobId: "job-pubmed"
+      ingestionJobId: "job-pubmed",
+      retstart: 0
+    });
+  });
+
+  it("falls back to the oldest queued supported job when no supplement-name priority job is queued", async () => {
+    mocks.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(dbIngestionJob());
+    mocks.ingestPubMedSourceCandidates.mockResolvedValue(sourceCandidateIngestionResult());
+
+    await expect(runNextSourceCandidateIngestionJob({ now })).resolves.toMatchObject({
+      jobId: "job-pubmed",
+      status: "SUCCEEDED"
+    });
+
+    expect(mocks.findFirst).toHaveBeenCalledTimes(3);
+    expect(mocks.ingestPubMedSourceCandidates).toHaveBeenCalledWith({
+      term: "creatine strength",
+      retmax: 20,
+      region: "AU",
+      interventionId: "creatine",
+      claimId: "creatine-strength",
+      ingestionJobId: "job-pubmed",
+      retstart: 0
     });
   });
 
   it("does not run external ingestion when a selected next job cannot be claimed", async () => {
-    mocks.findFirst.mockResolvedValueOnce(dbIngestionJob()).mockResolvedValueOnce(null);
+    mocks.findFirst
+      .mockResolvedValueOnce(dbIngestionJob())
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
     mocks.updateMany.mockResolvedValueOnce({ count: 0 });
 
     await expect(runNextSourceCandidateIngestionJob({ now })).resolves.toBeNull();
 
-    expect(mocks.findFirst).toHaveBeenCalledTimes(2);
+    expect(mocks.findFirst).toHaveBeenCalledTimes(4);
     expect(mocks.ingestPubMedSourceCandidates).not.toHaveBeenCalled();
     expect(mocks.ingestClinicalTrialSourceCandidates).not.toHaveBeenCalled();
     expect(mocks.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("queuePubMedDeepeningCatchUpJobs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.interventionFindUnique.mockResolvedValue({ id: "astaxanthin" });
+  });
+
+  it("queues page two for completed full supplement-name PubMed jobs with useful candidates", async () => {
+    mocks.findMany.mockResolvedValue([
+      dbIngestionJob({
+        id: "job-astaxanthin-page-1",
+        query: "Astaxanthin",
+        status: "SUCCEEDED",
+        recordsFound: 20,
+        interventionId: "astaxanthin",
+        claimId: null,
+        metadata: {
+          interventionId: "astaxanthin",
+          sourceCandidateDiscoveryPriority: "supplement-name"
+        }
+      })
+    ]);
+    mocks.sourceCandidateFindMany.mockResolvedValue(
+      deepeningCandidates(20, "likely-useful").map(({ metadata, triageScore }) => ({
+        metadata,
+        triageScore
+      }))
+    );
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.create.mockImplementation(async ({ data }) =>
+      dbIngestionJob({
+        id: "job-astaxanthin-page-2",
+        source: data.source,
+        query: data.query,
+        region: data.region,
+        interventionId: data.interventionId,
+        claimId: data.claimId ?? null,
+        metadata: data.metadata
+      })
+    );
+
+    await expect(queuePubMedDeepeningCatchUpJobs({ pageSize: 20 })).resolves.toMatchObject({
+      eligibleJobs: 1,
+      existingJobs: 0,
+      jobCount: 1,
+      newJobs: 1,
+      skippedJobs: 0,
+      sampleJobs: [
+        expect.objectContaining({
+          interventionId: "astaxanthin",
+          query: "Astaxanthin [PubMed results 21-40]",
+          source: "PUBMED"
+        })
+      ]
+    });
+
+    expect(mocks.sourceCandidateFindMany).toHaveBeenCalledWith({
+      where: {
+        source: "PUBMED",
+        query: "Astaxanthin",
+        region: "AU",
+        interventionId: "astaxanthin",
+        claimId: null
+      },
+      orderBy: [{ triageScore: "desc" }, { discoveredAt: "desc" }],
+      take: 20,
+      select: {
+        metadata: true,
+        triageScore: true
+      }
+    });
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: {
+        source: "PUBMED",
+        status: "QUEUED",
+        query: "Astaxanthin [PubMed results 21-40]",
+        region: "AU",
+        interventionId: "astaxanthin",
+        claimId: undefined,
+        metadata: {
+          interventionId: "astaxanthin",
+          sourceCandidateDiscoveryPriority: "pubmed-deepening",
+          sourceCandidateSearchTerm: "Astaxanthin",
+          pubMedRetstart: 20
+        }
+      }
+    });
+  });
+
+  it("skips completed full PubMed jobs when their saved candidates are mostly noise", async () => {
+    mocks.findMany.mockResolvedValue([
+      dbIngestionJob({
+        id: "job-bpc-page-1",
+        query: "BPC-157",
+        status: "SUCCEEDED",
+        recordsFound: 20,
+        interventionId: "bpc-157",
+        claimId: null,
+        metadata: {
+          interventionId: "bpc-157",
+          sourceCandidateDiscoveryPriority: "supplement-name"
+        }
+      })
+    ]);
+    mocks.sourceCandidateFindMany.mockResolvedValue(
+      deepeningCandidates(20, "likely-noise").map(({ metadata, triageScore }) => ({
+        metadata,
+        triageScore
+      }))
+    );
+
+    await expect(queuePubMedDeepeningCatchUpJobs({ pageSize: 20 })).resolves.toMatchObject({
+      eligibleJobs: 1,
+      existingJobs: 0,
+      jobCount: 0,
+      newJobs: 0,
+      skippedJobs: 1
+    });
+
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 });
 
@@ -1106,6 +1486,16 @@ describe("runSourceCandidateIngestionJob", () => {
       status: "SUCCEEDED",
       recordsFound: 1,
       recordsChanged: 1,
+      deepening: {
+        candidateCount: 1,
+        maxResults: 100,
+        pageSize: 10,
+        pageStart: 0,
+        queued: false,
+        reason: "current PubMed page was not full",
+        usefulCandidateCount: 0,
+        usefulRatio: 0
+      },
       error: undefined
     });
 
@@ -1205,12 +1595,177 @@ describe("runSourceCandidateIngestionJob", () => {
 
     expect(mocks.ingestPubMedSourceCandidates).toHaveBeenCalledWith({
       term: "creatine strength",
-      retmax: undefined,
+      retmax: 20,
       region: "AU",
       interventionId: "creatine",
       claimId: "creatine-strength",
-      ingestionJobId: "job-pubmed"
+      ingestionJobId: "job-pubmed",
+      retstart: 0
     });
+  });
+
+  it("queues the next PubMed page when a full page still looks useful", async () => {
+    mocks.findUnique.mockResolvedValue(
+      dbIngestionJob({
+        query: "Astaxanthin",
+        interventionId: "astaxanthin",
+        claimId: null,
+        metadata: {
+          interventionId: "astaxanthin",
+          sourceCandidateDiscoveryPriority: "supplement-name"
+        }
+      })
+    );
+    mocks.interventionFindUnique.mockResolvedValue({ id: "astaxanthin" });
+    mocks.findFirst.mockResolvedValue(null);
+    mocks.create.mockImplementation(async ({ data }) =>
+      dbIngestionJob({
+        id: "job-astaxanthin-page-2",
+        source: data.source,
+        query: data.query,
+        region: data.region,
+        interventionId: data.interventionId,
+        claimId: data.claimId ?? null,
+        metadata: data.metadata
+      })
+    );
+    mocks.ingestPubMedSourceCandidates.mockResolvedValue(
+      sourceCandidateIngestionResult({
+        query: "Astaxanthin",
+        totalCount: 52,
+        pageStart: 0,
+        candidates: deepeningCandidates(20, "likely-useful"),
+        upsert: {
+          received: 20,
+          upserted: 20
+        }
+      })
+    );
+
+    await expect(runSourceCandidateIngestionJob("job-pubmed", { now })).resolves.toMatchObject({
+      jobId: "job-pubmed",
+      status: "SUCCEEDED",
+      recordsFound: 20,
+      recordsChanged: 20,
+      deepening: {
+        nextPageStart: 20,
+        queued: true,
+        reason: "queued next PubMed result page"
+      }
+    });
+
+    expect(mocks.ingestPubMedSourceCandidates).toHaveBeenCalledWith({
+      term: "Astaxanthin",
+      retmax: 20,
+      region: "AU",
+      interventionId: "astaxanthin",
+      claimId: undefined,
+      ingestionJobId: "job-pubmed",
+      retstart: 0
+    });
+    expect(mocks.create).toHaveBeenCalledWith({
+      data: {
+        source: "PUBMED",
+        status: "QUEUED",
+        query: "Astaxanthin [PubMed results 21-40]",
+        region: "AU",
+        interventionId: "astaxanthin",
+        claimId: undefined,
+        metadata: {
+          interventionId: "astaxanthin",
+          sourceCandidateDiscoveryPriority: "pubmed-deepening",
+          sourceCandidateSearchTerm: "Astaxanthin",
+          pubMedRetstart: 20
+        }
+      }
+    });
+  });
+
+  it("uses the stored PubMed search term and retstart for deeper page jobs", async () => {
+    mocks.findUnique.mockResolvedValue(
+      dbIngestionJob({
+        query: "Astaxanthin [PubMed results 21-40]",
+        interventionId: "astaxanthin",
+        claimId: null,
+        metadata: {
+          interventionId: "astaxanthin",
+          sourceCandidateDiscoveryPriority: "pubmed-deepening",
+          sourceCandidateSearchTerm: "Astaxanthin",
+          pubMedRetstart: 20
+        }
+      })
+    );
+    mocks.ingestPubMedSourceCandidates.mockResolvedValue(
+      sourceCandidateIngestionResult({
+        query: "Astaxanthin",
+        totalCount: 32,
+        pageStart: 20,
+        candidates: deepeningCandidates(12, "likely-useful"),
+        upsert: {
+          received: 12,
+          upserted: 12
+        }
+      })
+    );
+
+    await expect(runSourceCandidateIngestionJob("job-pubmed", { now })).resolves.toMatchObject({
+      jobId: "job-pubmed",
+      status: "SUCCEEDED",
+      recordsFound: 12,
+      deepening: {
+        queued: false,
+        reason: "current PubMed page was not full"
+      }
+    });
+
+    expect(mocks.ingestPubMedSourceCandidates).toHaveBeenCalledWith({
+      term: "Astaxanthin",
+      retmax: 20,
+      region: "AU",
+      interventionId: "astaxanthin",
+      claimId: undefined,
+      ingestionJobId: "job-pubmed",
+      retstart: 20
+    });
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("stops deeper PubMed paging when a full page is mostly noise", async () => {
+    mocks.findUnique.mockResolvedValue(
+      dbIngestionJob({
+        query: "BPC-157",
+        interventionId: "bpc-157",
+        claimId: null,
+        metadata: {
+          interventionId: "bpc-157",
+          sourceCandidateDiscoveryPriority: "supplement-name"
+        }
+      })
+    );
+    mocks.ingestPubMedSourceCandidates.mockResolvedValue(
+      sourceCandidateIngestionResult({
+        query: "BPC-157",
+        totalCount: 80,
+        pageStart: 0,
+        candidates: deepeningCandidates(20, "likely-noise"),
+        upsert: {
+          received: 20,
+          upserted: 20
+        }
+      })
+    );
+
+    await expect(runSourceCandidateIngestionJob("job-pubmed", { now })).resolves.toMatchObject({
+      jobId: "job-pubmed",
+      status: "SUCCEEDED",
+      recordsFound: 20,
+      deepening: {
+        queued: false,
+        reason: "current PubMed page did not have enough useful-looking candidates"
+      }
+    });
+
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 
   it("marks unsupported source-candidate jobs skipped", async () => {
@@ -1358,4 +1913,19 @@ function sourceCandidateIngestionResult(overrides: Record<string, unknown> = {})
     },
     ...overrides
   };
+}
+
+function deepeningCandidates(
+  count: number,
+  bucket: "likely-useful" | "maybe-useful" | "likely-noise"
+) {
+  return Array.from({ length: count }, (_, index) => ({
+    dedupeKey: `pubmed|au|deepening|${index + 1}`,
+    metadata: {
+      discoveryClassification: {
+        bucket
+      }
+    },
+    triageScore: bucket === "likely-noise" ? 20 : 70
+  }));
 }

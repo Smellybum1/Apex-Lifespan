@@ -18,12 +18,14 @@ export interface PubMedSearchResult {
   query: string;
   ids: string[];
   count: number;
+  retstart: number;
   source: string;
   articles: PubMedArticleSummary[];
 }
 
 export interface PubMedSearchOptions {
   includeAbstractText?: boolean;
+  retstart?: number;
 }
 
 type PubMedSummaryRecord = Record<string, unknown>;
@@ -44,9 +46,11 @@ export async function searchPubMed(
 ): Promise<PubMedSearchResult> {
   const url = new URL(`${PUBMED_EUTILS_BASE_URL}/esearch.fcgi`);
   const safeRetmax = normaliseRetmax(retmax);
+  const safeRetstart = normaliseRetstart(options.retstart);
   url.searchParams.set("db", "pubmed");
   url.searchParams.set("retmode", "json");
   url.searchParams.set("retmax", String(safeRetmax));
+  url.searchParams.set("retstart", String(safeRetstart));
   url.searchParams.set("term", term);
 
   const response = await fetch(url, LIVE_SOURCE_FETCH_INIT);
@@ -73,6 +77,7 @@ export async function searchPubMed(
     query: term,
     ids,
     count: readNonNegativeInteger(searchResult.count),
+    retstart: safeRetstart,
     source: PUBMED_SOURCE,
     articles: ids.map((id) =>
       withPubMedAbstractText(
@@ -440,6 +445,14 @@ function normaliseRetmax(retmax: number) {
   }
 
   return Math.min(Math.max(Math.trunc(retmax), 1), 20);
+}
+
+function normaliseRetstart(retstart: number | undefined) {
+  if (retstart === undefined || !Number.isFinite(retstart)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.trunc(retstart));
 }
 
 function isPubMedSearchResultRecord(value: unknown): value is PubMedSummaryRecord {

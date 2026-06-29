@@ -44,8 +44,8 @@ describe("supplement onboarding planner", () => {
       outcome: "Sleep",
       sourceBundleId: "core-evidence",
       sourceBundleLabel: "Core evidence sweep",
-      purpose: "review-level",
-      priority: 10,
+      purpose: "intervention-review",
+      priority: 5,
       source: "PubMed"
     });
     expect(plan.sourceQueries[0].command).toContain(

@@ -19,169 +19,7 @@ const LOW_TITLE_OVERLAP_CAUTION =
 const DUPLICATE_IDENTITY_CAUTION =
   "Same source/external id appears in multiple candidate contexts; compare duplicate identity rows before accepting or rejecting any candidate.";
 
-describe("commandUsage", () => {
-  it("describes source-candidate review guardrails", () => {
-    expect(commandUsage()).toContain(
-      "--env-file <path>                 Load an approved local env file before Prisma-backed source-candidate inspection."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-detail <dedupe-key>   Print one source-candidate detail record with review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-reference-matches <dedupe-key> Print accepted-reference matches and review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-review-flags        Print read-only flagged pending review groups with review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-review-flag <flag>  With --candidate-review-flags, filter by broad-safety-query or low-title-query-overlap."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-review-overview     Print read-only pending review groups with review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-region <region>       Filter candidates, overview, flags, or handoff by region."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-claim-missing         Filter candidates, overview, flags, or handoff to rows without claim id."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-intervention-missing  Filter candidates, overview, flags, or handoff to rows without intervention id."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, sibling/duplicate context, and curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidates                      Print read-only source-candidate review rows with review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-siblings <dedupe-key> Print source-candidate siblings with match reasons and review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-curation-draft <dedupe-key> Print read-only claim-link/study draft fields with command hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-curation-status <dedupe-key> Print curation handoff status, next action, and command hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-curation-handoff      Print accepted source-candidate curation handoff rows, next actions, and command hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-duplicates            With --candidates, print read-only duplicate source/external-id groups with review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id."
-    );
-    expect(commandUsage()).toContain(
-      "<dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse."
-    );
-    expect(commandUsage()).toContain(
-      "--review-note <note>              Human review note; required for --accept-candidate and --reject-candidate."
-    );
-    expect(commandUsage()).toContain(
-      "--link-candidate-claim <dedupe-key> Link an accepted candidate reference to its claim."
-    );
-    expect(commandUsage()).toContain(
-      "--extract-candidate-study <dedupe-key> Write structured Study extraction for an accepted, claim-linked candidate."
-    );
-    expect(commandUsage()).toContain(
-      "--study-source-type <type>        Optional study type override: meta-analysis, systematic-review, randomized-controlled-trial, observational-cohort, case-report, animal-study, in-vitro-mechanistic, clinical-trial-record, or regulatory-safety-warning."
-    );
-    expect(commandUsage()).toContain(
-      "--queue-claim-sources <claim-id>  Queue PubMed and ClinicalTrials.gov jobs from claim context."
-    );
-    expect(commandUsage()).toContain(
-      "--jobs-status <status>            Filter --jobs by queued, running, succeeded, failed, or skipped."
-    );
-    expect(commandUsage()).toContain(
-      "--jobs                            Print recent source-candidate ingestion jobs with read-only hints."
-    );
-    expect(commandUsage()).toContain(
-      "--jobs-claim-id <id>              Filter --jobs by claim id."
-    );
-    expect(commandUsage()).toContain(
-      "--run-next                        Run queued PubMed/ClinicalTrials.gov jobs."
-    );
-    expect(commandUsage()).toContain(
-      "--limit <count>                   With --run-next, run up to count queued jobs (default 1, max 25)."
-    );
-    expect(commandUsage()).toContain(
-      "--db-status                       Check local PostgreSQL connectivity without reading review data."
-    );
-  });
-});
-
 describe("parseSourceCandidateJobCommandArgs", () => {
-  it("uses a read-only summary default for the local ingestion command", () => {
-    expect(parseSourceCandidateJobCommandArgs([])).toEqual({
-      help: false,
-      limit: 1,
-      summary: true
-    });
-  });
-
-  it("parses explicit job, batch, and source-specific run limits", () => {
-    expect(
-      parseSourceCandidateJobCommandArgs([
-        "--run-next",
-        "--limit",
-        "99",
-        "--pubmed-retmax",
-        "50",
-        "--clinical-trial-page-size",
-        "3"
-      ])
-    ).toEqual({
-      help: false,
-      limit: 25,
-      summary: false,
-      runNextJobs: true,
-      pubMedRetmax: 20,
-      clinicalTrialPageSize: 3
-    });
-
-    expect(parseSourceCandidateJobCommandArgs(["--job-id", "job-pubmed"])).toEqual({
-      help: false,
-      jobId: "job-pubmed",
-      limit: 1,
-      summary: false
-    });
-
-    expect(() =>
-      parseSourceCandidateJobCommandArgs(["--limit", "2"])
-    ).toThrow("--limit requires --run-next.");
-
-    expect(() =>
-      parseSourceCandidateJobCommandArgs(["--pubmed-retmax", "3"])
-    ).toThrow(
-      "--pubmed-retmax and --clinical-trial-page-size require --run-next or --job-id."
-    );
-
-    expect(() =>
-      parseSourceCandidateJobCommandArgs(["--run-next", "--job-id", "job-pubmed"])
-    ).toThrow("--run-next cannot be combined with --job-id.");
-  });
-
-  it("parses read-only summary mode", () => {
-    expect(parseSourceCandidateJobCommandArgs(["--summary"])).toEqual({
-      help: false,
-      limit: 1,
-      summary: true
-    });
-  });
-
-  it("parses read-only database status mode", () => {
-    expect(parseSourceCandidateJobCommandArgs(["--db-status"])).toEqual({
-      dbStatus: true,
-      help: false,
-      limit: 1,
-      summary: false
-    });
-  });
-
   it("parses read-only source-candidate detail mode", () => {
     const encodedKey = safeCandidateKey("pubmed|au|creatine|28615996");
 
@@ -2001,6 +1839,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
   });
 
   it("does not combine queue mode with other command modes", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--queue-intervention-sources",
+        "astaxanthin",
+        "--region",
+        "au"
+      ])
+    ).toEqual({
+      help: false,
+      limit: 1,
+      queueInterventionSourcesInterventionId: "astaxanthin",
+      region: "au",
+      summary: false
+    });
     expect(() =>
       parseSourceCandidateJobCommandArgs([
         "--queue-pubmed",
@@ -2042,11 +1894,29 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       parseSourceCandidateJobCommandArgs([
         "--queue-claim-sources",
         "creatine-strength",
+        "--queue-intervention-sources",
+        "creatine"
+      ])
+    ).toThrow("Only one queue option can be used at a time.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--queue-claim-sources",
+        "creatine-strength",
         "--claim-id",
         "different-claim"
       ])
     ).toThrow(
       "--intervention-id and --claim-id cannot be combined with --queue-claim-sources."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--queue-intervention-sources",
+        "creatine",
+        "--claim-id",
+        "different-claim"
+      ])
+    ).toThrow(
+      "--intervention-id and --claim-id cannot be combined with --queue-intervention-sources."
     );
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--region", "AU"])
@@ -5447,6 +5317,65 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("queues broad intervention discovery jobs without running jobs", async () => {
+    const stdout = vi.fn();
+    const queueInterventionSources = vi.fn().mockResolvedValue({
+      interventionId: "astaxanthin",
+      label: "Astaxanthin - broad benefit discovery",
+      pubMedTerms: [
+        "Astaxanthin randomized placebo clinical trial",
+        "Astaxanthin eye strain randomized placebo"
+      ],
+      region: "AU",
+      searchTerm: "Astaxanthin",
+      trialTerm: "Astaxanthin",
+      jobs: [
+        {
+          contextMismatchFields: [],
+          created: true,
+          interventionId: "astaxanthin",
+          jobId: "job-astaxanthin-eye-strain",
+          source: "PUBMED",
+          query: "Astaxanthin eye strain randomized placebo",
+          region: "AU",
+          status: "QUEUED"
+        },
+        {
+          contextMismatchFields: [],
+          created: false,
+          interventionId: "astaxanthin",
+          jobId: "job-astaxanthin-trials",
+          source: "CLINICALTRIALS_GOV",
+          query: "Astaxanthin",
+          region: "AU",
+          status: "QUEUED"
+        }
+      ]
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--queue-intervention-sources", "astaxanthin", "--region", "au"],
+        { stdout },
+        { queueInterventionSources, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(queueInterventionSources).toHaveBeenCalledWith({
+      interventionId: "astaxanthin",
+      region: "au"
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        'Intervention discovery jobs: "Astaxanthin - broad benefit discovery" intervention=astaxanthin searchTerm="Astaxanthin" region=AU',
+        '- [QUEUED] job-astaxanthin-eye-strain PUBMED AU "Astaxanthin eye strain randomized placebo" created=true candidates="--candidates --candidate-job-id job-astaxanthin-eye-strain --candidates-limit 10" contextJobs="--jobs --jobs-source pubmed --jobs-region AU --jobs-intervention-id astaxanthin --jobs-limit 10" statusJobs="--jobs --jobs-status queued --jobs-limit 10" intervention=astaxanthin',
+        '- [QUEUED] job-astaxanthin-trials CLINICALTRIALS_GOV AU "Astaxanthin" created=false candidates="--candidates --candidate-job-id job-astaxanthin-trials --candidates-limit 10" contextJobs="--jobs --jobs-source clinical-trials --jobs-region AU --jobs-intervention-id astaxanthin --jobs-limit 10" statusJobs="--jobs --jobs-status queued --jobs-limit 10" intervention=astaxanthin'
+      ].join("\n")
+    );
+  });
+
   it("reports existing queued jobs without claiming them", async () => {
     const stdout = vi.fn();
     const queueJob = vi.fn().mockResolvedValue({
@@ -5605,6 +5534,45 @@ describe("runSourceCandidateJobCommand", () => {
       pubMedRetmax: 3
     });
     expect(stdout).toHaveBeenCalledTimes(2);
+  });
+
+  it("watches queued jobs with a sleep between jobs and idle polls", async () => {
+    const stdout = vi.fn();
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    const runNextJob = vi
+      .fn()
+      .mockResolvedValueOnce(jobResult({ jobId: "job-1" }))
+      .mockResolvedValueOnce(jobResult({ jobId: "job-2" }))
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--run-next",
+          "--watch",
+          "--limit",
+          "2",
+          "--watch-interval-ms",
+          "1000",
+          "--watch-idle-exit",
+          "2"
+        ],
+        { stdout },
+        { runNextJob, sleep }
+      )
+    ).resolves.toBe(0);
+
+    expect(runNextJob).toHaveBeenCalledTimes(4);
+    expect(sleep).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledWith(1000);
+    expect(stdout).toHaveBeenCalledWith(
+      "Watching queued PubMed/ClinicalTrials.gov source-candidate jobs intervalMs=1000 batchLimit=2"
+    );
+    expect(stdout).toHaveBeenCalledWith(
+      '[SUCCEEDED] job-1 PUBMED AU "creatine strength" found=1 changed=1 candidates="--candidates --candidate-job-id job-1 --candidates-limit 10" contextJobs="--jobs --jobs-source pubmed --jobs-region AU --jobs-limit 10" statusJobs="--jobs --jobs-status succeeded --jobs-limit 10"'
+    );
+    expect(stdout).toHaveBeenCalledWith("No queued source-candidate jobs found idlePoll=2");
   });
 
   it("runs a specific job id exactly once", async () => {

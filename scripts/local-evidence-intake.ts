@@ -1,6 +1,9 @@
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
-import { buildSourceSearchQueries } from "@/lib/source-queries";
+import {
+  buildInterventionDiscoverySearchQueries,
+  buildSourceSearchQueries
+} from "@/lib/source-queries";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -40,6 +43,11 @@ async function main() {
         claim,
         intervention
       });
+      const discoveryQueries = intervention
+        ? buildInterventionDiscoverySearchQueries({
+            intervention
+          })
+        : undefined;
 
       return {
         claimId: claim.id,
@@ -58,8 +66,14 @@ async function main() {
         ],
         searches: {
           clinicalTrials: queries.trialTerm,
-          pubMed: queries.pubMedTerm
-        }
+          pubMed: queries.pubMedTerms
+        },
+        discoverySearches: discoveryQueries
+          ? {
+              clinicalTrials: discoveryQueries.trialTerm,
+              pubMed: discoveryQueries.pubMedTerms
+            }
+          : undefined
       };
     });
 
@@ -72,8 +86,18 @@ async function main() {
     for (const row of rows) {
       console.log(`\n${row.interventionName} - ${row.outcome}`);
       console.log(`Claim: ${row.claimText}`);
-      console.log(`PubMed: ${row.searches.pubMed}`);
+      console.log("PubMed:");
+      for (const term of row.searches.pubMed) {
+        console.log(`- ${term}`);
+      }
       console.log(`ClinicalTrials.gov: ${row.searches.clinicalTrials}`);
+      if (row.discoverySearches) {
+        console.log("Broad discovery PubMed:");
+        for (const term of row.discoverySearches.pubMed) {
+          console.log(`- ${term}`);
+        }
+        console.log(`Broad discovery ClinicalTrials.gov: ${row.discoverySearches.clinicalTrials}`);
+      }
       console.log("Capture:");
       for (const field of row.requiredFields) {
         console.log(`- ${field}`);

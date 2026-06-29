@@ -1,80 +1,38 @@
 # Thread Handoff
 
-Refreshed on 2026-06-24 after public UX pass and phase-6 catalog quality.
+Resume-only snapshot. Do not load during ordinary startup.
 
 ## Current State
 
-- Work in `D:\Codex\Apex Lifespan` on branch `codex/queue-claim-sources`.
-- **Source of truth: local PostgreSQL** at `localhost:5432/apex_lifespan`.
-- `.env.local` sets `APEX_DATA_SOURCE=database` and local `DATABASE_URL`.
-- Local catalog: **54 interventions**, **152 claims**, **152/152 Human reviewed**, **152/152 source packets COMPLETE**
-- `src/lib/seed-data.ts` remains **6 interventions / 9 claims** (demo fallback only).
-- Preview DB is still the smaller seeded set. **Do not push preview until the user explicitly asks.**
+- Repo: `D:\Codex\Apex Lifespan`
+- Branch: `codex/queue-claim-sources`
+- Source of truth for development: local PostgreSQL with `APEX_DATA_SOURCE=database`
+- Current worktree is intentionally dirty from the local ingestion/candidate-review/benefit-discovery slice plus workflow doc cleanup. Do not clean, revert, stage, commit, push, or delete unrelated work unless the user explicitly asks.
+- Verify live catalog counts from the local dashboard or `npx tsx scripts/db-inventory.ts`; do not trust old handoff metrics.
 
-## Local Catalog Quality (2026-06-24)
+## Active Product Slice
 
-| Metric | Count |
-|--------|------:|
-| Source packets COMPLETE | **152 / 152** |
-| Human reviewed claims | **152 / 152** |
-| AU/TGA intervention rows | **54 / 54** (intervention-specific framing; product-level ARTG still unverified) |
-| Source candidates pending | **0** |
-| Trial watch rows | **54** |
-
-### Phase 6 public-quality pass (2026-06-24)
-
-```bash
-npx tsx scripts/local-db-catalog-phase6-public-quality.ts
-npx tsx scripts/local-db-catalog-phase6-public-quality.ts --tracks=depth
-npx tsx scripts/local-db-catalog-phase6-public-quality.ts --tracks=au
-```
-
-- **Top-10 depth slice:** creatine, vitamin D, magnesium, omega-3, caffeine, ashwagandha, berberine, CoQ10, vitamin C, green tea extract — added curated PubMed links (ashwagandha stress RCT/meta, vitamin C immune review) and re-synced all top-10 claim packets.
-- **AU/TGA upgrade:** replaced generic batch-import `AU/TGA product-level status unverified` rows with intervention-specific UNKNOWN / peptide UNAPPROVED / drug-watchlist framing for **48** rows.
-
-### Prior expansion + ingestion (summary)
-
-- Phase 4 expansion onboarding: 29 interventions / 94 claims
-- Live PubMed ingestion + phase 5 triage: **0** pending candidates
-- Batch human review: **152 / 152** (`batch-review-expansion-claims.ts --scope all`)
-
-## Public UI (2026-06-24)
-
-- Evidence dashboard: filter counts, page-scroll evidence map, collapsed claim-details drawer, evidence-card pagination, selected-claim context bar.
-- Intervention detail pages: collapsible sections (summary + claim cards open by default), trial list show-more (`InterventionTrialList`).
-
-## Maintenance Scripts
-
-```bash
-npx tsx scripts/db-inventory.ts
-npx tsx scripts/local-db-catalog-phase4-expansion.ts
-npx tsx scripts/local-db-catalog-phase6-public-quality.ts
-npx tsx scripts/queue-catalog-source-ingestion.ts --apply --pubmed-only --scope expansion
-npx tsx scripts/batch-review-expansion-claims.ts --scope all --actor-email <email>
-```
-
-## Local-First Workflow
-
-1. Develop against local DB only (`npm run dev` with Docker Postgres up).
-2. Verify with `npx tsx scripts/db-inventory.ts`.
-3. Run narrow tests for UI/code changes.
-4. **Preview promotion (user must ask first):** migrate preview if needed, then copy/promote local data. Do not use `db-seed-env` for promotion.
+- Local ingestion dashboard/API for PubMed and ClinicalTrials.gov discovery.
+- Candidate Review with bulk accept/reject.
+- Accepted-candidate processor.
+- Benefit Discovery auto-build/preview for conservative local draft claims.
+- Identity Resolver for wrong/ambiguous supplement matches.
+- Context-efficiency docs now point ordinary startup at `AGENTS.md` + `docs/codex/project.md` only.
 
 ## Hard Stops
 
-- Ask first before **preview/production** DB changes, deploys, migrations, secrets, or destructive cleanup.
-- Use `Human reviewed` only when a human explicitly confirms it.
+- Ask before preview/production deploys, preview/production DB changes, migrations, secrets, destructive cleanup, or medical/regulatory boundary changes.
+- Use `Human reviewed` only after explicit human confirmation.
 - Public routes stay read-only.
 - Do not infer product-level ARTG/AUST status from generic intervention evidence.
+- Avoid medical advice and peptide operational guidance.
 
-## Remaining Gaps
+## Next Useful Checks
 
-- Curated trial NCT leads should be manually verified before public promotion.
-- Many study extractions remain catalog-maintenance quality, not full operator curation.
-- Product-level ARTG/AUST verification is still mostly UNKNOWN at intervention level.
-- Preview promotion script still not built.
+- Docs-only changes: `git diff --check -- <docs>`
+- UI/local ingestion changes: `npm run lint`, targeted tests where practical, then `npm run typecheck` when shared TypeScript changed.
+- If Prisma generation is locked on Windows, stop only the Apex dev server, rerun the check, then restart it.
 
 ## Retired From Active Work
 
-- Readiness gates, queues, promotion chains, Composer monitoring, review packets.
-- `.ai/delegation/` logs as backlog or instructions.
+- Readiness gates, promotion chains, Composer/token-ratio monitoring, launch rehearsals, generated packets, and `.ai/delegation/` logs as backlog or instructions.

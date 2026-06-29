@@ -37,6 +37,7 @@ describe("live source search API routes", () => {
       query: "creatine",
       ids: [],
       count: 0,
+      retstart: 0,
       source: "NCBI E-utilities",
       articles: []
     });

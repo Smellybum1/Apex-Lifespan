@@ -1,5 +1,7 @@
 # Scheduled Ingestion Retry Policy
 
+Reference-only legacy launch doc. Do not load during ordinary startup or local product work; use only when the user explicitly asks about hosted scheduled ingestion retries.
+
 Last updated: 2026-06-12
 
 Use this policy before approving scheduled ingestion retries for the fully live product. It keeps retries explicit, bounded, and separate from source-candidate review or public evidence promotion.

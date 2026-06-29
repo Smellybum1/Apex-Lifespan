@@ -1,5 +1,7 @@
 # Operations Runbook
 
+Reference-only legacy launch doc. Do not load during ordinary startup or local product work; use only when the user explicitly asks for production operations or launch evidence.
+
 Last updated: 2026-06-12
 
 ## Scope

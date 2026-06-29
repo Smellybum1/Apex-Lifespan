@@ -1,5 +1,7 @@
 # Fully Live Launch Checklist
 
+Reference-only legacy launch doc. Do not load during ordinary startup or local product work; use only when the user explicitly asks for a fully live production launch.
+
 Last updated: 2026-06-12
 
 Use this checklist only for the fully live production launch. The seed-backed public demo can remain live while these gates are incomplete.

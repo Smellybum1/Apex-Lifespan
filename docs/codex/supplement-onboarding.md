@@ -1,38 +1,39 @@
 # Supplement Onboarding
 
-Compact active hub for adding or reviewing supplements. Full command detail lives in `docs/codex/reference/supplement-onboarding-command-reference.md`.
+Conditional/reference workflow. Do not load during ordinary startup or routine local dashboard work. Use this only when adding a new supplement/intervention or repairing old onboarding docs.
 
-## Use This First
+## Current Direction
 
-- New supplement draft: `npm run onboarding:guide -- --name <supplement> --summary`.
-- Existing supplement review: `npm run onboarding:guide -- --supplement <id-or-slug> --summary`.
-- Batch draft review: `npm run onboarding:guide -- --batch-file <reviewed-batch-json> --summary`.
-- Existing batch review: `npm run onboarding:guide -- --supplements <id-or-slug,id-or-slug> --summary`.
-- Full-text source gate next step: `npm run onboarding:fulltext-sources -- --next --summary`.
+The active product path is local database work plus the dashboard-assisted ingestion/candidate flow. For most new evidence work, prefer:
 
-The guide wraps the packet builders and recommends one safest next command. Open the reference doc only when you need the exact command surface or mode-specific behavior.
+1. Add or update the local catalog row/data using the current codebase patterns.
+2. Start broad local ingestion from the dashboard.
+3. Review candidates in Candidate Review.
+4. Process accepted candidates.
+5. Use Benefit Discovery and Identity Resolver to create conservative local draft claims or links.
+
+## Script Fallback
+
+The historical onboarding helpers still exist as scripts, but their old `npm run onboarding:*` aliases are not part of the current package command surface. If you need them, inspect the script and run it directly with `npx tsx`:
+
+```bash
+npx tsx scripts/onboarding-guide.ts --help
+npx tsx scripts/onboarding-seed-diff.ts --help
+npx tsx scripts/onboarding-review-packet.ts --help
+npx tsx scripts/full-text-source-readiness.ts --help
+```
+
+Use these only when they save time for a specific onboarding task. Do not recreate packet/rehearsal/readiness chains as routine workflow.
 
 ## Boundaries
 
-- Onboarding helpers are read-only by default.
-- Local review-kit writers create local Markdown/JSON review artifacts only.
-- Source queueing, candidate decisions, extraction writes, claim review, connector approval, live full-text fetch, and public promotion remain separate explicit workflows.
-- Imported database drafts create only draft interventions, unreviewed claims, and Unknown AU/TGA placeholders behind the reviewed operator import gate.
-- Do not infer product-level ARTG/AUST status from ingredient evidence.
-- Avoid peptide sourcing, compounding, reconstitution, injection, cycling, dosing, or self-administration guidance.
-
-## Common Flow
-
-1. Draft the supplement and scoped claims with `onboarding:guide`.
-2. Generate a local review kit when the draft is worth reviewing.
-3. Review claim scope, safety/watchlist flags, AU/TGA product-status gaps, and source-query plan.
-4. Use seed-diff/import-assistant outputs for manual review or the separately gated operator draft import.
-5. Queue sources only after reviewed records exist.
-6. Accept/reject candidates, extract studies, mark claim packets reviewed, and promote public evidence only through explicit operator-owned steps.
-7. Use monitor/status/quality summaries for stale evidence, missing source tracking, full-text gates, and next actions.
+- Keep onboarding writes local unless the user explicitly asks for preview/production promotion.
+- Imported or drafted records must remain unreviewed until a human explicitly confirms review.
+- Product-level ARTG/AUST status requires product-level evidence.
+- Source queueing, candidate review, study extraction, and public promotion remain separate explicit tasks.
+- Avoid medical advice and peptide sourcing, compounding, reconstitution, injection, cycling, dosing, or self-administration guidance.
 
 ## Reference
 
-- Full onboarding command reference: `docs/codex/reference/supplement-onboarding-command-reference.md`.
-- Connector approval decision evidence: `docs/codex/onboarding/fulltext-connector-approval-decision.md`.
-- Plans and completed implementation history: `docs/codex/plans/archive/` and the command reference history section.
+- Full historical command detail: `docs/codex/reference/supplement-onboarding-command-reference.md`.
+- Completed implementation history: `docs/codex/plans/archive/`.

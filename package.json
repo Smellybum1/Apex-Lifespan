@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsx scripts/generate-prisma-client.ts && next typegen && tsc --noEmit",
+    "typecheck:tsc": "tsc --noEmit",
     "smoke:public-mvp": "tsx scripts/smoke-public-mvp.ts",
     "ingest:sources": "tsx scripts/run-source-candidate-jobs.ts",
     "db:validate": "prisma validate",

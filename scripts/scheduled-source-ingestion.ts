@@ -169,3 +169,5 @@ main().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });
+// Legacy/reference process script. Not part of ordinary local product work.
+// Prefer the local dashboard ingestion runner unless the user explicitly asks for hosted scheduling.

@@ -17,6 +17,7 @@ interface SourceCandidateIngestionContext extends SourceCandidateContext {
 
 export interface PubMedSourceCandidateIngestionInput extends SourceCandidateIngestionContext {
   retmax?: number;
+  retstart?: number;
 }
 
 export interface ClinicalTrialSourceCandidateIngestionInput
@@ -28,15 +29,21 @@ export interface SourceCandidateIngestionResult {
   source: SourceCandidateSource;
   query: string;
   candidates: SourceCandidate[];
+  totalCount?: number;
+  pageStart?: number;
   upsert: SourceCandidateUpsertSummary;
 }
 
 export async function ingestPubMedSourceCandidates({
   term,
   retmax,
+  retstart,
   ...context
 }: PubMedSourceCandidateIngestionInput): Promise<SourceCandidateIngestionResult> {
-  const result = await searchPubMed(term, retmax, { includeAbstractText: true });
+  const result = await searchPubMed(term, retmax, {
+    includeAbstractText: true,
+    retstart
+  });
   const candidates = buildPubMedSourceCandidates(result, context);
   const upsert = await upsertSourceCandidateDrafts(candidates);
 
@@ -44,6 +51,8 @@ export async function ingestPubMedSourceCandidates({
     source: "PubMed",
     query: result.query,
     candidates,
+    totalCount: result.count,
+    pageStart: result.retstart,
     upsert
   };
 }

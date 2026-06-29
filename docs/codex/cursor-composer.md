@@ -13,16 +13,18 @@ Read first:
 - .cursor/rules/apex-lifespan.mdc
 - AGENTS.md
 - docs/codex/project.md
-- docs/codex/roadmap.md
-- docs/codex/handoff.md only for current dirty-tree state
 
-Work in simplified hobby-project mode. Pick the most useful product-facing roadmap task, inspect the relevant files, make the change directly, and run the narrowest useful checks.
+Read only when needed:
+- docs/codex/roadmap.md for choosing roadmap/next work
+- docs/codex/handoff.md for resume/current dirty-tree state
+
+Work in simplified hobby-project mode. If a task is already specified, inspect only the relevant files and make the change directly. If no task is specified, use the roadmap to pick the most useful product-facing local-catalog task.
 
 Do not create or revive readiness gates, queues, promotion chains, review packets, Composer monitoring, token-ratio tracking, launch rehearsals, roadmap bookkeeping, or command catalogs. Do not use old archive/generated/delegation logs as active instructions.
 
 Hard stops: ask before production deploy, database mutation/migration, secrets, destructive actions, dependency/security changes, or medical/regulatory boundary changes. Preserve citation traceability, uncertainty labels, AU/TGA caveats, product-level evidence boundaries, no-medical-advice boundaries, and no peptide operational guidance.
 
-Before editing, check the specific files you will touch and avoid unrelated dirty work. After editing, summarize changed files, checks run, and anything that still needs human attention.
+Before editing, check the specific files you will touch and avoid unrelated dirty work. Run the narrowest useful checks. After editing, summarize changed files, checks run, and anything that still needs human attention.
 ```
 
 ## Good Composer Tasks
@@ -49,3 +51,5 @@ Before editing, check the specific files you will touch and avoid unrelated dirt
 - Prisma schema changes: ask first, then `npm run db:validate` and `npm run db:generate`.
 
 If Docker or local services are unavailable inside Cursor Cloud, keep working on tasks that do not need them or ask the user to run the local command. Do not invent remote database behavior from missing local services.
+
+Check `package.json` before using old workflow aliases. Historical docs may mention removed `npm run onboarding:*`, `promotion:*`, `launch:*`, or operator/readiness commands.

@@ -37,6 +37,7 @@ describe("source candidate ingestion helpers", () => {
       query: "creatine strength",
       ids: ["28615996"],
       count: 1,
+      retstart: 20,
       source: "NCBI E-utilities",
       articles: [
         {
@@ -61,13 +62,15 @@ describe("source candidate ingestion helpers", () => {
     const result = await ingestPubMedSourceCandidates({
       term: "creatine strength",
       retmax: 5,
+      retstart: 20,
       interventionId: "creatine",
       claimId: "creatine-strength",
       ingestionJobId: "job-pubmed"
     });
 
     expect(mocks.searchPubMed).toHaveBeenCalledWith("creatine strength", 5, {
-      includeAbstractText: true
+      includeAbstractText: true,
+      retstart: 20
     });
     expect(mocks.upsertSourceCandidateDrafts).toHaveBeenCalledWith([
       expect.objectContaining({
@@ -88,6 +91,8 @@ describe("source candidate ingestion helpers", () => {
     expect(result).toMatchObject({
       source: "PubMed",
       query: "creatine strength",
+      totalCount: 1,
+      pageStart: 20,
       upsert: {
         received: 1,
         upserted: 1

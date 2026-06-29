@@ -8,6 +8,7 @@ import { EXPANSION_INTERVENTION_IDS } from "./local-db-catalog-phase4-expansion-
 
 const DEFAULT_REVIEW_NOTE =
   "Batch human review of complete expansion claim packets (user-approved hobby-project pass).";
+const HUMAN_REVIEW_CONFIRMATION_FLAG = "--confirm-human-reviewed";
 
 type Scope = "expansion" | "all";
 
@@ -73,6 +74,12 @@ async function main() {
       return;
     }
 
+    if (!args.confirmHumanReviewed) {
+      throw new Error(
+        `${HUMAN_REVIEW_CONFIRMATION_FLAG} is required before marking claim packets Human reviewed. Use it only after explicit human confirmation.`
+      );
+    }
+
     const result = {
       reviewed: [] as string[],
       skipped: [] as string[],
@@ -135,6 +142,7 @@ async function main() {
 function readArgs(argv: string[]) {
   const parsed = {
     actorEmail: "",
+    confirmHumanReviewed: false,
     dryRun: false,
     reviewNote: DEFAULT_REVIEW_NOTE,
     scope: "expansion" as Scope
@@ -145,6 +153,11 @@ function readArgs(argv: string[]) {
 
     if (arg === "--dry-run") {
       parsed.dryRun = true;
+      continue;
+    }
+
+    if (arg === HUMAN_REVIEW_CONFIRMATION_FLAG) {
+      parsed.confirmHumanReviewed = true;
       continue;
     }
 

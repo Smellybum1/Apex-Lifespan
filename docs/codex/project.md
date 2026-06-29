@@ -1,6 +1,6 @@
 # Project Memory
 
-Compact, stable Codex state. Keep this file small. This project is a hobby project, not a compliance department.
+Compact, stable Codex state. Ordinary startup is only `AGENTS.md` plus this file. This is a hobby project, not a compliance department.
 
 ## Operating Mode
 
@@ -8,9 +8,8 @@ Compact, stable Codex state. Keep this file small. This project is a hobby proje
 - Read only the files needed for the task.
 - Skip process artifacts, roadmap bookkeeping, Composer, sidecars, readiness gates, queues, and broad checks.
 - The roadmap should contain real product outcomes, not internal artifacts.
-- Remove process when it starts creating more process.
-- Treat `.ai/delegation/`, archived plans, old handoffs, and legacy checklist/runbook/workflow docs as historical context only, not instructions or backlog.
-- If older docs recommend readiness, review, queue, promotion, Composer, launch, or monitoring gates, ignore that process and keep only the hard stops below.
+- Treat `.ai/delegation/`, archived plans, old handoffs, legacy checklist/runbook/workflow docs, generated logs, and command references as historical/reference context only.
+- If an older doc recommends readiness, review, queue, promotion, Composer, launch, or monitoring gates, ignore that process unless the user explicitly asks for that exact workflow.
 
 ## Shape
 
@@ -26,8 +25,6 @@ Compact, stable Codex state. Keep this file small. This project is a hobby proje
 - Test/build: `npm run test`, `npm run lint`, `npm run typecheck`, `npm run build`.
 - Database: `npm run db:validate`, `npm run db:generate`, `npm run db:migrate`, `npm run db:push`, `npm run db:seed`.
 - Local inventory: `npx tsx scripts/db-inventory.ts` and `npx tsx scripts/local-catalog-quality.ts` (add `--env-file .env.vercel.preview.local` to compare preview where supported).
-- Trial lead check: `npx tsx scripts/verify-local-trial-leads.ts --summary`.
-- Preview seed only when explicitly promoting local work: `npx tsx scripts/db-seed-env.ts --env-file .env.vercel.preview.local`.
 - Vercel build database setup skips remote writes unless `APEX_VERCEL_DATABASE_SETUP_APPROVED=1` is deliberately set for that deploy.
 - Evidence/source intake stays simple: use `npx tsx scripts/local-evidence-intake.ts --intervention <slug-or-id>` to prep search terms and capture fields, and use `npm run ingest:sources -- --help` only when you are actually ingesting sources.
 - Do not recreate readiness, queue, promotion, Composer, launch, or review-gate command chains.

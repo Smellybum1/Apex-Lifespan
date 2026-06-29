@@ -14,15 +14,73 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Check,
   ChevronDown,
   CircleHelp,
   ClipboardCheck,
+  DatabaseZap,
   ExternalLink,
   Filter,
   FlaskConical,
-  Search
+  LoaderCircle,
+  Play,
+  RefreshCw,
+  Search,
+  Square,
+  X
 } from "lucide-react";
 import { TrialClassificationBadge } from "@/components/trial-classification-badge";
+import {
+  DASHBOARD_MAIN_TABS,
+  LOCAL_CANDIDATE_BUCKET_OPTIONS,
+  LOCAL_DASHBOARD_TABS
+} from "@/components/local-ingestion/types";
+import { InlineConfirmation } from "@/components/local-ingestion/inline-confirmation";
+import {
+  LocalNextActionStrip,
+  acceptedCandidateProcessingNextAction,
+  benefitDiscoveryNextAction,
+  candidateReviewNextAction,
+  identityResolutionNextAction,
+  localIngestionNextAction
+} from "@/components/local-ingestion/next-action";
+import type {
+  DashboardMainTab,
+  LocalAcceptedCandidateProcessingResult,
+  LocalAcceptedCandidateProcessingRunResponse,
+  LocalAcceptedCandidateProcessingStatusResponse,
+  LocalBenefitDiscoveryAction,
+  LocalBenefitDiscoveryActionResponse,
+  LocalBenefitDiscoveryAutomationAction,
+  LocalBenefitDiscoveryAutomationDecision,
+  LocalBenefitDiscoveryAutomationResponse,
+  LocalBenefitDiscoveryCluster,
+  LocalBenefitDiscoveryQueueResponse,
+  LocalBenefitDiscoverySource,
+  LocalCandidateReviewBucket,
+  LocalCandidateReviewBulkAction,
+  LocalCandidateReviewBulkResponse,
+  LocalCandidateReviewCandidate,
+  LocalCandidateReviewDecisionResponse,
+  LocalCandidateReviewResponse,
+  LocalCandidateReviewSourceFilter,
+  LocalCandidateReviewStudyFilter,
+  LocalIdentityResolutionAction,
+  LocalIdentityResolutionActionResponse,
+  LocalIdentityResolutionCandidate,
+  LocalIdentityResolutionQueueResponse,
+  LocalIngestionCandidateReadout,
+  LocalIngestionDeepeningCatchUpReadout,
+  LocalIngestionDiscoveryClassificationReadout,
+  LocalIngestionJobReadout,
+  LocalIngestionJobStatus,
+  LocalIngestionLogEntry,
+  LocalIngestionRunJobResult,
+  LocalIngestionRunResponse,
+  LocalIngestionSource,
+  LocalIngestionStartResponse,
+  LocalIngestionStatusReadout
+} from "@/components/local-ingestion/types";
 
 import {
   buildCatalogTrustSummary,
@@ -43,6 +101,11 @@ import {
   normaliseLiveSourceSearchTerm,
   publicLiveSourceDisplayError
 } from "@/lib/live-source-request";
+import {
+  isLocalIngestionWriteMethod,
+  LOCAL_INGESTION_WRITE_HEADER,
+  LOCAL_INGESTION_WRITE_HEADER_VALUE
+} from "@/lib/local-ingestion-security";
 import { australiaRegulatoryTone } from "@/lib/regulatory";
 import {
   buildProductAustraliaRegulatoryVerifications,
@@ -100,7 +163,6 @@ type SourceSearchSubmission = {
 };
 
 const CODEX_REVIEW_SIDECAR_URL_KEY = "apexCodexReviewSidecarUrl";
-const CODEX_REVIEW_TOKEN_KEY = "apexCodexReviewToken";
 const DEFAULT_CODEX_REVIEW_SIDECAR_URL = "http://127.0.0.1:3217/codex/review";
 const HUMAN_REVIEWED_TOOLTIP =
   "Human reviewed means a human reviewer checked the source packet against the scoped claim. It does not mean clinical guideline endorsement.";
@@ -496,12 +558,15 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   );
   const detailSectionRef = useRef<HTMLElement>(null);
   const [detailPanelsOpen, setDetailPanelsOpen] = useState(false);
+  const [mainTab, setMainTab] = useState<DashboardMainTab>("evidence-map");
+  const [localToolsVisible, setLocalToolsVisible] = useState(false);
   const catalogTrustSummary = useMemo(() => buildCatalogTrustSummary(data), [data]);
 
   const handleSelectClaim = useCallback<SelectClaimHandler>((claimId, options) => {
     setActiveClaimId(claimId);
 
     if (options?.scrollToDetail) {
+      setMainTab("claim-details");
       setDetailPanelsOpen(true);
       requestAnimationFrame(() => {
         detailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -577,6 +642,16 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     setActiveClaimId(filteredClaims[0].id);
   }, [activeClaimId, filteredClaims]);
 
+  useEffect(() => {
+    setLocalToolsVisible(isLocalDashboardHost());
+  }, []);
+
+  useEffect(() => {
+    if (!localToolsVisible && LOCAL_DASHBOARD_TABS.has(mainTab)) {
+      setMainTab("evidence-map");
+    }
+  }, [localToolsVisible, mainTab]);
+
   const activeClaim =
     filteredClaims.find((claim) => claim.id === activeClaimId) ??
     filteredClaims[0] ??
@@ -632,140 +707,2727 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     <main className="min-h-screen overflow-x-hidden px-4 py-4 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full min-w-0 max-w-[1500px] flex-col gap-4">
         <Header data={data} />
-        <CatalogTrustPanel summary={catalogTrustSummary} />
+        <DashboardMainTabs
+          activeTab={mainTab}
+          includeLocalTools={localToolsVisible}
+          onChange={setMainTab}
+        />
 
-        <section className="min-w-0">
-          <div className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h2 className="text-base font-semibold text-ink">Evidence Map</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Claim cells show composite evidence confidence, with safety and hype penalties included.
-                </p>
-                <p className="mt-1 text-xs text-slate-600">
-                  {formatEvidenceMapFilterSummary({
-                    filteredClaimCount: filteredClaims.length,
-                    filteredInterventionCount: filteredInterventions.length,
-                    totalClaimCount: claims.length,
-                    totalInterventionCount: interventions.length
-                  })}
-                </p>
+        {mainTab === "evidence-map" ? (
+          <section className="min-w-0">
+            <div className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-ink">Evidence Map</h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Claim cells show composite evidence confidence, with safety and hype penalties included.
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {formatEvidenceMapFilterSummary({
+                      filteredClaimCount: filteredClaims.length,
+                      filteredInterventionCount: filteredInterventions.length,
+                      totalClaimCount: claims.length,
+                      totalInterventionCount: interventions.length
+                    })}
+                  </p>
+                </div>
+                <div className="grid min-w-0 gap-2 lg:grid-cols-2 xl:grid-cols-4">
+                  <label className="relative" htmlFor="evidence-map-search">
+                    <Search
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                    />
+                    <span className="sr-only">Search interventions</span>
+                    <input
+                      id="evidence-map-search"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      className="h-10 w-full rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                      placeholder="Search interventions"
+                    />
+                  </label>
+                  <label className="relative" htmlFor="evidence-map-category">
+                    <Filter
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                    />
+                    <span className="sr-only">Filter category</span>
+                    <select
+                      id="evidence-map-category"
+                      value={category}
+                      onChange={(event) => setCategory(event.target.value)}
+                      className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                    >
+                      {categories.map((item) => (
+                        <option key={item}>{item}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="relative" htmlFor="evidence-map-label">
+                    <Filter
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                    />
+                    <span className="sr-only">Filter by evidence label</span>
+                    <select
+                      id="evidence-map-label"
+                      value={labelFilter}
+                      onChange={(event) => setLabelFilter(event.target.value)}
+                      className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                    >
+                      {evidenceLabels.map((item) => (
+                        <option key={item} value={item}>
+                          {item === "All" ? "All labels" : item}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="relative" htmlFor="evidence-map-outcome">
+                    <Filter
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                    />
+                    <span className="sr-only">Filter by outcome area</span>
+                    <select
+                      id="evidence-map-outcome"
+                      value={outcomeFilter}
+                      onChange={(event) => setOutcomeFilter(event.target.value)}
+                      className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                    >
+                      {outcomeAreas.map((item) => (
+                        <option key={item} value={item}>
+                          {item === "All" ? "All outcomes" : shortOutcome(item as OutcomeArea)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
               </div>
-              <div className="grid min-w-0 gap-2 lg:grid-cols-2 xl:grid-cols-4">
-                <label className="relative" htmlFor="evidence-map-search">
-                  <Search
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
-                  />
-                  <span className="sr-only">Search interventions</span>
-                  <input
-                    id="evidence-map-search"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    className="h-10 w-full rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
-                    placeholder="Search interventions"
-                  />
-                </label>
-                <label className="relative" htmlFor="evidence-map-category">
-                  <Filter
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
-                  />
-                  <span className="sr-only">Filter category</span>
-                  <select
-                    id="evidence-map-category"
-                    value={category}
-                    onChange={(event) => setCategory(event.target.value)}
-                    className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
-                  >
-                    {categories.map((item) => (
-                      <option key={item}>{item}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="relative" htmlFor="evidence-map-label">
-                  <Filter
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
-                  />
-                  <span className="sr-only">Filter by evidence label</span>
-                  <select
-                    id="evidence-map-label"
-                    value={labelFilter}
-                    onChange={(event) => setLabelFilter(event.target.value)}
-                    className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
-                  >
-                    {evidenceLabels.map((item) => (
-                      <option key={item} value={item}>
-                        {item === "All" ? "All labels" : item}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="relative" htmlFor="evidence-map-outcome">
-                  <Filter
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
-                  />
-                  <span className="sr-only">Filter by outcome area</span>
-                  <select
-                    id="evidence-map-outcome"
-                    value={outcomeFilter}
-                    onChange={(event) => setOutcomeFilter(event.target.value)}
-                    className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
-                  >
-                    {outcomeAreas.map((item) => (
-                      <option key={item} value={item}>
-                        {item === "All" ? "All outcomes" : shortOutcome(item as OutcomeArea)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+
+              <EvidenceMap
+                claims={filteredClaims}
+                interventions={filteredInterventions}
+                activeClaimId={activeClaimIdForDisplay}
+                onSelectClaim={handleSelectClaim}
+              />
             </div>
+          </section>
+        ) : null}
 
-            <EvidenceMap
-              claims={filteredClaims}
-              interventions={filteredInterventions}
+        {mainTab === "claim-details" ? (
+          <section
+            ref={detailSectionRef}
+            aria-label="Selected claim details"
+            className="min-w-0 scroll-mt-4"
+          >
+            {activeClaim ? (
+              <ActiveClaimContextBar
+                activeClaim={activeClaim}
+                activeIntervention={activeIntervention}
+              />
+            ) : null}
+            <EvidenceDashboardTabbedPanels
+              activeClaim={activeClaim}
               activeClaimId={activeClaimIdForDisplay}
+              activeIntervention={activeIntervention}
+              filteredClaims={filteredClaims}
+              hasFilteredClaims={hasFilteredClaims}
+              interventionsById={interventionsById}
+              labelFindings={labelFindings}
+              labelText={labelText}
+              onOpenChange={setDetailPanelsOpen}
               onSelectClaim={handleSelectClaim}
+              open={detailPanelsOpen}
+              productAustraliaVerificationById={productAustraliaVerificationById}
+              productSignals={productSignals}
+              referencesById={referencesById}
+              safetyAlerts={safetyAlerts}
+              setLabelText={setLabelText}
+              studies={studies}
+              tableRows={tableRows}
+              trialWatchItems={trialWatchItems}
             />
-          </div>
-        </section>
+          </section>
+        ) : null}
 
-        <section
-          ref={detailSectionRef}
-          aria-label="Selected claim details"
-          className="min-w-0 scroll-mt-4"
-        >
-          {activeClaim ? (
-            <ActiveClaimContextBar activeClaim={activeClaim} activeIntervention={activeIntervention} />
-          ) : null}
-          <EvidenceDashboardTabbedPanels
-            activeClaim={activeClaim}
-            activeClaimId={activeClaimIdForDisplay}
-            activeIntervention={activeIntervention}
-            filteredClaims={filteredClaims}
-            hasFilteredClaims={hasFilteredClaims}
-            interventionsById={interventionsById}
-            labelFindings={labelFindings}
-            labelText={labelText}
-            onOpenChange={setDetailPanelsOpen}
-            onSelectClaim={handleSelectClaim}
-            open={detailPanelsOpen}
-            productAustraliaVerificationById={productAustraliaVerificationById}
-            productSignals={productSignals}
-            referencesById={referencesById}
-            safetyAlerts={safetyAlerts}
-            setLabelText={setLabelText}
-            studies={studies}
-            tableRows={tableRows}
-            trialWatchItems={trialWatchItems}
-          />
-        </section>
+        {mainTab === "candidate-review" ? <LocalCandidateReviewWorkbench /> : null}
+        {mainTab === "local-ingestion" ? <LocalIngestionControl /> : null}
+        {mainTab === "catalog-trust" ? <CatalogTrustPanel summary={catalogTrustSummary} /> : null}
       </div>
     </main>
   );
+}
+
+function DashboardMainTabs({
+  activeTab,
+  includeLocalTools,
+  onChange
+}: {
+  activeTab: DashboardMainTab;
+  includeLocalTools: boolean;
+  onChange: (tab: DashboardMainTab) => void;
+}) {
+  const visibleTabs = DASHBOARD_MAIN_TABS.filter(
+    (tab) => includeLocalTools || !LOCAL_DASHBOARD_TABS.has(tab.value)
+  );
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Dashboard sections"
+      className="flex flex-wrap gap-2 rounded-lg border border-line bg-white p-2 shadow-panel"
+    >
+      {visibleTabs.map((tab) => (
+        <button
+          key={tab.value}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === tab.value}
+          onClick={() => onChange(tab.value)}
+          className={cn(
+            "h-9 rounded-md border px-3 text-sm font-semibold transition",
+            activeTab === tab.value
+              ? "border-signal bg-blue-50 text-signal"
+              : "border-transparent bg-white text-slate-700 hover:border-line hover:bg-mist"
+          )}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function LocalIngestionControl() {
+  const [visible, setVisible] = useState(false);
+  const [active, setActive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<LocalIngestionStatusReadout | null>(null);
+  const [statusMessage, setStatusMessage] = useState(
+    "Idle. Press Start ingestion to queue broad supplement discovery."
+  );
+  const [logEntries, setLogEntries] = useState<LocalIngestionLogEntry[]>([]);
+  const stopRequestedRef = useRef(false);
+  const runIdRef = useRef(0);
+
+  const appendLog = useCallback((entry: Omit<LocalIngestionLogEntry, "id" | "timestamp">) => {
+    setLogEntries((current) =>
+      [
+        {
+          ...entry,
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          timestamp: new Date().toISOString()
+        },
+        ...current
+      ].slice(0, 20)
+    );
+  }, []);
+
+  const refreshStatus = useCallback(async () => {
+    const nextStatus = await fetchLocalIngestionStatus();
+    setStatus(nextStatus);
+    return nextStatus;
+  }, []);
+
+  useEffect(() => {
+    if (!isLocalDashboardHost()) {
+      return;
+    }
+
+    setVisible(true);
+    refreshStatus()
+      .then((nextStatus) => {
+        setStatusMessage(localIngestionIdleMessage(nextStatus));
+      })
+      .catch((error) => {
+        setStatusMessage(localIngestionErrorMessage(error));
+      });
+  }, [refreshStatus]);
+
+  useEffect(() => {
+    return () => {
+      stopRequestedRef.current = true;
+      runIdRef.current += 1;
+    };
+  }, []);
+
+  const stopIngestion = useCallback(() => {
+    stopRequestedRef.current = true;
+    setActive(false);
+    setStatusMessage("Stopping after the current ingestion request finishes.");
+    appendLog({
+      level: "info",
+      message: "Stop requested",
+      detail: "The dashboard will not start another batch after the current request."
+    });
+  }, [appendLog]);
+
+  const startIngestion = useCallback(async () => {
+    if (active || busy) {
+      return;
+    }
+
+    const runId = runIdRef.current + 1;
+    runIdRef.current = runId;
+    stopRequestedRef.current = false;
+    setActive(true);
+    setBusy(true);
+    setStatusMessage("Queuing broad discovery searches for every local intervention.");
+
+    try {
+      const startResult = await postLocalIngestionStart();
+      setStatus(startResult.status);
+      appendLog({
+        level: "success",
+        message: `Queued ${startResult.newJobs.toLocaleString()} new ingestion job(s)`,
+        detail: `${startResult.existingJobs.toLocaleString()} existing job(s), ${startResult.interventionCount.toLocaleString()} interventions scanned. ${localIngestionDeepeningCatchUpSummary(startResult.deepeningCatchUp)}`
+      });
+
+      let nextStatus = startResult.status;
+      let synonymExpansionQueued = false;
+
+      while (!stopRequestedRef.current && runIdRef.current === runId) {
+        const queued = localIngestionQueueCount(nextStatus, "QUEUED");
+        const running = localIngestionQueueCount(nextStatus, "RUNNING");
+
+        if (queued <= 0 && running <= 0) {
+          if (!synonymExpansionQueued) {
+            synonymExpansionQueued = true;
+            setStatusMessage("Primary searches are exhausted. Queueing saved supplement synonyms.");
+            const synonymResult = await postLocalIngestionSynonyms();
+            nextStatus = synonymResult.status;
+            setStatus(nextStatus);
+            appendLog({
+              level: synonymResult.newJobs > 0 ? "success" : "info",
+              message: `Synonym pass queued ${synonymResult.newJobs.toLocaleString()} new ingestion job(s)`,
+              detail: `${synonymResult.searchTermCount.toLocaleString()} saved synonym term(s), ${synonymResult.existingJobs.toLocaleString()} existing job(s). ${localIngestionDeepeningCatchUpSummary(synonymResult.deepeningCatchUp)}`
+            });
+
+            if (
+              localIngestionQueueCount(nextStatus, "QUEUED") > 0 ||
+              localIngestionQueueCount(nextStatus, "RUNNING") > 0
+            ) {
+              continue;
+            }
+          }
+
+          setStatusMessage("Ingestion queue is empty.");
+          appendLog({
+            level: "success",
+            message: "Ingestion queue finished",
+            detail: `${nextStatus.candidates.total.toLocaleString()} source candidate(s) are now in the local database.`
+          });
+          break;
+        }
+
+        setStatusMessage(`Processing next source search. ${queued.toLocaleString()} queued.`);
+        const batch = await postLocalIngestionRun(1);
+        nextStatus = batch.status;
+        setStatus(nextStatus);
+
+        if (batch.results.length === 0) {
+          setStatusMessage(localIngestionIdleMessage(nextStatus));
+          appendLog({
+            level: "info",
+            message: "No queued job was available",
+            detail: "The runner did not claim a job on this pulse."
+          });
+          break;
+        }
+
+        for (const result of batch.results) {
+          const deepeningDetail = result.deepening
+            ? ` ${localIngestionDeepeningRunSummary(result.deepening)}`
+            : "";
+          appendLog({
+            level: result.status === "FAILED" ? "error" : "success",
+            message: `${localIngestionSourceLabel(result.source)} ${localIngestionStatusLabel(result.status)}: ${result.recordsFound.toLocaleString()} found, ${result.recordsChanged.toLocaleString()} saved`,
+            detail: result.error
+              ? `${result.query} - ${result.error}${deepeningDetail}`
+              : `${result.query}${deepeningDetail}`
+          });
+        }
+
+        if (!batch.hasMoreQueued) {
+          setStatusMessage(localIngestionIdleMessage(nextStatus));
+          break;
+        }
+
+        await sleep(5000);
+      }
+    } catch (error) {
+      const message = localIngestionErrorMessage(error);
+      setStatusMessage(message);
+      appendLog({
+        level: "error",
+        message: "Ingestion stopped",
+        detail: message
+      });
+    } finally {
+      if (runIdRef.current === runId) {
+        setActive(false);
+        setBusy(false);
+        stopRequestedRef.current = false;
+        refreshStatus().catch(() => undefined);
+      }
+    }
+  }, [active, appendLog, busy, refreshStatus]);
+
+  const queued = status ? localIngestionQueueCount(status, "QUEUED") : 0;
+  const running = status ? localIngestionQueueCount(status, "RUNNING") : 0;
+  const succeeded = status ? localIngestionQueueCount(status, "SUCCEEDED") : 0;
+  const failed = status ? localIngestionQueueCount(status, "FAILED") : 0;
+  const pendingCandidates = status?.candidates.counts.PENDING_REVIEW ?? 0;
+  const acceptedCandidates = status?.candidates.counts.ACCEPTED ?? 0;
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Local ingestion
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold text-ink">Supplement discovery runner</h2>
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold",
+                active
+                  ? "border-signal/30 bg-blue-50 text-signal"
+                  : "border-line bg-mist text-slate-600"
+              )}
+            >
+              {active ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <DatabaseZap aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              {active ? "Active" : "Idle"}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-slate-600">
+            Starts with supplement-only PubMed searches, then broad PubMed and ClinicalTrials.gov
+            discovery for local interventions. Saved synonyms are queued after the main-name searches
+            are exhausted.
+          </p>
+          <p aria-live="polite" className="mt-2 text-sm font-semibold text-ink">
+            {statusMessage}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={startIngestion}
+            disabled={active || busy}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {active ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            {active ? "Ingesting" : "Start ingestion"}
+          </button>
+          <button
+            type="button"
+            onClick={stopIngestion}
+            disabled={!active}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-mist px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Square aria-hidden="true" className="h-3.5 w-3.5" />
+            Stop
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusMessage("Refreshing local ingestion status.");
+              refreshStatus()
+                .then((nextStatus) => {
+                  setStatusMessage(localIngestionIdleMessage(nextStatus));
+                })
+                .catch((error) => {
+                  setStatusMessage(localIngestionErrorMessage(error));
+                });
+            }}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal"
+          >
+            <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <LocalNextActionStrip
+        action={localIngestionNextAction({
+          active,
+          busy,
+          status
+        })}
+      />
+
+      <div className="mt-4 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <MiniStat label="Queued" value={queued.toLocaleString()} />
+        <MiniStat label="Running" value={running.toLocaleString()} />
+        <MiniStat label="Succeeded" value={succeeded.toLocaleString()} />
+        <MiniStat label="Failed" value={failed.toLocaleString()} />
+        <MiniStat label="Pending candidates" value={pendingCandidates.toLocaleString()} />
+        <MiniStat label="Accepted candidates" value={acceptedCandidates.toLocaleString()} />
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="rounded-lg border border-line bg-mist p-3">
+          <h3 className="text-sm font-semibold text-ink">Activity</h3>
+          <div className="mt-3 grid gap-2">
+            {logEntries.length > 0 ? (
+              logEntries.map((entry) => (
+                <LocalIngestionLogRow key={entry.id} entry={entry} />
+              ))
+            ) : (
+              <p className="rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+                No ingestion pulses have run in this browser session yet.
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="rounded-lg border border-line bg-mist p-3">
+          <h3 className="text-sm font-semibold text-ink">Recent database activity</h3>
+          <div className="mt-3 grid gap-2">
+            {status?.queue.recentJobs.length ? (
+              status.queue.recentJobs.slice(0, 5).map((job) => (
+                <LocalIngestionJobRow key={job.jobId} job={job} />
+              ))
+            ) : (
+              <p className="rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+                No source ingestion jobs found in the local database.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink">Newly discovered candidates</h3>
+          <p className="text-xs text-slate-600">
+            {status ? `Updated ${formatLocalIngestionTime(status.updatedAt)}` : "Not loaded"}
+          </p>
+        </div>
+        <div className="mt-3 grid gap-2">
+          {status?.candidates.recent.length ? (
+            status.candidates.recent.slice(0, 5).map((candidate) => (
+              <LocalIngestionCandidateRow
+                key={`${candidate.source}-${candidate.externalId}-${candidate.query}`}
+                candidate={candidate}
+              />
+            ))
+          ) : (
+            <p className="rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+              No source candidates have been discovered yet.
+            </p>
+          )}
+        </div>
+      </div>
+
+    </section>
+  );
+}
+
+function LocalCandidateReviewWorkbench({
+  onCandidateDecision
+}: {
+  onCandidateDecision?: () => Promise<LocalIngestionStatusReadout | void>;
+} = {}) {
+  const [bucket, setBucket] = useState<LocalCandidateReviewBucket>("likely-useful");
+  const [source, setSource] = useState<LocalCandidateReviewSourceFilter>("ALL");
+  const [studyFilter, setStudyFilter] = useState<LocalCandidateReviewStudyFilter>("all");
+  const [queryDraft, setQueryDraft] = useState("");
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [actionKey, setActionKey] = useState<string | null>(null);
+  const [message, setMessage] = useState("Loading review candidates.");
+  const [pendingBulkAction, setPendingBulkAction] =
+    useState<LocalCandidateReviewBulkAction | null>(null);
+  const [review, setReview] = useState<LocalCandidateReviewResponse | null>(null);
+  const activeBulkAction = actionKey?.startsWith("bulk:")
+    ? (actionKey.slice(5) as LocalCandidateReviewBulkAction)
+    : null;
+  const currentBucketCount = localCandidateBucketCount(review, bucket);
+
+  const loadReviewCandidates = useCallback(async () => {
+    setBusy(true);
+    setMessage("Loading review candidates.");
+
+    try {
+      const nextReview = await fetchLocalCandidateReview({
+        bucket,
+        q: query,
+        source,
+        studyFilter
+      });
+      setReview(nextReview);
+      setMessage(
+        `${nextReview.candidates.length.toLocaleString()} candidate(s) shown from ${nextReview.counts.all.toLocaleString()} pending local candidate(s).`
+      );
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }, [bucket, query, source, studyFilter]);
+
+  useEffect(() => {
+    loadReviewCandidates().catch(() => undefined);
+  }, [loadReviewCandidates]);
+
+  const recordDecision = useCallback(
+    async (candidate: LocalCandidateReviewCandidate, decision: "Accepted" | "Rejected") => {
+      const nextActionKey = `${candidate.dedupeKey}:${decision}`;
+      setActionKey(nextActionKey);
+      setMessage(`${decision === "Accepted" ? "Accepting" : "Rejecting"} candidate.`);
+
+      try {
+        await postLocalCandidateReviewDecision({
+          decision,
+          dedupeKey: candidate.dedupeKey,
+          reviewNote:
+            decision === "Accepted"
+              ? "Accepted from local candidate review dashboard after user click."
+              : "Rejected from local candidate review dashboard after user click."
+        });
+        await onCandidateDecision?.();
+        await loadReviewCandidates();
+        setMessage(`${decision === "Accepted" ? "Accepted" : "Rejected"} ${candidate.externalId}.`);
+      } catch (error) {
+        setMessage(localIngestionErrorMessage(error));
+      } finally {
+        setActionKey(null);
+      }
+    },
+    [loadReviewCandidates, onCandidateDecision]
+  );
+
+  const recordBulkDecision = useCallback(
+    async (bulkAction: LocalCandidateReviewBulkAction) => {
+      const nextActionKey = `bulk:${bulkAction}`;
+      setActionKey(nextActionKey);
+      setBusy(true);
+      setMessage(`${localCandidateBulkActionProgressLabel(bulkAction)}.`);
+
+      try {
+        const result = await postLocalCandidateReviewBulkDecision({
+          bucket,
+          bulkAction,
+          q: query,
+          reviewNote: localCandidateBulkReviewNote(bulkAction),
+          source,
+          studyFilter
+        });
+        await onCandidateDecision?.();
+        await loadReviewCandidates();
+        setMessage(localCandidateBulkResultMessage(result));
+      } catch (error) {
+        setMessage(localIngestionErrorMessage(error));
+      } finally {
+        setActionKey(null);
+        setPendingBulkAction(null);
+        setBusy(false);
+      }
+    },
+    [bucket, loadReviewCandidates, onCandidateDecision, query, source, studyFilter]
+  );
+
+  return (
+    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Local candidates
+          </p>
+          <h2 className="mt-1 text-base font-semibold text-ink">Candidate review workbench</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            Review local draft candidates from the ingestion run. Accept creates or reuses a
+            traceable local reference; reject removes noisy rows from the review queue.
+          </p>
+          <p aria-live="polite" className="mt-2 text-sm font-semibold text-slate-700">
+            {message}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => loadReviewCandidates()}
+          disabled={busy}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw
+            aria-hidden="true"
+            className={cn("h-3.5 w-3.5", busy ? "animate-spin" : "")}
+          />
+          Refresh
+        </button>
+      </div>
+
+      <LocalNextActionStrip
+        action={candidateReviewNextAction({
+          bucket,
+          review
+        })}
+      />
+
+      <AcceptedCandidateProcessor />
+      <BenefitDiscoveryQueue />
+
+      <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <MiniStat label="Likely useful" value={(review?.counts.likelyUseful ?? 0).toLocaleString()} />
+        <MiniStat label="Maybe useful" value={(review?.counts.maybeUseful ?? 0).toLocaleString()} />
+        <MiniStat label="All useful" value={(review?.counts.allUseful ?? 0).toLocaleString()} />
+        <MiniStat label="Likely noise" value={(review?.counts.likelyNoise ?? 0).toLocaleString()} />
+        <MiniStat label="Unclassified" value={(review?.counts.unclassified ?? 0).toLocaleString()} />
+        <MiniStat label="Pending" value={(review?.counts.all ?? 0).toLocaleString()} />
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {LOCAL_CANDIDATE_BUCKET_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setBucket(option.value)}
+            className={cn(
+              "h-8 rounded-md border px-3 text-xs font-semibold transition",
+              bucket === option.value
+                ? "border-signal bg-blue-50 text-signal"
+                : "border-line bg-mist text-slate-700 hover:border-signal"
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <label className="flex min-w-0 items-center gap-2 rounded-md border border-line bg-white px-3">
+          <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-500" />
+          <input
+            value={queryDraft}
+            onChange={(event) => setQueryDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                setQuery(queryDraft.trim());
+              }
+            }}
+            placeholder="Search title, query, PMID/NCT, or intervention"
+            className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+          />
+        </label>
+        <select
+          value={source}
+          onChange={(event) => setSource(event.target.value as LocalCandidateReviewSourceFilter)}
+          className="h-9 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700"
+        >
+          <option value="ALL">All sources</option>
+          <option value="PUBMED">PubMed</option>
+          <option value="CLINICALTRIALS_GOV">ClinicalTrials.gov</option>
+        </select>
+        <select
+          value={studyFilter}
+          onChange={(event) =>
+            setStudyFilter(event.target.value as LocalCandidateReviewStudyFilter)
+          }
+          className="h-9 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700"
+        >
+          <option value="all">All study types</option>
+          <option value="reviews">Reviews</option>
+          <option value="trials">Trials</option>
+          <option value="results-posted">Results posted</option>
+        </select>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setQuery(queryDraft.trim())}
+          className="inline-flex h-8 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90"
+        >
+          <Search aria-hidden="true" className="h-3.5 w-3.5" />
+          Search
+        </button>
+        {query ? (
+          <button
+            type="button"
+            onClick={() => {
+              setQuery("");
+              setQueryDraft("");
+            }}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-mist px-3 text-xs font-semibold text-slate-700 transition hover:border-signal"
+          >
+            <X aria-hidden="true" className="h-3.5 w-3.5" />
+            Clear
+          </button>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2 rounded-lg border border-line bg-mist p-3">
+        <button
+          type="button"
+          onClick={() => setPendingBulkAction("accept-all")}
+          disabled={busy || Boolean(actionKey) || currentBucketCount === 0}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-green-600 bg-green-600 px-3 text-xs font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {activeBulkAction === "accept-all" ? (
+            <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Check aria-hidden="true" className="h-3.5 w-3.5" />
+          )}
+          Accept all
+        </button>
+        <button
+          type="button"
+          onClick={() => setPendingBulkAction("accept-likely-useful")}
+          disabled={busy || Boolean(actionKey) || !review?.counts.likelyUseful}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {activeBulkAction === "accept-likely-useful" ? (
+            <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
+          )}
+          Accept likely useful
+        </button>
+        <button
+          type="button"
+          onClick={() => setPendingBulkAction("reject-not-useful")}
+          disabled={busy || Boolean(actionKey) || !review?.counts.likelyNoise}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {activeBulkAction === "reject-not-useful" ? (
+            <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <X aria-hidden="true" className="h-3.5 w-3.5" />
+          )}
+          Reject not useful
+        </button>
+      </div>
+
+      {pendingBulkAction ? (
+        <InlineConfirmation
+          busy={Boolean(activeBulkAction)}
+          confirmLabel="Apply"
+          message={localCandidateBulkConfirmMessage({
+            action: pendingBulkAction,
+            bucket,
+            review
+          })}
+          onCancel={() => setPendingBulkAction(null)}
+          onConfirm={() => recordBulkDecision(pendingBulkAction)}
+          tone={pendingBulkAction === "reject-not-useful" ? "danger" : "warn"}
+        />
+      ) : null}
+
+      <div className="mt-3 grid gap-2">
+        {review?.candidates.length ? (
+          review.candidates.map((candidate) => (
+            <LocalCandidateReviewRow
+              key={candidate.dedupeKey}
+              actionKey={actionKey}
+              candidate={candidate}
+              onDecision={recordDecision}
+            />
+          ))
+        ) : (
+          <p className="rounded-md border border-line bg-mist p-3 text-sm text-slate-600">
+            No candidates match the current filters.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function AcceptedCandidateProcessor() {
+  const [active, setActive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<LocalAcceptedCandidateProcessingStatusResponse | null>(
+    null
+  );
+  const [message, setMessage] = useState("Loading accepted candidate processor status.");
+  const [logEntries, setLogEntries] = useState<LocalIngestionLogEntry[]>([]);
+  const stopRequestedRef = useRef(false);
+  const runIdRef = useRef(0);
+
+  const appendLog = useCallback((entry: Omit<LocalIngestionLogEntry, "id" | "timestamp">) => {
+    setLogEntries((current) =>
+      [
+        {
+          ...entry,
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          timestamp: new Date().toISOString()
+        },
+        ...current
+      ].slice(0, 20)
+    );
+  }, []);
+
+  const refreshStatus = useCallback(async () => {
+    const nextStatus = await fetchLocalAcceptedCandidateProcessingStatus();
+    setStatus(nextStatus);
+    setMessage(localAcceptedProcessorIdleMessage(nextStatus));
+    return nextStatus;
+  }, []);
+
+  useEffect(() => {
+    refreshStatus().catch((error) => {
+      setMessage(localIngestionErrorMessage(error));
+    });
+  }, [refreshStatus]);
+
+  useEffect(() => {
+    return () => {
+      stopRequestedRef.current = true;
+      runIdRef.current += 1;
+    };
+  }, []);
+
+  const stopProcessing = useCallback(() => {
+    stopRequestedRef.current = true;
+    setActive(false);
+    setMessage("Stopping after the current processing batch finishes.");
+    appendLog({
+      detail: "The dashboard will not start another accepted-candidate batch.",
+      level: "info",
+      message: "Stop requested"
+    });
+  }, [appendLog]);
+
+  const startProcessing = useCallback(async () => {
+    if (active || busy) {
+      return;
+    }
+
+    const runId = runIdRef.current + 1;
+    runIdRef.current = runId;
+    stopRequestedRef.current = false;
+    setActive(true);
+    setBusy(true);
+    setMessage("Processing accepted candidates in local batches.");
+
+    try {
+      while (!stopRequestedRef.current && runIdRef.current === runId) {
+        const batch = await postLocalAcceptedCandidateProcessingRun(25);
+        setStatus(batch.status);
+
+        if (batch.processed === 0) {
+          setMessage(localAcceptedProcessorIdleMessage(batch.status));
+          appendLog({
+            detail: "No unprocessed accepted candidates were available.",
+            level: "success",
+            message: "Accepted candidate queue finished"
+          });
+          break;
+        }
+
+        const linked = batch.results.filter((result) => result.linkedClaim).length;
+        const needsClaim = batch.results.filter((result) => !result.claimId).length;
+        appendLog({
+          detail: `${linked.toLocaleString()} linked to existing claim(s), ${needsClaim.toLocaleString()} need claim/outcome review.`,
+          level: batch.errors.length > 0 ? "error" : "success",
+          message: `Processed ${batch.processed.toLocaleString()} accepted candidate(s)`
+        });
+        setMessage(localAcceptedProcessorIdleMessage(batch.status));
+
+        if (!batch.hasMore) {
+          appendLog({
+            detail: `${batch.status.counts.processed.toLocaleString()} accepted candidate(s) processed.`,
+            level: "success",
+            message: "Accepted candidate queue finished"
+          });
+          break;
+        }
+
+        await sleep(750);
+      }
+    } catch (error) {
+      const nextMessage = localIngestionErrorMessage(error);
+      setMessage(nextMessage);
+      appendLog({
+        detail: nextMessage,
+        level: "error",
+        message: "Accepted candidate processing stopped"
+      });
+    } finally {
+      if (runIdRef.current === runId) {
+        setActive(false);
+        setBusy(false);
+        stopRequestedRef.current = false;
+        refreshStatus().catch(() => undefined);
+      }
+    }
+  }, [active, appendLog, busy, refreshStatus]);
+
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Accepted candidate processor</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Processes accepted references before the maybe-useful queue: links claim-scoped
+            candidates, tags broad candidates with benefit-area suggestions, and leaves claim
+            drafting for review.
+          </p>
+          <p aria-live="polite" className="mt-2 text-xs font-semibold text-slate-700">
+            {message}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={startProcessing}
+            disabled={active || busy || (status?.counts.unprocessed ?? 0) <= 0}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {active ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            {active ? "Processing" : "Process accepted"}
+          </button>
+          <button
+            type="button"
+            onClick={stopProcessing}
+            disabled={!active}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Square aria-hidden="true" className="h-3.5 w-3.5" />
+            Stop
+          </button>
+          <button
+            type="button"
+            onClick={() => refreshStatus().catch((error) => setMessage(localIngestionErrorMessage(error)))}
+            disabled={busy}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={cn("h-3.5 w-3.5", busy && !active ? "animate-spin" : "")}
+            />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <LocalNextActionStrip action={acceptedCandidateProcessingNextAction(status)} />
+
+      <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <MiniStat label="Accepted" value={(status?.counts.accepted ?? 0).toLocaleString()} />
+        <MiniStat label="With reference" value={(status?.counts.acceptedWithReference ?? 0).toLocaleString()} />
+        <MiniStat label="Processed" value={(status?.counts.processed ?? 0).toLocaleString()} />
+        <MiniStat label="Unprocessed" value={(status?.counts.unprocessed ?? 0).toLocaleString()} />
+        <MiniStat label="Needs claim" value={(status?.counts.needsClaim ?? 0).toLocaleString()} />
+        <MiniStat label="Claim linked" value={(status?.counts.claimLinked ?? 0).toLocaleString()} />
+      </div>
+
+      <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="rounded-lg border border-line bg-white p-3">
+          <h4 className="text-sm font-semibold text-ink">Activity</h4>
+          <div className="mt-3 grid gap-2">
+            {logEntries.length > 0 ? (
+              logEntries.slice(0, 5).map((entry) => (
+                <LocalIngestionLogRow key={entry.id} entry={entry} />
+              ))
+            ) : (
+              <p className="rounded-md border border-line bg-mist p-3 text-sm text-slate-600">
+                No accepted-candidate batches have run in this browser session yet.
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="rounded-lg border border-line bg-white p-3">
+          <h4 className="text-sm font-semibold text-ink">Recently processed</h4>
+          <div className="mt-3 grid gap-2">
+            {status?.recent.length ? (
+              status.recent.slice(0, 5).map((candidate) => (
+                <LocalAcceptedProcessingRow
+                  key={candidate.dedupeKey}
+                  candidate={candidate}
+                />
+              ))
+            ) : (
+              <p className="rounded-md border border-line bg-mist p-3 text-sm text-slate-600">
+                No accepted candidates have been processed yet.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LocalAcceptedProcessingRow({
+  candidate
+}: {
+  candidate: LocalAcceptedCandidateProcessingResult;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <a
+            href={candidate.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-w-0 items-center gap-1 text-sm font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+          >
+            <span className="min-w-0 break-words">{candidate.title}</span>
+            <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          </a>
+          <p className="mt-1 text-xs text-slate-600">
+            {candidate.interventionName ?? "Unlinked intervention"} -{" "}
+            {localIngestionSourceLabel(candidate.source)} {candidate.externalId} -{" "}
+            {candidate.sourceTypeSuggestion}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">{candidate.nextAction}</p>
+          {candidate.outcomeLabels.length > 0 ? (
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Suggested areas: {candidate.outcomeLabels.join(", ")}
+            </p>
+          ) : null}
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            candidate.linkedClaim
+              ? "border-green-200 bg-green-50 text-green-700"
+              : "border-amberline/25 bg-amber-50 text-amberline"
+          )}
+        >
+          {candidate.linkedClaim ? "claim linked" : "needs claim"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function BenefitDiscoveryQueue() {
+  const [busy, setBusy] = useState(false);
+  const [actionKey, setActionKey] = useState<string | null>(null);
+  const [autoBusy, setAutoBusy] = useState<"preview" | "apply" | null>(null);
+  const [autoPreview, setAutoPreview] =
+    useState<LocalBenefitDiscoveryAutomationResponse | null>(null);
+  const [autoThreshold, setAutoThreshold] = useState(80);
+  const [queue, setQueue] = useState<LocalBenefitDiscoveryQueueResponse | null>(null);
+  const [message, setMessage] = useState("Loading benefit discovery clusters.");
+  const [pendingAutoBuild, setPendingAutoBuild] = useState(false);
+  const [pendingClusterAction, setPendingClusterAction] = useState<{
+    action: LocalBenefitDiscoveryAction;
+    cluster: LocalBenefitDiscoveryCluster;
+  } | null>(null);
+
+  const loadQueue = useCallback(async () => {
+    setBusy(true);
+
+    try {
+      const nextQueue = await fetchLocalBenefitDiscoveryQueue();
+      setQueue(nextQueue);
+      setMessage(localBenefitDiscoveryQueueMessage(nextQueue));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadQueue().catch(() => undefined);
+  }, [loadQueue]);
+
+  const controlsBusy = busy || Boolean(actionKey) || Boolean(autoBusy);
+
+  const recordAction = useCallback(
+    async (cluster: LocalBenefitDiscoveryCluster, action: LocalBenefitDiscoveryAction) => {
+      const nextActionKey = `${cluster.clusterKey}:${action}`;
+      setActionKey(nextActionKey);
+      setMessage(localBenefitDiscoveryActionProgress(action));
+
+      try {
+        const result = await postLocalBenefitDiscoveryAction({
+          action,
+          clusterKey: cluster.clusterKey
+        });
+        await loadQueue();
+        setMessage(result.message);
+      } catch (error) {
+        setMessage(localIngestionErrorMessage(error));
+      } finally {
+        setActionKey(null);
+        setPendingClusterAction(null);
+      }
+    },
+    [loadQueue]
+  );
+
+  const previewAutoBuild = useCallback(async () => {
+    setAutoBusy("preview");
+    setMessage("Previewing scored benefit-discovery actions.");
+
+    try {
+      const result = await postLocalBenefitDiscoveryAutomation({
+        apply: false,
+        threshold: autoThreshold
+      });
+      setAutoPreview(result);
+      setMessage(localBenefitDiscoveryAutomationMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setAutoBusy(null);
+    }
+  }, [autoThreshold]);
+
+  const applyAutoBuild = useCallback(async () => {
+    setAutoBusy("apply");
+    setMessage("Applying high-confidence benefit-discovery actions.");
+
+    try {
+      const result = await postLocalBenefitDiscoveryAutomation({
+        apply: true,
+        threshold: autoThreshold
+      });
+      setAutoPreview(result);
+      await loadQueue();
+      setMessage(localBenefitDiscoveryAutomationMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setPendingAutoBuild(false);
+      setAutoBusy(null);
+    }
+  }, [autoThreshold, loadQueue]);
+
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Benefit discovery queue</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Groups processed accepted candidates by supplement and suggested benefit area. Review
+            mismatch warnings before drafting or linking claims.
+          </p>
+          <p aria-live="polite" className="mt-2 text-xs font-semibold text-slate-700">
+            {message}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => loadQueue()}
+          disabled={controlsBusy}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw
+            aria-hidden="true"
+            className={cn("h-3.5 w-3.5", busy ? "animate-spin" : "")}
+          />
+          Refresh
+        </button>
+      </div>
+
+      <LocalNextActionStrip action={benefitDiscoveryNextAction(queue)} />
+
+      <div className="mt-3 grid gap-2 md:grid-cols-4">
+        <MiniStat label="Active clusters" value={(queue?.counts.activeClusters ?? 0).toLocaleString()} />
+        <MiniStat label="Active candidates" value={(queue?.counts.activeCandidates ?? 0).toLocaleString()} />
+        <MiniStat label="Mismatch flags" value={(queue?.counts.mismatchCandidates ?? 0).toLocaleString()} />
+        <MiniStat label="Decided clusters" value={(queue?.counts.decidedClusters ?? 0).toLocaleString()} />
+      </div>
+
+      <IdentityResolutionQueue onResolved={loadQueue} />
+
+      <div className="mt-3 rounded-md border border-line bg-white p-3">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <h4 className="text-sm font-semibold text-ink">Evidence lead score</h4>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Auto-build drafts or links only high-confidence local leads. Middle scores stay in
+              the queue.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+              Threshold
+              <input
+                type="range"
+                min="55"
+                max="95"
+                value={autoThreshold}
+                onChange={(event) => setAutoThreshold(Number(event.target.value))}
+                disabled={controlsBusy}
+                className="h-2 w-32 accent-signal"
+              />
+              <input
+                type="number"
+                min="55"
+                max="95"
+                value={autoThreshold}
+                onChange={(event) =>
+                  setAutoThreshold(Math.min(95, Math.max(55, Number(event.target.value) || 80)))
+                }
+                disabled={controlsBusy}
+                className="h-8 w-16 rounded-md border border-line bg-white px-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => previewAutoBuild()}
+              disabled={controlsBusy || !queue?.clusters.length}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {autoBusy === "preview" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Search aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Preview
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingAutoBuild(true)}
+              disabled={controlsBusy || !queue?.clusters.length}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {autoBusy === "apply" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Apply auto-build
+            </button>
+          </div>
+        </div>
+
+        {pendingAutoBuild ? (
+          <InlineConfirmation
+            busy={autoBusy === "apply"}
+            confirmLabel="Apply"
+            message={localBenefitDiscoveryAutomationConfirmMessage(
+              autoPreview,
+              autoThreshold
+            )}
+            onCancel={() => setPendingAutoBuild(false)}
+            onConfirm={() => applyAutoBuild()}
+            tone="warn"
+          />
+        ) : null}
+
+        {autoPreview ? (
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-2 md:grid-cols-6">
+              <MiniStat
+                label="Scanned"
+                value={autoPreview.counts.scannedClusters.toLocaleString()}
+              />
+              <MiniStat label="Draft" value={autoPreview.counts.draftClaims.toLocaleString()} />
+              <MiniStat
+                label="Link existing"
+                value={autoPreview.counts.linkExistingClaims.toLocaleString()}
+              />
+              <MiniStat label="Hold" value={autoPreview.counts.holdClusters.toLocaleString()} />
+              <MiniStat
+                label="Reject"
+                value={autoPreview.counts.rejectClusters.toLocaleString()}
+              />
+              <MiniStat
+                label="References"
+                value={autoPreview.applied
+                  ? autoPreview.counts.linkedReferences.toLocaleString()
+                  : "preview"}
+              />
+            </div>
+            <div className="grid gap-2 lg:grid-cols-2">
+              {autoPreview.decisions.slice(0, 6).map((decision) => (
+                <BenefitDiscoveryAutomationDecisionRow
+                  key={decision.clusterKey}
+                  decision={decision}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {pendingClusterAction ? (
+        <InlineConfirmation
+          busy={Boolean(actionKey)}
+          confirmLabel="Apply"
+          message={localBenefitDiscoveryConfirmMessage(
+            pendingClusterAction.cluster,
+            pendingClusterAction.action
+          )}
+          onCancel={() => setPendingClusterAction(null)}
+          onConfirm={() =>
+            recordAction(pendingClusterAction.cluster, pendingClusterAction.action)
+          }
+          tone={pendingClusterAction.action === "reject-cluster" ? "danger" : "warn"}
+        />
+      ) : null}
+
+      <div className="mt-3 grid gap-3">
+        {queue?.clusters.length ? (
+          queue.clusters.map((cluster) => (
+            <BenefitDiscoveryClusterCard
+              key={cluster.clusterKey}
+              actionKey={actionKey}
+              cluster={cluster}
+              onAction={(nextCluster, nextAction) =>
+                setPendingClusterAction({
+                  action: nextAction,
+                  cluster: nextCluster
+                })
+              }
+            />
+          ))
+        ) : (
+          <p className="rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+            No active benefit discovery clusters are ready. Process accepted candidates first, or
+            move on to the maybe-useful queue.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function IdentityResolutionQueue({ onResolved }: { onResolved: () => Promise<void> }) {
+  const [queue, setQueue] = useState<LocalIdentityResolutionQueueResponse | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionKey, setActionKey] = useState<string | null>(null);
+  const [message, setMessage] = useState("Loading identity resolver.");
+  const [reassignTargets, setReassignTargets] = useState<Record<string, string>>({});
+  const [synonyms, setSynonyms] = useState<Record<string, string>>({});
+  const [pendingIdentityAction, setPendingIdentityAction] = useState<{
+    action: LocalIdentityResolutionAction;
+    candidate: LocalIdentityResolutionCandidate;
+    input: {
+      action: LocalIdentityResolutionAction;
+      dedupeKey: string;
+      interventionId?: string;
+      synonym?: string;
+    };
+  } | null>(null);
+
+  const loadQueue = useCallback(async () => {
+    setBusy(true);
+
+    try {
+      const nextQueue = await fetchLocalIdentityResolutionQueue();
+      setQueue(nextQueue);
+      setMessage(localIdentityResolutionQueueMessage(nextQueue));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadQueue().catch(() => undefined);
+  }, [loadQueue]);
+
+  const requestAction = useCallback(
+    (
+      candidate: LocalIdentityResolutionCandidate,
+      action: LocalIdentityResolutionAction
+    ) => {
+      const input: {
+        action: LocalIdentityResolutionAction;
+        dedupeKey: string;
+        interventionId?: string;
+        synonym?: string;
+      } = {
+        action,
+        dedupeKey: candidate.dedupeKey
+      };
+
+      if (action === "reassign-intervention") {
+        input.interventionId =
+          reassignTargets[candidate.dedupeKey] ?? candidate.matchedInterventions[0]?.id;
+
+        if (!input.interventionId) {
+          setMessage("Choose a target supplement before reassigning.");
+          return;
+        }
+      }
+
+      if (action === "add-synonym") {
+        input.synonym = synonyms[candidate.dedupeKey]?.trim();
+
+        if (!input.synonym) {
+          setMessage("Enter an alias before adding it.");
+          return;
+        }
+      }
+
+      setPendingIdentityAction({
+        action,
+        candidate,
+        input
+      });
+    },
+    [reassignTargets, synonyms]
+  );
+
+  const recordAction = useCallback(
+    async ({
+      action,
+      candidate,
+      input
+    }: {
+      action: LocalIdentityResolutionAction;
+      candidate: LocalIdentityResolutionCandidate;
+      input: {
+        action: LocalIdentityResolutionAction;
+        dedupeKey: string;
+        interventionId?: string;
+        synonym?: string;
+      };
+    }) => {
+      setActionKey(`${candidate.dedupeKey}:${action}`);
+      setMessage(localIdentityResolutionProgressMessage(action));
+
+      try {
+        const result = await postLocalIdentityResolutionAction(input);
+        setMessage(result.message);
+        await loadQueue();
+        await onResolved();
+      } catch (error) {
+        setMessage(localIngestionErrorMessage(error));
+      } finally {
+        setActionKey(null);
+        setPendingIdentityAction(null);
+      }
+    },
+    [loadQueue, onResolved]
+  );
+
+  return (
+    <div className="mt-3 rounded-md border border-line bg-white p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h4 className="text-sm font-semibold text-ink">Identity resolver</h4>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Clears blocked source identity rows before auto-build. Multi-supplement matches are
+            warnings when the target is visible.
+          </p>
+          <p aria-live="polite" className="mt-2 text-xs font-semibold text-slate-700">
+            {message}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => loadQueue()}
+          disabled={busy || Boolean(actionKey)}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw
+            aria-hidden="true"
+            className={cn("h-3.5 w-3.5", busy ? "animate-spin" : "")}
+          />
+          Refresh
+        </button>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        <MiniStat
+          label="Blocked identity rows"
+          value={(queue?.counts.blockedCandidates ?? 0).toLocaleString()}
+        />
+        <MiniStat label="Shown" value={(queue?.candidates.length ?? 0).toLocaleString()} />
+      </div>
+
+      <LocalNextActionStrip action={identityResolutionNextAction(queue)} />
+
+      {pendingIdentityAction ? (
+        <InlineConfirmation
+          busy={Boolean(actionKey)}
+          confirmLabel="Apply"
+          message={localIdentityResolutionConfirmMessage(
+            pendingIdentityAction.candidate,
+            pendingIdentityAction.action
+          )}
+          onCancel={() => setPendingIdentityAction(null)}
+          onConfirm={() => recordAction(pendingIdentityAction)}
+          tone={
+            pendingIdentityAction.action === "reject-wrong-supplement"
+              ? "danger"
+              : "warn"
+          }
+        />
+      ) : null}
+
+      <div className="mt-3 grid gap-2">
+        {queue?.candidates.length ? (
+          queue.candidates.map((candidate) => (
+            <IdentityResolutionCandidateRow
+              key={candidate.dedupeKey}
+              actionKey={actionKey}
+              candidate={candidate}
+              interventions={queue.interventions}
+              onAction={requestAction}
+              onSynonymChange={(value) =>
+                setSynonyms((current) => ({
+                  ...current,
+                  [candidate.dedupeKey]: value
+                }))
+              }
+              onTargetChange={(value) =>
+                setReassignTargets((current) => ({
+                  ...current,
+                  [candidate.dedupeKey]: value
+                }))
+              }
+              synonym={synonyms[candidate.dedupeKey] ?? ""}
+              targetInterventionId={
+                reassignTargets[candidate.dedupeKey] ??
+                candidate.matchedInterventions[0]?.id ??
+                ""
+              }
+            />
+          ))
+        ) : (
+          <p className="rounded-md border border-line bg-mist p-3 text-sm text-slate-600">
+            No blocked identity rows are waiting.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function IdentityResolutionCandidateRow({
+  actionKey,
+  candidate,
+  interventions,
+  onAction,
+  onSynonymChange,
+  onTargetChange,
+  synonym,
+  targetInterventionId
+}: {
+  actionKey: string | null;
+  candidate: LocalIdentityResolutionCandidate;
+  interventions: LocalIdentityResolutionQueueResponse["interventions"];
+  onAction: (
+    candidate: LocalIdentityResolutionCandidate,
+    action: LocalIdentityResolutionAction
+  ) => void;
+  onSynonymChange: (value: string) => void;
+  onTargetChange: (value: string) => void;
+  synonym: string;
+  targetInterventionId: string;
+}) {
+  const busy = actionKey?.startsWith(`${candidate.dedupeKey}:`) ?? false;
+
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+              {candidate.interventionName}
+            </span>
+            <span className="rounded-md border border-danger/20 bg-red-50 px-2 py-1 text-xs font-semibold text-danger">
+              check identity
+            </span>
+          </div>
+          <a
+            href={candidate.url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex min-w-0 items-center gap-1 text-sm font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+          >
+            <span className="min-w-0 break-words">{candidate.title}</span>
+            <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          </a>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {localIngestionSourceLabel(candidate.source)} {candidate.externalId}
+            {candidate.publishedYear ? ` - ${candidate.publishedYear}` : ""} -{" "}
+            {candidate.sourceTypeSuggestion} - triage {candidate.triageScore}
+          </p>
+          <p className="mt-1 break-words text-xs leading-5 text-slate-500">
+            Query: {candidate.query}
+          </p>
+          <p className="mt-2 text-xs leading-5 text-danger">
+            {candidate.mismatchReasons.join(" ")}
+          </p>
+          {candidate.matchedInterventions.length > 0 ? (
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Possible match: {candidate.matchedInterventions.map((item) => item.name).join(", ")}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="grid shrink-0 gap-2 sm:min-w-80">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onAction(candidate, "confirm-target")}
+              disabled={busy}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-green-600 bg-green-600 px-3 text-xs font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {actionKey === `${candidate.dedupeKey}:confirm-target` ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Check aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Confirm
+            </button>
+            <button
+              type="button"
+              onClick={() => onAction(candidate, "reject-wrong-supplement")}
+              disabled={busy}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {actionKey === `${candidate.dedupeKey}:reject-wrong-supplement` ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <X aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Reject wrong
+            </button>
+          </div>
+
+          <div className="flex gap-2">
+            <select
+              value={targetInterventionId}
+              onChange={(event) => onTargetChange(event.target.value)}
+              disabled={busy}
+              className="h-8 min-w-0 flex-1 rounded-md border border-line bg-white px-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">Choose supplement</option>
+              {interventions.map((intervention) => (
+                <option key={intervention.id} value={intervention.id}>
+                  {intervention.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => onAction(candidate, "reassign-intervention")}
+              disabled={busy}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Reassign
+            </button>
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              value={synonym}
+              onChange={(event) => onSynonymChange(event.target.value)}
+              disabled={busy}
+              placeholder="Alias for current supplement"
+              className="h-8 min-w-0 flex-1 rounded-md border border-line bg-white px-2 text-xs text-slate-700 outline-none ring-signal/20 transition focus:border-signal focus:ring-4 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+            <button
+              type="button"
+              onClick={() => onAction(candidate, "add-synonym")}
+              disabled={busy}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Add alias
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BenefitDiscoveryAutomationDecisionRow({
+  decision
+}: {
+  decision: LocalBenefitDiscoveryAutomationDecision;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">
+            {decision.interventionName} - {decision.outcomeLabel}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Score {decision.leadScore}. {decision.usableCandidateCount.toLocaleString()} usable /{" "}
+            {decision.candidateCount.toLocaleString()} candidate(s).
+          </p>
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            localBenefitDiscoveryAutomationTone(decision.action)
+          )}
+        >
+          {localBenefitDiscoveryAutomationActionLabel(decision.action)}
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-600">
+        {decision.leadReasons.join(" ")}
+      </p>
+      {decision.error ? (
+        <p className="mt-2 text-xs leading-5 text-danger">{decision.error}</p>
+      ) : null}
+      {decision.applied ? (
+        <p className="mt-2 text-xs font-semibold text-green-700">
+          Applied
+          {decision.linkedReferences > 0
+            ? `, ${decision.linkedReferences.toLocaleString()} reference(s) linked`
+            : ""}
+          .
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function BenefitDiscoveryClusterCard({
+  actionKey,
+  cluster,
+  onAction
+}: {
+  actionKey: string | null;
+  cluster: LocalBenefitDiscoveryCluster;
+  onAction: (
+    cluster: LocalBenefitDiscoveryCluster,
+    action: LocalBenefitDiscoveryAction
+  ) => void;
+}) {
+  const busy = actionKey?.startsWith(`${cluster.clusterKey}:`) ?? false;
+  const hasExistingClaim = cluster.existingClaims.length > 0;
+  const hasUsableCandidates = cluster.usableCandidateCount > 0;
+
+  return (
+    <div className="rounded-lg border border-line bg-white p-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="text-sm font-semibold text-ink">
+              {cluster.interventionName} - {cluster.outcomeLabel}
+            </h4>
+            <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-700">
+              lead {cluster.score}
+            </span>
+            {cluster.existingClaims.length > 0 ? (
+              <span className="rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">
+                existing claim
+              </span>
+            ) : (
+              <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+                novel area
+              </span>
+            )}
+            {cluster.mismatchCount > 0 ? (
+              <span className="rounded-md border border-danger/20 bg-red-50 px-2 py-1 text-xs font-semibold text-danger">
+                {cluster.mismatchCount.toLocaleString()} mismatch flag(s)
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-600">
+            {cluster.candidateCount.toLocaleString()} candidate(s),{" "}
+            {cluster.usableCandidateCount.toLocaleString()} usable after mismatch flags.
+            {hasExistingClaim
+              ? ` Existing: ${cluster.existingClaims[0]?.claimText}`
+              : " No existing claim for this supplement/area yet."}
+          </p>
+          {cluster.leadReasons.length > 0 ? (
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              {cluster.leadReasons.join(" ")}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onAction(cluster, "draft-claim")}
+            disabled={busy || !hasUsableCandidates}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {actionKey === `${cluster.clusterKey}:draft-claim` ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            Draft claim
+          </button>
+          <button
+            type="button"
+            onClick={() => onAction(cluster, "link-existing-claim")}
+            disabled={busy || !hasExistingClaim || !hasUsableCandidates}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {actionKey === `${cluster.clusterKey}:link-existing-claim` ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            Link existing
+          </button>
+          <button
+            type="button"
+            onClick={() => onAction(cluster, "reject-cluster")}
+            disabled={busy}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {actionKey === `${cluster.clusterKey}:reject-cluster` ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <X aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            Reject cluster
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        {cluster.topSources.map((source) => (
+          <BenefitDiscoverySourceRow
+            key={source.dedupeKey}
+            source={source}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BenefitDiscoverySourceRow({ source }: { source: LocalBenefitDiscoverySource }) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <a
+            href={source.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-w-0 items-center gap-1 text-sm font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+          >
+            <span className="min-w-0 break-words">{source.title}</span>
+            <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          </a>
+          <p className="mt-1 text-xs text-slate-600">
+            {localIngestionSourceLabel(source.source)} {source.externalId}
+            {source.publishedYear ? ` - ${source.publishedYear}` : ""} -{" "}
+            {source.sourceTypeSuggestion} - triage {source.triageScore}
+          </p>
+          {source.mismatchReasons.length > 0 ? (
+            <p className="mt-1 text-xs leading-5 text-danger">
+              {source.mismatchReasons.join(" ")}
+            </p>
+          ) : null}
+          {source.identityCautions.length > 0 ? (
+            <p className="mt-1 text-xs leading-5 text-amberline">
+              {source.identityCautions.join(" ")}
+            </p>
+          ) : null}
+        </div>
+        <span
+          className={cn(
+            "shrink-0 rounded-md border px-2 py-1 text-xs font-semibold",
+            source.mismatchReasons.length > 0
+              ? "border-danger/20 bg-red-50 text-danger"
+              : source.identityCautions.length > 0
+                ? "border-amberline/25 bg-amber-50 text-amberline"
+              : "border-green-200 bg-green-50 text-green-700"
+          )}
+        >
+          {source.mismatchReasons.length > 0
+            ? "check identity"
+            : source.identityCautions.length > 0
+              ? "caution"
+              : "usable"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function LocalIngestionLogRow({ entry }: { entry: LocalIngestionLogEntry }) {
+  return (
+    <div className="rounded-md border border-line bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p
+          className={cn(
+            "text-sm font-semibold",
+            entry.level === "error" ? "text-danger" : entry.level === "success" ? "text-signal" : "text-ink"
+          )}
+        >
+          {entry.message}
+        </p>
+        <span className="text-xs text-slate-500">{formatLocalIngestionTime(entry.timestamp)}</span>
+      </div>
+      {entry.detail ? (
+        <p className="mt-1 break-words text-xs leading-5 text-slate-600">{entry.detail}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function LocalIngestionJobRow({ job }: { job: LocalIngestionJobReadout }) {
+  return (
+    <div className="rounded-md border border-line bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">
+            {localIngestionSourceLabel(job.source)} - {job.recordsFound.toLocaleString()} found,{" "}
+            {job.recordsChanged.toLocaleString()} saved
+          </p>
+          <p className="mt-1 break-words text-xs leading-5 text-slate-600">{job.query}</p>
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            localIngestionStatusTone(job.status)
+          )}
+        >
+          {localIngestionStatusLabel(job.status)}
+        </span>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">Updated {formatLocalIngestionTime(job.updatedAt)}</p>
+      {job.error ? <p className="mt-1 text-xs text-danger">{job.error}</p> : null}
+    </div>
+  );
+}
+
+function LocalIngestionCandidateRow({
+  candidate
+}: {
+  candidate: LocalIngestionCandidateReadout;
+}) {
+  const classification = candidate.discoveryClassification;
+
+  return (
+    <div className="rounded-md border border-line bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <a
+            href={candidate.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-w-0 items-center gap-1 text-sm font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+          >
+            <span className="truncate">{candidate.title}</span>
+            <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          </a>
+          <p className="mt-1 text-xs text-slate-600">
+            {localIngestionSourceLabel(candidate.source)} {candidate.externalId}
+            {candidate.publishedYear ? ` - ${candidate.publishedYear}` : ""} - triage{" "}
+            {candidate.triageScore}
+          </p>
+          <p className="mt-1 break-words text-xs leading-5 text-slate-500">{candidate.query}</p>
+          {classification ? (
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              <span className="font-semibold text-slate-700">Classifier:</span>{" "}
+              {localIngestionClassificationSummary(classification)}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          {classification ? (
+            <span
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-semibold",
+                localIngestionClassificationTone(classification.bucket)
+              )}
+            >
+              {classification.label} {classification.score}
+            </span>
+          ) : null}
+          <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-700">
+            {candidate.decision.replace(/_/g, " ").toLowerCase()}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LocalCandidateReviewRow({
+  actionKey,
+  candidate,
+  onDecision
+}: {
+  actionKey: string | null;
+  candidate: LocalCandidateReviewCandidate;
+  onDecision: (
+    candidate: LocalCandidateReviewCandidate,
+    decision: "Accepted" | "Rejected"
+  ) => Promise<void>;
+}) {
+  const classification = candidate.discoveryClassification;
+  const acceptKey = `${candidate.dedupeKey}:Accepted`;
+  const rejectKey = `${candidate.dedupeKey}:Rejected`;
+  const accepting = actionKey === acceptKey;
+  const rejecting = actionKey === rejectKey;
+  const actionDisabled = Boolean(actionKey);
+
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+              {candidate.interventionName ?? candidate.interventionId ?? "Unlinked intervention"}
+            </span>
+            {classification ? (
+              <span
+                className={cn(
+                  "rounded-md border px-2 py-1 text-xs font-semibold",
+                  localIngestionClassificationTone(classification.bucket)
+                )}
+              >
+                {classification.label} {classification.score}
+              </span>
+            ) : (
+              <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-600">
+                Unclassified
+              </span>
+            )}
+          </div>
+          <a
+            href={candidate.url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex min-w-0 items-center gap-1 text-sm font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+          >
+            <span className="min-w-0 break-words">{candidate.title}</span>
+            <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          </a>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {localIngestionSourceLabel(candidate.source)} {candidate.externalId}
+            {candidate.publishedYear ? ` - ${candidate.publishedYear}` : ""}
+            {candidate.sourceType ? ` - ${candidate.sourceType}` : ""} - triage{" "}
+            {candidate.triageScore}
+          </p>
+          <p className="mt-1 break-words text-xs leading-5 text-slate-500">{candidate.query}</p>
+          {classification ? (
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              <span className="font-semibold text-slate-700">Why shown:</span>{" "}
+              {localIngestionClassificationSummary(classification)}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2 xl:justify-end">
+          <button
+            type="button"
+            onClick={() => onDecision(candidate, "Accepted")}
+            disabled={actionDisabled}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-green-600 bg-green-600 px-3 text-xs font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {accepting ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            Accept
+          </button>
+          <button
+            type="button"
+            onClick={() => onDecision(candidate, "Rejected")}
+            disabled={actionDisabled}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {rejecting ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <X aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            Reject
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+async function fetchLocalIngestionStatus() {
+  return localIngestionFetch<LocalIngestionStatusReadout>("/api/local-ingestion/status");
+}
+
+async function fetchLocalAcceptedCandidateProcessingStatus() {
+  return localIngestionFetch<LocalAcceptedCandidateProcessingStatusResponse>(
+    "/api/local-ingestion/process-accepted"
+  );
+}
+
+async function postLocalAcceptedCandidateProcessingRun(limit: number) {
+  return localIngestionFetch<LocalAcceptedCandidateProcessingRunResponse>(
+    "/api/local-ingestion/process-accepted",
+    {
+      body: JSON.stringify({ limit }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function fetchLocalBenefitDiscoveryQueue() {
+  return localIngestionFetch<LocalBenefitDiscoveryQueueResponse>(
+    "/api/local-ingestion/benefit-discovery?limit=20"
+  );
+}
+
+async function postLocalBenefitDiscoveryAction(input: {
+  action: LocalBenefitDiscoveryAction;
+  clusterKey: string;
+}) {
+  return localIngestionFetch<LocalBenefitDiscoveryActionResponse>(
+    "/api/local-ingestion/benefit-discovery",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalBenefitDiscoveryAutomation(input: {
+  apply: boolean;
+  threshold: number;
+}) {
+  return localIngestionFetch<LocalBenefitDiscoveryAutomationResponse>(
+    "/api/local-ingestion/benefit-discovery",
+    {
+      body: JSON.stringify({
+        action: "auto-build",
+        apply: input.apply,
+        threshold: input.threshold
+      }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function fetchLocalIdentityResolutionQueue() {
+  return localIngestionFetch<LocalIdentityResolutionQueueResponse>(
+    "/api/local-ingestion/identity-resolution?limit=12"
+  );
+}
+
+async function postLocalIdentityResolutionAction(input: {
+  action: LocalIdentityResolutionAction;
+  dedupeKey: string;
+  interventionId?: string;
+  synonym?: string;
+}) {
+  return localIngestionFetch<LocalIdentityResolutionActionResponse>(
+    "/api/local-ingestion/identity-resolution",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function fetchLocalCandidateReview({
+  bucket,
+  q,
+  source,
+  studyFilter
+}: {
+  bucket: LocalCandidateReviewBucket;
+  q: string;
+  source: LocalCandidateReviewSourceFilter;
+  studyFilter: LocalCandidateReviewStudyFilter;
+}) {
+  const searchParams = new URLSearchParams({
+    bucket,
+    limit: "12",
+    source,
+    studyFilter
+  });
+
+  if (q) {
+    searchParams.set("q", q);
+  }
+
+  return localIngestionFetch<LocalCandidateReviewResponse>(
+    `/api/local-ingestion/candidates?${searchParams.toString()}`
+  );
+}
+
+async function postLocalCandidateReviewDecision(input: {
+  decision: "Accepted" | "Rejected";
+  dedupeKey: string;
+  reviewNote: string;
+}) {
+  return localIngestionFetch<LocalCandidateReviewDecisionResponse>(
+    "/api/local-ingestion/candidates",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalCandidateReviewBulkDecision(input: {
+  bucket: LocalCandidateReviewBucket;
+  bulkAction: LocalCandidateReviewBulkAction;
+  q: string;
+  reviewNote: string;
+  source: LocalCandidateReviewSourceFilter;
+  studyFilter: LocalCandidateReviewStudyFilter;
+}) {
+  return localIngestionFetch<LocalCandidateReviewBulkResponse>(
+    "/api/local-ingestion/candidates",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+function localCandidateBulkConfirmMessage({
+  action,
+  bucket,
+  review
+}: {
+  action: LocalCandidateReviewBulkAction;
+  bucket: LocalCandidateReviewBucket;
+  review: LocalCandidateReviewResponse | null;
+}) {
+  const counts = review?.counts;
+
+  switch (action) {
+    case "accept-all":
+      return `Accept all pending candidates matching the current "${localCandidateBucketLabel(
+        bucket
+      )}" filters? This may create or reuse local references for up to ${(
+        localCandidateBucketCount(review, bucket)
+      ).toLocaleString()} candidate(s).`;
+    case "accept-likely-useful":
+      return `Accept all likely useful candidates matching the current source/search/study filters? This may create or reuse local references for up to ${(
+        counts?.likelyUseful ?? 0
+      ).toLocaleString()} candidate(s).`;
+    case "reject-not-useful":
+      return `Reject all likely-noise candidates matching the current source/search/study filters? This will remove up to ${(
+        counts?.likelyNoise ?? 0
+      ).toLocaleString()} candidate(s) from the review queue.`;
+  }
+}
+
+function localCandidateBulkReviewNote(action: LocalCandidateReviewBulkAction) {
+  switch (action) {
+    case "accept-all":
+      return "Bulk accepted all currently filtered candidates from local candidate review dashboard after user click.";
+    case "accept-likely-useful":
+      return "Bulk accepted likely useful candidates from local candidate review dashboard after user click.";
+    case "reject-not-useful":
+      return "Bulk rejected likely-noise candidates from local candidate review dashboard after user click.";
+  }
+}
+
+function localCandidateBulkActionProgressLabel(action: LocalCandidateReviewBulkAction) {
+  switch (action) {
+    case "accept-all":
+      return "Accepting filtered candidates";
+    case "accept-likely-useful":
+      return "Accepting likely useful candidates";
+    case "reject-not-useful":
+      return "Rejecting likely-noise candidates";
+  }
+}
+
+function localCandidateBulkResultMessage(result: LocalCandidateReviewBulkResponse) {
+  const parts = [
+    `${result.accepted.toLocaleString()} accepted`,
+    `${result.rejected.toLocaleString()} rejected`,
+    `${result.scanned.toLocaleString()} scanned`
+  ];
+
+  if (result.status === "stopped-at-limit") {
+    parts.push("stopped at the safety limit; press the button again to continue");
+  }
+
+  if (result.errors.length > 0) {
+    parts.push(`${result.errors.length.toLocaleString()} error(s)`);
+  }
+
+  return `Bulk review finished: ${parts.join(", ")}.`;
+}
+
+function localCandidateBucketLabel(bucket: LocalCandidateReviewBucket) {
+  return (
+    LOCAL_CANDIDATE_BUCKET_OPTIONS.find((option) => option.value === bucket)?.label ??
+    "current"
+  );
+}
+
+function localCandidateBucketCount(
+  review: LocalCandidateReviewResponse | null,
+  bucket: LocalCandidateReviewBucket
+) {
+  const counts = review?.counts;
+
+  if (!counts) {
+    return 0;
+  }
+
+  switch (bucket) {
+    case "all":
+      return counts.all;
+    case "all-useful":
+      return counts.allUseful;
+    case "likely-useful":
+      return counts.likelyUseful;
+    case "maybe-useful":
+      return counts.maybeUseful;
+    case "likely-noise":
+      return counts.likelyNoise;
+    case "unclassified":
+      return counts.unclassified;
+  }
+}
+
+function localAcceptedProcessorIdleMessage(
+  status: LocalAcceptedCandidateProcessingStatusResponse
+) {
+  if (status.counts.unprocessed > 0) {
+    return `${status.counts.unprocessed.toLocaleString()} accepted candidate(s) still need processing before moving to maybe-useful.`;
+  }
+
+  if (status.counts.acceptedWithReference === 0) {
+    return "No accepted candidates with references are ready to process yet.";
+  }
+
+  return `${status.counts.processed.toLocaleString()} accepted candidate(s) processed. Likely-useful accepted work is caught up.`;
+}
+
+function localBenefitDiscoveryQueueMessage(queue: LocalBenefitDiscoveryQueueResponse) {
+  if (queue.clusters.length === 0) {
+    return "No active benefit discovery clusters are ready.";
+  }
+
+  return `${queue.counts.activeClusters.toLocaleString()} active cluster(s), ${queue.counts.activeCandidates.toLocaleString()} candidate(s), ${queue.counts.mismatchCandidates.toLocaleString()} candidate(s) flagged for identity checks.`;
+}
+
+function localBenefitDiscoveryConfirmMessage(
+  cluster: LocalBenefitDiscoveryCluster,
+  action: LocalBenefitDiscoveryAction
+) {
+  switch (action) {
+    case "draft-claim":
+      return `Create an unreviewed local draft claim for ${cluster.interventionName} / ${cluster.outcomeLabel} and link ${cluster.usableCandidateCount.toLocaleString()} usable accepted reference(s)?`;
+    case "link-existing-claim":
+      return `Link ${cluster.usableCandidateCount.toLocaleString()} usable accepted reference(s) to the existing ${cluster.interventionName} / ${cluster.outcomeLabel} claim?`;
+    case "reject-cluster":
+      return `Reject this ${cluster.interventionName} / ${cluster.outcomeLabel} discovery cluster from the local queue?`;
+  }
+}
+
+function localBenefitDiscoveryActionProgress(action: LocalBenefitDiscoveryAction) {
+  switch (action) {
+    case "draft-claim":
+      return "Creating local draft claim and linking accepted references.";
+    case "link-existing-claim":
+      return "Linking accepted references to existing claim.";
+    case "reject-cluster":
+      return "Rejecting benefit discovery cluster.";
+  }
+}
+
+function localIdentityResolutionQueueMessage(queue: LocalIdentityResolutionQueueResponse) {
+  if (queue.counts.blockedCandidates === 0) {
+    return "No blocked identity rows are waiting.";
+  }
+
+  return `${queue.counts.blockedCandidates.toLocaleString()} accepted source(s) need identity resolution.`;
+}
+
+function localIdentityResolutionConfirmMessage(
+  candidate: LocalIdentityResolutionCandidate,
+  action: LocalIdentityResolutionAction
+) {
+  switch (action) {
+    case "confirm-target":
+      return `Confirm this source belongs to ${candidate.interventionName}?`;
+    case "reassign-intervention":
+      return `Reassign this accepted source away from ${candidate.interventionName}?`;
+    case "reject-wrong-supplement":
+      return `Reject this source candidate as the wrong supplement for ${candidate.interventionName}?`;
+    case "add-synonym":
+      return `Add this alias to ${candidate.interventionName} and confirm the source identity?`;
+  }
+}
+
+function localIdentityResolutionProgressMessage(action: LocalIdentityResolutionAction) {
+  switch (action) {
+    case "confirm-target":
+      return "Confirming source identity.";
+    case "reassign-intervention":
+      return "Reassigning source identity.";
+    case "reject-wrong-supplement":
+      return "Rejecting wrong-supplement source.";
+    case "add-synonym":
+      return "Adding alias and confirming source identity.";
+  }
+}
+
+function localBenefitDiscoveryAutomationMessage(
+  result: LocalBenefitDiscoveryAutomationResponse
+) {
+  const parts = [
+    `${result.counts.scannedClusters.toLocaleString()} scanned`,
+    `${result.counts.draftClaims.toLocaleString()} draft`,
+    `${result.counts.linkExistingClaims.toLocaleString()} link`,
+    `${result.counts.holdClusters.toLocaleString()} hold`,
+    `${result.counts.rejectClusters.toLocaleString()} reject`
+  ];
+
+  if (result.applied) {
+    parts.push(`${result.counts.linkedReferences.toLocaleString()} reference(s) linked`);
+  }
+
+  if (result.counts.errors > 0) {
+    parts.push(`${result.counts.errors.toLocaleString()} error(s)`);
+  }
+
+  return `Auto-build ${result.applied ? "applied" : "preview"}: ${parts.join(", ")}.`;
+}
+
+function localBenefitDiscoveryAutomationConfirmMessage(
+  preview: LocalBenefitDiscoveryAutomationResponse | null,
+  threshold: number
+) {
+  if (!preview) {
+    return `Run auto-build at score ${threshold}? This will create unreviewed local draft claims, link existing local claims, and reject very low-confidence clusters from the local queue.`;
+  }
+
+  return `Apply auto-build at score ${threshold}? This will draft ${preview.counts.draftClaims.toLocaleString()} claim(s), link ${preview.counts.linkExistingClaims.toLocaleString()} existing claim cluster(s), and reject ${preview.counts.rejectClusters.toLocaleString()} low-confidence cluster(s).`;
+}
+
+function localBenefitDiscoveryAutomationActionLabel(
+  action: LocalBenefitDiscoveryAutomationAction
+) {
+  switch (action) {
+    case "draft-claim":
+      return "draft";
+    case "link-existing-claim":
+      return "link";
+    case "reject-cluster":
+      return "reject";
+    case "hold":
+      return "hold";
+  }
+}
+
+function localBenefitDiscoveryAutomationTone(
+  action: LocalBenefitDiscoveryAutomationAction
+) {
+  switch (action) {
+    case "draft-claim":
+      return "border-signal/20 bg-signal/10 text-signal";
+    case "link-existing-claim":
+      return "border-green-200 bg-green-50 text-green-700";
+    case "reject-cluster":
+      return "border-danger/20 bg-red-50 text-danger";
+    case "hold":
+      return "border-amberline/25 bg-amber-50 text-amberline";
+  }
+}
+
+async function postLocalIngestionStart() {
+  return localIngestionFetch<LocalIngestionStartResponse>("/api/local-ingestion/start", {
+    method: "POST"
+  });
+}
+
+async function postLocalIngestionSynonyms() {
+  return localIngestionFetch<LocalIngestionStartResponse>("/api/local-ingestion/synonyms", {
+    method: "POST"
+  });
+}
+
+async function postLocalIngestionRun(limit: number) {
+  return localIngestionFetch<LocalIngestionRunResponse>("/api/local-ingestion/run", {
+    body: JSON.stringify({ limit }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "POST"
+  });
+}
+
+async function localIngestionFetch<T>(url: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  const method = init.method ?? "GET";
+
+  if (isLocalIngestionWriteMethod(method)) {
+    headers.set(LOCAL_INGESTION_WRITE_HEADER, LOCAL_INGESTION_WRITE_HEADER_VALUE);
+  }
+
+  const response = await fetch(url, {
+    ...init,
+    headers,
+    cache: "no-store"
+  });
+  const body = (await response.json().catch(() => ({}))) as T & { error?: string };
+
+  if (!response.ok) {
+    throw new Error(body.error ?? "Local ingestion request failed.");
+  }
+
+  return body;
+}
+
+function isLocalDashboardHost() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+}
+
+function localIngestionQueueCount(
+  status: LocalIngestionStatusReadout,
+  key: LocalIngestionJobStatus
+) {
+  return status.queue.counts[key] ?? 0;
+}
+
+function localIngestionIdleMessage(status: LocalIngestionStatusReadout) {
+  const queued = localIngestionQueueCount(status, "QUEUED");
+  const running = localIngestionQueueCount(status, "RUNNING");
+
+  if (queued > 0 || running > 0) {
+    return `${queued.toLocaleString()} queued and ${running.toLocaleString()} running.`;
+  }
+
+  return `Idle. ${status.candidates.total.toLocaleString()} source candidate(s) are in the local database.`;
+}
+
+function localIngestionErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Local ingestion request failed.";
+}
+
+function localIngestionSourceLabel(source: LocalIngestionSource) {
+  switch (source) {
+    case "CLINICALTRIALS_GOV":
+      return "ClinicalTrials.gov";
+    case "PUBMED":
+      return "PubMed";
+  }
+}
+
+function localIngestionStatusLabel(status: LocalIngestionJobStatus | LocalIngestionRunJobResult["status"]) {
+  return status.replace(/_/g, " ").toLowerCase();
+}
+
+function localIngestionStatusTone(status: LocalIngestionJobStatus) {
+  switch (status) {
+    case "FAILED":
+      return "border-danger/30 bg-red-50 text-danger";
+    case "QUEUED":
+      return "border-line bg-mist text-slate-700";
+    case "RUNNING":
+      return "border-signal/30 bg-blue-50 text-signal";
+    case "SKIPPED":
+      return "border-amberline/30 bg-amber-50 text-amberline";
+    case "SUCCEEDED":
+      return "border-green-200 bg-green-50 text-green-700";
+  }
+}
+
+function localIngestionDeepeningCatchUpSummary(
+  catchUp: LocalIngestionDeepeningCatchUpReadout
+) {
+  if (catchUp.eligibleJobs === 0) {
+    return "No completed full PubMed first-page jobs needed catch-up deepening.";
+  }
+
+  return `Deepening catch-up: ${catchUp.newJobs.toLocaleString()} queued, ${catchUp.existingJobs.toLocaleString()} already queued, ${catchUp.skippedJobs.toLocaleString()} skipped from ${catchUp.eligibleJobs.toLocaleString()} completed full PubMed first-page job(s).`;
+}
+
+function localIngestionDeepeningRunSummary(
+  deepening: NonNullable<LocalIngestionRunJobResult["deepening"]>
+) {
+  const usefulRatio = `${Math.round(deepening.usefulRatio * 100)}%`;
+  const pageRange = `${deepening.pageStart + 1}-${deepening.pageStart + deepening.pageSize}`;
+  const total =
+    deepening.totalCount !== undefined
+      ? ` of ${deepening.totalCount.toLocaleString()} reported`
+      : `; cap ${deepening.maxResults.toLocaleString()}`;
+  const nextPage =
+    deepening.nextPageStart !== undefined
+      ? ` Next page starts at ${deepening.nextPageStart + 1}.`
+      : "";
+
+  return `Deepening: ${deepening.reason}. Useful-looking ${deepening.usefulCandidateCount.toLocaleString()}/${deepening.candidateCount.toLocaleString()} (${usefulRatio}) on PubMed page ${pageRange}${total}.${nextPage}`;
+}
+
+function localIngestionClassificationTone(
+  bucket: LocalIngestionDiscoveryClassificationReadout["bucket"]
+) {
+  switch (bucket) {
+    case "likely-useful":
+      return "border-green-200 bg-green-50 text-green-700";
+    case "likely-noise":
+      return "border-slate-200 bg-slate-50 text-slate-600";
+    case "maybe-useful":
+      return "border-amberline/30 bg-amber-50 text-amberline";
+  }
+}
+
+function localIngestionClassificationSummary(
+  classification: LocalIngestionDiscoveryClassificationReadout
+) {
+  const reasons = classification.reasons.slice(0, 2);
+  const cautions = classification.cautions.slice(0, 2);
+  const parts = [
+    ...reasons,
+    ...cautions.map((caution) => `caution: ${caution}`)
+  ];
+
+  return parts.length > 0 ? parts.join("; ") : "needs manual review";
+}
+
+function formatLocalIngestionTime(value?: string) {
+  if (!value) {
+    return "not started";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "unknown";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit"
+  }).format(date);
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 }
 
 function CatalogTrustPanel({ summary }: { summary: CatalogTrustSummary }) {
@@ -1146,10 +3808,7 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
     CODEX_REVIEW_SIDECAR_URL_KEY,
     DEFAULT_CODEX_REVIEW_SIDECAR_URL
   ));
-  const [operatorToken, setOperatorToken] = useState(() => readBrowserStorage(
-    CODEX_REVIEW_TOKEN_KEY,
-    ""
-  ));
+  const [operatorToken, setOperatorToken] = useState("");
   const [isPublicBrowser, setIsPublicBrowser] = useState(false);
   const packet = useMemo(() => buildCodexReviewPacket(data), [data]);
   const hasLocalOperatorConfig =
@@ -1209,7 +3868,6 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
     }
 
     writeBrowserStorage(CODEX_REVIEW_SIDECAR_URL_KEY, nextSidecarUrl);
-    writeBrowserStorage(CODEX_REVIEW_TOKEN_KEY, nextToken);
     setSendStatus("sending");
     setSendError(null);
 
@@ -1258,7 +3916,7 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
         local only
       </span>
       <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
-        no shared public token
+        token stays in tab
       </span>
       {isApproving ? (
         <div className="absolute right-0 z-20 mt-2 w-[min(88vw,440px)] rounded-lg border border-line bg-white p-3 text-left shadow-panel">
@@ -1268,12 +3926,12 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
               local only
             </span>
             <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
-              no shared public token
+              token stays in tab
             </span>
           </div>
           <p className="mt-1 text-xs leading-5 text-slate-600">
-            Sends a read-only packet through the local operator sidecar. Source-candidate decisions
-            and public evidence promotion stay human-owned.
+            Sends a read-only packet through the local operator sidecar. Paste the token for this
+            tab only; source-candidate decisions and public evidence promotion stay human-owned.
           </p>
           <div className="mt-3 grid gap-2">
             <label className="grid gap-1 text-xs font-semibold text-slate-600">
@@ -1302,7 +3960,7 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
               className="inline-flex h-8 items-center gap-2 rounded-md border border-signal/30 bg-blue-50 px-2 text-xs font-semibold text-signal hover:border-signal disabled:cursor-wait disabled:opacity-60"
             >
               <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
-              {sendStatus === "sending" ? "Sending" : "Approve and send"}
+              {sendStatus === "sending" ? "Sending" : "Send packet"}
             </button>
             <button
               type="button"

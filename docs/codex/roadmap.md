@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-06-27
+Last updated: 2026-06-28
 
 Compact product roadmap. The old internal artifact chain is not active roadmap work.
 
@@ -58,6 +58,17 @@ Done when the local database is coherent, traceable, and broad enough to promote
 Use a straightforward local flow: collect a source, map it to a scoped claim, capture the useful fields, and write to **local** evidence data when appropriate.
 
 Done when adding or updating evidence on local DB is a short, understandable workflow.
+
+### 3A. Turn The Ingested Candidate Pile Into Usable Evidence
+
+The local database now has a large source-candidate backlog. Build the tooling that turns it into reviewed claims and useful product signals:
+
+1. Build a local candidate review dashboard: likely-useful first, grouped by intervention, with PubMed/ClinicalTrials title, study type, year, classifier reasons, cautions, filters, and quick local accept/reject actions.
+2. Add novel benefit-area detection: classify candidates into benefit areas and flag when a candidate appears outside the supplement's existing/main claims.
+3. Create claim-draft suggestions from strong candidates without auto-publishing them.
+4. Hide likely-noise candidates by default while keeping them searchable.
+
+Done when the useful/maybe-useful candidate backlog can be reviewed quickly from the local dashboard and promising novel benefit signals can become draft claim/source links.
 
 ### 4. Improve Trust And Readability
 

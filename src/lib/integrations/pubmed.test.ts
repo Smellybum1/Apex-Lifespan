@@ -43,6 +43,7 @@ describe("searchPubMed", () => {
 
     expect(result.ids).toEqual(["28615996"]);
     expect(result.count).toBe(42);
+    expect(result.retstart).toBe(0);
     expect(result.articles).toEqual([
       {
         pmid: "28615996",
@@ -340,6 +341,23 @@ describe("searchPubMed", () => {
 
     const url = new URL(String(fetchSpy.mock.calls[0]?.[0]));
     expect(url.searchParams.get("retmax")).toBe("20");
+  });
+
+  it("passes retstart for deeper PubMed pages", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        esearchresult: {
+          count: "42",
+          idlist: []
+        }
+      })
+    );
+
+    const result = await searchPubMed("berberine", 20, { retstart: 20 });
+
+    expect(result.retstart).toBe(20);
+    const url = new URL(String(fetchSpy.mock.calls[0]?.[0]));
+    expect(url.searchParams.get("retstart")).toBe("20");
   });
 
   it("caps returned ids when PubMed over-returns despite the requested retmax", async () => {

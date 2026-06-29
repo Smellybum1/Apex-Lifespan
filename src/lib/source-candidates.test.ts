@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildClinicalTrialSourceCandidates,
   buildPubMedSourceCandidates,
-  buildSourceCandidateDedupeKey
+  buildSourceCandidateDedupeKey,
+  classifySourceCandidateForDiscovery
 } from "@/lib/source-candidates";
 
 describe("source candidate mapping", () => {
@@ -13,6 +14,7 @@ describe("source candidate mapping", () => {
         query: "creatine strength",
         ids: ["28615996"],
         count: 1,
+        retstart: 0,
         source: "NCBI E-utilities",
         articles: [
           {
@@ -40,7 +42,7 @@ describe("source candidate mapping", () => {
       }
     );
 
-    expect(candidates).toEqual([
+    expect(candidates).toMatchObject([
       {
         dedupeKey:
           "pubmed|au|creatine%20strength|28615996|creatine|creatine-strength",
@@ -68,7 +70,13 @@ describe("source candidate mapping", () => {
           doi: "10.1186/s12970-017-0173-z",
           authors: ["Kreider RB"],
           abstractText:
-            "Creatine can support strength and lean mass when paired with training."
+            "Creatine can support strength and lean mass when paired with training.",
+          discoveryClassification: {
+            bucket: "likely-useful",
+            label: "Likely useful",
+            reasons: expect.arrayContaining(["review or meta-analysis signal"]),
+            version: "2026-06-27"
+          }
         }
       }
     ]);
@@ -139,7 +147,39 @@ describe("source candidate mapping", () => {
       status: "Recruiting",
       hasResults: false,
       primaryOutcomes: ["Whole-body lean mass"],
-      briefSummary: "Registry summary for creatine and resistance training."
+      briefSummary: "Registry summary for creatine and resistance training.",
+      discoveryClassification: {
+        bucket: "likely-useful",
+        label: "Likely useful",
+        reasons: expect.arrayContaining(["registered intervention directly matches query"])
+      }
+    });
+  });
+
+  it("classifies preclinical-only PubMed candidates as likely noise", () => {
+    expect(
+      classifySourceCandidateForDiscovery({
+        dedupeKey: "pubmed|au|creatine|1||",
+        source: "PubMed",
+        externalId: "1",
+        query: "Creatine cognition randomized placebo",
+        region: "AU",
+        title: "Creatine effects in cultured cells and mice",
+        url: "https://pubmed.ncbi.nlm.nih.gov/1/",
+        publishedYear: 2024,
+        sourceType: "Journal Article",
+        abstractAvailable: true,
+        triageScore: 30,
+        triageReasons: [],
+        decision: "Pending review",
+        reviewStatus: "Unreviewed AI draft",
+        metadata: {
+          abstractText: "In vitro cells and mice were used to study mechanisms."
+        }
+      })
+    ).toMatchObject({
+      bucket: "likely-noise",
+      cautions: expect.arrayContaining(["preclinical or non-human signal"])
     });
   });
 

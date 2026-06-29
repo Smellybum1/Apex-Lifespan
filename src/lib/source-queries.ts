@@ -4,19 +4,33 @@ export interface SourceSearchQueries {
   label: string;
   plans: SourceSearchQueryPlanItem[];
   pubMedTerm: string;
+  pubMedTerms: string[];
+  trialTerm: string;
+}
+
+export interface InterventionDiscoverySearchQueries {
+  label: string;
+  plans: SourceSearchQueryPlanItem[];
+  pubMedTerms: string[];
   trialTerm: string;
 }
 
 export type SourceSearchQueryPlanKind =
+  | "benefit-discovery"
+  | "benefit-discovery-review"
+  | "benefit-discovery-trial"
   | "category-context"
+  | "intervention-review"
   | "human-trial"
   | "outcome-context"
+  | "outcome-review"
   | "regulatory-review"
   | "review-level"
   | "safety"
   | "trial-registry";
 
 export type SourceSearchQueryBundleId =
+  | "benefit-discovery"
   | "category-context"
   | "core-evidence"
   | "outcome-context";
@@ -50,6 +64,26 @@ const outcomeSearchTerms: Record<OutcomeArea, string> = {
   "Fertility/hormones": "fertility hormones",
   "Biological aging clocks": "biological aging clocks",
   "Safety/adverse effects": "safety adverse effects"
+};
+
+const outcomeReviewTerms: Record<OutcomeArea, string> = {
+  "Mortality/lifespan": "longevity mortality lifespan systematic review meta-analysis",
+  "Cardiovascular events": "cardiovascular events systematic review meta-analysis",
+  "LDL/ApoB/lipids": "lipids triglycerides ApoB systematic review meta-analysis",
+  "Blood pressure": "blood pressure systematic review meta-analysis",
+  "Glucose/insulin/HbA1c": "glucose insulin HbA1c systematic review meta-analysis",
+  Inflammation: "inflammation systematic review meta-analysis",
+  Cognition: "cognition systematic review meta-analysis",
+  Sleep: "sleep systematic review meta-analysis",
+  "Mood/stress": "mood stress systematic review meta-analysis",
+  "Muscle/strength": "strength exercise performance systematic review meta-analysis",
+  "VO2 max/endurance": "VO2 max endurance systematic review meta-analysis",
+  "Joint/tendon/skin": "skin systematic review meta-analysis",
+  "Eye health": "eye health vision systematic review meta-analysis",
+  "Immune/respiratory": "immune respiratory systematic review meta-analysis",
+  "Fertility/hormones": "fertility hormones systematic review meta-analysis",
+  "Biological aging clocks": "biological aging clocks systematic review meta-analysis",
+  "Safety/adverse effects": "safety adverse effects systematic review meta-analysis"
 };
 
 const outcomeSupplementalContexts: Partial<
@@ -112,8 +146,8 @@ const outcomeSupplementalContexts: Partial<
   },
   "Eye health": {
     rationale:
-      "Add eye-health measurement terms for visual acuity, macular outcomes, and controlled evidence.",
-    term: "visual acuity macular retinal placebo randomized trial"
+      "Add eye-health measurement terms for strain, dry-eye, myopia, visual acuity, macular outcomes, and controlled evidence.",
+    term: "eye strain dry eye myopia visual acuity macular retinal placebo randomized trial"
   },
   "Immune/respiratory": {
     rationale:
@@ -129,6 +163,97 @@ const outcomeSupplementalContexts: Partial<
     rationale:
       "Add biological-aging marker terms while keeping surrogate endpoints distinct from lifespan claims.",
     term: "epigenetic clock biological age methylation biomarker clinical trial"
+  }
+};
+
+const benefitDiscoveryOutcomeContexts: Record<
+  OutcomeArea,
+  { review: string[]; trial: string[] }
+> = {
+  "Mortality/lifespan": {
+    review: ["longevity lifespan mortality systematic review meta-analysis"],
+    trial: ["aging biomarkers biological age randomized placebo trial"]
+  },
+  "Cardiovascular events": {
+    review: ["cardiovascular events heart health systematic review meta-analysis"],
+    trial: ["blood pressure vascular function endothelial randomized placebo trial"]
+  },
+  "LDL/ApoB/lipids": {
+    review: ["lipids cholesterol triglycerides ApoB systematic review meta-analysis"],
+    trial: ["LDL cholesterol triglycerides ApoB randomized placebo trial"]
+  },
+  "Blood pressure": {
+    review: ["blood pressure hypertension systematic review meta-analysis"],
+    trial: ["systolic diastolic blood pressure randomized placebo trial"]
+  },
+  "Glucose/insulin/HbA1c": {
+    review: ["glucose insulin HbA1c metabolic health systematic review meta-analysis"],
+    trial: ["fasting glucose insulin resistance HbA1c randomized placebo trial"]
+  },
+  Inflammation: {
+    review: ["inflammation oxidative stress systematic review meta-analysis"],
+    trial: ["CRP IL-6 TNF oxidative stress randomized placebo trial"]
+  },
+  Cognition: {
+    review: ["cognition memory attention systematic review meta-analysis"],
+    trial: ["memory attention cognitive performance randomized placebo trial"]
+  },
+  Sleep: {
+    review: ["sleep insomnia systematic review meta-analysis"],
+    trial: ["sleep quality insomnia randomized placebo trial"]
+  },
+  "Mood/stress": {
+    review: ["mood stress anxiety systematic review meta-analysis"],
+    trial: ["anxiety stress mood randomized placebo trial"]
+  },
+  "Muscle/strength": {
+    review: ["exercise performance strength muscle systematic review meta-analysis"],
+    trial: ["strength exercise performance muscle randomized placebo trial"]
+  },
+  "VO2 max/endurance": {
+    review: ["endurance VO2 max fatigue systematic review meta-analysis"],
+    trial: ["VO2 max endurance fatigue randomized placebo trial"]
+  },
+  "Joint/tendon/skin": {
+    review: [
+      "skin aging photoaging systematic review meta-analysis",
+      "joint tendon pain systematic review meta-analysis"
+    ],
+    trial: [
+      "skin aging photoaging randomized placebo trial",
+      "skin hydration elasticity randomized placebo trial",
+      "joint pain tendon function randomized placebo trial"
+    ]
+  },
+  "Eye health": {
+    review: [
+      "eye health vision systematic review meta-analysis",
+      "digital eye strain systematic review",
+      "dry eye myopia systematic review"
+    ],
+    trial: [
+      "eye strain randomized placebo",
+      "digital eye strain randomized placebo",
+      "dry eye randomized placebo",
+      "myopia randomized placebo",
+      "visual acuity retinal macular randomized placebo"
+    ]
+  },
+  "Immune/respiratory": {
+    review: ["immune respiratory infection systematic review meta-analysis"],
+    trial: ["respiratory infection immune function randomized placebo trial"]
+  },
+  "Fertility/hormones": {
+    review: ["fertility hormones testosterone estrogen systematic review meta-analysis"],
+    trial: ["fertility hormones testosterone estrogen randomized placebo trial"]
+  },
+  "Biological aging clocks": {
+    review: ["biological aging epigenetic clock systematic review meta-analysis"],
+    trial: ["epigenetic clock biological age methylation randomized placebo trial"]
+  },
+  "Safety/adverse effects": {
+    review: ["safety adverse effects tolerability systematic review meta-analysis"],
+    trial: ["safety adverse effects tolerability randomized placebo trial"]
   }
 };
 
@@ -276,21 +401,160 @@ export function buildSourceSearchQueries({
     `${interventionTerm} ${clinicalContextTerm} randomized trial systematic review`
   );
   const trialTerm = normaliseSearchTerm(`${interventionTerm} ${clinicalContextTerm}`);
+  const plans = sourceSearchQueryPlans({
+    category: intervention?.category,
+    clinicalContextTerm,
+    claimContextTerm,
+    claimOutcome: claim?.outcome,
+    interventionTerm,
+    pubMedTerm,
+    trialTerm
+  });
 
   return {
     label,
-    plans: sourceSearchQueryPlans({
-      category: intervention?.category,
-      clinicalContextTerm,
-      claimContextTerm,
-      claimOutcome: claim?.outcome,
-      interventionTerm,
-      pubMedTerm,
-      trialTerm
-    }),
+    plans,
     pubMedTerm,
+    pubMedTerms: executablePubMedTerms(plans),
     trialTerm
   };
+}
+
+export function buildInterventionDiscoverySearchQueries({
+  intervention
+}: {
+  intervention: Pick<Intervention, "name" | "synonyms"> &
+    Partial<Pick<Intervention, "category">>;
+}): InterventionDiscoverySearchQueries {
+  const interventionTerm = intervention.name ?? intervention.synonyms[0] ?? "healthspan intervention";
+  const trialTerm = normaliseSearchTerm(`${interventionTerm}`);
+  const plans = interventionDiscoverySearchQueryPlans({
+    category: intervention.category,
+    interventionTerm,
+    trialTerm
+  });
+
+  return {
+    label: `${interventionTerm} - broad benefit discovery`,
+    plans,
+    pubMedTerms: executablePubMedTerms(plans),
+    trialTerm
+  };
+}
+
+function interventionDiscoverySearchQueryPlans({
+  category,
+  interventionTerm,
+  trialTerm
+}: {
+  category?: InterventionCategory;
+  interventionTerm: string;
+  trialTerm: string;
+}): SourceSearchQueryPlanItem[] {
+  return [
+    {
+      bundleId: "benefit-discovery",
+      bundleLabel: "Broad benefit discovery",
+      executable: true,
+      kind: "benefit-discovery",
+      priority: 1,
+      rationale:
+        "Run the raw intervention term first so unexpected titles and outcomes can surface before benefit-area filters narrow the search.",
+      source: "PubMed",
+      term: normaliseSearchTerm(interventionTerm)
+    },
+    {
+      bundleId: "benefit-discovery",
+      bundleLabel: "Broad benefit discovery",
+      executable: true,
+      kind: "benefit-discovery-review",
+      priority: 5,
+      rationale:
+        "Sweep intervention-wide review literature before assuming only existing claim outcomes matter.",
+      source: "PubMed",
+      term: normaliseSearchTerm(
+        `${interventionTerm} systematic review meta-analysis human`
+      )
+    },
+    {
+      bundleId: "benefit-discovery",
+      bundleLabel: "Broad benefit discovery",
+      executable: true,
+      kind: "benefit-discovery-trial",
+      priority: 10,
+      rationale:
+        "Sweep human placebo-controlled and randomized evidence across possible benefit domains.",
+      source: "PubMed",
+      term: normaliseSearchTerm(`${interventionTerm} randomized placebo clinical trial`)
+    },
+    {
+      bundleId: "benefit-discovery",
+      bundleLabel: "Broad benefit discovery",
+      executable: true,
+      kind: "benefit-discovery",
+      priority: 15,
+      rationale:
+        "Catch human biomarker and functional outcome studies that do not fit existing claim wording.",
+      source: "PubMed",
+      term: normaliseSearchTerm(`${interventionTerm} human health biomarkers benefits`)
+    },
+    ...benefitDiscoveryOutcomePlans({ interventionTerm }),
+    ...supplementalCategoryPlans({ category, interventionTerm }),
+    {
+      bundleId: "benefit-discovery",
+      bundleLabel: "Broad benefit discovery",
+      executable: true,
+      kind: "trial-registry",
+      priority: 500,
+      rationale:
+        "Check active, completed, and unpublished trial records at the whole-intervention level.",
+      source: "ClinicalTrials.gov",
+      term: trialTerm
+    }
+  ];
+}
+
+function benefitDiscoveryOutcomePlans({
+  interventionTerm
+}: {
+  interventionTerm: string;
+}): SourceSearchQueryPlanItem[] {
+  const plans: SourceSearchQueryPlanItem[] = [];
+  let priority = 100;
+
+  for (const [outcome, context] of Object.entries(benefitDiscoveryOutcomeContexts) as Array<
+    [OutcomeArea, { review: string[]; trial: string[] }]
+  >) {
+    for (const term of context.review) {
+      plans.push({
+        bundleId: "benefit-discovery",
+        bundleLabel: "Broad benefit discovery",
+        executable: true,
+        kind: "benefit-discovery-review",
+        priority,
+        rationale: `Look for ${outcome.toLowerCase()} review-level signals before claims are pre-selected.`,
+        source: "PubMed",
+        term: normaliseSearchTerm(`${interventionTerm} ${term}`)
+      });
+      priority += 1;
+    }
+
+    for (const term of context.trial) {
+      plans.push({
+        bundleId: "benefit-discovery",
+        bundleLabel: "Broad benefit discovery",
+        executable: true,
+        kind: "benefit-discovery-trial",
+        priority,
+        rationale: `Look for ${outcome.toLowerCase()} human trial signals before claims are pre-selected.`,
+        source: "PubMed",
+        term: normaliseSearchTerm(`${interventionTerm} ${term}`)
+      });
+      priority += 1;
+    }
+  }
+
+  return plans;
 }
 
 function sourceSearchQueryPlans({
@@ -319,6 +583,19 @@ function sourceSearchQueryPlans({
       bundleId: "core-evidence",
       bundleLabel: "Core evidence sweep",
       executable: true,
+      kind: "intervention-review",
+      priority: 5,
+      rationale:
+        "Run a compact intervention-wide review query so narrow outcome terms do not hide useful human meta-analyses.",
+      source: "PubMed",
+      term: normaliseSearchTerm(
+        `${interventionTerm} randomized clinical trial systematic review meta-analysis`
+      )
+    },
+    {
+      bundleId: "core-evidence",
+      bundleLabel: "Core evidence sweep",
+      executable: true,
       kind: "review-level",
       priority: 10,
       rationale:
@@ -328,6 +605,7 @@ function sourceSearchQueryPlans({
         `${interventionTerm} ${clinicalContextTerm} systematic review meta-analysis`
       )
     },
+    ...outcomeReviewPlans({ claimOutcome, interventionTerm }),
     {
       bundleId: "core-evidence",
       bundleLabel: "Core evidence sweep",
@@ -378,6 +656,34 @@ function sourceSearchQueryPlans({
     },
     ...supplementalOutcomePlans({ claimOutcome, interventionTerm }),
     ...supplementalCategoryPlans({ category, interventionTerm })
+  ];
+}
+
+function outcomeReviewPlans({
+  claimOutcome,
+  interventionTerm
+}: {
+  claimOutcome?: OutcomeArea;
+  interventionTerm: string;
+}): SourceSearchQueryPlanItem[] {
+  const term = claimOutcome ? outcomeReviewTerms[claimOutcome] : undefined;
+
+  if (!term) {
+    return [];
+  }
+
+  return [
+    {
+      bundleId: "core-evidence",
+      bundleLabel: "Core evidence sweep",
+      executable: true,
+      kind: "outcome-review",
+      priority: 15,
+      rationale:
+        "Use a shorter outcome review query to catch relevant meta-analyses that PubMed drops when the claim text is too specific.",
+      source: "PubMed",
+      term: normaliseSearchTerm(`${interventionTerm} ${term}`)
+    }
   ];
 }
 
@@ -480,4 +786,22 @@ function normaliseSearchTerm(value: string) {
       return true;
     })
     .join(" ");
+}
+
+function executablePubMedTerms(plans: SourceSearchQueryPlanItem[]) {
+  const seen = new Set<string>();
+  const terms: string[] = [];
+
+  for (const plan of plans) {
+    if (!plan.executable || plan.source !== "PubMed") {
+      continue;
+    }
+
+    if (!seen.has(plan.term)) {
+      seen.add(plan.term);
+      terms.push(plan.term);
+    }
+  }
+
+  return terms;
 }

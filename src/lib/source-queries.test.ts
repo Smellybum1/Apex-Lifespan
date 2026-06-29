@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSourceSearchQueries } from "@/lib/source-queries";
+import {
+  buildInterventionDiscoverySearchQueries,
+  buildSourceSearchQueries
+} from "@/lib/source-queries";
 
 describe("buildSourceSearchQueries", () => {
   it("builds PubMed and trial terms from the active intervention and claim outcome", () => {
@@ -23,7 +26,9 @@ describe("buildSourceSearchQueries", () => {
       trialTerm: "Creatine monohydrate strength resistance training lean mass"
     });
     expect(queries.plans.map((plan) => plan.kind)).toEqual([
+      "intervention-review",
       "review-level",
+      "outcome-review",
       "human-trial",
       "trial-registry",
       "safety",
@@ -35,12 +40,26 @@ describe("buildSourceSearchQueries", () => {
       expect.objectContaining({
         bundleId: "core-evidence",
         bundleLabel: "Core evidence sweep",
+        kind: "intervention-review",
+        priority: 5,
+        source: "PubMed",
+        term:
+          "Creatine monohydrate randomized clinical trial systematic review meta-analysis"
+      })
+    );
+    expect(queries.plans).toContainEqual(
+      expect.objectContaining({
+        bundleId: "core-evidence",
+        bundleLabel: "Core evidence sweep",
         kind: "review-level",
         priority: 10,
         source: "PubMed",
         term:
           "Creatine monohydrate strength resistance training lean mass systematic review meta-analysis"
       })
+    );
+    expect(queries.pubMedTerms).toContain(
+      "Creatine monohydrate strength exercise performance systematic review meta-analysis"
     );
     expect(queries.plans).toContainEqual(
       expect.objectContaining({
@@ -69,6 +88,53 @@ describe("buildSourceSearchQueries", () => {
         term:
           "Creatine monohydrate trained adults exercise performance renal safety tolerability"
       })
+    );
+  });
+
+  it("adds a shorter skin review query that catches Astaxanthin skin-ageing meta-analyses", () => {
+    const queries = buildSourceSearchQueries({
+      intervention: {
+        category: "Botanical/herbal",
+        name: "Astaxanthin",
+        synonyms: []
+      },
+      claim: {
+        outcome: "Joint/tendon/skin",
+        claimText: "Joint, tendon, connective-tissue, or skin-health support."
+      }
+    });
+
+    expect(queries.pubMedTerms).toContain(
+      "Astaxanthin skin systematic review meta-analysis"
+    );
+    expect(queries.pubMedTerms).toContain(
+      "Astaxanthin randomized clinical trial systematic review meta-analysis"
+    );
+  });
+
+  it("builds broad intervention discovery terms across possible benefit domains", () => {
+    const queries = buildInterventionDiscoverySearchQueries({
+      intervention: {
+        category: "Botanical/herbal",
+        name: "Astaxanthin",
+        synonyms: []
+      }
+    });
+
+    expect(queries).toMatchObject({
+      label: "Astaxanthin - broad benefit discovery",
+      trialTerm: "Astaxanthin"
+    });
+    expect(queries.pubMedTerms[0]).toBe("Astaxanthin");
+    expect(queries.pubMedTerms).toContain("Astaxanthin eye strain randomized placebo");
+    expect(queries.pubMedTerms).toContain(
+      "Astaxanthin digital eye strain randomized placebo"
+    );
+    expect(queries.pubMedTerms).toContain(
+      "Astaxanthin skin aging photoaging randomized placebo trial"
+    );
+    expect(queries.pubMedTerms).toContain(
+      "Astaxanthin inflammation oxidative stress systematic review meta-analysis"
     );
   });
 
@@ -178,9 +244,15 @@ describe("buildSourceSearchQueries", () => {
     expect(queries).toMatchObject({
       label: "Active claim",
       pubMedTerm: "healthspan intervention human evidence randomized trial systematic review",
+      pubMedTerms: [
+        "healthspan intervention randomized clinical trial systematic review meta-analysis",
+        "healthspan intervention human evidence systematic review meta-analysis",
+        "healthspan intervention human evidence randomized trial systematic review",
+        "healthspan intervention safety adverse effects interactions contraindications"
+      ],
       trialTerm: "healthspan intervention human evidence"
     });
-    expect(queries.plans).toHaveLength(5);
+    expect(queries.plans).toHaveLength(6);
     expect(queries.plans.every((plan) => plan.bundleId === "core-evidence")).toBe(true);
   });
 });

@@ -1,5 +1,7 @@
 import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
 
+const HUMAN_REVIEW_CONFIRMATION_FLAG = "--confirm-human-reviewed";
+
 async function main() {
   const args = readReviewClaimPacketArgs(process.argv.slice(2));
 
@@ -10,6 +12,12 @@ async function main() {
 
   const envFile = args.envFilePath ? loadEnvFile(args.envFilePath) : undefined;
   const env = mergeEnv(process.env, envFile?.env);
+
+  if (!args.confirmHumanReviewed) {
+    throw new Error(
+      `${HUMAN_REVIEW_CONFIRMATION_FLAG} is required before marking a claim packet Human reviewed. Use it only after explicit human confirmation.`
+    );
+  }
 
   await withProcessEnv(env, async () => {
     const { prisma } = await import("@/lib/db/prisma");
@@ -53,6 +61,7 @@ interface ReviewClaimPacketCliArgs {
   actorEmail: string;
   claimId: string;
   envFilePath?: string;
+  confirmHumanReviewed: boolean;
   reviewedAt?: Date;
   reviewNote: string;
   showHelp?: false;
@@ -70,6 +79,8 @@ Options:
   --env-file <path>       Load an approved local env file before the operator write.
   --actor-email <email>   Active operator email to attach to the audit event.
   --claim <claim-id>      Complete claim source packet to mark human-reviewed.
+  --confirm-human-reviewed
+                          Required write confirmation; use only after explicit human review.
   --review-note <note>    Human review rationale; required.
   --reviewed-at <iso>     Optional ISO timestamp for deterministic rehearsals.
   --help                  Show this help.
@@ -88,6 +99,11 @@ function readReviewClaimPacketArgs(
       return {
         showHelp: true
       };
+    }
+
+    if (arg === HUMAN_REVIEW_CONFIRMATION_FLAG) {
+      parsed.confirmHumanReviewed = true;
+      continue;
     }
 
     if (arg === "--actor-email") {
@@ -163,6 +179,7 @@ function readReviewClaimPacketArgs(
   return {
     actorEmail: parsed.actorEmail,
     claimId: parsed.claimId,
+    confirmHumanReviewed: parsed.confirmHumanReviewed === true,
     envFilePath: parsed.envFilePath,
     reviewedAt: parsed.reviewedAt,
     reviewNote: parsed.reviewNote,

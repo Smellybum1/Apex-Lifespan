@@ -3,8 +3,9 @@
 ## Codex Rules
 - Hobby-project mode: read only what is relevant, make the useful change, and keep moving.
 - Do not create process artifacts, handoff history, roadmap micro-goals, or Composer contracts unless they clearly save time right now.
-- Startup scope: read `AGENTS.md` and `docs/codex/project.md`; read `docs/codex/handoff.md` only when resuming.
-- Current active docs win: this file, `docs/codex/project.md`, `docs/codex/roadmap.md`, and current `docs/codex/handoff.md` override older handoffs, archive docs, `.ai/delegation/`, legacy checklist/runbook/workflow docs, and generated logs.
+- Ordinary startup scope: read only `AGENTS.md` and `docs/codex/project.md`.
+- Conditional docs: read `docs/codex/handoff.md` only when resuming; read `docs/codex/roadmap.md` only for roadmap, prioritization, or next-work planning.
+- Current startup docs win: this file and `docs/codex/project.md` override older handoffs, archive docs, `.ai/delegation/`, legacy checklist/runbook/workflow docs, and generated logs. Conditional docs win only for their explicit task.
 - Avoid `docs/codex/archive/`, `docs/codex/plans/archive/`, `docs/codex/reference/`, generated `output/`, `.ai/delegation/`, and command catalogs unless the task specifically needs them.
 - Inspect existing patterns before editing. Do not invent commands, architecture, or facts.
 - Routine local code, docs, tests, read-only UI, and dry-run tooling should proceed autonomously.

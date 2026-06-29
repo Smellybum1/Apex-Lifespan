@@ -48,7 +48,8 @@ describe("EvidenceDashboard", () => {
     const html = renderToStaticMarkup(<EvidenceDashboard data={emptyDashboardData()} />);
 
     expect(html).toContain("No local scored claims match the current filters.");
-    expect(html).toContain("Claim details");
+    expect(html).toContain("Claim Details");
+    expect(html).toContain("Catalog Trust");
   });
 
   it("renders database catalog banner when dashboard data comes from local DB", () => {
@@ -63,16 +64,15 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("Database-backed");
   });
 
-  it("renders the seed-backed dashboard with active claim and source-packet cues", () => {
+  it("renders the seed-backed dashboard with evidence map and section tabs", () => {
     const data = seedDashboardData();
     const html = renderToStaticMarkup(<EvidenceDashboard data={data} />);
 
     expect(html).toContain("Apex Lifespan");
-    expect(html).toContain("Local catalog trust");
     expect(html).toContain("9 scoped claims");
-    expect(html).toContain("Source packets");
-    expect(html).toContain("Product AU/TGA");
-    expect(html).toContain("2 product profiles need exact AU/TGA product status");
+    expect(html).toContain("Evidence Map");
+    expect(html).toContain("Claim Details");
+    expect(html).toContain("Catalog Trust");
     expect(html).toContain("Prototype / seed dataset");
     expect(html).toContain("Current scores are based on a small");
     expect(html).toContain("curated seed dataset and live source-search previews");
@@ -103,9 +103,9 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain('id="evidence-map-outcome"');
     expect(html).toContain("All labels");
     expect(html).toContain("All outcomes");
-    expect(html).toContain("Claim details");
-    expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain("Selected claim");
+    expect(html).not.toContain("Local catalog trust");
+    expect(html).not.toContain("Source packets");
+    expect(html).not.toContain("Selected claim");
     expect(html).toContain("Showing 6 interventions · 9 scoped claims");
     expect(html).not.toContain("Dashboard detail sections");
     expect(html).not.toContain("Active card source packet");
@@ -145,7 +145,7 @@ describe("EvidenceDashboard", () => {
 
     expect(html).toContain("Operator mode");
     expect(html).toContain("local only");
-    expect(html).toContain("no shared public token");
+    expect(html).toContain("token stays in tab");
     expect(html).not.toContain("Ask Codex");
     expect(html).not.toContain("Approve and copy");
   });

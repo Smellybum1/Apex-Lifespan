@@ -1,5 +1,7 @@
 # Operator/Admin Auth Design
 
+Reference-only legacy launch doc. Do not load during ordinary startup or local product work; use only when the user explicitly asks about production operator/admin auth.
+
 Status: selected design for fully-live roadmap step 5. Implementation is deferred until the production database and secrets are provisioned.
 
 ## Decision

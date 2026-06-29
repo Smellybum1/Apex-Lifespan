@@ -128,3 +128,5 @@ async function resolveDedupeKey(args: PromotionDryRunCliArgs) {
 
   return args.dedupeKey;
 }
+// Legacy/reference process script. Not part of ordinary local product work.
+// Use only when explicitly checking public-promotion readiness for a source candidate.

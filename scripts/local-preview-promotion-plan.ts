@@ -63,3 +63,5 @@ main().catch((error) => {
   console.error(error instanceof Error ? error.message : error);
   process.exit(1);
 });
+// Legacy/reference process script. Not part of ordinary local product work.
+// Use only when explicitly planning preview promotion.

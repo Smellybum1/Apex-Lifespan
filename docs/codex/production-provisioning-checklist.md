@@ -1,5 +1,7 @@
 # Production Provisioning Checklist
 
+Reference-only legacy launch doc. Do not load during ordinary startup or local product work; use only when the user explicitly asks for production provisioning or deployment.
+
 Last updated: 2026-06-13
 
 Use this checklist when moving from the seed-backed public demo to managed database-backed production. Keep secrets in Vercel/Neon only; do not commit database URLs, OAuth secrets, Auth.js secrets, or exported data.
