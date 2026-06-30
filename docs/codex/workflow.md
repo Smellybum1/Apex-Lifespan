@@ -8,11 +8,11 @@ Use this only when process detail is actually needed.
 - Make the change.
 - Run checks only when they are useful for the changed surface.
 - Tell the user what changed.
-- Do not add readiness gates, queue rituals, Composer contracts, launch rehearsals, or review packets.
+- Do not add readiness gates, queue rituals, launch rehearsals, or review packets.
 
 ## Source Of Truth
 
-The simplified active docs win over old handoffs, `.ai/delegation/`, archived plans, checklists, runbooks, reference command catalogs, and generated logs. If an older doc recommends a queue, readiness gate, promotion chain, review packet, Composer ratio, or launch rehearsal, treat it as retired unless the user explicitly requests that exact process.
+The simplified active docs win over old handoffs, `.ai/delegation/`, archived plans, checklists, runbooks, reference command catalogs, and generated logs. If an older doc recommends a queue, readiness gate, promotion chain, review packet, or launch rehearsal, treat it as retired unless the user explicitly requests that exact process.
 
 ## Dirty Worktrees
 

@@ -143,7 +143,7 @@ Generated from a no-fix scan on 2026-06-29. This is a practical cleanup backlog,
 
 ### P6. Keep startup docs short
 
-- Where: `AGENTS.md`, `docs/codex/project.md`, `docs/codex/workflow.md`, and `docs/codex/cursor-composer.md`.
+- Where: `AGENTS.md`, `docs/codex/project.md`, and `docs/codex/workflow.md`.
 - Why it matters: recent cleanup helped. Future "helpful" docs could accidentally re-add the friction that slowed the project.
 - Recommend changing: keep ordinary startup to `AGENTS.md` plus `docs/codex/project.md`; move detailed guidance to task-triggered docs only.
 - Safe to fix now: no action needed unless these files grow again.

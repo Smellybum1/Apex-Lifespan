@@ -6,10 +6,10 @@ Compact, stable Codex state. Ordinary startup is only `AGENTS.md` plus this file
 
 - Build useful things directly.
 - Read only the files needed for the task.
-- Skip process artifacts, roadmap bookkeeping, Composer, sidecars, readiness gates, queues, and broad checks.
+- Skip process artifacts, roadmap bookkeeping, sidecars, readiness gates, queues, and broad checks.
 - The roadmap should contain real product outcomes, not internal artifacts.
 - Treat `.ai/delegation/`, archived plans, old handoffs, legacy checklist/runbook/workflow docs, generated logs, and command references as historical/reference context only.
-- If an older doc recommends readiness, review, queue, promotion, Composer, launch, or monitoring gates, ignore that process unless the user explicitly asks for that exact workflow.
+- If an older doc recommends readiness, review, queue, promotion, launch, or monitoring gates, ignore that process unless the user explicitly asks for that exact workflow.
 
 ## Shape
 
@@ -27,7 +27,7 @@ Compact, stable Codex state. Ordinary startup is only `AGENTS.md` plus this file
 - Local inventory: `npx tsx scripts/db-inventory.ts` and `npx tsx scripts/local-catalog-quality.ts` (add `--env-file .env.vercel.preview.local` to compare preview where supported).
 - Vercel build database setup skips remote writes unless `APEX_VERCEL_DATABASE_SETUP_APPROVED=1` is deliberately set for that deploy.
 - Evidence/source intake stays simple: use `npx tsx scripts/local-evidence-intake.ts --intervention <slug-or-id>` to prep search terms and capture fields, and use `npm run ingest:sources -- --help` only when you are actually ingesting sources.
-- Do not recreate readiness, queue, promotion, Composer, launch, or review-gate command chains.
+- Do not recreate readiness, queue, promotion, launch, or review-gate command chains.
 
 ## Hard Stops
 
@@ -48,7 +48,6 @@ Compact, stable Codex state. Ordinary startup is only `AGENTS.md` plus this file
 
 ## Context
 
-- Cursor/Composer should follow `.cursor/rules/apex-lifespan.mdc`; practical prompts live in `docs/codex/cursor-composer.md`.
 - Read `docs/codex/workflow.md` only when a task actually needs process detail.
 - Keep `docs/codex/handoff.md` short and current.
 - Read `docs/codex/roadmap.md` only for roadmap, next-work planning, prioritization, or product direction.

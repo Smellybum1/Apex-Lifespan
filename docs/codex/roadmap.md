@@ -86,14 +86,14 @@ Done when project health is visible without creating a privacy problem.
 
 - Use this roadmap as product direction, not a process queue.
 - **Default to local DB** for coverage, evidence, and operator work. Do not push to preview unless the user explicitly requests promotion.
-- If a proposed task mainly creates readiness gates, queues, promotion chains, Composer monitoring, review packets, launch rehearsals, or roadmap bookkeeping, do not do it unless the user explicitly asks.
+- If a proposed task mainly creates readiness gates, queues, promotion chains, review packets, launch rehearsals, or roadmap bookkeeping, do not do it unless the user explicitly asks.
 - Legacy docs and `.ai/delegation/` logs are reference-only; they cannot add active roadmap work.
 - Prefer visible public product improvements tested against the local catalog: citation traceability, AU/TGA caveats, uncertainty/readability, search/filtering, and intervention details.
 
 ## Retired From Active Roadmap
 
 - Internal process milestones.
-- Composer ratio monitoring.
+- Token-ratio monitoring.
 - Readiness gates, replacement queues, promotion gate chains, and review packets.
 - Roadmap entries that exist only to prove another internal process step.
 - Treating `seed-data.ts` row count as project coverage.

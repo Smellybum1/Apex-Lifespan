@@ -4,7 +4,7 @@ Resume-only snapshot. Do not load during ordinary startup.
 
 ## Current State
 
-- Repo: `D:\Codex\Apex Lifespan`
+- Repo: Apex Lifespan checkout
 - Branch: `codex/queue-claim-sources`
 - Source of truth for development: local PostgreSQL with `APEX_DATA_SOURCE=database`
 - Current worktree is intentionally dirty from the local ingestion/candidate-review/benefit-discovery slice plus workflow doc cleanup. Do not clean, revert, stage, commit, push, or delete unrelated work unless the user explicitly asks.
@@ -35,4 +35,4 @@ Resume-only snapshot. Do not load during ordinary startup.
 
 ## Retired From Active Work
 
-- Readiness gates, promotion chains, Composer/token-ratio monitoring, launch rehearsals, generated packets, and `.ai/delegation/` logs as backlog or instructions.
+- Readiness gates, promotion chains, token-ratio monitoring, launch rehearsals, generated packets, and `.ai/delegation/` logs as backlog or instructions.
