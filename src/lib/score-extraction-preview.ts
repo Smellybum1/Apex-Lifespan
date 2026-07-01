@@ -69,6 +69,7 @@ export type ScoreExtractionCandidatePreviewRow = {
   };
   interventionId: string | null;
   nextAction: string;
+  query: string;
   reviewStatus: string;
   sourceLabel: string;
   sourceTextStatus: string;
@@ -102,6 +103,7 @@ type AcceptedCandidate = {
   externalId: string;
   interventionId: string | null;
   metadata: Prisma.JsonValue;
+  query: string;
   reviewStatus: DbReviewStatus;
   source: DbSourceKind;
   sourceType: string | null;
@@ -142,6 +144,7 @@ export async function buildScoreExtractionCandidatePreview(
         externalId: true,
         interventionId: true,
         metadata: true,
+        query: true,
         reviewStatus: true,
         source: true,
         sourceType: true,
@@ -286,6 +289,7 @@ function formatScoreExtractionCandidateReferenceLines(
       [
         `  - ${candidate.sourceLabel} ${candidate.externalId} triage ${candidate.triageScore}: ${candidate.extractionReady ? "ready" : "blocked"} - ${candidate.nextAction}`,
         `    ${candidate.reviewStatus}; ${candidate.sourceType}; ${candidate.sourceTextStatus}`,
+        `    Context: ${formatExtractionCandidateContext(candidate)}`,
         `    Study-type flag hint: ${candidate.studySourceTypeFlagHint}; verify before writing extraction.`,
         `    Draft coverage: ${candidate.extractionDraftCoverage.summary}`,
         `    Draft: ${candidate.curationDraftCommand}`
@@ -414,6 +418,7 @@ function extractionCandidatePreviewRow({
       identityWarningBlocked,
       studyCount
     }),
+    query: candidate.query,
     reviewStatus: reviewStatusLabel(candidate.reviewStatus),
     sourceLabel: sourceKindLabel(candidate.source),
     sourceTextStatus: sourceTextStatus(candidate.metadata),
@@ -422,6 +427,14 @@ function extractionCandidatePreviewRow({
     title: candidate.title,
     triageScore: candidate.triageScore
   };
+}
+
+function formatExtractionCandidateContext(candidate: ScoreExtractionCandidatePreviewRow) {
+  return [
+    candidate.interventionId ? `intervention ${candidate.interventionId}` : "intervention missing",
+    candidate.claimId ? `claim ${candidate.claimId}` : "claim missing",
+    `query "${candidate.query}"`
+  ].join("; ");
 }
 
 function extractionCandidateNextAction({

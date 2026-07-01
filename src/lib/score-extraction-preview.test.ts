@@ -51,6 +51,7 @@ describe("buildScoreExtractionCandidatePreview", () => {
         externalId: "99999999",
         interventionId: "creatine",
         metadata: {},
+        query: "creatine randomized trial",
         reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
         source: DbSourceKind.PUBMED,
         sourceType: "Journal Article, Randomized Controlled Trial",
@@ -66,6 +67,7 @@ describe("buildScoreExtractionCandidatePreview", () => {
         metadata: {
           abstractText: "Creatine abstract."
         },
+        query: "creatine randomized trial",
         reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
         source: DbSourceKind.PUBMED,
         sourceType: "Journal Article, Randomized Controlled Trial",
@@ -175,6 +177,7 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
               },
               interventionId: "creatine",
               nextAction: "Ready for operator-reviewed study extraction.",
+              query: "creatine randomized trial",
               reviewStatus: "AI reviewed",
               sourceLabel: "PubMed",
               sourceTextStatus: "Abstract text captured for prefill review.",
@@ -214,6 +217,9 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
     );
     expect(lines).toContain(
       "Draft coverage: prefill cues: source type, source text; manual verify: sample size, population, intervention, outcomes, adverse events, funding/conflicts, risk of bias"
+    );
+    expect(lines).toContain(
+      'Context: intervention creatine; claim creatine-strength; query "creatine randomized trial"'
     );
     expect(lines).toContain(
       "Repair brief: npx tsx scripts/local-score-worklist.ts --repair-reference ref-creatine-rct"
