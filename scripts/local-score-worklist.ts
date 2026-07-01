@@ -6,6 +6,11 @@ import {
 import { prisma } from "@/lib/db/prisma";
 import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
 import {
+  buildScoreExtractionCandidatePreview,
+  DEFAULT_SCORE_EXTRACTION_CANDIDATE_PREVIEW_LIMIT,
+  formatScoreExtractionCandidatePreviewLines
+} from "@/lib/score-extraction-preview";
+import {
   buildScoreIdentityWarningActionPreview,
   DEFAULT_SCORE_IDENTITY_WARNING_ACTION_PREVIEW_LIMIT,
   formatScoreIdentityWarningActionPreviewLines,
@@ -65,10 +70,24 @@ async function main() {
             referenceLimit: args.repairIdentityLimit
           })
         : undefined;
+    const extractionCandidatePreview =
+      data.dataSource === "database" && args.repairSummary && args.repairExtractionCandidates
+        ? await buildScoreExtractionCandidatePreview(report.repairSummary, {
+            referenceLimit: args.repairExtractionLimit
+          })
+        : undefined;
 
     if (args.json) {
       console.log(
-        JSON.stringify(identityActionPreview ? { ...report, identityActionPreview } : report, null, 2)
+        JSON.stringify(
+          {
+            ...report,
+            ...(identityActionPreview ? { identityActionPreview } : {}),
+            ...(extractionCandidatePreview ? { extractionCandidatePreview } : {})
+          },
+          null,
+          2
+        )
       );
       return;
     }
@@ -83,6 +102,10 @@ async function main() {
       lines.push("", ...formatScoreIdentityWarningActionPreviewLines(identityActionPreview));
     }
 
+    if (data.dataSource === "database" && args.repairSummary && args.repairExtractionCandidates) {
+      lines.push("", ...formatScoreExtractionCandidatePreviewLines(extractionCandidatePreview));
+    }
+
     console.log(lines.join("\n"));
   });
 }
@@ -95,6 +118,8 @@ interface ScoreWorklistArgs {
   json: boolean;
   limit: number;
   repairReference?: string;
+  repairExtractionCandidates: boolean;
+  repairExtractionLimit: number;
   repairIdentityAction: ScoreIdentityActionFilter;
   repairIdentityLimit: number;
   repairIdentityWarnings: boolean;
@@ -139,6 +164,10 @@ Options:
                           Filter identity preview rows: all | actionable | confirm-target | reassign-intervention | reject-wrong-supplement | hold | unavailable.
   --repair-identity-limit <count>
                           Number of identity-warning references to scan for preview actions. Default: 8
+  --repair-extraction-candidates
+                          Show accepted candidates attached to pending extraction references.
+  --repair-extraction-limit <count>
+                          Number of pending extraction references to scan for accepted candidates. Default: 8
   --repair-reference <id> Show a read-only extraction brief for one blocked reference id.
   --json                  Print JSON instead of text.
   --help                  Show this help.
@@ -269,6 +298,8 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
     includeScored: false,
     json: false,
     limit: 12,
+    repairExtractionCandidates: false,
+    repairExtractionLimit: DEFAULT_SCORE_EXTRACTION_CANDIDATE_PREVIEW_LIMIT,
     repairIdentityAction: "all",
     repairIdentityLimit: DEFAULT_SCORE_IDENTITY_WARNING_ACTION_PREVIEW_LIMIT,
     repairIdentityWarnings: false,
@@ -300,6 +331,12 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
 
     if (arg === "--repair-identity-warnings") {
       parsed.repairIdentityWarnings = true;
+      parsed.repairSummary = true;
+      continue;
+    }
+
+    if (arg === "--repair-extraction-candidates") {
+      parsed.repairExtractionCandidates = true;
       parsed.repairSummary = true;
       continue;
     }
@@ -340,6 +377,27 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
         "--repair-identity-limit"
       );
       parsed.repairIdentityWarnings = true;
+      parsed.repairSummary = true;
+      continue;
+    }
+
+    if (arg === "--repair-extraction-limit") {
+      parsed.repairExtractionLimit = positiveInteger(
+        requiredNextValue(args, index, "--repair-extraction-limit"),
+        "--repair-extraction-limit"
+      );
+      parsed.repairExtractionCandidates = true;
+      parsed.repairSummary = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--repair-extraction-limit=")) {
+      parsed.repairExtractionLimit = positiveInteger(
+        requiredInlineValue(arg, "--repair-extraction-limit"),
+        "--repair-extraction-limit"
+      );
+      parsed.repairExtractionCandidates = true;
       parsed.repairSummary = true;
       continue;
     }

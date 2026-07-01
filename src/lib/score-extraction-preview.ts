@@ -6,9 +6,14 @@ import {
 } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
-import type { ScoreWorklistPendingReferenceGroup, ScoreWorklistRepairSummary } from "@/lib/score-worklist";
+import type {
+  ScoreWorklistPendingReferenceGroup,
+  ScoreWorklistRepairSummary
+} from "@/lib/score-worklist";
 
 const CANDIDATE_KEY_B64_PREFIX = "candidate-key-b64:";
+
+export const DEFAULT_SCORE_EXTRACTION_CANDIDATE_PREVIEW_LIMIT = 8;
 
 export type ScoreExtractionCandidatePreview = {
   acceptedCandidates: number;
@@ -153,6 +158,62 @@ export async function buildScoreExtractionCandidatePreview(
   };
 }
 
+export function formatScoreExtractionCandidatePreviewLines(
+  preview: ScoreExtractionCandidatePreview | undefined
+) {
+  const lines = [
+    preview
+      ? `Extraction candidate preview (read-only; scanned ${preview.scannedReferences}/${preview.totalPendingReferences} pending reference(s)):`
+      : "Extraction candidate preview (read-only):"
+  ];
+
+  if (!preview || preview.scannedReferences === 0) {
+    return [...lines, "No pending extraction references are visible in the current repair summary."];
+  }
+
+  lines.push(
+    `${preview.acceptedCandidates} accepted candidate(s) are attached to the scanned references. Use curation drafts before any extraction write.`
+  );
+
+  if (preview.references.length === 0) {
+    return [...lines, "No extraction reference rows matched the current repair summary."];
+  }
+
+  lines.push(...preview.references.flatMap(formatScoreExtractionCandidateReferenceLines));
+
+  return lines;
+}
+
+function formatScoreExtractionCandidateReferenceLines(
+  reference: ScoreExtractionCandidateReferencePreview
+) {
+  const lines = [
+    `- ${reference.reference.label}: ${reference.candidateCount} accepted candidate(s), ${reference.claimCount} claim(s), ${reference.studyCount} existing extraction(s).`,
+    `  ${reference.reference.title}`,
+    reference.extractionGaps.length > 0
+      ? `  Gaps: ${reference.extractionGaps.join("; ")}`
+      : undefined
+  ].filter((line): line is string => Boolean(line));
+
+  if (reference.candidates.length === 0) {
+    return [
+      ...lines,
+      "  No accepted source candidate is attached to this reference; repair from the source record directly."
+    ];
+  }
+
+  return [
+    ...lines,
+    ...reference.candidates.map((candidate) =>
+      [
+        `  - ${candidate.sourceLabel} ${candidate.externalId} triage ${candidate.triageScore}: ${candidate.extractionReady ? "ready" : "blocked"} - ${candidate.nextAction}`,
+        `    ${candidate.reviewStatus}; ${candidate.sourceType}; ${candidate.sourceTextStatus}`,
+        `    Draft: ${candidate.curationDraftCommand}`
+      ].join("\n")
+    )
+  ];
+}
+
 function extractionCandidateReferencePreview({
   candidates,
   group,
@@ -164,6 +225,8 @@ function extractionCandidateReferencePreview({
   linkedClaimKeys: Set<string>;
   studyCount: number;
 }): ScoreExtractionCandidateReferencePreview {
+  const groupContext = scoreExtractionGroupContext(group);
+
   return {
     candidateCount: candidates.length,
     candidates: candidates.slice(0, 3).map((candidate) =>
@@ -174,6 +237,8 @@ function extractionCandidateReferencePreview({
             candidate.claimId &&
             linkedClaimKeys.has(`${candidate.acceptedReferenceId}\u0000${candidate.claimId}`)
         ),
+        contextMatchesGroup: scoreExtractionCandidateMatchesGroup(candidate, groupContext),
+        identityWarningBlocked: group.identityWarnings.length > 0,
         studyCount
       })
     ),
@@ -191,14 +256,23 @@ function extractionCandidateReferencePreview({
 function extractionCandidatePreviewRow({
   candidate,
   claimLinkReady,
+  contextMatchesGroup,
+  identityWarningBlocked,
   studyCount
 }: {
   candidate: AcceptedCandidate;
   claimLinkReady: boolean;
+  contextMatchesGroup: boolean;
+  identityWarningBlocked: boolean;
   studyCount: number;
 }): ScoreExtractionCandidatePreviewRow {
   const hasClaimContext = Boolean(candidate.claimId);
-  const extractionReady = hasClaimContext && claimLinkReady && studyCount === 0;
+  const extractionReady =
+    !identityWarningBlocked &&
+    contextMatchesGroup &&
+    hasClaimContext &&
+    claimLinkReady &&
+    studyCount === 0;
 
   return {
     acceptedReferenceId: candidate.acceptedReferenceId,
@@ -211,7 +285,9 @@ function extractionCandidatePreviewRow({
     interventionId: candidate.interventionId,
     nextAction: extractionCandidateNextAction({
       claimLinkReady,
+      contextMatchesGroup,
       hasClaimContext,
+      identityWarningBlocked,
       studyCount
     }),
     reviewStatus: reviewStatusLabel(candidate.reviewStatus),
@@ -225,13 +301,25 @@ function extractionCandidatePreviewRow({
 
 function extractionCandidateNextAction({
   claimLinkReady,
+  contextMatchesGroup,
   hasClaimContext,
+  identityWarningBlocked,
   studyCount
 }: {
   claimLinkReady: boolean;
+  contextMatchesGroup: boolean;
   hasClaimContext: boolean;
+  identityWarningBlocked: boolean;
   studyCount: number;
 }) {
+  if (identityWarningBlocked) {
+    return "Resolve the score repair identity warning before structured extraction.";
+  }
+
+  if (!contextMatchesGroup) {
+    return "Accepted candidate context does not match this score repair group; resolve identity or reassignment first.";
+  }
+
   if (!hasClaimContext) {
     return "Attach or confirm the candidate claim before structured extraction.";
   }
@@ -245,6 +333,33 @@ function extractionCandidateNextAction({
   }
 
   return "Ready for operator-reviewed study extraction after source identity is confirmed.";
+}
+
+function scoreExtractionGroupContext(group: ScoreWorklistPendingReferenceGroup) {
+  return {
+    claimIds: new Set(group.sampleClaims.map((sample) => sample.claimId)),
+    hasCompleteClaimSample: group.claimCount <= group.sampleClaims.length,
+    interventionIds: new Set(group.interventions.map((intervention) => intervention.id))
+  };
+}
+
+function scoreExtractionCandidateMatchesGroup(
+  candidate: AcceptedCandidate,
+  groupContext: ReturnType<typeof scoreExtractionGroupContext>
+) {
+  if (!candidate.interventionId || !groupContext.interventionIds.has(candidate.interventionId)) {
+    return false;
+  }
+
+  if (!candidate.claimId) {
+    return false;
+  }
+
+  if (groupContext.hasCompleteClaimSample && !groupContext.claimIds.has(candidate.claimId)) {
+    return false;
+  }
+
+  return true;
 }
 
 function groupCandidatesByReferenceId(candidates: AcceptedCandidate[]) {
