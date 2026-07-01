@@ -8,8 +8,10 @@ import { DashboardDataUnavailable } from "@/app/dashboard-data-unavailable";
 import { InterventionTrialList } from "@/components/intervention-trial-list";
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import { australiaRegulatoryKindDescription, australiaRegulatoryTone } from "@/lib/regulatory";
+import { summarizeReviewStatus } from "@/lib/review-summary";
 import {
   buildClaimSourcePacket,
+  summarizeClaimSourcePackets,
   type ClaimSourcePacket,
   type EvidenceDepthBadge
 } from "@/lib/source-packet";
@@ -38,6 +40,9 @@ export const metadata: Metadata = {
   title: "Intervention Detail | Apex Lifespan",
   description: "Claim-specific evidence, source packets, safety context, and score history."
 };
+
+const DRAFT_LEAD_EVIDENCE_GRADE = "Draft lead";
+const SOURCE_PACKET_REVIEW_EVIDENCE_GRADE = "Insufficient until source packets are reviewed.";
 
 type InterventionDetailPageProps = {
   params: Promise<{ slug: string }>;
@@ -69,6 +74,11 @@ export default async function InterventionDetailPage({ params }: InterventionDet
       studies: data.studies
     })
   }));
+  const readiness = buildInterventionReadinessSummary({
+    claims,
+    referencesById,
+    studies: data.studies
+  });
   const safetyAlerts = data.safetyAlerts.filter(
     (alert) => alert.interventionId === intervention.id
   );
@@ -133,6 +143,13 @@ export default async function InterventionDetailPage({ params }: InterventionDet
           ) : null}
         </header>
 
+        <InterventionReadinessPanel
+          australiaStatuses={australiaStatuses}
+          productSignals={productSignals}
+          readiness={readiness}
+          safetyAlerts={safetyAlerts}
+        />
+
         <CollapsibleSection defaultOpen title="Intervention Summary">
           <div className="grid gap-3 md:grid-cols-2">
             <InfoCard label="Common forms" value={intervention.commonForms.join(", ")} />
@@ -150,7 +167,7 @@ export default async function InterventionDetailPage({ params }: InterventionDet
           {claims.length > 0 ? (
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
               {claims.map((claim) => {
-                const score = compositeScore(claim.scores);
+                const score = claimCompositeScore(claim);
 
                 return (
                   <article
@@ -162,8 +179,19 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                       {shortOutcome(claim.outcome)}
                     </p>
                     <p className="mt-2 text-xs font-semibold">{compositeLabel(claim)}</p>
-                    <p className="mt-2 text-2xl font-semibold">{score.toFixed(1)}</p>
-                    <p className="mt-1 text-xs font-semibold">{scoreBand(score)}</p>
+                    {score === null ? (
+                      <>
+                        <p className="mt-2 text-lg font-semibold">Review work</p>
+                        <p className="mt-1 text-xs font-semibold">
+                          No final evidence score assigned yet
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="mt-2 text-2xl font-semibold">{score.toFixed(1)}</p>
+                        <p className="mt-1 text-xs font-semibold">{scoreBand(score)}</p>
+                      </>
+                    )}
                     <p className="mt-2 text-xs leading-5">
                       {classificationLabel(claim)}: {claim.finalLabel}
                     </p>
@@ -269,7 +297,9 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                   <tbody>
                     {claims.map((claim) => {
                       const snapshot = snapshotsByClaimId.get(claim.id);
-                      const score = snapshot?.compositeScore ?? compositeScore(claim.scores);
+                      const score = isReviewWorkClaim(claim)
+                        ? null
+                        : snapshot?.compositeScore ?? compositeScore(claim.scores);
                       const finalLabel = snapshot?.finalLabel ?? claim.finalLabel;
                       const snapshotDate = snapshot
                         ? formatSnapshotDate(snapshot.computedAt)
@@ -281,10 +311,10 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                             {shortOutcome(claim.outcome)}
                           </td>
                           <td className="border-b border-line px-3 py-3 font-semibold text-ink">
-                            {score.toFixed(1)}
+                            {score === null ? "Review work" : score.toFixed(1)}
                           </td>
                           <td className="border-b border-line px-3 py-3 text-slate-700">
-                            {scoreBand(score)}
+                            {score === null ? "Pending source review" : scoreBand(score)}
                           </td>
                           <td className="border-b border-line px-3 py-3">
                             <span
@@ -411,6 +441,198 @@ function InfoCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+type InterventionReadinessSummary = {
+  completeSourcePackets: number;
+  extractedReferences: number;
+  humanReviewedClaims: number;
+  incompleteSourcePackets: number;
+  pendingHumanReview: number;
+  pendingReferences: number;
+  reviewWorkClaims: number;
+  scoredClaims: Array<{ claim: Claim; score: number }>;
+  totalClaims: number;
+  totalReferences: number;
+};
+
+function buildInterventionReadinessSummary({
+  claims,
+  referencesById,
+  studies
+}: {
+  claims: Claim[];
+  referencesById: Map<string, Reference>;
+  studies: Study[];
+}): InterventionReadinessSummary {
+  const sourcePacketSummary = summarizeClaimSourcePackets({ claims, referencesById, studies });
+  const reviewSummary = summarizeReviewStatus(claims);
+  const scoredClaims = claims
+    .filter((claim) => !isReviewWorkClaim(claim))
+    .map((claim) => ({
+      claim,
+      score: compositeScore(claim.scores)
+    }))
+    .sort((left, right) => right.score - left.score);
+
+  return {
+    completeSourcePackets: sourcePacketSummary.completeClaims,
+    extractedReferences: sourcePacketSummary.extractedReferences,
+    humanReviewedClaims: reviewSummary.humanReviewed,
+    incompleteSourcePackets:
+      sourcePacketSummary.extractionPendingClaims +
+      sourcePacketSummary.missingSourceClaims +
+      sourcePacketSummary.unlinkedClaims,
+    pendingHumanReview: reviewSummary.unreviewedDrafts,
+    pendingReferences: sourcePacketSummary.pendingReferences + sourcePacketSummary.missingReferences,
+    reviewWorkClaims: claims.length - scoredClaims.length,
+    scoredClaims,
+    totalClaims: claims.length,
+    totalReferences: sourcePacketSummary.totalReferences
+  };
+}
+
+function InterventionReadinessPanel({
+  australiaStatuses,
+  productSignals,
+  readiness,
+  safetyAlerts
+}: {
+  australiaStatuses: AustraliaRegulatoryStatus[];
+  productSignals: ProductSignal[];
+  readiness: InterventionReadinessSummary;
+  safetyAlerts: SafetyAlert[];
+}) {
+  const strongestClaims = readiness.scoredClaims.slice(0, 3);
+  const hasClaims = readiness.totalClaims > 0;
+
+  return (
+    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold text-ink">Evidence readiness</h2>
+            <span className="rounded-md border border-spruce/25 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
+              {readiness.scoredClaims.length} scored
+            </span>
+            <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+              {readiness.reviewWorkClaims} review work
+            </span>
+          </div>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
+            Scored claims are review aids, not treatment advice. Review-work claims remain visible
+            without treating starter scores as final evidence.
+          </p>
+        </div>
+        <Link
+          className="w-fit rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-signal hover:border-signal"
+          href="/methodology"
+        >
+          Methodology
+        </Link>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <ReadinessStat
+          label="Scored claims"
+          value={hasClaims ? `${readiness.scoredClaims.length}/${readiness.totalClaims}` : "0/0"}
+        />
+        <ReadinessStat
+          label="Human reviewed"
+          value={hasClaims ? `${readiness.humanReviewedClaims}/${readiness.totalClaims}` : "0/0"}
+        />
+        <ReadinessStat
+          label="Source packets complete"
+          value={hasClaims ? `${readiness.completeSourcePackets}/${readiness.totalClaims}` : "0/0"}
+        />
+        <ReadinessStat
+          label="References extracted"
+          value={`${readiness.extractedReferences}/${readiness.totalReferences}`}
+        />
+        <ReadinessStat
+          label="Safety alerts"
+          value={
+            safetyAlerts.length > 0
+              ? `${safetyAlerts.length} local alert${safetyAlerts.length === 1 ? "" : "s"}`
+              : "None captured locally"
+          }
+        />
+        <ReadinessStat
+          label="AU/TGA context"
+          value={`${australiaStatuses.length} intervention row${
+            australiaStatuses.length === 1 ? "" : "s"
+          }, ${productSignals.length} product signal${productSignals.length === 1 ? "" : "s"}`}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_0.85fr]">
+        <div className="rounded-md border border-line bg-mist p-3">
+          <h3 className="text-sm font-semibold text-ink">Strongest current claims</h3>
+          {strongestClaims.length > 0 ? (
+            <div className="mt-3 grid gap-2">
+              {strongestClaims.map(({ claim, score }) => (
+                <a
+                  className="rounded-md border border-line bg-white p-3 text-left transition hover:border-signal"
+                  href={`#claim-${claim.id}`}
+                  key={claim.id}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-ink">{shortOutcome(claim.outcome)}</p>
+                    <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", labelTone(claim.finalLabel))}>
+                      {score.toFixed(1)} {scoreBand(score)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-slate-600">{claim.claimText}</p>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 rounded-md border border-line bg-white px-3 py-2 text-sm leading-6 text-slate-600">
+              No finalized composite scores are available for this intervention yet.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-md border border-amberline/30 bg-amber-50 p-3 text-amber-950">
+          <h3 className="text-sm font-semibold">Main evidence checks still visible</h3>
+          <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6">
+            {readiness.pendingHumanReview > 0 ? (
+              <li>{readiness.pendingHumanReview} claim(s) still need human review.</li>
+            ) : (
+              <li>All visible claims are human-reviewed in the local catalog.</li>
+            )}
+            {readiness.incompleteSourcePackets > 0 ? (
+              <li>
+                {readiness.incompleteSourcePackets} source packet(s) still need linking or
+                extraction.
+              </li>
+            ) : (
+              <li>All visible source packets have complete structured extraction.</li>
+            )}
+            {readiness.pendingReferences > 0 ? (
+              <li>{readiness.pendingReferences} linked reference(s) still need extraction or repair.</li>
+            ) : (
+              <li>No linked-reference extraction gaps are visible locally.</li>
+            )}
+            {productSignals.length === 0 ? (
+              <li>Product-level AU/TGA status is not established by intervention evidence alone.</li>
+            ) : (
+              <li>Product context exists, but exact AUST/ARTG status remains product-specific.</li>
+            )}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ReadinessStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{label}</p>
+      <p className="mt-2 text-sm font-semibold leading-6 text-ink">{value}</p>
+    </div>
+  );
+}
+
 function isHumanReviewed(status: Claim["reviewStatus"]) {
   return status === "Human reviewed";
 }
@@ -420,13 +642,37 @@ function reviewStatusLabel(status: Claim["reviewStatus"]) {
 }
 
 function classificationLabel(claim: Claim) {
+  if (isReviewWorkClaim(claim)) {
+    return "Review-needed classification";
+  }
+
   return isHumanReviewed(claim.reviewStatus)
     ? "Human-reviewed classification"
     : "AI Draft Classification";
 }
 
 function compositeLabel(claim: Claim) {
+  if (isReviewWorkClaim(claim)) {
+    return "Composite pending";
+  }
+
   return isHumanReviewed(claim.reviewStatus) ? "Reviewed composite" : "Draft composite";
+}
+
+function isDraftLeadClaim(claim: Claim) {
+  return claim.evidenceGrade === DRAFT_LEAD_EVIDENCE_GRADE;
+}
+
+function isSourcePacketScaffoldClaim(claim: Claim) {
+  return claim.evidenceGrade === SOURCE_PACKET_REVIEW_EVIDENCE_GRADE;
+}
+
+function isReviewWorkClaim(claim: Claim) {
+  return isDraftLeadClaim(claim) || isSourcePacketScaffoldClaim(claim);
+}
+
+function claimCompositeScore(claim: Claim) {
+  return isReviewWorkClaim(claim) ? null : compositeScore(claim.scores);
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
@@ -446,7 +692,7 @@ function ClaimCard({
   packet?: ClaimSourcePacket;
   referencesById: Map<string, Reference>;
 }) {
-  const score = compositeScore(claim.scores);
+  const score = claimCompositeScore(claim);
 
   return (
     <article className="rounded-lg border border-line bg-white p-3">
@@ -457,7 +703,9 @@ function ClaimCard({
         </div>
         <div className="rounded-md border border-line bg-mist px-3 py-2 text-right">
           <p className="text-xs text-slate-600">{compositeLabel(claim)}</p>
-          <p className="text-2xl font-semibold text-ink">{score.toFixed(1)}</p>
+          <p className="text-2xl font-semibold text-ink">
+            {score === null ? "Pending" : score.toFixed(1)}
+          </p>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -484,10 +732,26 @@ function ClaimCard({
         <Detail label="Safety" value={claim.safetyNotes} />
         <Detail label="Applicability" value={claim.applicabilityNotes} />
       </dl>
-      <ScoreComponentBreakdown claim={claim} />
+      {isReviewWorkClaim(claim) ? <ReviewWorkScoreNotice claim={claim} /> : <ScoreComponentBreakdown claim={claim} />}
       <NonProofList claim={claim} />
       <ReferenceLinks claim={claim} referencesById={referencesById} />
     </article>
+  );
+}
+
+function ReviewWorkScoreNotice({ claim }: { claim: Claim }) {
+  const reason = isDraftLeadClaim(claim)
+    ? "This is a discovery lead awaiting source review."
+    : "This source-packet scaffold is awaiting evidence review.";
+
+  return (
+    <section className="mt-3 rounded-md border border-amberline/30 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
+      <p className="font-semibold">Score pending source review</p>
+      <p className="mt-1">
+        {reason} Starter component values are hidden here until the claim is scored from reviewed,
+        citation-linked evidence.
+      </p>
+    </section>
   );
 }
 

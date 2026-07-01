@@ -50,6 +50,10 @@ describe("intervention detail page", () => {
 
     expect(html).toContain("Creatine monohydrate");
     expect(html).toContain("Intervention Summary");
+    expect(html).toContain("Evidence readiness");
+    expect(html).toContain("Scored claims are review aids");
+    expect(html).toContain("Strongest current claims");
+    expect(html).toContain("Main evidence checks still visible");
     expect(html).toContain("Evidence scores by outcome");
     expect(html).toContain("Claim cards");
     expect(html).toContain("Source packets");
@@ -83,6 +87,27 @@ describe("intervention detail page", () => {
     expect(html).toContain("PMID: 28615996");
     expect(html).toContain("https://pubmed.ncbi.nlm.nih.gov/28615996/");
     expect(html).toContain("not clinical recommendations");
+  });
+
+  it("keeps review-work claim rows from looking like final scored evidence", async () => {
+    const data = seedDashboardData();
+    const creatine = data.interventions.find((item) => item.slug === "creatine-monohydrate");
+
+    getEvidenceDashboardDataMock.mockResolvedValue({
+      ...data,
+      claims: data.claims.map((claim) =>
+        claim.interventionId === creatine?.id ? { ...claim, evidenceGrade: "Draft lead" } : claim
+      )
+    });
+
+    const html = renderToStaticMarkup(
+      await InterventionDetailPage({ params: Promise.resolve({ slug: "creatine-monohydrate" }) })
+    );
+
+    expect(html).toContain("Composite pending");
+    expect(html).toContain("No final evidence score assigned yet");
+    expect(html).toContain("Review-needed classification");
+    expect(html).toContain("Starter component values are hidden here until the claim is scored");
   });
 
   it("renders magnesium sleep coverage with trial registry labels", async () => {
