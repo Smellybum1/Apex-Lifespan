@@ -108,6 +108,10 @@ describe("buildScoreExtractionCandidatePreview", () => {
       reason: "ready, source text captured, Human reviewed; verify before extraction"
     });
     expect(preview.references[0]?.candidates[0]?.dedupeKey).toBe(safeCandidateKey("ready-candidate"));
+    expect(preview.references[0]?.candidates[0]?.extractionDraftCoverage).toMatchObject({
+      prefillCues: ["source type", "source text"],
+      summary: expect.stringContaining("manual verify: sample size, population, intervention")
+    });
   });
 });
 
@@ -149,6 +153,20 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
               dedupeKey: "b64:creatine",
               externalId: "34610729",
               extractionReady: true,
+              extractionDraftCoverage: {
+                manualVerifyFields: [
+                  "sample size",
+                  "population",
+                  "intervention",
+                  "outcomes",
+                  "adverse events",
+                  "funding/conflicts",
+                  "risk of bias"
+                ],
+                prefillCues: ["source type", "source text"],
+                summary:
+                  "prefill cues: source type, source text; manual verify: sample size, population, intervention, outcomes, adverse events, funding/conflicts, risk of bias"
+              },
               interventionId: "creatine",
               nextAction: "Ready for operator-reviewed study extraction.",
               reviewStatus: "AI reviewed",
@@ -186,6 +204,9 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
 
     expect(lines).toContain(
       "Study-type flag hint: randomized-controlled-trial; verify before writing extraction."
+    );
+    expect(lines).toContain(
+      "Draft coverage: prefill cues: source type, source text; manual verify: sample size, population, intervention, outcomes, adverse events, funding/conflicts, risk of bias"
     );
     expect(lines).toContain(
       "Repair brief: npx tsx scripts/local-score-worklist.ts --repair-reference ref-creatine-rct"

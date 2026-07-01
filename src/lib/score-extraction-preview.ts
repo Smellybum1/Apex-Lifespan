@@ -61,6 +61,11 @@ export type ScoreExtractionCandidatePreviewRow = {
   dedupeKey: string;
   externalId: string;
   extractionReady: boolean;
+  extractionDraftCoverage: {
+    manualVerifyFields: string[];
+    prefillCues: string[];
+    summary: string;
+  };
   interventionId: string | null;
   nextAction: string;
   reviewStatus: string;
@@ -278,6 +283,7 @@ function formatScoreExtractionCandidateReferenceLines(
         `  - ${candidate.sourceLabel} ${candidate.externalId} triage ${candidate.triageScore}: ${candidate.extractionReady ? "ready" : "blocked"} - ${candidate.nextAction}`,
         `    ${candidate.reviewStatus}; ${candidate.sourceType}; ${candidate.sourceTextStatus}`,
         `    Study-type flag hint: ${candidate.studySourceTypeFlagHint}; verify before writing extraction.`,
+        `    Draft coverage: ${candidate.extractionDraftCoverage.summary}`,
         `    Draft: ${candidate.curationDraftCommand}`
       ].join("\n")
     )
@@ -393,6 +399,7 @@ function extractionCandidatePreviewRow({
     curationDraftCommand: `npm run ingest:sources -- --candidate-curation-draft ${safeCandidateKey(candidate.dedupeKey)}`,
     dedupeKey: safeCandidateKey(candidate.dedupeKey),
     externalId: candidate.externalId,
+    extractionDraftCoverage: extractionDraftCoverage(candidate),
     extractionReady,
     interventionId: candidate.interventionId,
     nextAction: extractionCandidateNextAction({
@@ -603,6 +610,48 @@ function sourceTextStatus(metadata: Prisma.JsonValue) {
   }
 
   return "No abstract or registry summary captured.";
+}
+
+const EXTRACTION_MANUAL_VERIFY_FIELDS = [
+  "sample size",
+  "population",
+  "intervention",
+  "outcomes",
+  "adverse events",
+  "funding/conflicts",
+  "risk of bias"
+];
+
+function extractionDraftCoverage(candidate: AcceptedCandidate) {
+  const record = metadataRecord(candidate.metadata);
+  const prefillCues = [
+    candidate.sourceType ? "source type" : undefined,
+    hasMetadataText(record, "abstractText") || hasMetadataText(record, "briefSummary")
+      ? "source text"
+      : undefined,
+    hasMetadataArray(record, "conditions") ? "population/context cues" : undefined,
+    hasMetadataArray(record, "interventions") ? "intervention cues" : undefined,
+    hasMetadataArray(record, "primaryOutcomes") ? "outcome cues" : undefined
+  ].filter((cue): cue is string => Boolean(cue));
+  const manualVerifyFields = EXTRACTION_MANUAL_VERIFY_FIELDS;
+
+  return {
+    manualVerifyFields,
+    prefillCues,
+    summary:
+      `prefill cues: ${prefillCues.length > 0 ? prefillCues.join(", ") : "none captured"}; ` +
+      `manual verify: ${manualVerifyFields.join(", ")}`
+  };
+}
+
+function hasMetadataText(record: Record<string, unknown> | null, key: string) {
+  return typeof record?.[key] === "string" && Boolean(record[key].trim());
+}
+
+function hasMetadataArray(record: Record<string, unknown> | null, key: string) {
+  const value = record?.[key];
+
+  return Array.isArray(value) && value.some((item) => typeof item === "string" && item.trim());
 }
 
 function sourceTextPriority(status: string) {
