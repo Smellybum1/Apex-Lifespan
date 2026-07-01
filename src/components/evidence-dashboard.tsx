@@ -4807,6 +4807,7 @@ type SourcePacketGapRow = {
   packet: ClaimSourcePacket;
   priority: number;
   priorityLabel: SourcePacketGapPriority;
+  readinessRow?: ScoreReadinessRow;
   reasons: string[];
 };
 
@@ -4824,6 +4825,9 @@ export function buildSourcePacketGapRows(data: EvidenceDashboardData): SourcePac
   const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
   const interventionsById = new Map(
     data.interventions.map((intervention) => [intervention.id, intervention])
+  );
+  const readinessByClaimId = new Map(
+    buildScoreReadinessRows(data).map((row) => [row.claim.id, row])
   );
   const claimCountByIntervention = new Map<string, number>();
 
@@ -4850,10 +4854,12 @@ export function buildSourcePacketGapRows(data: EvidenceDashboardData): SourcePac
     })
     .filter(({ packet }) => packet.completeness.status !== "complete")
     .map(({ claim, intervention, packet }) => {
+      const readinessRow = readinessByClaimId.get(claim.id);
       const priority = sourcePacketGapPriorityScore({
         claim,
         interventionClaimCount: claimCountByIntervention.get(claim.interventionId) ?? 0,
-        packet
+        packet,
+        readinessRow
       });
       const priorityLabel = sourcePacketGapPriorityLabel(priority);
 
@@ -4863,10 +4869,12 @@ export function buildSourcePacketGapRows(data: EvidenceDashboardData): SourcePac
         packet,
         priority,
         priorityLabel,
+        readinessRow,
         reasons: sourcePacketGapReasons({
           claim,
           interventionClaimCount: claimCountByIntervention.get(claim.interventionId) ?? 0,
-          packet
+          packet,
+          readinessRow
         })
       };
     })
@@ -4904,11 +4912,13 @@ function buildSourcePacketGapSummary(rows: SourcePacketGapRow[]): SourcePacketGa
 function sourcePacketGapPriorityScore({
   claim,
   interventionClaimCount,
-  packet
+  packet,
+  readinessRow
 }: {
   claim: Claim;
   interventionClaimCount: number;
   packet: ClaimSourcePacket;
+  readinessRow?: ScoreReadinessRow;
 }) {
   const statusScore: Record<ClaimSourcePacket["completeness"]["status"], number> = {
     complete: 0,
@@ -4916,7 +4926,7 @@ function sourcePacketGapPriorityScore({
     missing_sources: 90,
     not_linked: 45
   };
-  const score = evidenceMapSortableScore(claim);
+  const score = evidenceMapSortableScore(claim, readinessRow);
   const labelWeight = sourcePacketGapLabelWeight(claim.finalLabel);
 
   return Math.round(
@@ -4967,11 +4977,13 @@ function sourcePacketGapPriorityLabel(priority: number): SourcePacketGapPriority
 function sourcePacketGapReasons({
   claim,
   interventionClaimCount,
-  packet
+  packet,
+  readinessRow
 }: {
   claim: Claim;
   interventionClaimCount: number;
   packet: ClaimSourcePacket;
+  readinessRow?: ScoreReadinessRow;
 }) {
   const reasons = [packet.completeness.label];
 
@@ -4998,7 +5010,17 @@ function sourcePacketGapReasons({
   }
 
   if (!isEvidenceMapPlaceholderClaim(claim)) {
-    reasons.push(`${compositeScore(claim.scores).toFixed(1)} composite`);
+    const displayScore = evidenceMapSortableScore(claim, readinessRow);
+
+    if (displayScore === null && readinessRow && readinessRow.state !== "scored") {
+      reasons.push(
+        `${compositeScore(claim.scores).toFixed(1)} stored composite hidden until ${scoreReadinessStateLabel(
+          readinessRow.state
+        ).toLowerCase()} is resolved`
+      );
+    } else if (displayScore !== null) {
+      reasons.push(`${displayScore.toFixed(1)} displayed composite`);
+    }
   }
 
   return reasons;
@@ -6084,6 +6106,7 @@ type EvidenceMapReadinessSummary = {
   pendingReferences: number;
   readyToScoreClaims: number;
   reviewWorkClaims: number;
+  scoreReviewClaims: number;
   sourceBlockedScoredClaims: number;
   scoredClaims: number;
   sourcePacketScaffoldClaims: number;
@@ -6110,7 +6133,7 @@ const EVIDENCE_MAP_STATUS_FILTERS: Array<{
   {
     id: "review-work",
     label: "Review work",
-    title: "Show draft leads and source-packet scaffolds that still need evidence scoring."
+    title: "Show draft leads, source-packet scaffolds, and starter-looking scores that still need evidence scoring."
   },
   {
     id: "source-work",
@@ -6148,7 +6171,7 @@ function claimMatchesEvidenceMapStatusFilter(
   }
 
   if (statusFilter === "review-work") {
-    return isEvidenceMapPlaceholderClaim(claim);
+    return isEvidenceMapPlaceholderClaim(claim) || isEvidenceMapReviewWorkRow(readinessRow);
   }
 
   if (statusFilter === "source-work") {
@@ -6156,6 +6179,10 @@ function claimMatchesEvidenceMapStatusFilter(
   }
 
   return true;
+}
+
+function isEvidenceMapReviewWorkRow(row: ScoreReadinessRow | undefined) {
+  return row?.state === "default_score_review" || row?.state === "ready_to_score";
 }
 
 function isEvidenceMapSourceWorkRow(row: ScoreReadinessRow | undefined) {
@@ -6180,6 +6207,9 @@ function buildEvidenceMapReadinessSummary({
     (row) => row.state === "source_blocked" && !isEvidenceMapPlaceholderClaim(row.claim)
   ).length;
   const readyToScoreClaims = readinessRows.filter((row) => row.state === "ready_to_score").length;
+  const scoreReviewClaims = readinessRows.filter(
+    (row) => row.state === "default_score_review"
+  ).length;
   const snapshotGapClaims = readinessRows.filter((row) => row.state === "snapshot_gap").length;
 
   return {
@@ -6194,7 +6224,8 @@ function buildEvidenceMapReadinessSummary({
       packetSummary.unlinkedClaims,
     pendingReferences: packetSummary.pendingReferences + packetSummary.missingReferences,
     readyToScoreClaims,
-    reviewWorkClaims: draftLeadClaims + sourcePacketScaffoldClaims,
+    reviewWorkClaims: draftLeadClaims + sourcePacketScaffoldClaims + scoreReviewClaims,
+    scoreReviewClaims,
     sourceBlockedScoredClaims,
     scoredClaims: readinessRows.filter((row) => row.state === "scored").length,
     sourcePacketScaffoldClaims,
@@ -6278,6 +6309,19 @@ function evidenceMapCellPresentation(
         "Complete source packet awaiting score assignment. The stored placeholder score is hidden until a claim-specific score is assigned from the extracted evidence.",
       tone:
         "border-dashed border-spruce/35 bg-teal-50 text-spruce hover:border-spruce hover:bg-teal-50"
+    };
+  }
+
+  if (readinessRow?.state === "default_score_review") {
+    return {
+      ariaSummary:
+        "starter-looking stored score awaiting claim-specific scoring review; no final evidence score has been assigned",
+      primary: "Score",
+      secondary: "Review",
+      title:
+        "This cell has a starter-looking stored score. The number is hidden until the linked source packet supports a claim-specific score and rationale.",
+      tone:
+        "border-dashed border-danger/30 bg-red-50 text-danger hover:border-danger hover:bg-red-50"
     };
   }
 
@@ -6424,8 +6468,8 @@ function EvidenceMapReadinessStrip({
   const sourceWorkCount = summary.sourceBlockedScoredClaims + summary.snapshotGapClaims;
   const reviewWorkDetail =
     summary.reviewWorkClaims === 0
-      ? "No draft leads or scaffolds in the current filters"
-      : `${summary.draftLeadClaims.toLocaleString()} lead, ${summary.sourcePacketScaffoldClaims.toLocaleString()} scaffold, ${summary.readyToScoreClaims.toLocaleString()} ready`;
+      ? "No draft leads, scaffolds, or score-review cells in the current filters"
+      : `${summary.draftLeadClaims.toLocaleString()} lead, ${summary.sourcePacketScaffoldClaims.toLocaleString()} scaffold, ${summary.readyToScoreClaims.toLocaleString()} ready, ${summary.scoreReviewClaims.toLocaleString()} score review`;
 
   return (
     <section aria-label="Evidence map readiness" className="mt-4 border-t border-line pt-3">
@@ -6685,6 +6729,9 @@ function EvidenceMapLegend() {
       </span>
       <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1">
         <strong className="text-ink">Needs / Review</strong> = scaffold awaiting source-packet scoring
+      </span>
+      <span className="rounded-md border border-danger/25 bg-red-50 px-2 py-1 text-danger">
+        <strong>Score / Review</strong> = starter-looking score hidden until reviewed
       </span>
       <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-amberline">
         <strong>Source / Work</strong> = stored score needs source extraction before display as current

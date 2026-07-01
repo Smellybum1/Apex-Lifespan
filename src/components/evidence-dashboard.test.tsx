@@ -174,6 +174,7 @@ describe("EvidenceDashboard", () => {
     expect(targetRow).toBeDefined();
     expect(targetRow?.packet.completeness.status).toBe("extraction_pending");
     expect(targetRow?.reasons.join(" ")).toContain("linked ref(s) need extraction");
+    expect(targetRow?.reasons.join(" ")).toContain("stored composite hidden until source-blocked");
     expect(targetRow?.intervention?.slug).toBeTruthy();
   });
 
@@ -233,6 +234,22 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("The stored placeholder score is hidden until a claim-specific score");
     expect(html).toContain("Ready to score");
     expect(html).not.toContain("Draft composite 8.4");
+
+    const starterHtml = renderToStaticMarkup(
+      <EvidenceDashboard
+        data={{
+          ...data,
+          claims: [starterScoreClaim],
+          claimScoreSnapshots: []
+        }}
+      />
+    );
+
+    expect(starterHtml).toContain("Score / Review");
+    expect(starterHtml).toContain("Scoring-review classification");
+    expect(starterHtml).toContain("starter-looking stored score");
+    expect(starterHtml).toContain("1 score review");
+    expect(starterHtml).not.toContain("Draft composite 3.1 out of 10");
   });
 
   it("renders sanitized seed fallback reasons in the public header", () => {
