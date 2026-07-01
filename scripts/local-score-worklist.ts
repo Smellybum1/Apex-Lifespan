@@ -10,6 +10,7 @@ import {
   buildScoreWorklistReport,
   formatScoreWorklistReferenceRepairBriefLines,
   formatScoreWorklistReportLinesWithOptions,
+  type ScoreWorklistReport,
   type ScoreWorklistStateFilter
 } from "@/lib/score-worklist";
 
@@ -58,13 +59,17 @@ async function main() {
       return;
     }
 
-    console.log(
-      formatScoreWorklistReportLinesWithOptions(report, {
-        detail: args.detail,
-        repairIdentityWarningsOnly: args.repairIdentityWarnings,
-        repairSummary: args.repairSummary
-      }).join("\n")
-    );
+    const lines = formatScoreWorklistReportLinesWithOptions(report, {
+      detail: args.detail,
+      repairIdentityWarningsOnly: args.repairIdentityWarnings,
+      repairSummary: args.repairSummary
+    });
+
+    if (data.dataSource === "database" && args.repairSummary && args.repairIdentityWarnings) {
+      lines.push("", ...(await formatIdentityWarningActionPreviewLines(report)));
+    }
+
+    console.log(lines.join("\n"));
   });
 }
 
@@ -121,6 +126,135 @@ Options:
 This command does not write scores, review status, source packets, or public evidence.`;
 
 const CANDIDATE_KEY_B64_PREFIX = "candidate-key-b64:";
+const IDENTITY_WARNING_ACTION_PREVIEW_LIMIT = 8;
+
+async function formatIdentityWarningActionPreviewLines(report: ScoreWorklistReport) {
+  const referenceIds = report.repairSummary.pendingReferenceGroups
+    .filter((group) => group.identityWarnings.length > 0)
+    .slice(0, IDENTITY_WARNING_ACTION_PREVIEW_LIMIT)
+    .map((group) => group.reference.id);
+
+  const lines = ["Identity action preview (source-led, read-only):"];
+
+  if (referenceIds.length === 0) {
+    return [...lines, "No identity-warning references are visible in the current repair summary."];
+  }
+
+  const candidates = await prisma.sourceCandidate.findMany({
+    orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
+    select: {
+      acceptedReferenceId: true,
+      claimId: true,
+      dedupeKey: true,
+      externalId: true,
+      interventionId: true,
+      source: true,
+      title: true,
+      triageScore: true
+    },
+    where: {
+      acceptedReferenceId: {
+        in: referenceIds
+      },
+      decision: "ACCEPTED"
+    }
+  });
+
+  if (candidates.length === 0) {
+    return [
+      ...lines,
+      `${referenceIds.length} identity-warning reference(s) are visible, but none have accepted source candidates attached.`
+    ];
+  }
+
+  const identityDecisions = await sourceLedIdentityDecisionByCandidateKey(
+    candidates.map((candidate) => candidate.dedupeKey)
+  );
+  const actionCounts = identityActionCounts(candidates, identityDecisions);
+
+  lines.push(
+    `${candidates.length} accepted candidate(s) across ${referenceIds.length} warning reference(s): ${formatIdentityActionCounts(actionCounts)}.`
+  );
+  lines.push(
+    "Open a repair brief for candidate-level reasons; use the Candidate Review identity resolver to apply any cleanup."
+  );
+  lines.push(
+    ...referenceIds.flatMap((referenceId) => {
+      const candidatesForReference = candidates.filter(
+        (candidate) => candidate.acceptedReferenceId === referenceId
+      );
+
+      if (candidatesForReference.length === 0) {
+        return [`- ${referenceId}: no accepted candidate rows found.`];
+      }
+
+      return candidatesForReference.slice(0, 3).map((candidate) => {
+        const decision = identityDecisions.get(candidate.dedupeKey);
+        const context = [
+          candidate.interventionId ? `intervention ${candidate.interventionId}` : undefined,
+          candidate.claimId ? `claim ${candidate.claimId}` : undefined
+        ]
+          .filter(Boolean)
+          .join("; ");
+
+        return [
+          `- ${referenceId}: ${sourceKindLabel(candidate.source)} ${candidate.externalId}`,
+          context ? ` (${context})` : "",
+          ` - ${identityActionLabel(decision)}`
+        ].join("");
+      });
+    })
+  );
+
+  return lines;
+}
+
+function identityActionCounts(
+  candidates: Array<{ dedupeKey: string }>,
+  identityDecisions: Map<string, LocalIdentityResolutionAutomationDecisionReadout>
+) {
+  return candidates.reduce(
+    (counts, candidate) => {
+      const action = identityDecisions.get(candidate.dedupeKey)?.action ?? "unavailable";
+
+      counts[action] += 1;
+      return counts;
+    },
+    {
+      "confirm-target": 0,
+      "reassign-intervention": 0,
+      "reject-wrong-supplement": 0,
+      hold: 0,
+      unavailable: 0
+    } as Record<LocalIdentityResolutionAutomationDecisionReadout["action"] | "unavailable", number>
+  );
+}
+
+function formatIdentityActionCounts(
+  counts: Record<LocalIdentityResolutionAutomationDecisionReadout["action"] | "unavailable", number>
+) {
+  return [
+    `${counts["confirm-target"]} confirm`,
+    `${counts["reassign-intervention"]} reassign`,
+    `${counts["reject-wrong-supplement"]} reject`,
+    `${counts.hold} hold`,
+    `${counts.unavailable} unavailable`
+  ].join(", ");
+}
+
+function identityActionLabel(
+  decision: LocalIdentityResolutionAutomationDecisionReadout | undefined
+) {
+  if (!decision) {
+    return "identity preview unavailable";
+  }
+
+  if (decision.action === "reassign-intervention") {
+    return `would reassign to ${decision.matchedInterventionName ?? decision.matchedInterventionId ?? "matched intervention"}`;
+  }
+
+  return `would ${decision.action.replaceAll("-", " ")}`;
+}
 
 async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
   const candidates = await prisma.sourceCandidate.findMany({
