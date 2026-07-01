@@ -38,6 +38,7 @@ export type ScoreExtractionCandidateReferencePreview = {
   claimCount: number;
   extractionGaps: string[];
   readyCandidates: number;
+  repairReferenceCommand: string;
   reference: {
     id: string;
     label: string;
@@ -251,7 +252,8 @@ function formatScoreExtractionCandidateReferenceLines(
     `  ${reference.reference.title}`,
     reference.extractionGaps.length > 0
       ? `  Gaps: ${reference.extractionGaps.join("; ")}`
-      : undefined
+      : undefined,
+    `  Repair brief: ${reference.repairReferenceCommand}`
   ].filter((line): line is string => Boolean(line));
 
   if (reference.candidates.length === 0) {
@@ -310,6 +312,7 @@ function extractionCandidateReferencePreview({
     claimCount: group.claimCount,
     extractionGaps: group.extractionGaps.slice(0, 5).map((gap) => gap.gap),
     readyCandidates,
+    repairReferenceCommand: `npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
     reference: {
       id: group.reference.id,
       label: group.reference.label,

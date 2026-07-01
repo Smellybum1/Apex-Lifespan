@@ -60,6 +60,9 @@ describe("buildScoreExtractionCandidatePreview", () => {
     expect(preview.totalPendingReferences).toBe(1);
     expect(preview.identityBlockedReferences).toBe(1);
     expect(preview.identityBlockedClaimLinks).toBe(1);
+    expect(preview.references[0]?.repairReferenceCommand).toBe(
+      "npx tsx scripts/local-score-worklist.ts --repair-reference ready-reference"
+    );
   });
 });
 
@@ -115,6 +118,8 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
           claimCount: 1,
           extractionGaps: ["source type"],
           readyCandidates: 1,
+          repairReferenceCommand:
+            "npx tsx scripts/local-score-worklist.ts --repair-reference ref-creatine-rct",
           reference: {
             id: "ref-creatine-rct",
             label: "PubMed PMID: 34610729 2021",
@@ -130,6 +135,9 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
 
     expect(lines).toContain(
       "Study-type flag hint: randomized-controlled-trial; verify before writing extraction."
+    );
+    expect(lines).toContain(
+      "Repair brief: npx tsx scripts/local-score-worklist.ts --repair-reference ref-creatine-rct"
     );
     expect(lines).toContain("scanned 1/1 extraction-ready reference(s); 2 identity-blocked skipped");
     expect(lines).toContain("Skipped identity cleanup: 2 reference group(s) / 2 claim-link(s).");

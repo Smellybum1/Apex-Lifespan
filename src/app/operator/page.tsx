@@ -1810,6 +1810,10 @@ function ScoreExtractionPreviewCard({
                 {reference.claimCount} claim(s), {reference.studyCount} extraction(s). Gaps:{" "}
                 {reference.extractionGaps.join("; ") || "none listed"}
               </p>
+              <p className="mt-1 break-words text-xs leading-5 text-slate-700">
+                <span className="font-semibold">Repair brief:</span>{" "}
+                {reference.repairReferenceCommand}
+              </p>
               {reference.candidates.length > 0 ? (
                 <div className="mt-2 grid gap-2 lg:grid-cols-2">
                   {reference.candidates.slice(0, 2).map((candidate) => (
