@@ -2,6 +2,10 @@ import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import { dryRunUpdateClaimScore } from "@/lib/data/score-update";
 import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
 import {
+  buildScoreBatchReviewSummary,
+  formatScoreBatchReviewSummaryLines
+} from "@/lib/score-batch-summary";
+import {
   buildScoreWorklistReport,
   type ScoreWorklistRow,
   type ScoreWorklistStateFilter
@@ -35,6 +39,13 @@ async function main() {
           args.limit === 1
             ? drafts[0]
             : {
+                batchSummary: buildScoreBatchReviewSummary(
+                  drafts.map((draft) => ({
+                    compositeScore: draft.row.suggestion.compositeScore,
+                    finalLabel: draft.row.suggestion.finalLabel,
+                    state: draft.row.state
+                  }))
+                ),
                 drafts,
                 totalDrafts: drafts.length
               },
@@ -219,6 +230,16 @@ function formatScoreDraftOutput(
     "Read-only local score draft batch",
     `Drafts: ${drafts.length}`,
     "This command did not write scores, review status, source packets, or public evidence.",
+    "",
+    ...formatScoreBatchReviewSummaryLines(
+      buildScoreBatchReviewSummary(
+        drafts.map((draft) => ({
+          compositeScore: draft.row.suggestion.compositeScore,
+          finalLabel: draft.row.suggestion.finalLabel,
+          state: draft.row.state
+        }))
+      )
+    ),
     "",
     ...drafts.flatMap((draft, index) => [
       `${index + 1}. ${draft.row.intervention?.name ?? "Unknown intervention"} / ${draft.row.outcome} (${draft.row.claimId})`,

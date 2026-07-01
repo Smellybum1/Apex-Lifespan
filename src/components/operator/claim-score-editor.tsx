@@ -6,6 +6,11 @@ import {
   CLAIM_SCORE_FIELD_DEFINITIONS,
   EVIDENCE_LABEL_OPTIONS
 } from "@/lib/score-fields";
+import {
+  buildScoreBatchReviewSummary,
+  formatScoreBatchSummaryCounts,
+  type ScoreBatchReviewSummary
+} from "@/lib/score-batch-summary";
 import { buildClaimScoreSuggestion } from "@/lib/score-suggestions";
 import { buildScoreReviewChecklist } from "@/lib/score-update-draft";
 import { compositeScore, scoreBand } from "@/lib/scoring";
@@ -50,6 +55,29 @@ export function OperatorClaimScoreEditor({
     () => new Map(sourcePackets.map((packet) => [packet.claimId, packet])),
     [sourcePackets]
   );
+  const batchSummary = useMemo(
+    () =>
+      buildScoreBatchReviewSummary(
+        claims.map((claim) => {
+          const references = claimReferences[claim.id] ?? [];
+          const linkedReferenceIds = new Set(references.map((reference) => reference.id));
+          const linkedStudies = studies.filter((study) => linkedReferenceIds.has(study.referenceId));
+          const suggestion = buildClaimScoreSuggestion({
+            claim,
+            references,
+            sourcePacket: sourcePacketByClaim.get(claim.id),
+            studies: linkedStudies
+          });
+
+          return {
+            compositeScore: compositeScore(suggestion.scores),
+            finalLabel: suggestion.finalLabel,
+            state: worklistContext[claim.id]?.state
+          };
+        })
+      ),
+    [claimReferences, claims, sourcePacketByClaim, studies, worklistContext]
+  );
 
   return (
     <div className="space-y-2 border-t border-slate-100 pt-4">
@@ -61,6 +89,7 @@ export function OperatorClaimScoreEditor({
           Preview the composite against linked citations before saving. Apply keeps the claim draft-reviewed unless a human explicitly confirms otherwise.
         </p>
       </div>
+      <ScoreEditorBatchSummary summary={batchSummary} />
       {claims.map((claim) => (
         <EditableClaimScoreCard
           applyEnabled={applyEnabled}
@@ -73,6 +102,54 @@ export function OperatorClaimScoreEditor({
           worklistContext={worklistContext[claim.id]}
         />
       ))}
+    </div>
+  );
+}
+
+function ScoreEditorBatchSummary({ summary }: { summary: ScoreBatchReviewSummary }) {
+  return (
+    <div className="rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-blue-950">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h4 className="font-semibold">Batch review summary</h4>
+          <p className="mt-1 text-blue-900">{summary.nextAction}</p>
+        </div>
+        <span className="rounded-md border border-blue-200 bg-white px-2 py-1 text-xs font-semibold">
+          {summary.totalRows} row{summary.totalRows === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-4">
+        <SummaryMetric label="Direct score rows" value={summary.directScoreRows} />
+        <SummaryMetric label="Source-blocked" value={summary.sourceBlockedRows} />
+        <SummaryMetric label="Guardrail labels" value={summary.guardedLabelDrafts} />
+        <SummaryMetric
+          label="Score range"
+          value={
+            summary.scoreRange
+              ? `${summary.scoreRange.min.toFixed(1)}-${summary.scoreRange.max.toFixed(1)}`
+              : "none"
+          }
+        />
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        <p className="rounded-md border border-blue-100 bg-white/75 p-2 text-xs leading-5">
+          <span className="font-semibold">Suggested labels:</span>{" "}
+          {formatScoreBatchSummaryCounts(summary.labels)}
+        </p>
+        <p className="rounded-md border border-blue-100 bg-white/75 p-2 text-xs leading-5">
+          <span className="font-semibold">Score bands:</span>{" "}
+          {formatScoreBatchSummaryCounts(summary.bands)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SummaryMetric({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="rounded-md border border-blue-100 bg-white/75 p-2">
+      <p className="text-xs font-semibold text-blue-700">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-blue-950">{value}</p>
     </div>
   );
 }

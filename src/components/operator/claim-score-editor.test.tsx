@@ -39,6 +39,14 @@ describe("OperatorClaimScoreEditor", () => {
     );
 
     expect(html).toContain("Score field editor");
+    expect(html).toContain("Batch review summary");
+    expect(html).toContain("Direct score rows");
+    expect(html).toContain("Source-blocked");
+    expect(html).toContain("Guardrail labels");
+    expect(html).toContain("Suggested labels:");
+    expect(html).toContain("Useful for Specific Use Case 1");
+    expect(html).toContain("Score bands:");
+    expect(html).toContain("Moderate 1");
     expect(html).toContain("current 8.2 Strong");
     expect(html).toContain("preview 7.4 Moderate");
     expect(html).toContain("Preview:");
@@ -105,6 +113,7 @@ describe("OperatorClaimScoreEditor", () => {
     );
 
     expect(html).toContain("Source-blocked");
+    expect(html).toContain("Complete source extraction or source linking");
     expect(html).toContain("Apply waits for ready-to-score or score-review work");
     expect(html).toContain("Extraction pending");
     expect(html).toContain("preview 8.2 Strong");
