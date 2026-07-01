@@ -113,6 +113,17 @@ function EditableClaimScoreCard({
       }),
     [claim, linkedStudies, references, sourcePacket]
   );
+  const suggestedRationale = useMemo(
+    () =>
+      buildScoreEditorRationale({
+        claim,
+        references,
+        sourcePacket,
+        studies: linkedStudies,
+        suggestion
+      }),
+    [claim, linkedStudies, references, sourcePacket, suggestion]
+  );
   const previewScore = compositeScore(scores);
   const currentScore = compositeScore(claim.scores);
   const changed =
@@ -242,6 +253,7 @@ function EditableClaimScoreCard({
             Rationale
             <textarea
               className="mt-1 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              defaultValue={suggestedRationale}
               name="rationale"
               placeholder="Which source packet or scoring rationale supports this change?"
               required
@@ -254,7 +266,11 @@ function EditableClaimScoreCard({
             Run score update
           </button>
         </form>
-        <SourcePacketContext references={references} sourcePacket={sourcePacket} />
+        <SourcePacketContext
+          references={references}
+          sourcePacket={sourcePacket}
+          studies={linkedStudies}
+        />
       </div>
     </details>
   );
@@ -300,10 +316,12 @@ function WorklistContextSummary({ context }: { context: ClaimScoreWorklistContex
 
 function SourcePacketContext({
   references,
-  sourcePacket
+  sourcePacket,
+  studies
 }: {
   references: Reference[];
   sourcePacket?: NormalizedSourcePacketRow;
+  studies: Study[];
 }) {
   return (
     <aside className="rounded-md border border-slate-200 bg-white p-3 text-sm">
@@ -341,6 +359,55 @@ function SourcePacketContext({
           </p>
         ) : null}
       </div>
+      <div className="mt-3 border-t border-slate-100 pt-3">
+        <h5 className="font-semibold text-slate-950">Extracted study context</h5>
+        {studies.length > 0 ? (
+          <div className="mt-2 space-y-2">
+            {studies.slice(0, 3).map((study) => (
+              <div className="rounded-md border border-slate-100 bg-slate-50 p-2" key={study.id}>
+                <p className="break-words font-semibold text-slate-800">
+                  {study.studyType} {study.year} - {study.title}
+                </p>
+                <dl className="mt-2 grid gap-1 text-xs leading-5 text-slate-600">
+                  <div>
+                    <dt className="inline font-semibold text-slate-700">Population:</dt>{" "}
+                    <dd className="inline">{study.population}</dd>
+                  </div>
+                  <div>
+                    <dt className="inline font-semibold text-slate-700">Intervention:</dt>{" "}
+                    <dd className="inline">{study.intervention}</dd>
+                  </div>
+                  <div>
+                    <dt className="inline font-semibold text-slate-700">Outcomes:</dt>{" "}
+                    <dd className="inline">{study.outcomes.join(", ")}</dd>
+                  </div>
+                  <div>
+                    <dt className="inline font-semibold text-slate-700">Sample/results:</dt>{" "}
+                    <dd className="inline">{study.sampleSize}</dd>
+                  </div>
+                  <div>
+                    <dt className="inline font-semibold text-slate-700">Safety:</dt>{" "}
+                    <dd className="inline">{study.adverseEvents}</dd>
+                  </div>
+                  <div>
+                    <dt className="inline font-semibold text-slate-700">Bias/quality:</dt>{" "}
+                    <dd className="inline">{study.riskOfBias}</dd>
+                  </div>
+                </dl>
+              </div>
+            ))}
+            {studies.length > 3 ? (
+              <p className="text-xs font-semibold text-slate-500">
+                {studies.length - 3} more extracted study row(s).
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900">
+            No extracted study rows are visible for these linked citations.
+          </p>
+        )}
+      </div>
     </aside>
   );
 }
@@ -367,4 +434,47 @@ function sourcePacketStatusLabel(status: NormalizedSourcePacketRow["status"]) {
     default:
       return "Not linked";
   }
+}
+
+function buildScoreEditorRationale({
+  claim,
+  references,
+  sourcePacket,
+  studies,
+  suggestion
+}: {
+  claim: Claim;
+  references: Reference[];
+  sourcePacket?: NormalizedSourcePacketRow;
+  studies: Study[];
+  suggestion: ReturnType<typeof buildClaimScoreSuggestion>;
+}) {
+  const citationLine =
+    references.length > 0
+      ? references
+          .map((reference) => `${reference.source} ${reference.identifier}: ${reference.title}`)
+          .join("; ")
+      : "No linked citations visible.";
+  const studyLine =
+    studies.length > 0
+      ? studies
+          .map(
+            (study) =>
+              `${study.studyType} ${study.year} on ${study.intervention}; outcomes: ${study.outcomes.join(", ")}; ${study.riskOfBias}`
+          )
+          .join(" | ")
+      : "No substantive study extraction visible.";
+  const packetLine = sourcePacket
+    ? `${sourcePacket.status}; ${sourcePacket.referenceIds.length} linked reference(s); ${sourcePacket.reviewStatus}.`
+    : "No normalized source packet is linked.";
+
+  return [
+    "Operator draft score update; verify citation support before applying.",
+    `Claim scope: ${claim.outcome} - ${claim.claimText}`,
+    `Suggested score: ${compositeScore(suggestion.scores).toFixed(1)} ${scoreBand(compositeScore(suggestion.scores))}; label ${suggestion.finalLabel}.`,
+    `Source packet: ${packetLine}`,
+    `Citations: ${citationLine}`,
+    `Extraction basis: ${studyLine}`,
+    `Caveats: ${suggestion.limitations.join(" ")} Product-level AU/TGA clearance is not inferred from intervention evidence. No medical advice.`
+  ].join("\n");
 }

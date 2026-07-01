@@ -50,6 +50,12 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).toContain("Source packet");
     expect(html).toContain("Complete");
     expect(html).toContain("Creatine review");
+    expect(html).toContain("Extracted study context");
+    expect(html).toContain("Meta-analysis 2017 - Creatine meta-analysis");
+    expect(html).toContain("Population:");
+    expect(html).toContain("Outcomes:");
+    expect(html).toContain("Operator draft score update");
+    expect(html).toContain("Product-level AU/TGA clearance is not inferred");
     expect(html).toContain("Apply score update");
   });
 
@@ -89,6 +95,7 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).toContain("Source-blocked");
     expect(html).toContain("Apply waits for ready-to-score or score-review work");
     expect(html).toContain("Extraction pending");
+    expect(html).toContain("No extracted study rows are visible");
     expect(html).not.toContain("Apply score update");
     expect(html).toContain("disabled");
   });
