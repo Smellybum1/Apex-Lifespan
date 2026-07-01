@@ -58,6 +58,11 @@ import {
   selectScoreReadinessEditorRows,
   type ScoreReadinessSummary
 } from "@/lib/score-readiness";
+import {
+  buildScoreWorklistRepairSummary,
+  type ScoreWorklistRepairSampleClaim,
+  type ScoreWorklistRepairSummary
+} from "@/lib/score-worklist";
 import type { Claim, NormalizedSourcePacketRow, Reference, Study } from "@/lib/types";
 import {
   australiaRegulatoryStatuses,
@@ -276,6 +281,7 @@ export default async function OperatorPage() {
   const scoreDashboardData = canReviewPromotion ? await getEvidenceDashboardData() : undefined;
   const scoreReadinessRows = scoreDashboardData ? buildScoreReadinessRows(scoreDashboardData) : [];
   const scoreReadinessSummary = buildScoreReadinessSummary(scoreReadinessRows);
+  const scoreRepairSummary = buildScoreWorklistRepairSummary(scoreReadinessRows);
   const scoreEditorRows = selectScoreReadinessEditorRows(scoreReadinessRows);
   const scoreSnapshotClaims = scoreEditorRows.map((row) => row.claim);
   const scoreEditorContext = Object.fromEntries(
@@ -385,6 +391,7 @@ export default async function OperatorPage() {
             claims={scoreSnapshotClaims}
             promotionControl={promotionControl}
             references={scoreSnapshotReferences}
+            repairSummary={scoreRepairSummary}
             recomputeAction={recomputeClaimScoreFromForm}
             sourcePackets={scoreSnapshotSourcePackets}
             studies={scoreSnapshotStudies}
@@ -1351,6 +1358,7 @@ function ScoreSnapshotPanel({
   claims,
   promotionControl,
   references,
+  repairSummary,
   recomputeAction,
   sourcePackets,
   studies,
@@ -1361,6 +1369,7 @@ function ScoreSnapshotPanel({
   claims: Claim[];
   promotionControl: OperatorBrowserWriteControlState;
   references: Reference[];
+  repairSummary: ScoreWorklistRepairSummary;
   recomputeAction: (formData: FormData) => void | Promise<void>;
   sourcePackets: NormalizedSourcePacketRow[];
   studies: Study[];
@@ -1404,6 +1413,7 @@ function ScoreSnapshotPanel({
           <ScoreReadinessStat label="Source work" value={`${summary.sourceBlocked}`} />
           <ScoreReadinessStat label="Scored cells" value={`${summary.scoredPublicClaims}`} />
         </div>
+        <ScoreSourceRepairQueue summary={repairSummary} />
         {claims.length > 0 ? (
           <form action={recomputeAction} className="space-y-3">
             <label className="block text-sm font-semibold text-slate-700">
@@ -1478,6 +1488,120 @@ function ScoreSnapshotPanel({
       </div>
     </section>
   );
+}
+
+function ScoreSourceRepairQueue({ summary }: { summary: ScoreWorklistRepairSummary }) {
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-slate-950">Source repair queue</h3>
+          <p className="mt-1">
+            Source-blocked scoring rows need extraction, source records, or curated links before
+            they can become real scores.
+          </p>
+        </div>
+        <span className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-semibold">
+          {summary.sourceBlockedRows} blocked
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-4">
+        <ScoreReadinessStat label="Extraction pending" value={`${summary.extractionPendingRows}`} />
+        <ScoreReadinessStat label="Missing source records" value={`${summary.missingSourceRows}`} />
+        <ScoreReadinessStat label="Unlinked claims" value={`${summary.unlinkedRows}`} />
+        <ScoreReadinessStat
+          label="Reference groups"
+          value={`${summary.pendingReferenceGroups.length}`}
+        />
+      </div>
+      {summary.sourceBlockedRows === 0 ? (
+        <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-emerald-950">
+          No source-blocked scoring rows are visible in the current local catalog.
+        </p>
+      ) : (
+        <div className="mt-3 grid gap-3 lg:grid-cols-3">
+          <SourceRepairGroupList
+            emptyText="No pending extraction references."
+            groups={summary.pendingReferenceGroups.slice(0, 3).map((group) => ({
+              detail: `${group.claimCount} claim(s), ${group.interventions.length} intervention(s)`,
+              sampleClaims: group.sampleClaims,
+              subtitle: group.reference.title,
+              title: group.reference.label
+            }))}
+            title="Top pending extraction references"
+          />
+          <SourceRepairGroupList
+            emptyText="No missing source records."
+            groups={summary.missingReferenceGroups.slice(0, 3).map((group) => ({
+              detail: `${group.claimCount} claim(s) blocked`,
+              sampleClaims: group.sampleClaims,
+              subtitle: group.outcomes.slice(0, 3).join("; "),
+              title: group.referenceId
+            }))}
+            title="Top missing source records"
+          />
+          <SourceRepairGroupList
+            emptyText="No unlinked claim groups."
+            groups={summary.unlinkedInterventionGroups.slice(0, 3).map((group) => ({
+              detail: `${group.claimCount} claim(s) need curated references`,
+              sampleClaims: group.sampleClaims,
+              subtitle: group.outcomes.slice(0, 3).join("; "),
+              title: group.intervention?.name ?? "Unknown intervention"
+            }))}
+            title="Top unlinked claim groups"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SourceRepairGroupList({
+  emptyText,
+  groups,
+  title
+}: {
+  emptyText: string;
+  groups: Array<{
+    detail: string;
+    sampleClaims: ScoreWorklistRepairSampleClaim[];
+    subtitle: string;
+    title: string;
+  }>;
+  title: string;
+}) {
+  return (
+    <section>
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-amber-800">{title}</h4>
+      {groups.length > 0 ? (
+        <div className="mt-2 divide-y divide-amber-200">
+          {groups.map((group) => (
+            <article className="py-2" key={group.title}>
+              <p className="break-words text-sm font-semibold text-slate-900">{group.title}</p>
+              <p className="mt-1 break-words text-xs leading-5 text-slate-600">
+                {group.subtitle || "No outcome summary available."}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-amber-900">{group.detail}</p>
+              {group.sampleClaims.length > 0 ? (
+                <p className="mt-1 break-words text-xs leading-5 text-slate-600">
+                  Claims: {formatSourceRepairSamples(group.sampleClaims)}
+                </p>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-xs leading-5 text-slate-600">{emptyText}</p>
+      )}
+    </section>
+  );
+}
+
+function formatSourceRepairSamples(samples: ScoreWorklistRepairSampleClaim[]) {
+  return samples
+    .slice(0, 3)
+    .map((sample) => `${sample.interventionName} / ${sample.outcome}`)
+    .join("; ");
 }
 
 function buildClaimReferences(claims: Claim[], references: Reference[]) {

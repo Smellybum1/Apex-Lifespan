@@ -263,6 +263,11 @@ describe("OperatorPage role-gated rendering", () => {
     expect(html).toContain("Loaded now");
     expect(html).toContain("Ready now");
     expect(html).toContain("Source work");
+    expect(html).toContain("Source repair queue");
+    expect(html).toContain("Extraction pending");
+    expect(html).toContain("Missing source records");
+    expect(html).toContain("Unlinked claims");
+    expect(html).toContain("Reference groups");
     expect(html).toContain("unless a human explicitly confirms otherwise");
     expect(html).toContain("Complete claim link before promotion.");
     expect(html).toContain("Audit trail");
