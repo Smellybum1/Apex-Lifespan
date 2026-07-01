@@ -154,6 +154,7 @@ export type LocalCandidateReviewResponse = {
     likelyNoise: number;
     likelyUseful: number;
     maybeUseful: number;
+    parkedResearch: number;
     unclassified: number;
   };
   filters: {
@@ -180,6 +181,16 @@ export type LocalCandidateReviewBulkAction =
   | "accept-all"
   | "accept-likely-useful"
   | "reject-not-useful";
+export type LocalCandidateReviewAutomationAction = "accept" | "hold" | "reject";
+export type LocalCandidateReviewAutomationStrategy = "strict" | "query-backed";
+export type LocalCandidateReviewSignalKind =
+  | "identity-mismatch"
+  | "low-signal"
+  | "park-research"
+  | "spot-check";
+export type LocalCandidateReviewSignalApplyAction =
+  | "park-research"
+  | "reject-mismatches";
 
 export type LocalCandidateReviewBulkResponse = {
   accepted: number;
@@ -187,6 +198,140 @@ export type LocalCandidateReviewBulkResponse = {
   rejected: number;
   scanned: number;
   status: "completed" | "stopped-at-limit";
+};
+
+export type LocalCandidateReviewAutomationDecision = {
+  action: LocalCandidateReviewAutomationAction;
+  applied: boolean;
+  classificationScore?: number;
+  dedupeKey: string;
+  error?: string;
+  externalId: string;
+  interventionName?: string;
+  reasons: string[];
+  source: LocalIngestionSource;
+  sourceTypeSuggestion: string;
+  title: string;
+  triageScore: number;
+};
+
+export type LocalCandidateReviewAutomationResponse = {
+  action: "auto-triage-maybe-useful";
+  applied: boolean;
+  counts: {
+    accepted: number;
+    appliedActions: number;
+    errors: number;
+    held: number;
+    rejected: number;
+    scanned: number;
+  };
+  decisions: LocalCandidateReviewAutomationDecision[];
+  filters: LocalCandidateReviewResponse["filters"];
+  message: string;
+  status: "completed" | "stopped-at-limit";
+  strategy: LocalCandidateReviewAutomationStrategy;
+  updatedAt: string;
+};
+
+export type LocalCandidateReviewSignalSample = {
+  dedupeKey: string;
+  externalId: string;
+  source: LocalIngestionSource;
+  sourceTypeSuggestion: string;
+  title: string;
+  triageScore: number;
+};
+
+export type LocalCandidateReviewSignalDecision = LocalCandidateReviewSignalSample & {
+  classificationScore?: number;
+  dedupeKey: string;
+  identityVisible: boolean;
+  interventionId?: string;
+  interventionName?: string;
+  kind: LocalCandidateReviewSignalKind;
+  lowScore: boolean;
+  outcomeLabels: string[];
+  outcomes: Array<{
+    label: string;
+    outcome: string;
+    score: number;
+  }>;
+  priorityStudy: boolean;
+  queryBacked: boolean;
+  reasons: string[];
+  sourcePointsElsewhere: boolean;
+};
+
+export type LocalCandidateReviewSignalSummary = {
+  averageScore: number;
+  count: number;
+  identityVisibleCount: number;
+  key: string;
+  label: string;
+  lowScoreCount: number;
+  priorityStudyCount: number;
+  queryBackedCount: number;
+  samples: LocalCandidateReviewSignalSample[];
+  sourcePointsElsewhereCount: number;
+  topOutcomes: Array<{
+    count: number;
+    label: string;
+  }>;
+};
+
+export type LocalCandidateReviewOutcomeSignal = {
+  count: number;
+  interventionCount: number;
+  label: string;
+  outcome: string;
+  samples: LocalCandidateReviewSignalSample[];
+};
+
+export type LocalCandidateReviewSignalMiningResponse = {
+  action: "mine-maybe-useful-signals";
+  counts: {
+    identityMismatch: number;
+    interventionSignals: number;
+    lowSignal: number;
+    outcomeSignals: number;
+    parkResearch: number;
+    scanned: number;
+    spotCheck: number;
+  };
+  decisions: LocalCandidateReviewSignalDecision[];
+  filters: LocalCandidateReviewResponse["filters"];
+  holdReasons: Array<{
+    count: number;
+    label: string;
+  }>;
+  interventions: LocalCandidateReviewSignalSummary[];
+  message: string;
+  outcomes: LocalCandidateReviewOutcomeSignal[];
+  sourceTypes: Array<{
+    count: number;
+    label: string;
+  }>;
+  status: "completed" | "stopped-at-limit";
+  updatedAt: string;
+};
+
+export type LocalCandidateReviewSignalApplyResponse = {
+  action: "apply-mined-signals";
+  counts: {
+    errors: number;
+    parked: number;
+    rejected: number;
+    scanned: number;
+    skipped: number;
+  };
+  decisions: LocalCandidateReviewSignalDecision[];
+  errors: string[];
+  filters: LocalCandidateReviewResponse["filters"];
+  message: string;
+  signalAction: LocalCandidateReviewSignalApplyAction;
+  status: "completed" | "stopped-at-limit";
+  updatedAt: string;
 };
 
 export type LocalAcceptedCandidateProcessingStatusResponse = {
@@ -236,8 +381,14 @@ export type LocalAcceptedCandidateProcessingResult = {
 export type LocalBenefitDiscoveryAction =
   | "draft-claim"
   | "link-existing-claim"
+  | "park-lead"
   | "reject-cluster";
 export type LocalBenefitDiscoveryAutomationAction = LocalBenefitDiscoveryAction | "hold";
+export type LocalBenefitDiscoveryAutomationScope = "batch" | "all-eligible";
+export type LocalBenefitDiscoveryAutomationStrategy =
+  | "build-leads"
+  | "link-existing"
+  | "park-backlog";
 
 export type LocalBenefitDiscoveryQueueResponse = {
   clusters: LocalBenefitDiscoveryCluster[];
@@ -246,6 +397,7 @@ export type LocalBenefitDiscoveryQueueResponse = {
     activeCandidates: number;
     decidedClusters: number;
     mismatchCandidates: number;
+    parkedClusters: number;
   };
   updatedAt: string;
 };
@@ -320,6 +472,7 @@ export type LocalBenefitDiscoveryAutomationResponse = {
     errors: number;
     holdClusters: number;
     linkExistingClaims: number;
+    parkLeadClusters: number;
     rejectClusters: number;
     scannedClusters: number;
     skippedMismatchCandidates: number;
@@ -328,6 +481,10 @@ export type LocalBenefitDiscoveryAutomationResponse = {
   decisions: LocalBenefitDiscoveryAutomationDecision[];
   limit: number;
   message: string;
+  parkThreshold: number;
+  rejectThreshold: number;
+  scope: LocalBenefitDiscoveryAutomationScope;
+  strategy: LocalBenefitDiscoveryAutomationStrategy;
   threshold: number;
   updatedAt: string;
 };
@@ -337,6 +494,13 @@ export type LocalIdentityResolutionAction =
   | "reassign-intervention"
   | "reject-wrong-supplement"
   | "add-synonym";
+export type LocalIdentityResolutionAutomationAction =
+  | "confirm-target"
+  | "reassign-intervention"
+  | "reject-wrong-supplement"
+  | "hold";
+export type LocalIdentityResolutionAutomationScope = "batch" | "all-eligible";
+export type LocalIdentityResolutionAutomationStrategy = "strict" | "source-led";
 
 export type LocalIdentityResolutionCandidate = {
   dedupeKey: string;
@@ -345,6 +509,7 @@ export type LocalIdentityResolutionCandidate = {
   interventionId: string;
   interventionName: string;
   matchedInterventions: Array<{
+    hasAcceptedCandidate?: boolean;
     id: string;
     name: string;
   }>;
@@ -375,6 +540,42 @@ export type LocalIdentityResolutionActionResponse = {
   action: LocalIdentityResolutionAction;
   candidate?: LocalIdentityResolutionCandidate;
   message: string;
+};
+
+export type LocalIdentityResolutionAutomationDecision = {
+  action: LocalIdentityResolutionAutomationAction;
+  applied: boolean;
+  dedupeKey: string;
+  error?: string;
+  externalId: string;
+  interventionId: string;
+  interventionName: string;
+  matchedInterventionId?: string;
+  matchedInterventionName?: string;
+  query: string;
+  reasons: string[];
+  source: LocalIngestionSource;
+  title: string;
+};
+
+export type LocalIdentityResolutionAutomationResponse = {
+  action: "auto-resolve";
+  applied: boolean;
+  counts: {
+    appliedActions: number;
+    confirmTarget: number;
+    errors: number;
+    hold: number;
+    reassignIntervention: number;
+    rejectWrongSupplement: number;
+    scannedCandidates: number;
+  };
+  decisions: LocalIdentityResolutionAutomationDecision[];
+  limit: number;
+  message: string;
+  scope: LocalIdentityResolutionAutomationScope;
+  strategy: LocalIdentityResolutionAutomationStrategy;
+  updatedAt: string;
 };
 
 export type DashboardMainTab =

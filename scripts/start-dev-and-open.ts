@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,6 +8,7 @@ const APP_URL = `http://localhost:${PORT}`;
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const READY_TIMEOUT_MS = 120_000;
 const POLL_INTERVAL_MS = 1_000;
+const EXISTING_SERVER_TIMEOUT_MS = 2_000;
 
 function readPort() {
   const raw = process.env.APEX_DEV_PORT ?? process.env.PORT ?? "3001";
@@ -19,12 +21,15 @@ function readPort() {
   return port;
 }
 
-async function waitForServerReady() {
+async function waitForServerReady(signal?: AbortSignal) {
   const deadline = Date.now() + READY_TIMEOUT_MS;
 
-  while (Date.now() < deadline) {
+  while (Date.now() < deadline && !signal?.aborted) {
     try {
-      const response = await fetch(APP_URL, { redirect: "manual" });
+      const response = await fetch(APP_URL, {
+        redirect: "manual",
+        signal
+      });
 
       if (response.status >= 200 && response.status < 500) {
         return true;
@@ -33,14 +38,30 @@ async function waitForServerReady() {
       // Server still starting.
     }
 
-    await sleep(POLL_INTERVAL_MS);
+    await sleep(POLL_INTERVAL_MS, signal);
   }
 
   return false;
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal) {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve(undefined);
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve(undefined);
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      resolve(undefined);
+    };
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 function openBrowser(url: string) {
@@ -61,13 +82,18 @@ function openBrowser(url: string) {
 }
 
 function startDevServer(): ChildProcess {
-  return spawn("npm", ["run", "dev", "--", "-p", String(PORT)], {
+  const command = process.platform === "win32" ? "cmd.exe" : "npm";
+  const args =
+    process.platform === "win32"
+      ? ["/d", "/s", "/c", "npm", "run", "dev", "--", "-p", String(PORT)]
+      : ["run", "dev", "--", "-p", String(PORT)];
+
+  return spawn(command, args, {
     cwd: ROOT_DIR,
     env: {
       ...process.env,
       PORT: String(PORT)
     },
-    shell: true,
     stdio: "inherit"
   });
 }
@@ -75,12 +101,38 @@ function startDevServer(): ChildProcess {
 async function main() {
   console.log(`Starting Apex Lifespan on ${APP_URL} ...`);
 
+  const existingServer = await probeExistingServer();
+
+  if (existingServer.ready) {
+    console.log(`Apex Lifespan is already running on ${APP_URL}; opening it.`);
+    openBrowser(APP_URL);
+    return;
+  }
+
+  if (existingServer.portInUse) {
+    const detail =
+      existingServer.status === undefined
+        ? "did not return an HTTP response"
+        : `returned HTTP ${existingServer.status}`;
+
+    console.error(
+      `Port ${PORT} is already in use but ${detail}. Run "npm run dev:stop -- ${PORT}" and then try "npm run dev:open" again.`
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   const devServer = startDevServer();
+  const readyController = new AbortController();
   let browserOpened = false;
   let shuttingDown = false;
 
-  void waitForServerReady().then((ready) => {
+  void waitForServerReady(readyController.signal).then((ready) => {
     if (!ready) {
+      if (readyController.signal.aborted) {
+        return;
+      }
+
       console.error(`Timed out waiting for ${APP_URL} to become ready.`);
       return;
     }
@@ -109,6 +161,8 @@ async function main() {
 
   await new Promise<void>((resolve, reject) => {
     devServer.on("exit", (code) => {
+      readyController.abort();
+
       if (code && code !== 0) {
         process.exitCode = code;
       }
@@ -117,6 +171,64 @@ async function main() {
     });
     devServer.on("error", reject);
   });
+}
+
+async function probeExistingServer() {
+  const portInUse = await isPortInUse(PORT);
+
+  if (!portInUse) {
+    return {
+      portInUse: false,
+      ready: false
+    };
+  }
+
+  const status = await fetchExistingServerStatus();
+
+  return {
+    portInUse: true,
+    ready: status !== undefined && status >= 200 && status < 500,
+    status
+  };
+}
+
+function isPortInUse(port: number) {
+  return new Promise<boolean>((resolve) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+
+    socket.once("error", () => {
+      socket.destroy();
+      resolve(false);
+    });
+
+    socket.setTimeout(EXISTING_SERVER_TIMEOUT_MS, () => {
+      socket.destroy();
+      resolve(true);
+    });
+  });
+}
+
+async function fetchExistingServerStatus() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), EXISTING_SERVER_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(APP_URL, {
+      redirect: "manual",
+      signal: controller.signal
+    });
+
+    return response.status;
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 main().catch((error) => {

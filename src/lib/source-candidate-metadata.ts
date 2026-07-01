@@ -3,11 +3,13 @@ import type { Prisma } from "@prisma/client";
 export const SOURCE_CANDIDATE_DISCOVERY_CLASSIFIER_VERSION = "2026-06-27";
 export const LOCAL_ACCEPTED_PROCESSING_METADATA_VERSION = "accepted-candidate-v1";
 export const LOCAL_BENEFIT_DISCOVERY_METADATA_VERSION = "benefit-discovery-v1";
+export const LOCAL_CANDIDATE_REVIEW_METADATA_VERSION = "candidate-review-v1";
 export const LOCAL_IDENTITY_RESOLUTION_METADATA_VERSION = "identity-resolution-v1";
 
 export const SOURCE_CANDIDATE_METADATA_KEYS = {
   acceptedProcessing: "localAcceptedProcessing",
   benefitDiscoveryDecision: "localBenefitDiscoveryDecision",
+  candidateReviewDisposition: "localCandidateReviewDisposition",
   discoveryClassification: "discoveryClassification",
   identityResolution: "localIdentityResolution"
 } as const;
@@ -24,6 +26,10 @@ export const SOURCE_CANDIDATE_METADATA_PATHS = {
   discoveryClassificationBucket: [
     SOURCE_CANDIDATE_METADATA_KEYS.discoveryClassification,
     "bucket"
+  ],
+  candidateReviewDispositionStatus: [
+    SOURCE_CANDIDATE_METADATA_KEYS.candidateReviewDisposition,
+    "status"
   ]
 } as const;
 
@@ -74,6 +80,7 @@ export interface LocalAcceptedCandidateProcessingOutcomeMetadata {
 export type LocalBenefitDiscoveryDecisionStatus =
   | "claim-drafted"
   | "linked-existing-claim"
+  | "parked"
   | "rejected"
   | "skipped-mismatch";
 
@@ -87,6 +94,18 @@ export interface LocalBenefitDiscoveryDecisionMetadataInput {
   claimId?: string;
   clusterKey: string;
   status: LocalBenefitDiscoveryDecisionStatus;
+}
+
+export type LocalCandidateReviewDispositionStatus = "parked-research";
+
+export interface LocalCandidateReviewDispositionMetadata {
+  status: LocalCandidateReviewDispositionStatus;
+}
+
+export interface LocalCandidateReviewDispositionMetadataInput {
+  action: string;
+  reason?: string;
+  status: LocalCandidateReviewDispositionStatus;
 }
 
 export type LocalIdentityResolutionStatus =
@@ -269,6 +288,50 @@ export function writeLocalBenefitDiscoveryDecisionMetadata(
   });
 }
 
+export function readLocalCandidateReviewDispositionMetadata(metadata: unknown) {
+  const disposition =
+    sourceCandidateMetadataObject(metadata)[
+      SOURCE_CANDIDATE_METADATA_KEYS.candidateReviewDisposition
+    ];
+
+  if (!disposition || typeof disposition !== "object" || Array.isArray(disposition)) {
+    return undefined;
+  }
+
+  const record = disposition as Record<string, unknown>;
+
+  if (record.version !== LOCAL_CANDIDATE_REVIEW_METADATA_VERSION) {
+    return undefined;
+  }
+
+  const status = sourceCandidateMetadataString(record, "status");
+
+  if (!isLocalCandidateReviewDispositionStatus(status)) {
+    return undefined;
+  }
+
+  return {
+    status
+  } satisfies LocalCandidateReviewDispositionMetadata;
+}
+
+export function writeLocalCandidateReviewDispositionMetadata(
+  metadata: unknown,
+  input: LocalCandidateReviewDispositionMetadataInput,
+  decidedAt = new Date()
+) {
+  return sourceCandidateMetadataInput({
+    ...sourceCandidateMetadataObject(metadata),
+    [SOURCE_CANDIDATE_METADATA_KEYS.candidateReviewDisposition]: {
+      action: input.action,
+      decidedAt: decidedAt.toISOString(),
+      reason: input.reason,
+      status: input.status,
+      version: LOCAL_CANDIDATE_REVIEW_METADATA_VERSION
+    }
+  });
+}
+
 export function readLocalIdentityResolutionMetadata(metadata: unknown) {
   const resolution =
     sourceCandidateMetadataObject(metadata)[SOURCE_CANDIDATE_METADATA_KEYS.identityResolution];
@@ -399,9 +462,16 @@ function isLocalBenefitDiscoveryDecisionStatus(
   return (
     value === "claim-drafted" ||
     value === "linked-existing-claim" ||
+    value === "parked" ||
     value === "rejected" ||
     value === "skipped-mismatch"
   );
+}
+
+function isLocalCandidateReviewDispositionStatus(
+  value: unknown
+): value is LocalCandidateReviewDispositionStatus {
+  return value === "parked-research";
 }
 
 function isLocalIdentityResolutionStatus(value: unknown): value is LocalIdentityResolutionStatus {

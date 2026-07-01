@@ -40,8 +40,9 @@ const pageSmokes: PageSmoke[] = [
       "AU",
       "TGA",
       "Source packet",
-      "Live PubMed results are unreviewed citation leads",
-      "Registry records are research leads, not proof of benefit",
+      "Evidence readiness",
+      "Scored cells are review aids",
+      "Review work",
       'href="/privacy"',
       'href="/terms"'
     ],

@@ -1,5 +1,7 @@
 import {
   getLocalIdentityResolutionQueue,
+  isLocalIdentityResolutionAutomationInput,
+  runLocalIdentityResolutionAutomation,
   recordLocalIdentityResolutionAction
 } from "@/lib/data/local-ingestion-control";
 import { guardLocalIngestionRequest } from "@/lib/data/local-ingestion-route-guard";
@@ -30,7 +32,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    return Response.json(await recordLocalIdentityResolutionAction(await request.json()));
+    const input = await request.json();
+
+    if (isLocalIdentityResolutionAutomationInput(input)) {
+      return Response.json(await runLocalIdentityResolutionAutomation(input));
+    }
+
+    return Response.json(await recordLocalIdentityResolutionAction(input));
   } catch (error) {
     return Response.json(
       {

@@ -5,6 +5,7 @@ import {
   IngestionStatus as DbIngestionStatus,
   OutcomeArea as DbOutcomeArea,
   Prisma,
+  ReviewStatus as DbReviewStatus,
   SourceCandidateDecision as DbSourceCandidateDecision,
   SourceKind as DbSourceKind
 } from "@prisma/client";
@@ -20,8 +21,9 @@ import {
   type SourceCandidateIngestionJobRunResult
 } from "@/lib/data/source-candidate-jobs";
 import {
-  LOCAL_BENEFIT_DISCOVERY_AUTOMATION_LIMIT_MAX,
+  LOCAL_BENEFIT_DISCOVERY_AUTOMATION_ALL_MAX,
   LOCAL_BENEFIT_DISCOVERY_LIMIT_MAX,
+  LOCAL_IDENTITY_RESOLUTION_AUTOMATION_ALL_MAX,
   LOCAL_RECENT_ITEM_LIMIT,
   LOCAL_REVIEW_BULK_BATCH_SIZE,
   LOCAL_REVIEW_BULK_MAX_CANDIDATES,
@@ -29,6 +31,7 @@ import {
   normaliseBenefitDiscoveryAutomationLimit,
   normaliseBenefitDiscoveryLimit,
   normaliseBenefitDiscoveryScoreThreshold,
+  normaliseIdentityResolutionAutomationLimit,
   normaliseIdentityResolutionLimit,
   normaliseReviewLimit,
   normaliseRunLimit
@@ -50,6 +53,7 @@ import {
   sourceCandidateMetadataStringArray,
   writeLocalAcceptedCandidateProcessingMetadata,
   writeLocalBenefitDiscoveryDecisionMetadata,
+  writeLocalCandidateReviewDispositionMetadata,
   writeLocalIdentityResolutionMetadata,
   type LocalAcceptedCandidateProcessingOutcomeMetadata
 } from "@/lib/source-candidate-metadata";
@@ -63,7 +67,8 @@ const LOCAL_CANDIDATE_REVIEW_SELECT = {
   externalId: true,
   intervention: {
     select: {
-      name: true
+      name: true,
+      synonyms: true
     }
   },
   interventionId: true,
@@ -256,6 +261,212 @@ const LOCAL_ACCEPTED_OUTCOME_KEYWORDS: Array<{
   }
 ];
 
+const LOCAL_BENEFIT_DISCOVERY_CONTEXT_RULES: Record<
+  string,
+  {
+    requireSupplementContext?: boolean;
+    supplementTerms: string[];
+    trapTerms: string[];
+  }
+> = {
+  calcium: {
+    requireSupplementContext: true,
+    supplementTerms: [
+      "calcium carbonate",
+      "calcium citrate",
+      "calcium supplementation",
+      "calcium supplement",
+      "calcium supplements",
+      "calcium intake",
+      "dietary calcium",
+      "oral calcium"
+    ],
+    trapTerms: [
+      "calcium antagonist",
+      "calcium antagonists",
+      "calcium assessment",
+      "calcium channel blocker",
+      "calcium channel blockers",
+      "calcium score",
+      "calcium scoring",
+      "calcification",
+      "calcified",
+      "coronary artery calcium",
+      "coronary calcium",
+      "vascular calcification"
+    ]
+  },
+  "folic-acid": {
+    requireSupplementContext: true,
+    supplementTerms: [
+      "folic acid supplementation",
+      "folate supplementation",
+      "folic acid supplement",
+      "folate supplement",
+      "folic acid intake",
+      "folate intake",
+      "dietary folate",
+      "methylfolate",
+      "5 mthf"
+    ],
+    trapTerms: [
+      "folate concentration",
+      "folate concentrations",
+      "folate deficiency",
+      "folate level",
+      "folate levels",
+      "folate status",
+      "serum folate"
+    ]
+  },
+  iron: {
+    requireSupplementContext: true,
+    supplementTerms: [
+      "ferrous bisglycinate",
+      "ferrous sulfate",
+      "iron intake",
+      "iron supplement",
+      "iron supplements",
+      "iron supplementation",
+      "oral iron"
+    ],
+    trapTerms: [
+      "blood iron",
+      "iron concentration",
+      "iron concentrations",
+      "iron level",
+      "iron levels",
+      "iron overload",
+      "iron status",
+      "serum iron"
+    ]
+  },
+  magnesium: {
+    requireSupplementContext: true,
+    supplementTerms: [
+      "dietary magnesium",
+      "magnesium citrate",
+      "magnesium glycinate",
+      "magnesium intake",
+      "magnesium oxide",
+      "magnesium supplement",
+      "magnesium supplements",
+      "magnesium supplementation",
+      "oral magnesium"
+    ],
+    trapTerms: [
+      "blood magnesium",
+      "magmaris",
+      "magnesium alloy",
+      "magnesium concentration",
+      "magnesium concentrations",
+      "magnesium level",
+      "magnesium levels",
+      "magnesium scaffold",
+      "magnesium status",
+      "serum magnesium"
+    ]
+  },
+  "vitamin-b12": {
+    requireSupplementContext: true,
+    supplementTerms: [
+      "b12 supplement",
+      "b12 supplements",
+      "b12 supplementation",
+      "cobalamin supplementation",
+      "cyanocobalamin",
+      "methylcobalamin",
+      "vitamin b12 intake",
+      "vitamin b12 supplement",
+      "vitamin b12 supplementation"
+    ],
+    trapTerms: [
+      "b12 concentration",
+      "b12 deficiency",
+      "b12 level",
+      "b12 levels",
+      "b12 status",
+      "serum b12",
+      "serum vitamin b12",
+      "vitamin b12 deficiency",
+      "vitamin b12 level",
+      "vitamin b12 levels",
+      "vitamin b12 status"
+    ]
+  },
+  "vitamin-c": {
+    requireSupplementContext: true,
+    supplementTerms: [
+      "ascorbic acid supplementation",
+      "dietary vitamin c",
+      "oral vitamin c",
+      "vitamin c intake",
+      "vitamin c supplement",
+      "vitamin c supplements",
+      "vitamin c supplementation"
+    ],
+    trapTerms: [
+      "plasma vitamin c",
+      "serum vitamin c",
+      "vitamin c concentration",
+      "vitamin c concentrations",
+      "vitamin c level",
+      "vitamin c levels",
+      "vitamin c status"
+    ]
+  },
+  "vitamin-d": {
+    requireSupplementContext: true,
+    supplementTerms: [
+      "cholecalciferol",
+      "dietary vitamin d",
+      "ergocalciferol",
+      "oral vitamin d",
+      "vitamin d intake",
+      "vitamin d supplement",
+      "vitamin d supplements",
+      "vitamin d supplementation"
+    ],
+    trapTerms: [
+      "25 oh d level",
+      "25 oh d levels",
+      "serum vitamin d",
+      "vitamin d concentration",
+      "vitamin d concentrations",
+      "vitamin d deficiency",
+      "vitamin d level",
+      "vitamin d levels",
+      "vitamin d status"
+    ]
+  },
+  zinc: {
+    requireSupplementContext: true,
+    supplementTerms: [
+      "dietary zinc",
+      "oral zinc",
+      "zinc citrate",
+      "zinc gluconate",
+      "zinc intake",
+      "zinc picolinate",
+      "zinc supplement",
+      "zinc supplements",
+      "zinc supplementation"
+    ],
+    trapTerms: [
+      "blood zinc",
+      "serum zinc",
+      "zinc concentration",
+      "zinc concentrations",
+      "zinc finger",
+      "zinc level",
+      "zinc levels",
+      "zinc status"
+    ]
+  }
+};
+const LOCAL_BENEFIT_DISCOVERY_EXISTING_LINK_SCORE_FLOOR = 65;
+const LOCAL_BENEFIT_DISCOVERY_REJECT_SCORE_THRESHOLD_DEFAULT = 40;
+
 type LocalIngestionJobCounts = Record<DbIngestionStatus, number>;
 type LocalCandidateDecisionCounts = Record<DbSourceCandidateDecision, number>;
 type LocalAcceptedCandidateProcessingBatchRow = {
@@ -264,6 +475,12 @@ type LocalAcceptedCandidateProcessingBatchRow = {
 type LocalBenefitDiscoveryCandidate = Prisma.SourceCandidateGetPayload<{
   select: typeof LOCAL_BENEFIT_DISCOVERY_CANDIDATE_SELECT;
 }>;
+type LocalBenefitDiscoveryIdentityCandidate = {
+  interventionId?: string | null;
+  metadata: unknown;
+  sourceType: string | null;
+  title: string;
+};
 type LocalBenefitDiscoveryIntervention = Prisma.InterventionGetPayload<{
   select: typeof LOCAL_BENEFIT_DISCOVERY_INTERVENTION_SELECT;
 }>;
@@ -372,6 +589,7 @@ export interface LocalCandidateReviewWorkbenchReadout {
     likelyNoise: number;
     likelyUseful: number;
     maybeUseful: number;
+    parkedResearch: number;
     unclassified: number;
   };
   filters: {
@@ -404,6 +622,16 @@ export type LocalCandidateReviewBulkAction =
   | "accept-all"
   | "accept-likely-useful"
   | "reject-not-useful";
+export type LocalCandidateReviewAutomationAction = "accept" | "hold" | "reject";
+export type LocalCandidateReviewAutomationStrategy = "strict" | "query-backed";
+export type LocalCandidateReviewSignalKind =
+  | "identity-mismatch"
+  | "low-signal"
+  | "park-research"
+  | "spot-check";
+export type LocalCandidateReviewSignalApplyAction =
+  | "park-research"
+  | "reject-mismatches";
 
 export interface LocalCandidateReviewBulkDecisionInput
   extends LocalCandidateReviewWorkbenchInput {
@@ -418,6 +646,161 @@ export interface LocalCandidateReviewBulkDecisionReadout {
   rejected: number;
   scanned: number;
   status: "completed" | "stopped-at-limit";
+}
+
+export interface LocalCandidateReviewAutomationInput
+  extends LocalCandidateReviewWorkbenchInput {
+  action?: unknown;
+  apply?: unknown;
+  mode?: unknown;
+  strategy?: unknown;
+}
+
+export interface LocalCandidateReviewAutomationDecisionReadout {
+  action: LocalCandidateReviewAutomationAction;
+  applied: boolean;
+  classificationScore?: number;
+  dedupeKey: string;
+  error?: string;
+  externalId: string;
+  interventionName?: string;
+  reasons: string[];
+  source: DbSourceKind;
+  sourceTypeSuggestion: string;
+  title: string;
+  triageScore: number;
+}
+
+export interface LocalCandidateReviewAutomationReadout {
+  action: "auto-triage-maybe-useful";
+  applied: boolean;
+  counts: {
+    accepted: number;
+    appliedActions: number;
+    errors: number;
+    held: number;
+    rejected: number;
+    scanned: number;
+  };
+  decisions: LocalCandidateReviewAutomationDecisionReadout[];
+  filters: LocalCandidateReviewWorkbenchReadout["filters"];
+  message: string;
+  status: "completed" | "stopped-at-limit";
+  strategy: LocalCandidateReviewAutomationStrategy;
+  updatedAt: string;
+}
+
+export interface LocalCandidateReviewSignalMiningInput
+  extends LocalCandidateReviewWorkbenchInput {
+  action?: unknown;
+  mode?: unknown;
+}
+
+export interface LocalCandidateReviewSignalApplyInput
+  extends LocalCandidateReviewWorkbenchInput {
+  action?: unknown;
+  signalAction?: unknown;
+}
+
+export interface LocalCandidateReviewSignalSampleReadout {
+  dedupeKey: string;
+  externalId: string;
+  source: DbSourceKind;
+  sourceTypeSuggestion: string;
+  title: string;
+  triageScore: number;
+}
+
+export interface LocalCandidateReviewSignalDecisionReadout
+  extends LocalCandidateReviewSignalSampleReadout {
+  classificationScore?: number;
+  dedupeKey: string;
+  identityVisible: boolean;
+  interventionId?: string;
+  interventionName?: string;
+  kind: LocalCandidateReviewSignalKind;
+  lowScore: boolean;
+  outcomes: Array<{
+    label: string;
+    outcome: DbOutcomeArea;
+    score: number;
+  }>;
+  outcomeLabels: string[];
+  priorityStudy: boolean;
+  queryBacked: boolean;
+  reasons: string[];
+  sourcePointsElsewhere: boolean;
+}
+
+export interface LocalCandidateReviewSignalSummaryReadout {
+  averageScore: number;
+  count: number;
+  identityVisibleCount: number;
+  key: string;
+  label: string;
+  lowScoreCount: number;
+  priorityStudyCount: number;
+  queryBackedCount: number;
+  samples: LocalCandidateReviewSignalSampleReadout[];
+  sourcePointsElsewhereCount: number;
+  topOutcomes: Array<{
+    count: number;
+    label: string;
+  }>;
+}
+
+export interface LocalCandidateReviewOutcomeSignalReadout {
+  count: number;
+  interventionCount: number;
+  label: string;
+  outcome: DbOutcomeArea;
+  samples: LocalCandidateReviewSignalSampleReadout[];
+}
+
+export interface LocalCandidateReviewSignalMiningReadout {
+  action: "mine-maybe-useful-signals";
+  counts: {
+    identityMismatch: number;
+    interventionSignals: number;
+    lowSignal: number;
+    outcomeSignals: number;
+    parkResearch: number;
+    scanned: number;
+    spotCheck: number;
+  };
+  decisions: LocalCandidateReviewSignalDecisionReadout[];
+  filters: LocalCandidateReviewWorkbenchReadout["filters"];
+  holdReasons: Array<{
+    count: number;
+    label: string;
+  }>;
+  interventions: LocalCandidateReviewSignalSummaryReadout[];
+  message: string;
+  outcomes: LocalCandidateReviewOutcomeSignalReadout[];
+  sourceTypes: Array<{
+    count: number;
+    label: string;
+  }>;
+  status: "completed" | "stopped-at-limit";
+  updatedAt: string;
+}
+
+export interface LocalCandidateReviewSignalApplyReadout {
+  action: "apply-mined-signals";
+  counts: {
+    errors: number;
+    parked: number;
+    rejected: number;
+    scanned: number;
+    skipped: number;
+  };
+  decisions: LocalCandidateReviewSignalDecisionReadout[];
+  errors: string[];
+  filters: LocalCandidateReviewWorkbenchReadout["filters"];
+  message: string;
+  signalAction: LocalCandidateReviewSignalApplyAction;
+  status: "completed" | "stopped-at-limit";
+  updatedAt: string;
 }
 
 export interface LocalAcceptedCandidateProcessingStatusReadout {
@@ -467,17 +850,31 @@ export interface LocalAcceptedCandidateProcessingResultReadout {
 export type LocalBenefitDiscoveryAction =
   | "draft-claim"
   | "link-existing-claim"
+  | "park-lead"
   | "reject-cluster";
 export type LocalBenefitDiscoveryAutomationAction = LocalBenefitDiscoveryAction | "hold";
+export type LocalBenefitDiscoveryAutomationScope = "batch" | "all-eligible";
+export type LocalBenefitDiscoveryAutomationStrategy =
+  | "build-leads"
+  | "link-existing"
+  | "park-backlog";
 export type LocalIdentityResolutionAction =
   | "confirm-target"
   | "reassign-intervention"
   | "reject-wrong-supplement"
   | "add-synonym";
+export type LocalIdentityResolutionAutomationAction =
+  | "confirm-target"
+  | "reassign-intervention"
+  | "reject-wrong-supplement"
+  | "hold";
+export type LocalIdentityResolutionAutomationScope = "batch" | "all-eligible";
+export type LocalIdentityResolutionAutomationStrategy = "strict" | "source-led";
 
 export interface LocalBenefitDiscoveryQueueInput {
   includeDecided?: unknown;
   limit?: unknown;
+  limitMax?: number;
 }
 
 export interface LocalBenefitDiscoveryQueueReadout {
@@ -487,6 +884,7 @@ export interface LocalBenefitDiscoveryQueueReadout {
     activeCandidates: number;
     decidedClusters: number;
     mismatchCandidates: number;
+    parkedClusters: number;
   };
   updatedAt: string;
 }
@@ -544,6 +942,10 @@ export interface LocalBenefitDiscoveryAutomationInput {
   action?: unknown;
   apply?: unknown;
   limit?: unknown;
+  parkThreshold?: unknown;
+  rejectThreshold?: unknown;
+  scope?: unknown;
+  strategy?: unknown;
   threshold?: unknown;
 }
 
@@ -573,6 +975,7 @@ export interface LocalBenefitDiscoveryAutomationReadout {
     errors: number;
     holdClusters: number;
     linkExistingClaims: number;
+    parkLeadClusters: number;
     rejectClusters: number;
     scannedClusters: number;
     skippedMismatchCandidates: number;
@@ -581,12 +984,25 @@ export interface LocalBenefitDiscoveryAutomationReadout {
   decisions: LocalBenefitDiscoveryAutomationDecisionReadout[];
   limit: number;
   message: string;
+  parkThreshold: number;
+  rejectThreshold: number;
+  scope: LocalBenefitDiscoveryAutomationScope;
+  strategy: LocalBenefitDiscoveryAutomationStrategy;
   threshold: number;
   updatedAt: string;
 }
 
 export interface LocalIdentityResolutionQueueInput {
   limit?: unknown;
+}
+
+export interface LocalIdentityResolutionAutomationInput {
+  action?: unknown;
+  apply?: unknown;
+  limit?: unknown;
+  mode?: unknown;
+  scope?: unknown;
+  strategy?: unknown;
 }
 
 export interface LocalIdentityResolutionQueueReadout {
@@ -609,6 +1025,7 @@ export interface LocalIdentityResolutionCandidateReadout {
   interventionId: string;
   interventionName: string;
   matchedInterventions: Array<{
+    hasAcceptedCandidate?: boolean;
     id: string;
     name: string;
   }>;
@@ -616,6 +1033,7 @@ export interface LocalIdentityResolutionCandidateReadout {
   publishedYear?: number;
   query: string;
   source: DbSourceKind;
+  sourceIdentityText?: string;
   sourceTypeSuggestion: string;
   title: string;
   triageScore: number;
@@ -627,6 +1045,42 @@ export interface LocalIdentityResolutionActionInput {
   dedupeKey?: unknown;
   interventionId?: unknown;
   synonym?: unknown;
+}
+
+export interface LocalIdentityResolutionAutomationDecisionReadout {
+  action: LocalIdentityResolutionAutomationAction;
+  applied: boolean;
+  dedupeKey: string;
+  error?: string;
+  externalId: string;
+  interventionId: string;
+  interventionName: string;
+  matchedInterventionId?: string;
+  matchedInterventionName?: string;
+  query: string;
+  reasons: string[];
+  source: DbSourceKind;
+  title: string;
+}
+
+export interface LocalIdentityResolutionAutomationReadout {
+  action: "auto-resolve";
+  applied: boolean;
+  counts: {
+    appliedActions: number;
+    confirmTarget: number;
+    errors: number;
+    hold: number;
+    reassignIntervention: number;
+    rejectWrongSupplement: number;
+    scannedCandidates: number;
+  };
+  decisions: LocalIdentityResolutionAutomationDecisionReadout[];
+  limit: number;
+  message: string;
+  scope: LocalIdentityResolutionAutomationScope;
+  strategy: LocalIdentityResolutionAutomationStrategy;
+  updatedAt: string;
 }
 
 export interface LocalIdentityResolutionActionReadout {
@@ -766,42 +1220,53 @@ export async function getLocalCandidateReviewWorkbench(
   input: LocalCandidateReviewWorkbenchInput = {}
 ): Promise<LocalCandidateReviewWorkbenchReadout> {
   const filters = normaliseCandidateReviewFilters(input);
-  const countBaseWhere = localCandidateReviewWhere({
+  const countBaseFilters = {
     ...filters,
     bucket: "all"
-  });
-  const [candidates, likelyUseful, maybeUseful, likelyNoise, unclassified, all] =
+  } satisfies LocalCandidateReviewWorkbenchReadout["filters"];
+  const [activeWhere, countBaseWhere, parkedResearchCount] = await Promise.all([
+    localCandidateReviewActiveWhere(filters),
+    localCandidateReviewActiveWhere(countBaseFilters),
+    prisma.sourceCandidate.count({
+      where: localCandidateReviewParkedResearchWhere({
+        ...filters,
+        bucket: "maybe-useful"
+      })
+    })
+  ]);
+  const [candidates, likelyUseful, maybeUseful, likelyNoise, unclassified, parkedResearch, all] =
     await Promise.all([
       prisma.sourceCandidate.findMany({
-        where: localCandidateReviewWhere(filters),
+        where: activeWhere,
         orderBy: [{ triageScore: "desc" }, { discoveredAt: "desc" }],
         take: filters.limit,
         select: LOCAL_CANDIDATE_REVIEW_SELECT
       }),
       prisma.sourceCandidate.count({
-        where: {
-          ...countBaseWhere,
-          ...localCandidateReviewBucketWhere("likely-useful")
-        }
+        where: andLocalCandidateReviewWhere(
+          countBaseWhere,
+          localCandidateReviewBucketWhere("likely-useful")
+        )
       }),
       prisma.sourceCandidate.count({
-        where: {
-          ...countBaseWhere,
-          ...localCandidateReviewBucketWhere("maybe-useful")
-        }
+        where: andLocalCandidateReviewWhere(
+          countBaseWhere,
+          localCandidateReviewBucketWhere("maybe-useful")
+        )
       }),
       prisma.sourceCandidate.count({
-        where: {
-          ...countBaseWhere,
-          ...localCandidateReviewBucketWhere("likely-noise")
-        }
+        where: andLocalCandidateReviewWhere(
+          countBaseWhere,
+          localCandidateReviewBucketWhere("likely-noise")
+        )
       }),
       prisma.sourceCandidate.count({
-        where: {
-          ...countBaseWhere,
-          ...localCandidateReviewBucketWhere("unclassified")
-        }
+        where: andLocalCandidateReviewWhere(
+          countBaseWhere,
+          localCandidateReviewBucketWhere("unclassified")
+        )
       }),
+      Promise.resolve(parkedResearchCount),
       prisma.sourceCandidate.count({
         where: countBaseWhere
       })
@@ -815,6 +1280,7 @@ export async function getLocalCandidateReviewWorkbench(
       likelyNoise,
       likelyUseful,
       maybeUseful,
+      parkedResearch,
       unclassified
     },
     filters,
@@ -901,13 +1367,14 @@ export async function recordLocalCandidateReviewBulkDecision(
       ? "Bulk accepted from local candidate review dashboard after user click."
       : "Bulk rejected from local candidate review dashboard after user click.");
   const errors: string[] = [];
+  const activeWhere = await localCandidateReviewActiveWhere(filters);
   let accepted = 0;
   let rejected = 0;
   let scanned = 0;
 
   while (scanned < LOCAL_REVIEW_BULK_MAX_CANDIDATES) {
     const candidates = await prisma.sourceCandidate.findMany({
-      where: localCandidateReviewWhere(filters),
+      where: activeWhere,
       orderBy: [{ triageScore: "desc" }, { discoveredAt: "desc" }],
       take: LOCAL_REVIEW_BULK_BATCH_SIZE,
       select: {
@@ -968,6 +1435,816 @@ export async function recordLocalCandidateReviewBulkDecision(
     status:
       scanned >= LOCAL_REVIEW_BULK_MAX_CANDIDATES ? "stopped-at-limit" : "completed"
   };
+}
+
+export function isLocalCandidateReviewAutomationInput(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return false;
+  }
+
+  const record = input as Record<string, unknown>;
+
+  return (
+    optionalString(record.action) === "auto-triage-maybe-useful" ||
+    optionalString(record.mode) === "auto-triage-maybe-useful"
+  );
+}
+
+export function isLocalCandidateReviewSignalMiningInput(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return false;
+  }
+
+  const record = input as Record<string, unknown>;
+
+  return (
+    optionalString(record.action) === "mine-maybe-useful-signals" ||
+    optionalString(record.mode) === "mine-maybe-useful-signals"
+  );
+}
+
+export function isLocalCandidateReviewSignalApplyInput(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return false;
+  }
+
+  const record = input as Record<string, unknown>;
+
+  return (
+    optionalString(record.action) === "apply-mined-signals" ||
+    optionalString(record.mode) === "apply-mined-signals"
+  );
+}
+
+export async function runLocalCandidateReviewAutomation(
+  input: LocalCandidateReviewAutomationInput
+): Promise<LocalCandidateReviewAutomationReadout> {
+  const apply = optionalBoolean(input.apply);
+  const baseFilters = normaliseCandidateReviewFilters(input);
+  const strategy = normaliseCandidateReviewAutomationStrategy(input.strategy);
+  const filters: LocalCandidateReviewWorkbenchReadout["filters"] = {
+    ...baseFilters,
+    bucket: "maybe-useful",
+    limit: LOCAL_REVIEW_BULK_BATCH_SIZE
+  };
+  const interventions =
+    strategy === "query-backed"
+      ? await prisma.intervention.findMany({
+          select: LOCAL_BENEFIT_DISCOVERY_INTERVENTION_SELECT
+        })
+      : [];
+  const interventionTerms = buildLocalBenefitDiscoveryInterventionTerms(interventions);
+  const activeWhere = await localCandidateReviewActiveWhere(filters);
+  const decisions: LocalCandidateReviewAutomationDecisionReadout[] = [];
+  let scanned = 0;
+  let stoppedAtLimit = false;
+
+  while (scanned < LOCAL_REVIEW_BULK_MAX_CANDIDATES) {
+    const candidates = await prisma.sourceCandidate.findMany({
+      where: activeWhere,
+      orderBy: [{ triageScore: "desc" }, { discoveredAt: "desc" }],
+      skip: scanned,
+      take: LOCAL_REVIEW_BULK_BATCH_SIZE,
+      select: LOCAL_CANDIDATE_REVIEW_SELECT
+    });
+
+    if (candidates.length === 0) {
+      break;
+    }
+
+    for (const candidate of candidates) {
+      scanned += 1;
+      const decision = localCandidateReviewAutomationDecision(
+        candidate,
+        strategy,
+        interventionTerms
+      );
+
+      decisions.push(decision);
+
+      if (scanned >= LOCAL_REVIEW_BULK_MAX_CANDIDATES) {
+        stoppedAtLimit = true;
+        break;
+      }
+    }
+
+    if (candidates.length < LOCAL_REVIEW_BULK_BATCH_SIZE) {
+      break;
+    }
+  }
+
+  if (apply) {
+    for (const decision of decisions) {
+      if (decision.action === "hold") {
+        continue;
+      }
+
+      try {
+        await recordLocalCandidateReviewDecision({
+          decision: decision.action === "accept" ? "Accepted" : "Rejected",
+          dedupeKey: decision.dedupeKey,
+          reviewNote:
+            decision.action === "accept"
+              ? "Auto-accepted maybe-useful candidate after conservative local review triage."
+              : "Auto-rejected maybe-useful candidate after conservative local review triage."
+        });
+        decision.applied = true;
+      } catch (error) {
+        decision.error =
+          error instanceof Error ? error.message : "Candidate auto-triage action failed.";
+      }
+    }
+  }
+
+  const counts = localCandidateReviewAutomationCounts(decisions);
+
+  return {
+    action: "auto-triage-maybe-useful",
+    applied: apply,
+    counts,
+    decisions,
+    filters,
+    message: `Maybe-useful auto-triage ${apply ? "applied" : "preview"}: ${counts.accepted.toLocaleString()} accept, ${counts.rejected.toLocaleString()} reject, ${counts.held.toLocaleString()} hold from ${counts.scanned.toLocaleString()} scanned.`,
+    status: stoppedAtLimit ? "stopped-at-limit" : "completed",
+    strategy,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+export function localCandidateReviewAutomationDecision(
+  candidate: Prisma.SourceCandidateGetPayload<{
+    select: typeof LOCAL_CANDIDATE_REVIEW_SELECT;
+  }>,
+  strategy: LocalCandidateReviewAutomationStrategy = "strict",
+  interventionTerms: Array<{
+    id: string;
+    name: string;
+    terms: string[];
+  }> = []
+): LocalCandidateReviewAutomationDecisionReadout {
+  const classification = readSourceCandidateDiscoveryClassification(candidate.metadata);
+  const sourceTypeSuggestion = localAcceptedCandidateSourceTypeSuggestion(candidate);
+  const classificationScore = classification?.score;
+  const priorityStudy = localCandidateReviewIsPriorityStudy(candidate, sourceTypeSuggestion);
+  const identityVisible = localCandidateReviewInterventionIdentityVisible(candidate);
+  const queryIdentityVisible = localCandidateReviewQueryIdentityVisible(candidate);
+  const sourceMismatch =
+    interventionTerms.length > 0
+      ? localBenefitDiscoveryMismatch(candidate, interventionTerms)
+      : undefined;
+  const sourcePointsElsewhere = localCandidateReviewSourcePointsElsewhere(sourceMismatch);
+  const weakClassification = (classificationScore ?? candidate.triageScore) < 55;
+  const reasons: string[] = [];
+  let action: LocalCandidateReviewAutomationAction = "hold";
+
+  if (priorityStudy) {
+    reasons.push(`${sourceTypeSuggestion} is a priority source type.`);
+  } else {
+    reasons.push(`${sourceTypeSuggestion} is not a priority review/trial source type.`);
+  }
+
+  if (identityVisible) {
+    reasons.push("Captured title/source metadata visibly matches the intervention.");
+  } else {
+    reasons.push("Captured title/source metadata does not visibly match the intervention.");
+  }
+
+  if (strategy === "query-backed") {
+    reasons.push(
+      queryIdentityVisible
+        ? "Search query visibly names the intervention."
+        : "Search query does not visibly name the intervention."
+    );
+
+    if (sourcePointsElsewhere) {
+      reasons.push("Captured source identity points elsewhere; hold for manual review.");
+    }
+  }
+
+  if (classificationScore !== undefined) {
+    reasons.push(`Classifier score ${classificationScore}.`);
+  }
+
+  if (
+    priorityStudy &&
+    (identityVisible ||
+      (strategy === "query-backed" && queryIdentityVisible && !sourcePointsElsewhere)) &&
+    !weakClassification
+  ) {
+    action = "accept";
+    reasons.push("Safe to accept for downstream identity/benefit processing.");
+  } else if (!priorityStudy && !identityVisible && weakClassification) {
+    action = "reject";
+    reasons.push("Low-priority maybe-useful row without direct identity signal.");
+  } else {
+    reasons.push("Ambiguous enough to keep for manual review.");
+  }
+
+  return {
+    action,
+    applied: false,
+    classificationScore,
+    dedupeKey: candidate.dedupeKey,
+    externalId: candidate.externalId,
+    interventionName: candidate.intervention?.name,
+    reasons,
+    source: candidate.source,
+    sourceTypeSuggestion,
+    title: candidate.title,
+    triageScore: candidate.triageScore
+  };
+}
+
+function localCandidateReviewAutomationCounts(
+  decisions: LocalCandidateReviewAutomationDecisionReadout[]
+): LocalCandidateReviewAutomationReadout["counts"] {
+  return {
+    accepted: decisions.filter((decision) => decision.action === "accept").length,
+    appliedActions: decisions.filter((decision) => decision.applied).length,
+    errors: decisions.filter((decision) => decision.error).length,
+    held: decisions.filter((decision) => decision.action === "hold").length,
+    rejected: decisions.filter((decision) => decision.action === "reject").length,
+    scanned: decisions.length
+  };
+}
+
+export async function runLocalCandidateReviewSignalMining(
+  input: LocalCandidateReviewSignalMiningInput
+): Promise<LocalCandidateReviewSignalMiningReadout> {
+  const baseFilters = normaliseCandidateReviewFilters(input);
+  const filters: LocalCandidateReviewWorkbenchReadout["filters"] = {
+    ...baseFilters,
+    bucket: "maybe-useful",
+    limit: LOCAL_REVIEW_BULK_BATCH_SIZE
+  };
+  const interventions = await prisma.intervention.findMany({
+    select: LOCAL_BENEFIT_DISCOVERY_INTERVENTION_SELECT
+  });
+  const interventionTerms = buildLocalBenefitDiscoveryInterventionTerms(interventions);
+  const { decisions, stoppedAtLimit } = await listLocalCandidateReviewSignalDecisions(
+    filters,
+    interventionTerms
+  );
+
+  const counts = localCandidateReviewSignalCounts(decisions);
+
+  return {
+    action: "mine-maybe-useful-signals",
+    counts,
+    decisions: decisions.slice(0, 12),
+    filters,
+    holdReasons: localCandidateReviewSignalReasonCounts(decisions),
+    interventions: localCandidateReviewSignalInterventionSummaries(decisions),
+    message: `Held maybe-useful signal mining scanned ${counts.scanned.toLocaleString()} row(s): ${counts.spotCheck.toLocaleString()} spot-check, ${counts.parkResearch.toLocaleString()} research signal, ${counts.identityMismatch.toLocaleString()} identity mismatch, ${counts.lowSignal.toLocaleString()} low signal.`,
+    outcomes: localCandidateReviewOutcomeSignalSummaries(decisions),
+    sourceTypes: localCandidateReviewSignalSourceTypeCounts(decisions),
+    status: stoppedAtLimit ? "stopped-at-limit" : "completed",
+    updatedAt: new Date().toISOString()
+  };
+}
+
+export async function runLocalCandidateReviewSignalApply(
+  input: LocalCandidateReviewSignalApplyInput
+): Promise<LocalCandidateReviewSignalApplyReadout> {
+  const signalAction = normaliseCandidateReviewSignalApplyAction(input.signalAction);
+  const baseFilters = normaliseCandidateReviewFilters(input);
+  const filters: LocalCandidateReviewWorkbenchReadout["filters"] = {
+    ...baseFilters,
+    bucket: "maybe-useful",
+    limit: LOCAL_REVIEW_BULK_BATCH_SIZE
+  };
+  const interventions = await prisma.intervention.findMany({
+    select: LOCAL_BENEFIT_DISCOVERY_INTERVENTION_SELECT
+  });
+  const interventionTerms = buildLocalBenefitDiscoveryInterventionTerms(interventions);
+  const { items, stoppedAtLimit } = await listLocalCandidateReviewSignalDecisions(
+    filters,
+    interventionTerms
+  );
+  const errors: string[] = [];
+  let parked = 0;
+  let rejected = 0;
+  let skipped = 0;
+
+  for (const item of items) {
+    const shouldApply =
+      signalAction === "reject-mismatches"
+        ? item.decision.kind === "identity-mismatch"
+        : item.decision.kind === "park-research";
+
+    if (!shouldApply) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      if (signalAction === "reject-mismatches") {
+        const result = await prisma.sourceCandidate.updateMany({
+          where: {
+            decision: DbSourceCandidateDecision.PENDING_REVIEW,
+            dedupeKey: item.candidate.dedupeKey
+          },
+          data: {
+            decision: DbSourceCandidateDecision.REJECTED,
+            reviewedAt: new Date(),
+            reviewNote:
+              "Auto-rejected from held maybe-useful signal cleanup: captured source points at another intervention or context.",
+            reviewStatus: DbReviewStatus.UNREVIEWED_AI_DRAFT
+          }
+        });
+
+        if (result.count > 0) {
+          rejected += 1;
+        } else {
+          skipped += 1;
+        }
+      } else {
+        const result = await prisma.sourceCandidate.updateMany({
+          where: {
+            decision: DbSourceCandidateDecision.PENDING_REVIEW,
+            dedupeKey: item.candidate.dedupeKey
+          },
+          data: {
+            metadata: writeLocalCandidateReviewDispositionMetadata(item.candidate.metadata, {
+              action: "park-mined-research",
+              reason:
+                "Parked from held maybe-useful signal mining as a research/backlog signal. No claim, reference, or heatmap score was created.",
+              status: "parked-research"
+            })
+          }
+        });
+
+        if (result.count > 0) {
+          parked += 1;
+        } else {
+          skipped += 1;
+        }
+      }
+    } catch (error) {
+      errors.push(
+        `${item.candidate.externalId}: ${
+          error instanceof Error ? error.message : "Signal cleanup action failed."
+        }`
+      );
+    }
+  }
+
+  return {
+    action: "apply-mined-signals",
+    counts: {
+      errors: errors.length,
+      parked,
+      rejected,
+      scanned: items.length,
+      skipped
+    },
+    decisions: items.map((item) => item.decision).slice(0, 12),
+    errors,
+    filters,
+    message: localCandidateReviewSignalApplyMessage({
+      errors: errors.length,
+      parked,
+      rejected,
+      scanned: items.length,
+      signalAction,
+      skipped
+    }),
+    signalAction,
+    status: stoppedAtLimit ? "stopped-at-limit" : "completed",
+    updatedAt: new Date().toISOString()
+  };
+}
+
+async function listLocalCandidateReviewSignalDecisions(
+  filters: LocalCandidateReviewWorkbenchReadout["filters"],
+  interventionTerms: Array<{
+    id: string;
+    name: string;
+    terms: string[];
+  }>
+) {
+  const items: Array<{
+    candidate: Prisma.SourceCandidateGetPayload<{
+      select: typeof LOCAL_CANDIDATE_REVIEW_SELECT;
+    }>;
+    decision: LocalCandidateReviewSignalDecisionReadout;
+  }> = [];
+  const activeWhere = await localCandidateReviewActiveWhere(filters);
+  let scanned = 0;
+  let stoppedAtLimit = false;
+
+  while (scanned < LOCAL_REVIEW_BULK_MAX_CANDIDATES) {
+    const candidates = await prisma.sourceCandidate.findMany({
+      where: activeWhere,
+      orderBy: [{ triageScore: "desc" }, { discoveredAt: "desc" }],
+      skip: scanned,
+      take: LOCAL_REVIEW_BULK_BATCH_SIZE,
+      select: LOCAL_CANDIDATE_REVIEW_SELECT
+    });
+
+    if (candidates.length === 0) {
+      break;
+    }
+
+    for (const candidate of candidates) {
+      scanned += 1;
+      items.push({
+        candidate,
+        decision: localCandidateReviewSignalDecision(candidate, interventionTerms)
+      });
+
+      if (scanned >= LOCAL_REVIEW_BULK_MAX_CANDIDATES) {
+        stoppedAtLimit = true;
+        break;
+      }
+    }
+
+    if (candidates.length < LOCAL_REVIEW_BULK_BATCH_SIZE) {
+      break;
+    }
+  }
+
+  return {
+    decisions: items.map((item) => item.decision),
+    items,
+    stoppedAtLimit
+  };
+}
+
+export function localCandidateReviewSignalDecision(
+  candidate: Prisma.SourceCandidateGetPayload<{
+    select: typeof LOCAL_CANDIDATE_REVIEW_SELECT;
+  }>,
+  interventionTerms: Array<{
+    id: string;
+    name: string;
+    terms: string[];
+  }> = []
+): LocalCandidateReviewSignalDecisionReadout {
+  const classification = readSourceCandidateDiscoveryClassification(candidate.metadata);
+  const sourceTypeSuggestion = localAcceptedCandidateSourceTypeSuggestion(candidate);
+  const classificationScore = classification?.score;
+  const score = classificationScore ?? candidate.triageScore;
+  const priorityStudy = localCandidateReviewIsPriorityStudy(candidate, sourceTypeSuggestion);
+  const identityVisible = localCandidateReviewInterventionIdentityVisible(candidate);
+  const queryBacked = localCandidateReviewQueryIdentityVisible(candidate);
+  const sourceMismatch =
+    interventionTerms.length > 0
+      ? localBenefitDiscoveryMismatch(candidate, interventionTerms)
+      : undefined;
+  const sourcePointsElsewhere = localCandidateReviewSourcePointsElsewhere(sourceMismatch);
+  const outcomes = localAcceptedCandidateOutcomeSuggestions(candidate);
+  const lowScore = score < 55;
+  const reasons: string[] = [];
+  let kind: LocalCandidateReviewSignalKind = "park-research";
+
+  if (priorityStudy) {
+    reasons.push(`${sourceTypeSuggestion} is a priority source type.`);
+  } else {
+    reasons.push(`${sourceTypeSuggestion} is not a priority review/trial source type.`);
+  }
+
+  if (identityVisible) {
+    reasons.push("Captured source visibly names the intervention.");
+  } else if (queryBacked) {
+    reasons.push("Search query names the intervention, but captured source does not.");
+  } else {
+    reasons.push("Neither captured source nor query gives a strong intervention identity.");
+  }
+
+  if (sourcePointsElsewhere) {
+    const otherMatches = sourceMismatch?.otherMatches.map((match) => match.name).join(", ");
+    reasons.push(
+      otherMatches
+        ? `Captured source appears to point at ${otherMatches}.`
+        : "Captured source appears to point away from the target intervention."
+    );
+  }
+
+  if (outcomes.length > 0) {
+    reasons.push(`Possible area signal: ${outcomes.map((outcome) => outcome.label).join(", ")}.`);
+  }
+
+  if (classificationScore !== undefined) {
+    reasons.push(`Classifier score ${classificationScore}.`);
+  }
+
+  if (sourcePointsElsewhere) {
+    kind = "identity-mismatch";
+  } else if (priorityStudy && (identityVisible || queryBacked) && !lowScore) {
+    kind = "spot-check";
+    reasons.push("Worth a human spot-check before accepting or creating a lead.");
+  } else if (lowScore && !identityVisible && !queryBacked) {
+    kind = "low-signal";
+    reasons.push("Likely safe to reject in a later low-signal cleanup pass.");
+  } else {
+    kind = "park-research";
+    reasons.push("Useful as a research/backlog signal, not strong enough for automation.");
+  }
+
+  return {
+    classificationScore,
+    dedupeKey: candidate.dedupeKey,
+    externalId: candidate.externalId,
+    identityVisible,
+    interventionId: candidate.interventionId ?? undefined,
+    interventionName: candidate.intervention?.name,
+    kind,
+    lowScore,
+    outcomeLabels: outcomes.map((outcome) => outcome.label),
+    outcomes,
+    priorityStudy,
+    queryBacked,
+    reasons,
+    source: candidate.source,
+    sourcePointsElsewhere,
+    sourceTypeSuggestion,
+    title: candidate.title,
+    triageScore: candidate.triageScore
+  };
+}
+
+function localCandidateReviewSignalCounts(
+  decisions: LocalCandidateReviewSignalDecisionReadout[]
+): LocalCandidateReviewSignalMiningReadout["counts"] {
+  return {
+    identityMismatch: decisions.filter((decision) => decision.kind === "identity-mismatch")
+      .length,
+    interventionSignals: new Set(
+      decisions.map(
+        (decision) => decision.interventionId ?? decision.interventionName ?? "unlinked"
+      )
+    ).size,
+    lowSignal: decisions.filter((decision) => decision.kind === "low-signal").length,
+    outcomeSignals: new Set(
+      decisions
+        .filter(localCandidateReviewOutcomeSignalEligible)
+        .flatMap((decision) => decision.outcomes.map((outcome) => outcome.outcome))
+    ).size,
+    parkResearch: decisions.filter((decision) => decision.kind === "park-research").length,
+    scanned: decisions.length,
+    spotCheck: decisions.filter((decision) => decision.kind === "spot-check").length
+  };
+}
+
+function localCandidateReviewSignalReasonCounts(
+  decisions: LocalCandidateReviewSignalDecisionReadout[]
+): LocalCandidateReviewSignalMiningReadout["holdReasons"] {
+  const counts = new Map<string, number>();
+
+  for (const decision of decisions) {
+    counts.set(decision.kind, (counts.get(decision.kind) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .map(([kind, count]) => ({
+      count,
+      label: localCandidateReviewSignalKindLabel(kind as LocalCandidateReviewSignalKind)
+    }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label));
+}
+
+function localCandidateReviewSignalInterventionSummaries(
+  decisions: LocalCandidateReviewSignalDecisionReadout[]
+): LocalCandidateReviewSignalSummaryReadout[] {
+  const summaries = new Map<
+    string,
+    {
+      count: number;
+      identityVisibleCount: number;
+      label: string;
+      lowScoreCount: number;
+      outcomeCounts: Map<string, number>;
+      priorityStudyCount: number;
+      queryBackedCount: number;
+      samples: LocalCandidateReviewSignalSampleReadout[];
+      scoreTotal: number;
+      sourcePointsElsewhereCount: number;
+    }
+  >();
+
+  for (const decision of decisions) {
+    const key = decision.interventionId ?? decision.interventionName ?? "unlinked";
+    const summary =
+      summaries.get(key) ??
+      {
+        count: 0,
+        identityVisibleCount: 0,
+        label: decision.interventionName ?? "Unlinked intervention",
+        lowScoreCount: 0,
+        outcomeCounts: new Map<string, number>(),
+        priorityStudyCount: 0,
+        queryBackedCount: 0,
+        samples: [],
+        scoreTotal: 0,
+        sourcePointsElsewhereCount: 0
+      };
+
+    summary.count += 1;
+    summary.scoreTotal += decision.classificationScore ?? decision.triageScore;
+    summary.identityVisibleCount += decision.identityVisible ? 1 : 0;
+    summary.lowScoreCount += decision.lowScore ? 1 : 0;
+    summary.priorityStudyCount += decision.priorityStudy ? 1 : 0;
+    summary.queryBackedCount += decision.queryBacked ? 1 : 0;
+    summary.sourcePointsElsewhereCount += decision.sourcePointsElsewhere ? 1 : 0;
+
+    for (const label of decision.outcomeLabels) {
+      summary.outcomeCounts.set(label, (summary.outcomeCounts.get(label) ?? 0) + 1);
+    }
+
+    localCandidateReviewPushSignalSample(summary.samples, decision);
+    summaries.set(key, summary);
+  }
+
+  return Array.from(summaries.entries())
+    .map(([key, summary]) => ({
+      averageScore: Number((summary.scoreTotal / summary.count).toFixed(1)),
+      count: summary.count,
+      identityVisibleCount: summary.identityVisibleCount,
+      key,
+      label: summary.label,
+      lowScoreCount: summary.lowScoreCount,
+      priorityStudyCount: summary.priorityStudyCount,
+      queryBackedCount: summary.queryBackedCount,
+      samples: summary.samples,
+      sourcePointsElsewhereCount: summary.sourcePointsElsewhereCount,
+      topOutcomes: Array.from(summary.outcomeCounts.entries())
+        .map(([label, count]) => ({ count, label }))
+        .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label))
+        .slice(0, 4)
+    }))
+    .sort(
+      (left, right) =>
+        right.count - left.count ||
+        right.priorityStudyCount - left.priorityStudyCount ||
+        left.label.localeCompare(right.label)
+    )
+    .slice(0, 12);
+}
+
+function localCandidateReviewOutcomeSignalSummaries(
+  decisions: LocalCandidateReviewSignalDecisionReadout[]
+): LocalCandidateReviewOutcomeSignalReadout[] {
+  const summaries = new Map<
+    DbOutcomeArea,
+    {
+      count: number;
+      interventionIds: Set<string>;
+      label: string;
+      samples: LocalCandidateReviewSignalSampleReadout[];
+    }
+  >();
+
+  for (const decision of decisions) {
+    if (!localCandidateReviewOutcomeSignalEligible(decision)) {
+      continue;
+    }
+
+    for (const outcome of decision.outcomes) {
+      const summary =
+        summaries.get(outcome.outcome) ??
+        {
+          count: 0,
+          interventionIds: new Set<string>(),
+          label: outcome.label,
+          samples: []
+        };
+
+      summary.count += 1;
+
+      if (decision.interventionId) {
+        summary.interventionIds.add(decision.interventionId);
+      }
+
+      localCandidateReviewPushSignalSample(summary.samples, decision);
+      summaries.set(outcome.outcome, summary);
+    }
+  }
+
+  return Array.from(summaries.entries())
+    .map(([outcome, summary]) => ({
+      count: summary.count,
+      interventionCount: summary.interventionIds.size,
+      label: summary.label,
+      outcome,
+      samples: summary.samples
+    }))
+    .sort(
+      (left, right) =>
+        right.count - left.count ||
+        right.interventionCount - left.interventionCount ||
+        left.label.localeCompare(right.label)
+    )
+    .slice(0, 12);
+}
+
+function localCandidateReviewOutcomeSignalEligible(
+  decision: LocalCandidateReviewSignalDecisionReadout
+) {
+  return decision.kind !== "identity-mismatch";
+}
+
+function localCandidateReviewSignalSourceTypeCounts(
+  decisions: LocalCandidateReviewSignalDecisionReadout[]
+): LocalCandidateReviewSignalMiningReadout["sourceTypes"] {
+  const counts = new Map<string, number>();
+
+  for (const decision of decisions) {
+    counts.set(
+      decision.sourceTypeSuggestion,
+      (counts.get(decision.sourceTypeSuggestion) ?? 0) + 1
+    );
+  }
+
+  return Array.from(counts.entries())
+    .map(([label, count]) => ({ count, label }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label))
+    .slice(0, 8);
+}
+
+function localCandidateReviewPushSignalSample(
+  samples: LocalCandidateReviewSignalSampleReadout[],
+  decision: LocalCandidateReviewSignalDecisionReadout
+) {
+  if (samples.length >= 3) {
+    return;
+  }
+
+  const sampleKey = localCandidateReviewSignalSampleKey(decision);
+
+  if (samples.some((sample) => localCandidateReviewSignalSampleKey(sample) === sampleKey)) {
+    return;
+  }
+
+  samples.push({
+    dedupeKey: decision.dedupeKey,
+    externalId: decision.externalId,
+    source: decision.source,
+    sourceTypeSuggestion: decision.sourceTypeSuggestion,
+    title: decision.title,
+    triageScore: decision.triageScore
+  });
+}
+
+function localCandidateReviewSignalSampleKey(
+  sample: Pick<LocalCandidateReviewSignalSampleReadout, "externalId" | "source" | "title">
+) {
+  return `${sample.source}:${sample.externalId}:${sample.title}`;
+}
+
+function localCandidateReviewSourcePointsElsewhere(
+  sourceMismatch:
+    | {
+        otherMatches: Array<unknown>;
+        reasons: string[];
+        targetVisible: boolean;
+      }
+    | undefined
+) {
+  return Boolean(
+    sourceMismatch &&
+      !sourceMismatch.targetVisible &&
+      (sourceMismatch.otherMatches.length > 0 ||
+        sourceMismatch.reasons.some(
+          (reason) =>
+            reason !== "Target supplement is not visible in captured title/source metadata."
+        ))
+  );
+}
+
+function localCandidateReviewSignalKindLabel(kind: LocalCandidateReviewSignalKind) {
+  switch (kind) {
+    case "identity-mismatch":
+      return "Source points elsewhere";
+    case "low-signal":
+      return "Low signal";
+    case "park-research":
+      return "Research/backlog signal";
+    case "spot-check":
+      return "Worth spot-check";
+  }
+}
+
+function localCandidateReviewSignalApplyMessage({
+  errors,
+  parked,
+  rejected,
+  scanned,
+  signalAction,
+  skipped
+}: {
+  errors: number;
+  parked: number;
+  rejected: number;
+  scanned: number;
+  signalAction: LocalCandidateReviewSignalApplyAction;
+  skipped: number;
+}) {
+  if (signalAction === "reject-mismatches") {
+    return `Mined mismatch cleanup scanned ${scanned.toLocaleString()} row(s): ${rejected.toLocaleString()} rejected, ${skipped.toLocaleString()} skipped, ${errors.toLocaleString()} error(s).`;
+  }
+
+  return `Mined research cleanup scanned ${scanned.toLocaleString()} row(s): ${parked.toLocaleString()} parked, ${skipped.toLocaleString()} skipped, ${errors.toLocaleString()} error(s).`;
 }
 
 export async function getLocalAcceptedCandidateProcessingStatus(): Promise<LocalAcceptedCandidateProcessingStatusReadout> {
@@ -1088,7 +2365,7 @@ export async function runLocalAcceptedCandidateProcessingBatch(
 export async function getLocalBenefitDiscoveryQueue(
   input: LocalBenefitDiscoveryQueueInput = {}
 ): Promise<LocalBenefitDiscoveryQueueReadout> {
-  const limit = normaliseBenefitDiscoveryLimit(input.limit);
+  const limit = normaliseBenefitDiscoveryLimit(input.limit, input.limitMax);
   const includeDecided = optionalBoolean(input.includeDecided);
   const [candidates, interventions] = await Promise.all([
     prisma.sourceCandidate.findMany({
@@ -1109,6 +2386,7 @@ export async function getLocalBenefitDiscoveryQueue(
   const activeCandidateKeys = new Set<string>();
   const decidedClusterKeys = new Set<string>();
   const mismatchCandidates = new Set<string>();
+  const parkedClusterKeys = new Set<string>();
 
   for (const candidate of candidates) {
     const processing = readLocalAcceptedCandidateProcessingMetadata(candidate.metadata);
@@ -1121,6 +2399,10 @@ export async function getLocalBenefitDiscoveryQueue(
 
     if (decision) {
       decidedClusterKeys.add(decision.clusterKey);
+
+      if (decision.status === "parked") {
+        parkedClusterKeys.add(decision.clusterKey);
+      }
 
       if (!includeDecided) {
         continue;
@@ -1184,7 +2466,8 @@ export async function getLocalBenefitDiscoveryQueue(
       activeClusters: clusters.filter((cluster) => cluster.rejectedCount === 0).length,
       activeCandidates: activeCandidateKeys.size,
       decidedClusters: decidedClusterKeys.size,
-      mismatchCandidates: mismatchCandidates.size
+      mismatchCandidates: mismatchCandidates.size,
+      parkedClusters: parkedClusterKeys.size
     },
     updatedAt: new Date().toISOString()
   };
@@ -1202,8 +2485,25 @@ export async function recordLocalBenefitDiscoveryAction(
     (item) => item.mismatchReasons.length === 0 && item.candidate.acceptedReferenceId
   );
 
-  if (action !== "reject-cluster" && usableCandidates.length === 0) {
+  if (action !== "park-lead" && action !== "reject-cluster" && usableCandidates.length === 0) {
     throw new Error("No non-mismatched accepted candidates are available for this cluster.");
+  }
+
+  if (action === "park-lead") {
+    await markLocalBenefitDiscoveryCandidates(cluster.candidates, {
+      action,
+      clusterKey: cluster.clusterKey,
+      status: "parked"
+    });
+
+    return {
+      action,
+      affectedCandidates: cluster.candidates.length,
+      claimCreated: false,
+      cluster: localBenefitDiscoveryClusterReadout(cluster),
+      linkedReferences: 0,
+      message: "Lead parked from the active benefit-discovery queue for later source review."
+    };
   }
 
   if (action === "reject-cluster") {
@@ -1310,13 +2610,31 @@ export async function runLocalBenefitDiscoveryAutomation(
 ): Promise<LocalBenefitDiscoveryAutomationReadout> {
   const apply = optionalBoolean(input.apply);
   const limit = normaliseBenefitDiscoveryAutomationLimit(input.limit);
+  const scope = normaliseBenefitDiscoveryAutomationScope(input.scope);
+  const strategy = normaliseBenefitDiscoveryAutomationStrategy(input.strategy);
   const threshold = normaliseBenefitDiscoveryScoreThreshold(input.threshold);
+  const rejectThreshold = normaliseBenefitDiscoveryRejectThreshold(
+    input.rejectThreshold,
+    threshold
+  );
+  const parkThreshold =
+    strategy === "park-backlog"
+      ? rejectThreshold
+      : normaliseBenefitDiscoveryParkThreshold(input.parkThreshold, threshold);
+  const scanLimit =
+    scope === "all-eligible"
+      ? LOCAL_BENEFIT_DISCOVERY_AUTOMATION_ALL_MAX
+      : limit;
   const queue = await getLocalBenefitDiscoveryQueue({
-    limit: LOCAL_BENEFIT_DISCOVERY_AUTOMATION_LIMIT_MAX
+    limit: scanLimit,
+    limitMax: scanLimit
   });
-  const decisions = queue.clusters
-    .slice(0, limit)
-    .map((cluster) => localBenefitDiscoveryAutomationDecision(cluster, threshold));
+  const decisions = queue.clusters.map((cluster) =>
+    localBenefitDiscoveryAutomationDecision(cluster, threshold, strategy, {
+      parkThreshold,
+      rejectThreshold
+    })
+  );
 
   if (apply) {
     for (const decision of decisions) {
@@ -1341,17 +2659,25 @@ export async function runLocalBenefitDiscoveryAutomation(
   }
 
   const counts = localBenefitDiscoveryAutomationCounts(decisions);
-  const actionable = counts.draftClaims + counts.linkExistingClaims + counts.rejectClusters;
+  const actionable =
+    counts.draftClaims +
+    counts.linkExistingClaims +
+    counts.parkLeadClusters +
+    counts.rejectClusters;
 
   return {
     action: "auto-build",
     applied: apply,
     counts,
     decisions,
-    limit,
+    limit: scanLimit,
     message: apply
       ? `Auto-build applied ${counts.appliedActions.toLocaleString()} action(s), linked ${counts.linkedReferences.toLocaleString()} reference(s), and left ${counts.errors.toLocaleString()} error(s).`
       : `Auto-build preview found ${actionable.toLocaleString()} actionable cluster(s) at score ${threshold}.`,
+    parkThreshold,
+    rejectThreshold,
+    scope,
+    strategy,
     threshold,
     updatedAt: new Date().toISOString()
   };
@@ -1361,6 +2687,23 @@ export async function getLocalIdentityResolutionQueue(
   input: LocalIdentityResolutionQueueInput = {}
 ): Promise<LocalIdentityResolutionQueueReadout> {
   const limit = normaliseIdentityResolutionLimit(input.limit);
+  const { blockedCandidates, interventions } = await getLocalIdentityResolutionCandidates();
+
+  return {
+    candidates: blockedCandidates.slice(0, limit),
+    counts: {
+      blockedCandidates: blockedCandidates.length
+    },
+    interventions: interventions.map((intervention) => ({
+      id: intervention.id,
+      name: intervention.name
+    })),
+    limit,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+async function getLocalIdentityResolutionCandidates() {
   const [candidates, interventions] = await Promise.all([
     prisma.sourceCandidate.findMany({
       where: localAcceptedCandidateWhere({
@@ -1378,6 +2721,11 @@ export async function getLocalIdentityResolutionQueue(
   ]);
   const interventionTerms = buildLocalBenefitDiscoveryInterventionTerms(interventions);
   const blockedCandidates: LocalIdentityResolutionCandidateReadout[] = [];
+  const acceptedSourceInterventionKeys = new Set(
+    candidates
+      .filter((candidate) => candidate.interventionId)
+      .map((candidate) => localIdentityResolutionSourceInterventionKey(candidate))
+  );
 
   for (const candidate of candidates) {
     const processing = readLocalAcceptedCandidateProcessingMetadata(candidate.metadata);
@@ -1399,19 +2747,85 @@ export async function getLocalIdentityResolutionQueue(
       continue;
     }
 
-    blockedCandidates.push(localIdentityResolutionCandidateReadout(candidate, mismatch));
+    blockedCandidates.push(
+      localIdentityResolutionCandidateReadout(
+        candidate,
+        mismatch,
+        acceptedSourceInterventionKeys
+      )
+    );
   }
 
   return {
-    candidates: blockedCandidates.slice(0, limit),
-    counts: {
-      blockedCandidates: blockedCandidates.length
-    },
-    interventions: interventions.map((intervention) => ({
-      id: intervention.id,
-      name: intervention.name
-    })),
-    limit,
+    blockedCandidates,
+    interventions,
+    interventionTerms
+  };
+}
+
+export function isLocalIdentityResolutionAutomationInput(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return false;
+  }
+
+  const record = input as Record<string, unknown>;
+
+  return optionalString(record.action) === "auto-resolve" || optionalString(record.mode) === "auto-resolve";
+}
+
+export async function runLocalIdentityResolutionAutomation(
+  input: LocalIdentityResolutionAutomationInput
+): Promise<LocalIdentityResolutionAutomationReadout> {
+  const apply = optionalBoolean(input.apply);
+  const limit = normaliseIdentityResolutionAutomationLimit(input.limit);
+  const scope = normaliseIdentityResolutionAutomationScope(input.scope);
+  const strategy = normaliseIdentityResolutionAutomationStrategy(input.strategy);
+  const { blockedCandidates, interventionTerms } = await getLocalIdentityResolutionCandidates();
+  const scanLimit =
+    scope === "all-eligible"
+      ? LOCAL_IDENTITY_RESOLUTION_AUTOMATION_ALL_MAX
+      : limit;
+  const decisions = blockedCandidates
+    .slice(0, scanLimit)
+    .map((candidate) =>
+      localIdentityResolutionAutomationDecision(candidate, interventionTerms, strategy)
+    );
+
+  if (apply) {
+    for (const decision of decisions) {
+      if (decision.action === "hold") {
+        continue;
+      }
+
+      try {
+        await recordLocalIdentityResolutionAction({
+          action: decision.action,
+          dedupeKey: decision.dedupeKey,
+          interventionId: decision.matchedInterventionId
+        });
+        decision.applied = true;
+      } catch (error) {
+        decision.error =
+          error instanceof Error ? error.message : "Identity auto-resolution action failed.";
+      }
+    }
+  }
+
+  const counts = localIdentityResolutionAutomationCounts(decisions);
+  const actionable =
+    counts.confirmTarget + counts.reassignIntervention + counts.rejectWrongSupplement;
+
+  return {
+    action: "auto-resolve",
+    applied: apply,
+    counts,
+    decisions,
+    limit: scanLimit,
+    message: apply
+      ? `Identity auto-resolve applied ${counts.appliedActions.toLocaleString()} action(s) and left ${counts.errors.toLocaleString()} error(s).`
+      : `Identity auto-resolve preview found ${actionable.toLocaleString()} actionable candidate(s).`,
+    scope,
+    strategy,
     updatedAt: new Date().toISOString()
   };
 }
@@ -1860,18 +3274,59 @@ function localBenefitDiscoveryClusterReadout(
   };
 }
 
-function localBenefitDiscoveryAutomationDecision(
+export function localBenefitDiscoveryAutomationDecision(
   cluster: LocalBenefitDiscoveryClusterReadout,
-  threshold: number
+  threshold: number,
+  strategy: LocalBenefitDiscoveryAutomationStrategy = "build-leads",
+  options: {
+    parkThreshold?: number;
+    rejectThreshold?: number;
+  } = {}
 ): LocalBenefitDiscoveryAutomationDecisionReadout {
   const mismatchRatio =
     cluster.candidateCount > 0 ? cluster.mismatchCount / cluster.candidateCount : 1;
   let action: LocalBenefitDiscoveryAutomationAction = "hold";
   const actionReasons: string[] = [];
-
+  const existingLinkFloor = Math.max(
+    LOCAL_BENEFIT_DISCOVERY_EXISTING_LINK_SCORE_FLOOR,
+    threshold - 10
+  );
+  const rejectThreshold = normaliseBenefitDiscoveryRejectThreshold(
+    options.rejectThreshold,
+    threshold
+  );
   if (cluster.usableCandidateCount === 0 || mismatchRatio >= 0.8) {
     action = "reject-cluster";
     actionReasons.push("Too little clean supplement-identity signal for a useful lead.");
+  } else if (strategy === "park-backlog") {
+    if (cluster.score >= threshold) {
+      actionReasons.push(
+        `Meets the ${threshold} lead-score threshold; use build or link mode rather than parking.`
+      );
+    } else if (cluster.score < rejectThreshold || mismatchRatio >= 0.5) {
+      action = "reject-cluster";
+      actionReasons.push(
+        `Below the ${rejectThreshold} reject-below threshold or heavy mismatch load makes this noise for now.`
+      );
+    } else {
+      action = "park-lead";
+      actionReasons.push(
+        `Lead score ${cluster.score} is between ${rejectThreshold} and ${threshold - 1}; park for later source review without creating a claim.`
+      );
+    }
+  } else if (strategy === "link-existing") {
+    if (cluster.existingClaims.length > 0 && cluster.score >= existingLinkFloor) {
+      action = "link-existing-claim";
+      actionReasons.push(
+        `Existing-claim cleanup links clusters at score ${existingLinkFloor} or higher.`
+      );
+    } else {
+      actionReasons.push(
+        cluster.existingClaims.length > 0
+          ? `Below the ${existingLinkFloor} existing-claim cleanup floor; keep for manual review.`
+          : "Cleanup mode does not draft novel claim areas."
+      );
+    }
   } else if (cluster.score >= threshold) {
     action = cluster.existingClaims.length > 0 ? "link-existing-claim" : "draft-claim";
     actionReasons.push(`Meets the ${threshold} lead-score threshold.`);
@@ -1908,6 +3363,7 @@ function localBenefitDiscoveryAutomationCounts(
     holdClusters: decisions.filter((decision) => decision.action === "hold").length,
     linkExistingClaims: decisions.filter((decision) => decision.action === "link-existing-claim")
       .length,
+    parkLeadClusters: decisions.filter((decision) => decision.action === "park-lead").length,
     rejectClusters: decisions.filter((decision) => decision.action === "reject-cluster").length,
     scannedClusters: decisions.length,
     skippedMismatchCandidates: decisions
@@ -2043,7 +3499,8 @@ function localBenefitDiscoverySourceReadout({
 
 function localIdentityResolutionCandidateReadout(
   candidate: LocalBenefitDiscoveryCandidate,
-  mismatch: ReturnType<typeof localBenefitDiscoveryMismatch>
+  mismatch: ReturnType<typeof localBenefitDiscoveryMismatch>,
+  acceptedSourceInterventionKeys = new Set<string>()
 ): LocalIdentityResolutionCandidateReadout {
   const processing = readLocalAcceptedCandidateProcessingMetadata(candidate.metadata);
 
@@ -2053,17 +3510,296 @@ function localIdentityResolutionCandidateReadout(
     identityCautions: mismatch.cautions,
     interventionId: candidate.interventionId ?? "",
     interventionName: candidate.intervention?.name ?? "Unlinked intervention",
-    matchedInterventions: mismatch.otherMatches,
+    matchedInterventions: mismatch.otherMatches.map((match) => ({
+      ...match,
+      hasAcceptedCandidate: acceptedSourceInterventionKeys.has(
+        localIdentityResolutionSourceInterventionKey(candidate, match.id)
+      )
+    })),
     mismatchReasons: mismatch.reasons,
     publishedYear: candidate.publishedYear ?? undefined,
     query: candidate.query,
     source: candidate.source,
+    sourceIdentityText: localBenefitDiscoverySourceIdentityText(candidate),
     sourceTypeSuggestion:
       processing?.sourceTypeSuggestion ?? localAcceptedCandidateSourceTypeSuggestion(candidate),
     title: candidate.title,
     triageScore: candidate.triageScore,
     url: candidate.url
   };
+}
+
+function localIdentityResolutionSourceInterventionKey(
+  candidate: Pick<LocalBenefitDiscoveryCandidate, "externalId" | "interventionId" | "source">,
+  interventionId = candidate.interventionId
+) {
+  return `${candidate.source}:${candidate.externalId}:${interventionId ?? ""}`;
+}
+
+export function localIdentityResolutionAutomationDecision(
+  candidate: LocalIdentityResolutionCandidateReadout,
+  interventionTerms: Array<{
+    id: string;
+    name: string;
+    terms: string[];
+  }>,
+  strategy: LocalIdentityResolutionAutomationStrategy = "strict"
+): LocalIdentityResolutionAutomationDecisionReadout {
+  const queryText = localBenefitDiscoveryTerm(candidate.query);
+  const targetTerms =
+    interventionTerms.find((intervention) => intervention.id === candidate.interventionId)
+      ?.terms ?? [];
+  const queryHasTarget = targetTerms.some((term) =>
+    localBenefitDiscoveryContainsTerm(queryText, term)
+  );
+  const sourceText =
+    candidate.sourceIdentityText ?? localBenefitDiscoveryTerm(candidate.title);
+  const titleText = localBenefitDiscoveryTerm(candidate.title);
+  const targetNotVisible = candidate.mismatchReasons.some((reason) =>
+    reason.includes("Target supplement is not visible")
+  );
+  const sourceContextMismatch = localBenefitDiscoveryInterventionContextMismatch({
+    interventionId: candidate.interventionId,
+    sourceText,
+    targetTerms
+  });
+  const sourceHasTargetIdentity =
+    !sourceContextMismatch &&
+    targetTerms.some((term) => localIdentityResolutionContainsLooseTerm(sourceText, term));
+  const queryOtherMatches = interventionTerms
+    .filter((intervention) => intervention.id !== candidate.interventionId)
+    .filter((intervention) =>
+      intervention.terms.some((term) => localBenefitDiscoveryContainsTerm(queryText, term))
+    )
+    .map((intervention) => ({
+      id: intervention.id,
+      name: intervention.name
+    }));
+  const matchedIntervention =
+    candidate.matchedInterventions.length === 1 ? candidate.matchedInterventions[0] : undefined;
+  const queryMatchedIntervention = matchedIntervention
+    ? queryOtherMatches.find((intervention) => intervention.id === matchedIntervention.id)
+    : undefined;
+  let action: LocalIdentityResolutionAutomationAction = "hold";
+  let matchedInterventionId: string | undefined;
+  let matchedInterventionName: string | undefined;
+  const reasons: string[] = [];
+  const currentIdentityMissingReason =
+    sourceContextMismatch ?? "Current supplement identity is not visible in captured metadata.";
+
+  if (
+    queryHasTarget &&
+    sourceHasTargetIdentity &&
+    queryOtherMatches.length === 0 &&
+    candidate.matchedInterventions.length === 0
+  ) {
+    action = "confirm-target";
+    reasons.push("Search query contains the current supplement identity.");
+    reasons.push("Captured metadata has a loose current-supplement identity match.");
+    reasons.push("Captured metadata has no competing tracked supplement match.");
+  } else if (!queryHasTarget && queryMatchedIntervention) {
+    action = "reassign-intervention";
+    matchedInterventionId = queryMatchedIntervention.id;
+    matchedInterventionName = queryMatchedIntervention.name;
+    reasons.push(`Search query and captured metadata both point to ${matchedInterventionName}.`);
+    reasons.push("Current supplement identity is not visible in the query or metadata.");
+  } else if (
+    strategy === "source-led" &&
+    !targetNotVisible &&
+    sourceHasTargetIdentity &&
+    localIdentityResolutionOnlyFamilyOverlap(candidate, queryText)
+  ) {
+    action = "confirm-target";
+    reasons.push("Captured metadata has a loose current-supplement identity match.");
+    reasons.push("Competing match is a broader family/name overlap.");
+  } else if (strategy === "source-led" && (targetNotVisible || !sourceHasTargetIdentity)) {
+    const dominantMatch = localIdentityResolutionDominantMatch({
+      candidate,
+      interventionTerms,
+      sourceText,
+      titleText
+    });
+
+    if (dominantMatch) {
+      matchedInterventionId = dominantMatch.id;
+      matchedInterventionName = dominantMatch.name;
+      if (dominantMatch.hasAcceptedCandidate) {
+        action = "reject-wrong-supplement";
+        reasons.push(
+          `${dominantMatch.name} already has this accepted source; reject the current duplicate wrong-supplement row.`
+        );
+        reasons.push(currentIdentityMissingReason);
+      } else {
+        action = "reassign-intervention";
+        reasons.push(
+          `Captured source text points more strongly to ${dominantMatch.name} than the current supplement.`
+        );
+        reasons.push(currentIdentityMissingReason);
+      }
+    } else if (
+      candidate.matchedInterventions.length > 0 &&
+      localIdentityResolutionHasSubstantialSourceText(sourceText)
+    ) {
+      action = "reject-wrong-supplement";
+      reasons.push(currentIdentityMissingReason);
+      reasons.push(
+        "Multiple or ambiguous tracked supplement matches are present, so no safe reassignment target was chosen."
+      );
+    } else if (
+      candidate.matchedInterventions.length === 0 &&
+      localIdentityResolutionHasSubstantialSourceText(sourceText)
+    ) {
+      action = "reject-wrong-supplement";
+      reasons.push(currentIdentityMissingReason);
+      reasons.push("No tracked supplement match is strong enough for reassignment.");
+    } else {
+      reasons.push(currentIdentityMissingReason);
+      reasons.push("Hold for manual identity review.");
+    }
+  } else {
+    if (queryHasTarget) {
+      reasons.push("Search query contains the current supplement identity.");
+    } else {
+      reasons.push("Search query does not confirm the current supplement identity.");
+    }
+
+    if (!sourceHasTargetIdentity) {
+      reasons.push(
+        sourceContextMismatch ??
+          "Captured metadata does not have a loose current-supplement identity match."
+      );
+    }
+
+    if (candidate.matchedInterventions.length > 0) {
+      reasons.push(
+        `Captured metadata also matches ${candidate.matchedInterventions
+          .map((intervention) => intervention.name)
+          .join(", ")}.`
+      );
+    }
+
+    if (queryOtherMatches.length > 0) {
+      reasons.push(
+        `Search query also matches ${queryOtherMatches
+          .map((intervention) => intervention.name)
+          .join(", ")}.`
+      );
+    }
+
+    reasons.push("Hold for manual identity review.");
+  }
+
+  return {
+    action,
+    applied: false,
+    dedupeKey: candidate.dedupeKey,
+    externalId: candidate.externalId,
+    interventionId: candidate.interventionId,
+    interventionName: candidate.interventionName,
+    matchedInterventionId,
+    matchedInterventionName,
+    query: candidate.query,
+    reasons,
+    source: candidate.source,
+    title: candidate.title
+  };
+}
+
+function localIdentityResolutionAutomationCounts(
+  decisions: LocalIdentityResolutionAutomationDecisionReadout[]
+): LocalIdentityResolutionAutomationReadout["counts"] {
+  return {
+    appliedActions: decisions.filter((decision) => decision.applied).length,
+    confirmTarget: decisions.filter((decision) => decision.action === "confirm-target").length,
+    errors: decisions.filter((decision) => decision.error).length,
+    hold: decisions.filter((decision) => decision.action === "hold").length,
+    reassignIntervention: decisions.filter(
+      (decision) => decision.action === "reassign-intervention"
+    ).length,
+    rejectWrongSupplement: decisions.filter(
+      (decision) => decision.action === "reject-wrong-supplement"
+    ).length,
+    scannedCandidates: decisions.length
+  };
+}
+
+function localIdentityResolutionOnlyFamilyOverlap(
+  candidate: LocalIdentityResolutionCandidateReadout,
+  queryText: string
+) {
+  return (
+    candidate.matchedInterventions.length > 0 &&
+    candidate.matchedInterventions.every((match) => {
+      const matchName = localBenefitDiscoveryTerm(match.name);
+
+      return (
+        matchName.length >= 4 &&
+        (localBenefitDiscoveryContainsTerm(queryText, matchName) ||
+          queryText.replace(/\s+/g, "").includes(matchName.replace(/\s+/g, "")))
+      );
+    })
+  );
+}
+
+function localIdentityResolutionDominantMatch({
+  candidate,
+  interventionTerms,
+  sourceText,
+  titleText
+}: {
+  candidate: LocalIdentityResolutionCandidateReadout;
+  interventionTerms: Array<{
+    id: string;
+    name: string;
+    terms: string[];
+  }>;
+  sourceText: string;
+  titleText: string;
+}) {
+  const scoredMatches = candidate.matchedInterventions
+    .map((match) => {
+      const terms =
+        interventionTerms.find((intervention) => intervention.id === match.id)?.terms ?? [];
+      const titleScore = terms.some((term) =>
+        localIdentityResolutionContainsLooseTerm(titleText, term)
+      )
+        ? 6
+        : 0;
+      const sourceScore = terms.some((term) =>
+        localIdentityResolutionContainsLooseTerm(sourceText, term)
+      )
+        ? 3
+        : 0;
+
+      return {
+        ...match,
+        score: titleScore + sourceScore
+      };
+    })
+    .filter((match) => match.score >= 3)
+    .sort((left, right) => right.score - left.score || left.name.localeCompare(right.name));
+
+  if (scoredMatches.length === 0) {
+    return undefined;
+  }
+
+  const [best, second] = scoredMatches;
+
+  if (second && best.score - second.score < 3) {
+    return undefined;
+  }
+
+  return {
+    id: best.id,
+    hasAcceptedCandidate: best.hasAcceptedCandidate,
+    name: best.name
+  };
+}
+
+function localIdentityResolutionHasSubstantialSourceText(sourceText: string) {
+  return sourceText
+    .split(" ")
+    .filter((token) => token.length >= 4 && !LOCAL_IDENTITY_GENERIC_TOKENS.has(token)).length >= 3;
 }
 
 async function getLocalBenefitDiscoveryCluster({
@@ -2217,7 +3953,12 @@ async function markLocalBenefitDiscoveryCandidates(
     action: LocalBenefitDiscoveryAction;
     claimId?: string;
     clusterKey: string;
-    status: "claim-drafted" | "linked-existing-claim" | "rejected" | "skipped-mismatch";
+    status:
+      | "claim-drafted"
+      | "linked-existing-claim"
+      | "parked"
+      | "rejected"
+      | "skipped-mismatch";
   }
 ) {
   for (const item of candidates) {
@@ -2459,7 +4200,7 @@ function buildLocalBenefitDiscoveryInterventionTerms(
 }
 
 function localBenefitDiscoveryMismatch(
-  candidate: LocalBenefitDiscoveryCandidate,
+  candidate: LocalBenefitDiscoveryIdentityCandidate,
   interventionTerms: Array<{
     id: string;
     name: string;
@@ -2471,11 +4212,16 @@ function localBenefitDiscoveryMismatch(
   );
   const identityResolution = readLocalIdentityResolutionMetadata(candidate.metadata);
   const sourceText = localBenefitDiscoverySourceIdentityText(candidate);
+  const targetTermValues = targetTerms?.terms ?? [];
+  const contextMismatch = localBenefitDiscoveryInterventionContextMismatch({
+    interventionId: candidate.interventionId,
+    sourceText,
+    targetTerms: targetTermValues
+  });
   const targetVisible =
-    identityResolution?.status === "confirmed-target" ||
-    Boolean(
-      targetTerms?.terms.some((term) => localBenefitDiscoveryContainsTerm(sourceText, term))
-    );
+    !contextMismatch &&
+    (identityResolution?.status === "confirmed-target" ||
+      Boolean(targetTermValues.some((term) => localBenefitDiscoveryContainsTerm(sourceText, term))));
   const otherMatches = interventionTerms
     .filter((intervention) => intervention.id !== candidate.interventionId)
     .filter((intervention) =>
@@ -2489,7 +4235,9 @@ function localBenefitDiscoveryMismatch(
   const cautions: string[] = [];
   const reasons: string[] = [];
 
-  if (!targetVisible) {
+  if (contextMismatch) {
+    reasons.push(contextMismatch);
+  } else if (!targetVisible) {
     reasons.push("Target supplement is not visible in captured title/source metadata.");
   }
 
@@ -2511,7 +4259,7 @@ function localBenefitDiscoveryMismatch(
   };
 }
 
-function localBenefitDiscoverySourceIdentityText(candidate: LocalBenefitDiscoveryCandidate) {
+function localBenefitDiscoverySourceIdentityText(candidate: LocalBenefitDiscoveryIdentityCandidate) {
   const metadata = sourceCandidateMetadataObject(candidate.metadata);
   const parts = [
     candidate.title,
@@ -2541,6 +4289,188 @@ function localBenefitDiscoveryContainsTerm(sourceText: string, term: string) {
 
   return ` ${sourceText} `.includes(` ${term} `);
 }
+
+export function localBenefitDiscoveryInterventionContextMismatch({
+  interventionId,
+  sourceText,
+  targetTerms
+}: {
+  interventionId?: string | null;
+  sourceText: string;
+  targetTerms?: string[];
+}) {
+  if (!interventionId) {
+    return undefined;
+  }
+
+  const rule = LOCAL_BENEFIT_DISCOVERY_CONTEXT_RULES[interventionId];
+
+  if (!rule) {
+    return undefined;
+  }
+
+  const normalizedSourceText = localBenefitDiscoveryTerm(sourceText);
+  const normalizedTargetTerms = (targetTerms ?? [])
+    .map(localBenefitDiscoveryTerm)
+    .filter((term) => term.length > 0);
+  const targetVisible = normalizedTargetTerms.some((term) =>
+    localBenefitDiscoveryContainsTerm(normalizedSourceText, term)
+  );
+
+  if (!targetVisible) {
+    return undefined;
+  }
+
+  const supplementContext = localBenefitDiscoveryHasSupplementContext(
+    normalizedSourceText,
+    normalizedTargetTerms,
+    rule.supplementTerms
+  );
+  const trapTerm = rule.trapTerms
+    .map(localBenefitDiscoveryTerm)
+    .find((term) => localBenefitDiscoveryContainsTerm(normalizedSourceText, term));
+
+  if (trapTerm && !supplementContext) {
+    return `Target supplement term appears in a non-supplement source context: ${trapTerm}.`;
+  }
+
+  if (rule.requireSupplementContext && !supplementContext) {
+    return "Target supplement term appears without supplementation, intake, or formulation context.";
+  }
+
+  return undefined;
+}
+
+function localBenefitDiscoveryHasSupplementContext(
+  sourceText: string,
+  targetTerms: string[],
+  supplementTerms: string[]
+) {
+  if (
+    supplementTerms
+      .map(localBenefitDiscoveryTerm)
+      .some((term) => localBenefitDiscoveryContainsTerm(sourceText, term))
+  ) {
+    return true;
+  }
+
+  return localBenefitDiscoveryHasNearbySupplementContext(sourceText, targetTerms);
+}
+
+function localBenefitDiscoveryHasNearbySupplementContext(
+  sourceText: string,
+  targetTerms: string[]
+) {
+  const tokens = sourceText.split(" ").filter(Boolean);
+  const contextTokens = new Set([
+    "administered",
+    "administration",
+    "dietary",
+    "dose",
+    "doses",
+    "dosing",
+    "ingested",
+    "ingestion",
+    "intake",
+    "oral",
+    "supplement",
+    "supplemental",
+    "supplementation",
+    "supplements"
+  ]);
+
+  for (const targetTerm of targetTerms) {
+    const targetTokens = targetTerm.split(" ").filter(Boolean);
+
+    if (targetTokens.length === 0) {
+      continue;
+    }
+
+    for (let index = 0; index <= tokens.length - targetTokens.length; index += 1) {
+      if (!targetTokens.every((token, offset) => tokens[index + offset] === token)) {
+        continue;
+      }
+
+      const start = Math.max(0, index - 4);
+      const end = Math.min(tokens.length, index + targetTokens.length + 5);
+
+      if (tokens.slice(start, end).some((token) => contextTokens.has(token))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function localIdentityResolutionContainsLooseTerm(sourceText: string, term: string) {
+  if (localBenefitDiscoveryContainsTerm(sourceText, term)) {
+    return true;
+  }
+
+  const compactSource = sourceText.replace(/\s+/g, "");
+  const compactTerm = term.replace(/\s+/g, "");
+
+  if (compactTerm.length >= 4 && compactSource.includes(compactTerm)) {
+    return true;
+  }
+
+  if (
+    localBenefitDiscoveryContainsTerm(sourceText, "omega") &&
+    localBenefitDiscoveryContainsTerm(sourceText, "3") &&
+    localBenefitDiscoveryContainsTerm(term, "omega") &&
+    localBenefitDiscoveryContainsTerm(term, "3")
+  ) {
+    return true;
+  }
+
+  const tokens = term
+    .split(" ")
+    .filter((token) => token.length > 1 && !LOCAL_IDENTITY_GENERIC_TOKENS.has(token));
+
+  if (tokens.length === 1 && localIdentityResolutionContainsTokenVariant(sourceText, tokens[0])) {
+    return true;
+  }
+
+  if (
+    tokens.length >= 2 &&
+    tokens.every((token) => token.length >= 5) &&
+    tokens.every((token) => localIdentityResolutionContainsTokenVariant(sourceText, token))
+  ) {
+    return true;
+  }
+
+  if (
+    term.includes(" and ") &&
+    tokens.some((token) => token.length >= 5 && localBenefitDiscoveryContainsTerm(sourceText, token))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function localIdentityResolutionContainsTokenVariant(sourceText: string, token: string) {
+  return (
+    token.length >= 6 &&
+    (localBenefitDiscoveryContainsTerm(sourceText, token) ||
+      localBenefitDiscoveryContainsTerm(sourceText, `${token}s`) ||
+      (token.endsWith("s") &&
+        localBenefitDiscoveryContainsTerm(sourceText, token.slice(0, -1))))
+  );
+}
+
+const LOCAL_IDENTITY_GENERIC_TOKENS = new Set([
+  "acid",
+  "acids",
+  "and",
+  "blend",
+  "extract",
+  "protein",
+  "proteins",
+  "supplement",
+  "supplementation"
+]);
 
 function localBenefitDiscoverySourceWeight(sourceTypeSuggestion: string) {
   const sourceType = sourceTypeSuggestion.toLowerCase();
@@ -2786,6 +4716,75 @@ function localCandidateReviewWhere(
   return where;
 }
 
+async function localCandidateReviewActiveWhere(
+  filters: LocalCandidateReviewWorkbenchReadout["filters"]
+): Promise<Prisma.SourceCandidateWhereInput> {
+  const where = localCandidateReviewWhere(filters);
+  const parkedKeys = await listLocalCandidateReviewParkedResearchKeys(filters);
+
+  if (parkedKeys.length === 0) {
+    return where;
+  }
+
+  return andLocalCandidateReviewWhere(where, {
+    dedupeKey: {
+      notIn: parkedKeys
+    }
+  });
+}
+
+function localCandidateReviewParkedResearchWhere(
+  filters: LocalCandidateReviewWorkbenchReadout["filters"]
+): Prisma.SourceCandidateWhereInput {
+  return {
+    AND: [
+      localCandidateReviewWhere(filters),
+      localCandidateReviewParkedResearchDispositionWhere()
+    ]
+  };
+}
+
+async function listLocalCandidateReviewParkedResearchKeys(
+  filters: LocalCandidateReviewWorkbenchReadout["filters"]
+) {
+  const rows = await prisma.sourceCandidate.findMany({
+    where: localCandidateReviewParkedResearchWhere(filters),
+    select: {
+      dedupeKey: true
+    },
+    take: LOCAL_REVIEW_BULK_MAX_CANDIDATES
+  });
+
+  return rows.map((row) => row.dedupeKey);
+}
+
+function andLocalCandidateReviewWhere(
+  ...filters: Prisma.SourceCandidateWhereInput[]
+): Prisma.SourceCandidateWhereInput {
+  const andFilters = filters.filter((filter) => Object.keys(filter).length > 0);
+
+  if (andFilters.length === 0) {
+    return {};
+  }
+
+  if (andFilters.length === 1) {
+    return andFilters[0];
+  }
+
+  return {
+    AND: andFilters
+  };
+}
+
+function localCandidateReviewParkedResearchDispositionWhere(): Prisma.SourceCandidateWhereInput {
+  return {
+    metadata: {
+      path: [...SOURCE_CANDIDATE_METADATA_PATHS.candidateReviewDispositionStatus],
+      equals: "parked-research"
+    }
+  };
+}
+
 function localCandidateReviewBucketWhere(
   bucket: LocalCandidateReviewBucket
 ): Prisma.SourceCandidateWhereInput {
@@ -2888,6 +4887,80 @@ function localCandidateReviewSearchWhere(
   };
 }
 
+function localCandidateReviewIsPriorityStudy(
+  candidate: {
+    metadata: unknown;
+    source: DbSourceKind;
+    sourceType: string | null;
+  },
+  sourceTypeSuggestion: string
+) {
+  const metadata = sourceCandidateMetadataObject(candidate.metadata);
+  const sourceText = localBenefitDiscoveryTerm(
+    [
+      sourceTypeSuggestion,
+      candidate.sourceType,
+      ...sourceCandidateMetadataStringArray(metadata.publicationTypes),
+      sourceCandidateMetadataString(metadata, "trialResultLabel")
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+
+  return (
+    sourceText.includes("meta analysis") ||
+    sourceText.includes("systematic review") ||
+    sourceText.includes("randomized") ||
+    sourceText.includes("clinical trial") ||
+    sourceText.includes("interventional") ||
+    sourceText.includes("results posted") ||
+    candidate.source === DbSourceKind.CLINICALTRIALS_GOV
+  );
+}
+
+function localCandidateReviewInterventionIdentityVisible(candidate: {
+  intervention?: {
+    name: string;
+    synonyms: string[];
+  } | null;
+  sourceType: string | null;
+  title: string;
+}) {
+  const intervention = candidate.intervention;
+
+  if (!intervention) {
+    return false;
+  }
+
+  const sourceText = localBenefitDiscoveryTerm([candidate.title, candidate.sourceType].filter(Boolean).join(" "));
+  const terms = [intervention.name, ...intervention.synonyms]
+    .map(localBenefitDiscoveryTerm)
+    .filter((term) => term.length > 0);
+
+  return terms.some((term) => localIdentityResolutionContainsLooseTerm(sourceText, term));
+}
+
+function localCandidateReviewQueryIdentityVisible(candidate: {
+  intervention?: {
+    name: string;
+    synonyms: string[];
+  } | null;
+  query: string;
+}) {
+  const intervention = candidate.intervention;
+
+  if (!intervention) {
+    return false;
+  }
+
+  const queryText = localBenefitDiscoveryTerm(candidate.query);
+  const terms = [intervention.name, ...intervention.synonyms]
+    .map(localBenefitDiscoveryTerm)
+    .filter((term) => term.length > 0);
+
+  return terms.some((term) => localIdentityResolutionContainsLooseTerm(queryText, term));
+}
+
 function normaliseCandidateReviewBucket(value: unknown): LocalCandidateReviewBucket {
   switch (optionalString(value)) {
     case "all":
@@ -2947,19 +5020,102 @@ function normaliseCandidateReviewBulkAction(value: unknown): LocalCandidateRevie
   }
 }
 
+function normaliseCandidateReviewAutomationStrategy(
+  value: unknown
+): LocalCandidateReviewAutomationStrategy {
+  switch (optionalString(value)) {
+    case "query-backed":
+      return "query-backed";
+    case "strict":
+    default:
+      return "strict";
+  }
+}
+
+function normaliseCandidateReviewSignalApplyAction(
+  value: unknown
+): LocalCandidateReviewSignalApplyAction {
+  switch (optionalString(value)) {
+    case "park-research":
+      return "park-research";
+    case "reject-mismatches":
+      return "reject-mismatches";
+    default:
+      throw new Error(
+        "Candidate signal cleanup action must be park-research or reject-mismatches."
+      );
+  }
+}
+
 function normaliseBenefitDiscoveryAction(value: unknown): LocalBenefitDiscoveryAction {
   switch (optionalString(value)) {
     case "draft-claim":
       return "draft-claim";
     case "link-existing-claim":
       return "link-existing-claim";
+    case "park-lead":
+      return "park-lead";
     case "reject-cluster":
       return "reject-cluster";
     default:
       throw new Error(
-        "Benefit discovery action must be draft-claim, link-existing-claim, or reject-cluster."
+        "Benefit discovery action must be draft-claim, link-existing-claim, park-lead, or reject-cluster."
       );
   }
+}
+
+function normaliseBenefitDiscoveryAutomationScope(
+  value: unknown
+): LocalBenefitDiscoveryAutomationScope {
+  switch (optionalString(value)) {
+    case "all-eligible":
+      return "all-eligible";
+    case "batch":
+    default:
+      return "batch";
+  }
+}
+
+function normaliseBenefitDiscoveryAutomationStrategy(
+  value: unknown
+): LocalBenefitDiscoveryAutomationStrategy {
+  switch (optionalString(value)) {
+    case "park-backlog":
+      return "park-backlog";
+    case "link-existing":
+      return "link-existing";
+    case "build-leads":
+    default:
+      return "build-leads";
+  }
+}
+
+function normaliseBenefitDiscoveryParkThreshold(value: unknown, threshold: number) {
+  const defaultValue = Math.min(
+    threshold - 1,
+    LOCAL_BENEFIT_DISCOVERY_EXISTING_LINK_SCORE_FLOOR
+  );
+  const parsed = typeof value === "number" ? value : Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return Math.max(0, defaultValue);
+  }
+
+  return Math.min(threshold - 1, Math.max(0, Math.floor(parsed)));
+}
+
+function normaliseBenefitDiscoveryRejectThreshold(value: unknown, threshold: number) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  const maxValue = Math.max(0, threshold - 1);
+
+  if (!Number.isFinite(parsed)) {
+    return Math.min(
+      maxValue,
+      LOCAL_BENEFIT_DISCOVERY_REJECT_SCORE_THRESHOLD_DEFAULT
+    );
+  }
+
+  return Math.min(maxValue, Math.max(0, Math.floor(parsed)));
 }
 
 function normaliseIdentityResolutionAction(value: unknown): LocalIdentityResolutionAction {
@@ -2976,6 +5132,30 @@ function normaliseIdentityResolutionAction(value: unknown): LocalIdentityResolut
       throw new Error(
         "Identity resolution action must be confirm-target, reassign-intervention, reject-wrong-supplement, or add-synonym."
       );
+  }
+}
+
+function normaliseIdentityResolutionAutomationStrategy(
+  value: unknown
+): LocalIdentityResolutionAutomationStrategy {
+  switch (optionalString(value)) {
+    case "source-led":
+      return "source-led";
+    case "strict":
+    default:
+      return "strict";
+  }
+}
+
+function normaliseIdentityResolutionAutomationScope(
+  value: unknown
+): LocalIdentityResolutionAutomationScope {
+  switch (optionalString(value)) {
+    case "all-eligible":
+      return "all-eligible";
+    case "batch":
+    default:
+      return "batch";
   }
 }
 

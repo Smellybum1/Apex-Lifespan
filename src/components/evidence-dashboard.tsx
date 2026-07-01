@@ -14,6 +14,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Bookmark,
   Check,
   ChevronDown,
   CircleHelp,
@@ -54,19 +55,38 @@ import type {
   LocalBenefitDiscoveryAutomationAction,
   LocalBenefitDiscoveryAutomationDecision,
   LocalBenefitDiscoveryAutomationResponse,
+  LocalBenefitDiscoveryAutomationScope,
+  LocalBenefitDiscoveryAutomationStrategy,
   LocalBenefitDiscoveryCluster,
   LocalBenefitDiscoveryQueueResponse,
   LocalBenefitDiscoverySource,
   LocalCandidateReviewBucket,
+  LocalCandidateReviewAutomationAction,
+  LocalCandidateReviewAutomationDecision,
+  LocalCandidateReviewAutomationResponse,
+  LocalCandidateReviewAutomationStrategy,
   LocalCandidateReviewBulkAction,
   LocalCandidateReviewBulkResponse,
   LocalCandidateReviewCandidate,
   LocalCandidateReviewDecisionResponse,
+  LocalCandidateReviewOutcomeSignal,
   LocalCandidateReviewResponse,
+  LocalCandidateReviewSignalApplyAction,
+  LocalCandidateReviewSignalApplyResponse,
+  LocalCandidateReviewSignalDecision,
+  LocalCandidateReviewSignalKind,
+  LocalCandidateReviewSignalMiningResponse,
+  LocalCandidateReviewSignalSample,
+  LocalCandidateReviewSignalSummary,
   LocalCandidateReviewSourceFilter,
   LocalCandidateReviewStudyFilter,
   LocalIdentityResolutionAction,
   LocalIdentityResolutionActionResponse,
+  LocalIdentityResolutionAutomationAction,
+  LocalIdentityResolutionAutomationDecision,
+  LocalIdentityResolutionAutomationResponse,
+  LocalIdentityResolutionAutomationScope,
+  LocalIdentityResolutionAutomationStrategy,
   LocalIdentityResolutionCandidate,
   LocalIdentityResolutionQueueResponse,
   LocalIngestionCandidateReadout,
@@ -149,7 +169,7 @@ type ClaimTableRow = {
   label: EvidenceLabel;
   sourcePacketStatus: ClaimSourcePacket["completeness"]["status"];
   sourcePacketLabel: string;
-  composite: number;
+  composite: number | null;
   safety: number;
   regulatoryRisk: number;
   confidence: string;
@@ -166,6 +186,8 @@ const CODEX_REVIEW_SIDECAR_URL_KEY = "apexCodexReviewSidecarUrl";
 const DEFAULT_CODEX_REVIEW_SIDECAR_URL = "http://127.0.0.1:3217/codex/review";
 const HUMAN_REVIEWED_TOOLTIP =
   "Human reviewed means a human reviewer checked the source packet against the scoped claim. It does not mean clinical guideline endorsement.";
+const DRAFT_LEAD_EVIDENCE_GRADE = "Draft lead";
+const SOURCE_PACKET_REVIEW_EVIDENCE_GRADE = "Insufficient until source packets are reviewed.";
 const compositeScoreFormula =
   "Composite = directness + rigor + impact + safety + measurability - hype/regulatory penalty.";
 const compositeScoreDetail =
@@ -300,7 +322,7 @@ function ActiveClaimContextBar({
   activeClaim: Claim;
   activeIntervention?: Intervention;
 }) {
-  const score = compositeScore(activeClaim.scores);
+  const score = evidenceMapSortableScore(activeClaim);
 
   return (
     <div className="mb-3 rounded-lg border border-signal/25 bg-blue-50 px-3 py-2">
@@ -310,7 +332,7 @@ function ActiveClaimContextBar({
           {activeIntervention?.name ?? "Unknown intervention"} · {shortOutcome(activeClaim.outcome)}
         </span>
         <span>
-          {compositeLabel(activeClaim)} {score.toFixed(1)}/10
+          {score === null ? "Composite pending source review" : `${compositeLabel(activeClaim)} ${score.toFixed(1)}/10`}
         </span>
         <span className={cn("rounded-md border px-2 py-0.5 text-xs font-semibold", labelTone(activeClaim.finalLabel))}>
           {activeClaim.finalLabel}
@@ -552,6 +574,8 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const [category, setCategory] = useState("All");
   const [labelFilter, setLabelFilter] = useState("All");
   const [outcomeFilter, setOutcomeFilter] = useState("All");
+  const [evidenceMapStatusFilter, setEvidenceMapStatusFilter] =
+    useState<EvidenceMapStatusFilter>("all");
   const [activeClaimId, setActiveClaimId] = useState(claims[0]?.id ?? "");
   const [labelText, setLabelText] = useState(
     "Creatine monohydrate 5 g\nNSF Certified for Sport\nNo proprietary blend"
@@ -629,6 +653,30 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     [claims, labelFilter, outcomeFilter, visibleInterventionIds]
   );
   const hasFilteredClaims = filteredClaims.length > 0;
+  const evidenceMapClaims = useMemo(
+    () =>
+      filteredClaims.filter((claim) =>
+        claimMatchesEvidenceMapStatusFilter(claim, evidenceMapStatusFilter)
+      ),
+    [evidenceMapStatusFilter, filteredClaims]
+  );
+  const evidenceMapInterventions = useMemo(() => {
+    if (evidenceMapStatusFilter === "all") {
+      return filteredInterventions;
+    }
+
+    const visibleIds = new Set(evidenceMapClaims.map((claim) => claim.interventionId));
+    return filteredInterventions.filter((intervention) => visibleIds.has(intervention.id));
+  }, [evidenceMapClaims, evidenceMapStatusFilter, filteredInterventions]);
+  const evidenceMapReadinessSummary = useMemo(
+    () =>
+      buildEvidenceMapReadinessSummary({
+        claims: filteredClaims,
+        referencesById,
+        studies
+      }),
+    [filteredClaims, referencesById, studies]
+  );
 
   useEffect(() => {
     if (filteredClaims.length === 0) {
@@ -693,7 +741,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
           label: claim.finalLabel,
           sourcePacketStatus: sourcePacket.completeness.status,
           sourcePacketLabel: sourcePacket.completeness.label,
-          composite: compositeScore(claim.scores),
+          composite: evidenceMapSortableScore(claim),
           safety: claim.scores.safety,
           regulatoryRisk: claim.scores.regulatoryRisk,
           confidence: claim.confidenceLevel,
@@ -720,12 +768,13 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
                 <div>
                   <h2 className="text-base font-semibold text-ink">Evidence Map</h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    Claim cells show composite evidence confidence, with safety and hype penalties included.
+                    Reviewed cells show composite evidence confidence. Draft leads and source-packet scaffolds stay
+                    marked as review work until scores are assigned from the evidence.
                   </p>
                   <p className="mt-1 text-xs text-slate-600">
                     {formatEvidenceMapFilterSummary({
-                      filteredClaimCount: filteredClaims.length,
-                      filteredInterventionCount: filteredInterventions.length,
+                      filteredClaimCount: evidenceMapClaims.length,
+                      filteredInterventionCount: evidenceMapInterventions.length,
                       totalClaimCount: claims.length,
                       totalInterventionCount: interventions.length
                     })}
@@ -804,9 +853,15 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
                 </div>
               </div>
 
+              <EvidenceMapReadinessStrip
+                onStatusFilterChange={setEvidenceMapStatusFilter}
+                statusFilter={evidenceMapStatusFilter}
+                summary={evidenceMapReadinessSummary}
+              />
+
               <EvidenceMap
-                claims={filteredClaims}
-                interventions={filteredInterventions}
+                claims={evidenceMapClaims}
+                interventions={evidenceMapInterventions}
                 activeClaimId={activeClaimIdForDisplay}
                 onSelectClaim={handleSelectClaim}
               />
@@ -1248,14 +1303,26 @@ function LocalCandidateReviewWorkbench({
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionKey, setActionKey] = useState<string | null>(null);
+  const [autoBusy, setAutoBusy] = useState<"preview" | "apply" | null>(null);
+  const [autoPreview, setAutoPreview] =
+    useState<LocalCandidateReviewAutomationResponse | null>(null);
+  const [candidateAutoStrategy, setCandidateAutoStrategy] =
+    useState<LocalCandidateReviewAutomationStrategy>("strict");
+  const [signalBusy, setSignalBusy] = useState<"mine" | "park" | "reject" | null>(null);
+  const [signalPreview, setSignalPreview] =
+    useState<LocalCandidateReviewSignalMiningResponse | null>(null);
   const [message, setMessage] = useState("Loading review candidates.");
   const [pendingBulkAction, setPendingBulkAction] =
     useState<LocalCandidateReviewBulkAction | null>(null);
+  const [pendingAutoTriage, setPendingAutoTriage] = useState(false);
+  const [pendingSignalAction, setPendingSignalAction] =
+    useState<LocalCandidateReviewSignalApplyAction | null>(null);
   const [review, setReview] = useState<LocalCandidateReviewResponse | null>(null);
   const activeBulkAction = actionKey?.startsWith("bulk:")
     ? (actionKey.slice(5) as LocalCandidateReviewBulkAction)
     : null;
   const currentBucketCount = localCandidateBucketCount(review, bucket);
+  const controlsBusy = busy || Boolean(actionKey) || Boolean(autoBusy) || Boolean(signalBusy);
 
   const loadReviewCandidates = useCallback(async () => {
     setBusy(true);
@@ -1282,6 +1349,13 @@ function LocalCandidateReviewWorkbench({
   useEffect(() => {
     loadReviewCandidates().catch(() => undefined);
   }, [loadReviewCandidates]);
+
+  useEffect(() => {
+    setAutoPreview(null);
+    setPendingAutoTriage(false);
+    setPendingSignalAction(null);
+    setSignalPreview(null);
+  }, [candidateAutoStrategy, query, source, studyFilter]);
 
   const recordDecision = useCallback(
     async (candidate: LocalCandidateReviewCandidate, decision: "Accepted" | "Rejected") => {
@@ -1340,6 +1414,101 @@ function LocalCandidateReviewWorkbench({
     [bucket, loadReviewCandidates, onCandidateDecision, query, source, studyFilter]
   );
 
+  const previewMaybeUsefulAutomation = useCallback(async () => {
+    setAutoBusy("preview");
+    setMessage("Previewing maybe-useful auto-triage.");
+
+    try {
+      const result = await postLocalCandidateReviewAutomation({
+        apply: false,
+        q: query,
+        source,
+        strategy: candidateAutoStrategy,
+        studyFilter
+      });
+      setAutoPreview(result);
+      setMessage(localCandidateReviewAutomationResultMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setAutoBusy(null);
+    }
+  }, [candidateAutoStrategy, query, source, studyFilter]);
+
+  const applyMaybeUsefulAutomation = useCallback(async () => {
+    setAutoBusy("apply");
+    setMessage("Applying maybe-useful auto-triage.");
+
+    try {
+      const result = await postLocalCandidateReviewAutomation({
+        apply: true,
+        q: query,
+        source,
+        strategy: candidateAutoStrategy,
+        studyFilter
+      });
+      setAutoPreview(result);
+      await onCandidateDecision?.();
+      await loadReviewCandidates();
+      setMessage(localCandidateReviewAutomationResultMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setAutoBusy(null);
+      setPendingAutoTriage(false);
+    }
+  }, [candidateAutoStrategy, loadReviewCandidates, onCandidateDecision, query, source, studyFilter]);
+
+  const mineMaybeUsefulSignals = useCallback(async () => {
+    setSignalBusy("mine");
+    setMessage("Mining held maybe-useful signals.");
+
+    try {
+      const result = await postLocalCandidateReviewSignalMining({
+        q: query,
+        source,
+        studyFilter
+      });
+      setSignalPreview(result);
+      setMessage(localCandidateReviewSignalMiningResultMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setSignalBusy(null);
+    }
+  }, [query, source, studyFilter]);
+
+  const applyMinedSignals = useCallback(
+    async (signalAction: LocalCandidateReviewSignalApplyAction) => {
+      setSignalBusy(signalAction === "reject-mismatches" ? "reject" : "park");
+      setMessage(localCandidateReviewSignalApplyProgressMessage(signalAction));
+
+      try {
+        const result = await postLocalCandidateReviewSignalApply({
+          q: query,
+          signalAction,
+          source,
+          studyFilter
+        });
+        await onCandidateDecision?.();
+        await loadReviewCandidates();
+        const nextPreview = await postLocalCandidateReviewSignalMining({
+          q: query,
+          source,
+          studyFilter
+        });
+        setSignalPreview(nextPreview);
+        setMessage(localCandidateReviewSignalApplyResultMessage(result));
+      } catch (error) {
+        setMessage(localIngestionErrorMessage(error));
+      } finally {
+        setPendingSignalAction(null);
+        setSignalBusy(null);
+      }
+    },
+    [loadReviewCandidates, onCandidateDecision, query, source, studyFilter]
+  );
+
   return (
     <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -1380,11 +1549,15 @@ function LocalCandidateReviewWorkbench({
       <AcceptedCandidateProcessor />
       <BenefitDiscoveryQueue />
 
-      <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+      <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-7">
         <MiniStat label="Likely useful" value={(review?.counts.likelyUseful ?? 0).toLocaleString()} />
         <MiniStat label="Maybe useful" value={(review?.counts.maybeUseful ?? 0).toLocaleString()} />
         <MiniStat label="All useful" value={(review?.counts.allUseful ?? 0).toLocaleString()} />
         <MiniStat label="Likely noise" value={(review?.counts.likelyNoise ?? 0).toLocaleString()} />
+        <MiniStat
+          label="Parked research"
+          value={(review?.counts.parkedResearch ?? 0).toLocaleString()}
+        />
         <MiniStat label="Unclassified" value={(review?.counts.unclassified ?? 0).toLocaleString()} />
         <MiniStat label="Pending" value={(review?.counts.all ?? 0).toLocaleString()} />
       </div>
@@ -1473,7 +1646,8 @@ function LocalCandidateReviewWorkbench({
         <button
           type="button"
           onClick={() => setPendingBulkAction("accept-all")}
-          disabled={busy || Boolean(actionKey) || currentBucketCount === 0}
+          disabled={controlsBusy || currentBucketCount === 0}
+          title="Accept every visible candidate in the currently selected bucket and filters. Use sparingly."
           className="inline-flex h-9 items-center gap-2 rounded-md border border-green-600 bg-green-600 px-3 text-xs font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {activeBulkAction === "accept-all" ? (
@@ -1486,7 +1660,8 @@ function LocalCandidateReviewWorkbench({
         <button
           type="button"
           onClick={() => setPendingBulkAction("accept-likely-useful")}
-          disabled={busy || Boolean(actionKey) || !review?.counts.likelyUseful}
+          disabled={controlsBusy || !review?.counts.likelyUseful}
+          title="Accept candidates classified as likely useful under the current source/search/study filters."
           className="inline-flex h-9 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {activeBulkAction === "accept-likely-useful" ? (
@@ -1499,7 +1674,8 @@ function LocalCandidateReviewWorkbench({
         <button
           type="button"
           onClick={() => setPendingBulkAction("reject-not-useful")}
-          disabled={busy || Boolean(actionKey) || !review?.counts.likelyNoise}
+          disabled={controlsBusy || !review?.counts.likelyNoise}
+          title="Reject candidates classified as likely noise under the current source/search/study filters."
           className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
         >
           {activeBulkAction === "reject-not-useful" ? (
@@ -1509,6 +1685,222 @@ function LocalCandidateReviewWorkbench({
           )}
           Reject not useful
         </button>
+      </div>
+
+      <div className="mt-3 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-ink">Maybe-useful auto-triage</h3>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Accepts priority review/trial rows with visible intervention identity, rejects only
+              low-signal rows, and holds ambiguous candidates.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <div className="inline-flex h-8 overflow-hidden rounded-md border border-line bg-white">
+              {(["strict", "query-backed"] as LocalCandidateReviewAutomationStrategy[]).map(
+                (strategy) => (
+                  <button
+                    key={strategy}
+                    type="button"
+                    onClick={() => setCandidateAutoStrategy(strategy)}
+                    disabled={controlsBusy}
+                    title={localCandidateReviewAutomationStrategyTooltip(strategy)}
+                    className={cn(
+                      "px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+                      candidateAutoStrategy === strategy
+                        ? "bg-signal text-white"
+                        : "text-slate-700 hover:bg-mist"
+                    )}
+                  >
+                    {localCandidateReviewAutomationStrategyLabel(strategy)}
+                  </button>
+                )
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => previewMaybeUsefulAutomation()}
+              disabled={controlsBusy || !review?.counts.maybeUseful}
+              title="Preview what the selected maybe-useful auto-triage pass would accept, reject, or hold."
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {autoBusy === "preview" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Search aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Preview
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingAutoTriage(true)}
+              disabled={controlsBusy || !review?.counts.maybeUseful}
+              title="Apply the selected maybe-useful auto-triage pass after reviewing the preview."
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {autoBusy === "apply" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Apply auto-triage
+            </button>
+            <button
+              type="button"
+              onClick={() => mineMaybeUsefulSignals()}
+              disabled={controlsBusy || !review?.counts.maybeUseful}
+              title="Read-only scan of held maybe-useful rows. Groups them into spot-check, research, mismatch, and low-signal buckets without changing data."
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {signalBusy === "mine" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <DatabaseZap aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Mine held signals
+            </button>
+          </div>
+        </div>
+
+        {pendingAutoTriage ? (
+          <InlineConfirmation
+            busy={autoBusy === "apply"}
+            confirmLabel="Apply"
+            message={localCandidateReviewAutomationConfirmMessage(autoPreview, review)}
+            onCancel={() => setPendingAutoTriage(false)}
+            onConfirm={() => applyMaybeUsefulAutomation()}
+            tone="warn"
+          />
+        ) : null}
+
+        {autoPreview ? (
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-2 md:grid-cols-5">
+              <MiniStat label="Scanned" value={autoPreview.counts.scanned.toLocaleString()} />
+              <MiniStat label="Accept" value={autoPreview.counts.accepted.toLocaleString()} />
+              <MiniStat label="Reject" value={autoPreview.counts.rejected.toLocaleString()} />
+              <MiniStat label="Hold" value={autoPreview.counts.held.toLocaleString()} />
+              <MiniStat
+                label="Applied"
+                value={
+                  autoPreview.applied
+                    ? autoPreview.counts.appliedActions.toLocaleString()
+                    : "preview"
+                }
+              />
+            </div>
+            <div className="grid gap-2 lg:grid-cols-2">
+              {autoPreview.decisions.slice(0, 6).map((decision) => (
+                <CandidateReviewAutomationDecisionRow
+                  key={decision.dedupeKey}
+                  decision={decision}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {signalPreview ? (
+          <div className="mt-3 grid gap-3 rounded-md border border-line bg-white p-3">
+            <div className="grid gap-2 md:grid-cols-5">
+              <MiniStat label="Scanned" value={signalPreview.counts.scanned.toLocaleString()} />
+              <MiniStat
+                label="Spot-check"
+                value={signalPreview.counts.spotCheck.toLocaleString()}
+              />
+              <MiniStat
+                label="Research"
+                value={signalPreview.counts.parkResearch.toLocaleString()}
+              />
+              <MiniStat
+                label="Mismatch"
+                value={signalPreview.counts.identityMismatch.toLocaleString()}
+              />
+              <MiniStat
+                label="Low signal"
+                value={signalPreview.counts.lowSignal.toLocaleString()}
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingSignalAction("reject-mismatches")}
+                disabled={controlsBusy || signalPreview.counts.identityMismatch === 0}
+                title="Reject mined mismatch rows where the captured source points at another supplement or non-supplement context. Does not create claims or heatmap scores."
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-danger/30 bg-white px-3 text-xs font-semibold text-danger transition hover:border-danger disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {signalBusy === "reject" ? (
+                  <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <X aria-hidden="true" className="h-3.5 w-3.5" />
+                )}
+                Reject mined mismatches
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingSignalAction("park-research")}
+                disabled={controlsBusy || signalPreview.counts.parkResearch === 0}
+                title="Park broad research/backlog signals so they stop appearing in active Maybe useful review. Rows remain pending locally; no claim or score is created."
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-amberline/30 bg-white px-3 text-xs font-semibold text-amberline transition hover:border-amberline disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {signalBusy === "park" ? (
+                  <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Bookmark aria-hidden="true" className="h-3.5 w-3.5" />
+                )}
+                Park mined research
+              </button>
+            </div>
+
+            {pendingSignalAction ? (
+              <InlineConfirmation
+                busy={Boolean(signalBusy)}
+                confirmLabel="Apply"
+                message={localCandidateReviewSignalApplyConfirmMessage(
+                  pendingSignalAction,
+                  signalPreview
+                )}
+                onCancel={() => setPendingSignalAction(null)}
+                onConfirm={() => applyMinedSignals(pendingSignalAction)}
+                tone={pendingSignalAction === "reject-mismatches" ? "danger" : "warn"}
+              />
+            ) : null}
+
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Top held interventions
+                </h4>
+                <div className="mt-2 grid gap-2">
+                  {signalPreview.interventions.slice(0, 6).map((signal) => (
+                    <CandidateReviewSignalSummaryRow key={signal.key} signal={signal} />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Top area signals
+                </h4>
+                <div className="mt-2 grid gap-2">
+                  {signalPreview.outcomes.slice(0, 6).map((signal) => (
+                    <CandidateReviewOutcomeSignalRow key={signal.outcome} signal={signal} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-2 lg:grid-cols-2">
+              {signalPreview.decisions.slice(0, 4).map((decision) => (
+                <CandidateReviewSignalDecisionRow
+                  key={decision.dedupeKey}
+                  decision={decision}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {pendingBulkAction ? (
@@ -1817,7 +2209,12 @@ function BenefitDiscoveryQueue() {
   const [autoBusy, setAutoBusy] = useState<"preview" | "apply" | null>(null);
   const [autoPreview, setAutoPreview] =
     useState<LocalBenefitDiscoveryAutomationResponse | null>(null);
+  const [autoScope, setAutoScope] =
+    useState<LocalBenefitDiscoveryAutomationScope>("batch");
+  const [autoStrategy, setAutoStrategy] =
+    useState<LocalBenefitDiscoveryAutomationStrategy>("build-leads");
   const [autoThreshold, setAutoThreshold] = useState(80);
+  const [autoRejectThreshold, setAutoRejectThreshold] = useState(40);
   const [queue, setQueue] = useState<LocalBenefitDiscoveryQueueResponse | null>(null);
   const [message, setMessage] = useState("Loading benefit discovery clusters.");
   const [pendingAutoBuild, setPendingAutoBuild] = useState(false);
@@ -1843,6 +2240,15 @@ function BenefitDiscoveryQueue() {
   useEffect(() => {
     loadQueue().catch(() => undefined);
   }, [loadQueue]);
+
+  useEffect(() => {
+    setAutoPreview(null);
+    setPendingAutoBuild(false);
+  }, [autoRejectThreshold, autoScope, autoStrategy, autoThreshold]);
+
+  useEffect(() => {
+    setAutoRejectThreshold((current) => Math.min(current, Math.max(0, autoThreshold - 1)));
+  }, [autoThreshold]);
 
   const controlsBusy = busy || Boolean(actionKey) || Boolean(autoBusy);
 
@@ -1876,6 +2282,9 @@ function BenefitDiscoveryQueue() {
     try {
       const result = await postLocalBenefitDiscoveryAutomation({
         apply: false,
+        rejectThreshold: autoRejectThreshold,
+        scope: autoScope,
+        strategy: autoStrategy,
         threshold: autoThreshold
       });
       setAutoPreview(result);
@@ -1885,7 +2294,7 @@ function BenefitDiscoveryQueue() {
     } finally {
       setAutoBusy(null);
     }
-  }, [autoThreshold]);
+  }, [autoRejectThreshold, autoScope, autoStrategy, autoThreshold]);
 
   const applyAutoBuild = useCallback(async () => {
     setAutoBusy("apply");
@@ -1894,6 +2303,9 @@ function BenefitDiscoveryQueue() {
     try {
       const result = await postLocalBenefitDiscoveryAutomation({
         apply: true,
+        rejectThreshold: autoRejectThreshold,
+        scope: autoScope,
+        strategy: autoStrategy,
         threshold: autoThreshold
       });
       setAutoPreview(result);
@@ -1905,7 +2317,7 @@ function BenefitDiscoveryQueue() {
       setPendingAutoBuild(false);
       setAutoBusy(null);
     }
-  }, [autoThreshold, loadQueue]);
+  }, [autoRejectThreshold, autoScope, autoStrategy, autoThreshold, loadQueue]);
 
   return (
     <div className="mt-4 rounded-lg border border-line bg-mist p-3">
@@ -1913,8 +2325,8 @@ function BenefitDiscoveryQueue() {
         <div>
           <h3 className="text-sm font-semibold text-ink">Benefit discovery queue</h3>
           <p className="mt-1 text-xs leading-5 text-slate-600">
-            Groups processed accepted candidates by supplement and suggested benefit area. Review
-            mismatch warnings before drafting or linking claims.
+            Groups processed accepted candidates by supplement and suggested benefit area. Park
+            middle-confidence leads instead of drafting weak heatmap claims.
           </p>
           <p aria-live="polite" className="mt-2 text-xs font-semibold text-slate-700">
             {message}
@@ -1936,10 +2348,11 @@ function BenefitDiscoveryQueue() {
 
       <LocalNextActionStrip action={benefitDiscoveryNextAction(queue)} />
 
-      <div className="mt-3 grid gap-2 md:grid-cols-4">
+      <div className="mt-3 grid gap-2 md:grid-cols-5">
         <MiniStat label="Active clusters" value={(queue?.counts.activeClusters ?? 0).toLocaleString()} />
         <MiniStat label="Active candidates" value={(queue?.counts.activeCandidates ?? 0).toLocaleString()} />
         <MiniStat label="Mismatch flags" value={(queue?.counts.mismatchCandidates ?? 0).toLocaleString()} />
+        <MiniStat label="Parked leads" value={(queue?.counts.parkedClusters ?? 0).toLocaleString()} />
         <MiniStat label="Decided clusters" value={(queue?.counts.decidedClusters ?? 0).toLocaleString()} />
       </div>
 
@@ -1978,6 +2391,46 @@ function BenefitDiscoveryQueue() {
                 className="h-8 w-16 rounded-md border border-line bg-white px-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </label>
+            <div className="inline-flex h-8 overflow-hidden rounded-md border border-line bg-white">
+              {(["build-leads", "link-existing", "park-backlog"] as LocalBenefitDiscoveryAutomationStrategy[]).map(
+                (strategy) => (
+                  <button
+                    key={strategy}
+                    type="button"
+                    onClick={() => setAutoStrategy(strategy)}
+                    disabled={controlsBusy}
+                    className={cn(
+                      "px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+                      autoStrategy === strategy
+                        ? "bg-signal text-white"
+                        : "text-slate-700 hover:bg-mist"
+                    )}
+                  >
+                    {localBenefitDiscoveryAutomationStrategyButtonLabel(strategy)}
+                  </button>
+                )
+              )}
+            </div>
+            <div className="inline-flex h-8 overflow-hidden rounded-md border border-line bg-white">
+              {(["batch", "all-eligible"] as LocalBenefitDiscoveryAutomationScope[]).map(
+                (scope) => (
+                  <button
+                    key={scope}
+                    type="button"
+                    onClick={() => setAutoScope(scope)}
+                    disabled={controlsBusy}
+                    className={cn(
+                      "px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+                      autoScope === scope
+                        ? "bg-ink text-white"
+                        : "text-slate-700 hover:bg-mist"
+                    )}
+                  >
+                    {scope === "batch" ? "Batch" : "All eligible"}
+                  </button>
+                )
+              )}
+            </div>
             <button
               type="button"
               onClick={() => previewAutoBuild()}
@@ -2002,10 +2455,53 @@ function BenefitDiscoveryQueue() {
               ) : (
                 <Play aria-hidden="true" className="h-3.5 w-3.5" />
               )}
-              Apply auto-build
+              Apply automation
             </button>
           </div>
         </div>
+
+        {autoStrategy === "park-backlog" ? (
+          <div className="mt-3 grid gap-2 rounded-md border border-amberline/25 bg-amber-50/50 p-2 lg:grid-cols-[1fr_auto] lg:items-center">
+            <label className="flex min-w-0 items-center gap-2 text-xs font-semibold text-slate-700">
+              <span className="w-24 shrink-0">Reject below</span>
+              <input
+                type="range"
+                min="0"
+                max={Math.max(0, autoThreshold - 1)}
+                value={autoRejectThreshold}
+                onChange={(event) =>
+                  setAutoRejectThreshold(
+                    Math.min(
+                      Math.max(0, autoThreshold - 1),
+                      Math.max(0, Number(event.target.value) || 0)
+                    )
+                  )
+                }
+                disabled={controlsBusy}
+                className="h-2 min-w-0 flex-1 accent-danger"
+              />
+              <input
+                type="number"
+                min="0"
+                max={Math.max(0, autoThreshold - 1)}
+                value={autoRejectThreshold}
+                onChange={(event) =>
+                  setAutoRejectThreshold(
+                    Math.min(
+                      Math.max(0, autoThreshold - 1),
+                      Math.max(0, Number(event.target.value) || 0)
+                    )
+                  )
+                }
+                disabled={controlsBusy}
+                className="h-8 w-16 rounded-md border border-line bg-white px-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+            <span className="rounded-md border border-amberline/25 bg-white px-2 py-1 text-xs font-semibold text-amberline">
+              Park {autoRejectThreshold}-{Math.max(0, autoThreshold - 1)}
+            </span>
+          </div>
+        ) : null}
 
         {pendingAutoBuild ? (
           <InlineConfirmation
@@ -2013,6 +2509,9 @@ function BenefitDiscoveryQueue() {
             confirmLabel="Apply"
             message={localBenefitDiscoveryAutomationConfirmMessage(
               autoPreview,
+              autoRejectThreshold,
+              autoScope,
+              autoStrategy,
               autoThreshold
             )}
             onCancel={() => setPendingAutoBuild(false)}
@@ -2023,7 +2522,7 @@ function BenefitDiscoveryQueue() {
 
         {autoPreview ? (
           <div className="mt-3 grid gap-3">
-            <div className="grid gap-2 md:grid-cols-6">
+            <div className="grid gap-2 md:grid-cols-7">
               <MiniStat
                 label="Scanned"
                 value={autoPreview.counts.scannedClusters.toLocaleString()}
@@ -2033,6 +2532,7 @@ function BenefitDiscoveryQueue() {
                 label="Link existing"
                 value={autoPreview.counts.linkExistingClaims.toLocaleString()}
               />
+              <MiniStat label="Park" value={autoPreview.counts.parkLeadClusters.toLocaleString()} />
               <MiniStat label="Hold" value={autoPreview.counts.holdClusters.toLocaleString()} />
               <MiniStat
                 label="Reject"
@@ -2103,7 +2603,15 @@ function IdentityResolutionQueue({ onResolved }: { onResolved: () => Promise<voi
   const [queue, setQueue] = useState<LocalIdentityResolutionQueueResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionKey, setActionKey] = useState<string | null>(null);
+  const [autoBusy, setAutoBusy] = useState<"preview" | "apply" | null>(null);
+  const [autoPreview, setAutoPreview] =
+    useState<LocalIdentityResolutionAutomationResponse | null>(null);
+  const [autoScope, setAutoScope] =
+    useState<LocalIdentityResolutionAutomationScope>("all-eligible");
+  const [autoStrategy, setAutoStrategy] =
+    useState<LocalIdentityResolutionAutomationStrategy>("source-led");
   const [message, setMessage] = useState("Loading identity resolver.");
+  const [pendingAutoResolve, setPendingAutoResolve] = useState(false);
   const [reassignTargets, setReassignTargets] = useState<Record<string, string>>({});
   const [synonyms, setSynonyms] = useState<Record<string, string>>({});
   const [pendingIdentityAction, setPendingIdentityAction] = useState<{
@@ -2134,6 +2642,13 @@ function IdentityResolutionQueue({ onResolved }: { onResolved: () => Promise<voi
   useEffect(() => {
     loadQueue().catch(() => undefined);
   }, [loadQueue]);
+
+  useEffect(() => {
+    setAutoPreview(null);
+    setPendingAutoResolve(false);
+  }, [autoScope, autoStrategy]);
+
+  const controlsBusy = busy || Boolean(actionKey) || Boolean(autoBusy);
 
   const requestAction = useCallback(
     (
@@ -2211,6 +2726,47 @@ function IdentityResolutionQueue({ onResolved }: { onResolved: () => Promise<voi
     [loadQueue, onResolved]
   );
 
+  const previewAutoResolve = useCallback(async () => {
+    setAutoBusy("preview");
+    setMessage("Previewing identity auto-resolution.");
+
+    try {
+      const result = await postLocalIdentityResolutionAutomation({
+        apply: false,
+        scope: autoScope,
+        strategy: autoStrategy
+      });
+      setAutoPreview(result);
+      setMessage(localIdentityResolutionAutomationMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setAutoBusy(null);
+    }
+  }, [autoScope, autoStrategy]);
+
+  const applyAutoResolve = useCallback(async () => {
+    setAutoBusy("apply");
+    setMessage("Applying identity auto-resolution.");
+
+    try {
+      const result = await postLocalIdentityResolutionAutomation({
+        apply: true,
+        scope: autoScope,
+        strategy: autoStrategy
+      });
+      setAutoPreview(result);
+      await loadQueue();
+      await onResolved();
+      setMessage(localIdentityResolutionAutomationMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setPendingAutoResolve(false);
+      setAutoBusy(null);
+    }
+  }, [autoScope, autoStrategy, loadQueue, onResolved]);
+
   return (
     <div className="mt-3 rounded-md border border-line bg-white p-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -2227,7 +2783,7 @@ function IdentityResolutionQueue({ onResolved }: { onResolved: () => Promise<voi
         <button
           type="button"
           onClick={() => loadQueue()}
-          disabled={busy || Boolean(actionKey)}
+          disabled={controlsBusy}
           className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
         >
           <RefreshCw
@@ -2247,6 +2803,141 @@ function IdentityResolutionQueue({ onResolved }: { onResolved: () => Promise<voi
       </div>
 
       <LocalNextActionStrip action={identityResolutionNextAction(queue)} />
+
+      <div className="mt-3 border-t border-line pt-3">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <h5 className="text-sm font-semibold text-ink">Auto-resolve</h5>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Exact query matches can be confirmed; competing supplement matches stay held or
+              routed.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex h-8 overflow-hidden rounded-md border border-line bg-white">
+              {(["strict", "source-led"] as LocalIdentityResolutionAutomationStrategy[]).map(
+                (strategy) => (
+                  <button
+                    key={strategy}
+                    type="button"
+                    onClick={() => setAutoStrategy(strategy)}
+                    disabled={controlsBusy}
+                    className={cn(
+                      "px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+                      autoStrategy === strategy
+                        ? "bg-signal text-white"
+                        : "text-slate-700 hover:bg-mist"
+                    )}
+                  >
+                    {strategy === "strict" ? "Strict" : "Source-led"}
+                  </button>
+                )
+              )}
+            </div>
+            <div className="inline-flex h-8 overflow-hidden rounded-md border border-line bg-white">
+              {(["batch", "all-eligible"] as LocalIdentityResolutionAutomationScope[]).map(
+                (scope) => (
+                  <button
+                    key={scope}
+                    type="button"
+                    onClick={() => setAutoScope(scope)}
+                    disabled={controlsBusy}
+                    className={cn(
+                      "px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+                      autoScope === scope
+                        ? "bg-ink text-white"
+                        : "text-slate-700 hover:bg-mist"
+                    )}
+                  >
+                    {scope === "batch" ? "Batch" : "All eligible"}
+                  </button>
+                )
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => previewAutoResolve()}
+              disabled={controlsBusy || !queue?.counts.blockedCandidates}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {autoBusy === "preview" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Search aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Preview
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingAutoResolve(true)}
+              disabled={controlsBusy || !queue?.counts.blockedCandidates}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {autoBusy === "apply" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Apply auto-resolve
+            </button>
+          </div>
+        </div>
+
+        {pendingAutoResolve ? (
+          <InlineConfirmation
+            busy={autoBusy === "apply"}
+            confirmLabel="Apply"
+            message={localIdentityResolutionAutomationConfirmMessage(
+              autoPreview,
+              autoStrategy,
+              autoScope
+            )}
+            onCancel={() => setPendingAutoResolve(false)}
+            onConfirm={() => applyAutoResolve()}
+            tone="warn"
+          />
+        ) : null}
+
+        {autoPreview ? (
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-2 md:grid-cols-6">
+              <MiniStat
+                label="Scanned"
+                value={autoPreview.counts.scannedCandidates.toLocaleString()}
+              />
+              <MiniStat
+                label="Confirm"
+                value={autoPreview.counts.confirmTarget.toLocaleString()}
+              />
+              <MiniStat
+                label="Reassign"
+                value={autoPreview.counts.reassignIntervention.toLocaleString()}
+              />
+              <MiniStat
+                label="Reject"
+                value={autoPreview.counts.rejectWrongSupplement.toLocaleString()}
+              />
+              <MiniStat label="Hold" value={autoPreview.counts.hold.toLocaleString()} />
+              <MiniStat
+                label="Applied"
+                value={
+                  autoPreview.applied
+                    ? autoPreview.counts.appliedActions.toLocaleString()
+                    : "preview"
+                }
+              />
+            </div>
+            <div className="grid gap-2 lg:grid-cols-2">
+              {autoPreview.decisions.slice(0, 6).map((decision) => (
+                <IdentityResolutionAutomationDecisionRow
+                  key={decision.dedupeKey}
+                  decision={decision}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       {pendingIdentityAction ? (
         <InlineConfirmation
@@ -2445,6 +3136,49 @@ function IdentityResolutionCandidateRow({
   );
 }
 
+function IdentityResolutionAutomationDecisionRow({
+  decision
+}: {
+  decision: LocalIdentityResolutionAutomationDecision;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">{decision.interventionName}</p>
+          <p className="mt-1 break-words text-xs leading-5 text-slate-600">
+            {localIngestionSourceLabel(decision.source)} {decision.externalId} - Query:{" "}
+            {decision.query}
+          </p>
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            localIdentityResolutionAutomationTone(decision.action)
+          )}
+        >
+          {localIdentityResolutionAutomationActionLabel(decision.action)}
+        </span>
+      </div>
+      <p className="mt-2 break-words text-xs font-semibold text-signal">{decision.title}</p>
+      <p className="mt-2 text-xs leading-5 text-slate-600">
+        {decision.reasons.join(" ")}
+      </p>
+      {decision.matchedInterventionName ? (
+        <p className="mt-1 text-xs leading-5 text-slate-600">
+          Target: {decision.matchedInterventionName}
+        </p>
+      ) : null}
+      {decision.error ? (
+        <p className="mt-2 text-xs leading-5 text-danger">{decision.error}</p>
+      ) : null}
+      {decision.applied ? (
+        <p className="mt-2 text-xs font-semibold text-green-700">Applied.</p>
+      ) : null}
+    </div>
+  );
+}
+
 function BenefitDiscoveryAutomationDecisionRow({
   decision
 }: {
@@ -2480,6 +3214,14 @@ function BenefitDiscoveryAutomationDecisionRow({
       {decision.applied ? (
         <p className="mt-2 text-xs font-semibold text-green-700">
           Applied
+          {decision.claimId ? (
+            <>
+              {" to claim "}
+              <span className="break-all font-mono text-[11px] text-green-800">
+                {decision.claimId}
+              </span>
+            </>
+          ) : null}
           {decision.linkedReferences > 0
             ? `, ${decision.linkedReferences.toLocaleString()} reference(s) linked`
             : ""}
@@ -2571,6 +3313,19 @@ function BenefitDiscoveryClusterCard({
               <Check aria-hidden="true" className="h-3.5 w-3.5" />
             )}
             Link existing
+          </button>
+          <button
+            type="button"
+            onClick={() => onAction(cluster, "park-lead")}
+            disabled={busy}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-amberline hover:text-amberline disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {actionKey === `${cluster.clusterKey}:park-lead` ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Bookmark aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            Park lead
           </button>
           <button
             type="button"
@@ -2849,6 +3604,167 @@ function LocalCandidateReviewRow({
   );
 }
 
+function CandidateReviewAutomationDecisionRow({
+  decision
+}: {
+  decision: LocalCandidateReviewAutomationDecision;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">{decision.interventionName ?? "Unlinked intervention"}</p>
+          <p className="mt-1 break-words text-xs font-semibold text-signal">
+            {decision.title}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {localIngestionSourceLabel(decision.source)} {decision.externalId} -{" "}
+            {decision.sourceTypeSuggestion} - triage {decision.triageScore}
+            {decision.classificationScore !== undefined
+              ? ` - classifier ${decision.classificationScore}`
+              : ""}
+          </p>
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            localCandidateReviewAutomationTone(decision.action)
+          )}
+        >
+          {localCandidateReviewAutomationActionLabel(decision.action)}
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-600">
+        {decision.reasons.join(" ")}
+      </p>
+      {decision.error ? (
+        <p className="mt-2 text-xs leading-5 text-danger">{decision.error}</p>
+      ) : null}
+      {decision.applied ? (
+        <p className="mt-2 text-xs font-semibold text-green-700">Applied.</p>
+      ) : null}
+    </div>
+  );
+}
+
+function CandidateReviewSignalSummaryRow({
+  signal
+}: {
+  signal: LocalCandidateReviewSignalSummary;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">{signal.label}</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {signal.count.toLocaleString()} held row(s), avg score {signal.averageScore}.
+          </p>
+        </div>
+        <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+          {signal.priorityStudyCount.toLocaleString()} priority
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-600">
+        Query-backed {signal.queryBackedCount.toLocaleString()} / visible identity{" "}
+        {signal.identityVisibleCount.toLocaleString()} / mismatch{" "}
+        {signal.sourcePointsElsewhereCount.toLocaleString()} / low signal{" "}
+        {signal.lowScoreCount.toLocaleString()}.
+      </p>
+      {signal.topOutcomes.length > 0 ? (
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          Areas:{" "}
+          {signal.topOutcomes
+            .map((outcome) => `${outcome.label} ${outcome.count}`)
+            .join(", ")}
+        </p>
+      ) : null}
+      <CandidateReviewSignalSamples samples={signal.samples} />
+    </div>
+  );
+}
+
+function CandidateReviewOutcomeSignalRow({
+  signal
+}: {
+  signal: LocalCandidateReviewOutcomeSignal;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">{signal.label}</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {signal.count.toLocaleString()} held row(s) across{" "}
+            {signal.interventionCount.toLocaleString()} intervention(s).
+          </p>
+        </div>
+      </div>
+      <CandidateReviewSignalSamples samples={signal.samples} />
+    </div>
+  );
+}
+
+function CandidateReviewSignalDecisionRow({
+  decision
+}: {
+  decision: LocalCandidateReviewSignalDecision;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">
+            {decision.interventionName ?? "Unlinked intervention"}
+          </p>
+          <p className="mt-1 break-words text-xs font-semibold text-signal">
+            {decision.title}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {localIngestionSourceLabel(decision.source)} {decision.externalId} -{" "}
+            {decision.sourceTypeSuggestion} - triage {decision.triageScore}
+          </p>
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            localCandidateReviewSignalTone(decision.kind)
+          )}
+        >
+          {localCandidateReviewSignalKindLabel(decision.kind)}
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-600">
+        {decision.reasons.join(" ")}
+      </p>
+    </div>
+  );
+}
+
+function CandidateReviewSignalSamples({
+  samples
+}: {
+  samples: LocalCandidateReviewSignalSample[];
+}) {
+  if (samples.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 grid gap-1">
+      {samples.map((sample) => (
+        <p
+          key={sample.dedupeKey}
+          className="break-words text-xs leading-5 text-slate-500"
+        >
+          {localIngestionSourceLabel(sample.source)} {sample.externalId} -{" "}
+          {sample.sourceTypeSuggestion} - {sample.title}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 async function fetchLocalIngestionStatus() {
   return localIngestionFetch<LocalIngestionStatusReadout>("/api/local-ingestion/status");
 }
@@ -2896,6 +3812,9 @@ async function postLocalBenefitDiscoveryAction(input: {
 
 async function postLocalBenefitDiscoveryAutomation(input: {
   apply: boolean;
+  rejectThreshold: number;
+  scope: LocalBenefitDiscoveryAutomationScope;
+  strategy: LocalBenefitDiscoveryAutomationStrategy;
   threshold: number;
 }) {
   return localIngestionFetch<LocalBenefitDiscoveryAutomationResponse>(
@@ -2904,6 +3823,9 @@ async function postLocalBenefitDiscoveryAutomation(input: {
       body: JSON.stringify({
         action: "auto-build",
         apply: input.apply,
+        rejectThreshold: input.rejectThreshold,
+        scope: input.scope,
+        strategy: input.strategy,
         threshold: input.threshold
       }),
       headers: {
@@ -2930,6 +3852,28 @@ async function postLocalIdentityResolutionAction(input: {
     "/api/local-ingestion/identity-resolution",
     {
       body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalIdentityResolutionAutomation(input: {
+  apply: boolean;
+  scope: LocalIdentityResolutionAutomationScope;
+  strategy: LocalIdentityResolutionAutomationStrategy;
+}) {
+  return localIngestionFetch<LocalIdentityResolutionAutomationResponse>(
+    "/api/local-ingestion/identity-resolution",
+    {
+      body: JSON.stringify({
+        action: "auto-resolve",
+        apply: input.apply,
+        scope: input.scope,
+        strategy: input.strategy
+      }),
       headers: {
         "Content-Type": "application/json"
       },
@@ -3000,6 +3944,244 @@ async function postLocalCandidateReviewBulkDecision(input: {
       method: "POST"
     }
   );
+}
+
+async function postLocalCandidateReviewAutomation(input: {
+  apply: boolean;
+  q: string;
+  source: LocalCandidateReviewSourceFilter;
+  strategy: LocalCandidateReviewAutomationStrategy;
+  studyFilter: LocalCandidateReviewStudyFilter;
+}) {
+  return localIngestionFetch<LocalCandidateReviewAutomationResponse>(
+    "/api/local-ingestion/candidates",
+    {
+      body: JSON.stringify({
+        action: "auto-triage-maybe-useful",
+        apply: input.apply,
+        q: input.q,
+        source: input.source,
+        strategy: input.strategy,
+        studyFilter: input.studyFilter
+      }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalCandidateReviewSignalMining(input: {
+  q: string;
+  source: LocalCandidateReviewSourceFilter;
+  studyFilter: LocalCandidateReviewStudyFilter;
+}) {
+  return localIngestionFetch<LocalCandidateReviewSignalMiningResponse>(
+    "/api/local-ingestion/candidates",
+    {
+      body: JSON.stringify({
+        action: "mine-maybe-useful-signals",
+        q: input.q,
+        source: input.source,
+        studyFilter: input.studyFilter
+      }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalCandidateReviewSignalApply(input: {
+  q: string;
+  signalAction: LocalCandidateReviewSignalApplyAction;
+  source: LocalCandidateReviewSourceFilter;
+  studyFilter: LocalCandidateReviewStudyFilter;
+}) {
+  return localIngestionFetch<LocalCandidateReviewSignalApplyResponse>(
+    "/api/local-ingestion/candidates",
+    {
+      body: JSON.stringify({
+        action: "apply-mined-signals",
+        q: input.q,
+        signalAction: input.signalAction,
+        source: input.source,
+        studyFilter: input.studyFilter
+      }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+function localCandidateReviewAutomationConfirmMessage(
+  preview: LocalCandidateReviewAutomationResponse | null,
+  review: LocalCandidateReviewResponse | null
+) {
+  if (!preview) {
+    return `Auto-triage maybe-useful candidates matching the current source/search/study filters? Preview first when possible. Up to ${(review?.counts.maybeUseful ?? 0).toLocaleString()} maybe-useful candidate(s) may be scanned.`;
+  }
+
+  return `Apply ${localCandidateReviewAutomationStrategyLabel(preview.strategy).toLowerCase()} maybe-useful auto-triage? This will accept ${preview.counts.accepted.toLocaleString()}, reject ${preview.counts.rejected.toLocaleString()}, and hold ${preview.counts.held.toLocaleString()} from ${preview.counts.scanned.toLocaleString()} scanned candidate(s).`;
+}
+
+function localCandidateReviewAutomationResultMessage(
+  result: LocalCandidateReviewAutomationResponse
+) {
+  const parts = [
+    `${result.counts.scanned.toLocaleString()} scanned`,
+    `${result.counts.accepted.toLocaleString()} accept`,
+    `${result.counts.rejected.toLocaleString()} reject`,
+    `${result.counts.held.toLocaleString()} hold`
+  ];
+
+  if (result.applied) {
+    parts.push(`${result.counts.appliedActions.toLocaleString()} action(s) applied`);
+  }
+
+  if (result.status === "stopped-at-limit") {
+    parts.push("stopped at safety limit");
+  }
+
+  if (result.counts.errors > 0) {
+    parts.push(`${result.counts.errors.toLocaleString()} error(s)`);
+  }
+
+  return `Maybe-useful ${localCandidateReviewAutomationStrategyLabel(result.strategy).toLowerCase()} auto-triage ${result.applied ? "applied" : "preview"}: ${parts.join(", ")}.`;
+}
+
+function localCandidateReviewSignalMiningResultMessage(
+  result: LocalCandidateReviewSignalMiningResponse
+) {
+  const parts = [
+    `${result.counts.scanned.toLocaleString()} scanned`,
+    `${result.counts.spotCheck.toLocaleString()} spot-check`,
+    `${result.counts.parkResearch.toLocaleString()} research`,
+    `${result.counts.identityMismatch.toLocaleString()} mismatch`,
+    `${result.counts.lowSignal.toLocaleString()} low signal`
+  ];
+
+  if (result.status === "stopped-at-limit") {
+    parts.push("stopped at safety limit");
+  }
+
+  return `Held signal mining finished: ${parts.join(", ")}.`;
+}
+
+function localCandidateReviewSignalApplyConfirmMessage(
+  signalAction: LocalCandidateReviewSignalApplyAction,
+  preview: LocalCandidateReviewSignalMiningResponse
+) {
+  if (signalAction === "reject-mismatches") {
+    return `Reject ${preview.counts.identityMismatch.toLocaleString()} mined mismatch row(s)? This removes source candidates where the captured source points at another intervention or context. No claims or heatmap scores will be created.`;
+  }
+
+  return `Park ${preview.counts.parkResearch.toLocaleString()} mined research row(s)? They will leave the active Maybe useful queue but remain pending as local research/backlog signals.`;
+}
+
+function localCandidateReviewSignalApplyProgressMessage(
+  signalAction: LocalCandidateReviewSignalApplyAction
+) {
+  return signalAction === "reject-mismatches"
+    ? "Rejecting mined mismatch rows."
+    : "Parking mined research rows.";
+}
+
+function localCandidateReviewSignalApplyResultMessage(
+  result: LocalCandidateReviewSignalApplyResponse
+) {
+  const parts = [
+    `${result.counts.scanned.toLocaleString()} scanned`,
+    `${result.counts.rejected.toLocaleString()} rejected`,
+    `${result.counts.parked.toLocaleString()} parked`,
+    `${result.counts.skipped.toLocaleString()} skipped`
+  ];
+
+  if (result.counts.errors > 0) {
+    parts.push(`${result.counts.errors.toLocaleString()} error(s)`);
+  }
+
+  if (result.status === "stopped-at-limit") {
+    parts.push("stopped at safety limit");
+  }
+
+  return `Mined signal cleanup finished: ${parts.join(", ")}.`;
+}
+
+function localCandidateReviewAutomationStrategyLabel(
+  strategy: LocalCandidateReviewAutomationStrategy
+) {
+  switch (strategy) {
+    case "query-backed":
+      return "Pass 2";
+    case "strict":
+      return "Strict";
+  }
+}
+
+function localCandidateReviewAutomationStrategyTooltip(
+  strategy: LocalCandidateReviewAutomationStrategy
+) {
+  switch (strategy) {
+    case "query-backed":
+      return "Pass 2 accepts priority review/trial rows when the search query clearly names the intervention and the source does not point elsewhere.";
+    case "strict":
+      return "Strict accepts only priority review/trial rows where captured source metadata visibly names the intervention.";
+  }
+}
+
+function localCandidateReviewAutomationActionLabel(
+  action: LocalCandidateReviewAutomationAction
+) {
+  switch (action) {
+    case "accept":
+      return "accept";
+    case "reject":
+      return "reject";
+    case "hold":
+      return "hold";
+  }
+}
+
+function localCandidateReviewAutomationTone(action: LocalCandidateReviewAutomationAction) {
+  switch (action) {
+    case "accept":
+      return "border-green-200 bg-green-50 text-green-700";
+    case "reject":
+      return "border-danger/20 bg-red-50 text-danger";
+    case "hold":
+      return "border-amberline/25 bg-amber-50 text-amberline";
+  }
+}
+
+function localCandidateReviewSignalKindLabel(kind: LocalCandidateReviewSignalKind) {
+  switch (kind) {
+    case "identity-mismatch":
+      return "mismatch";
+    case "low-signal":
+      return "low signal";
+    case "park-research":
+      return "research";
+    case "spot-check":
+      return "spot-check";
+  }
+}
+
+function localCandidateReviewSignalTone(kind: LocalCandidateReviewSignalKind) {
+  switch (kind) {
+    case "identity-mismatch":
+      return "border-danger/20 bg-red-50 text-danger";
+    case "low-signal":
+      return "border-slate-200 bg-slate-50 text-slate-600";
+    case "park-research":
+      return "border-amberline/25 bg-amber-50 text-amberline";
+    case "spot-check":
+      return "border-green-200 bg-green-50 text-green-700";
+  }
 }
 
 function localCandidateBulkConfirmMessage({
@@ -3120,10 +4302,12 @@ function localAcceptedProcessorIdleMessage(
 
 function localBenefitDiscoveryQueueMessage(queue: LocalBenefitDiscoveryQueueResponse) {
   if (queue.clusters.length === 0) {
-    return "No active benefit discovery clusters are ready.";
+    return queue.counts.parkedClusters > 0
+      ? `No active benefit discovery clusters are ready. ${queue.counts.parkedClusters.toLocaleString()} lead(s) are parked for later review.`
+      : "No active benefit discovery clusters are ready.";
   }
 
-  return `${queue.counts.activeClusters.toLocaleString()} active cluster(s), ${queue.counts.activeCandidates.toLocaleString()} candidate(s), ${queue.counts.mismatchCandidates.toLocaleString()} candidate(s) flagged for identity checks.`;
+  return `${queue.counts.activeClusters.toLocaleString()} active cluster(s), ${queue.counts.activeCandidates.toLocaleString()} candidate(s), ${queue.counts.mismatchCandidates.toLocaleString()} candidate(s) flagged for identity checks, ${queue.counts.parkedClusters.toLocaleString()} parked lead(s).`;
 }
 
 function localBenefitDiscoveryConfirmMessage(
@@ -3135,6 +4319,8 @@ function localBenefitDiscoveryConfirmMessage(
       return `Create an unreviewed local draft claim for ${cluster.interventionName} / ${cluster.outcomeLabel} and link ${cluster.usableCandidateCount.toLocaleString()} usable accepted reference(s)?`;
     case "link-existing-claim":
       return `Link ${cluster.usableCandidateCount.toLocaleString()} usable accepted reference(s) to the existing ${cluster.interventionName} / ${cluster.outcomeLabel} claim?`;
+    case "park-lead":
+      return `Park this ${cluster.interventionName} / ${cluster.outcomeLabel} discovery lead? It stays available for later source review, but no claim or heatmap score will be created.`;
     case "reject-cluster":
       return `Reject this ${cluster.interventionName} / ${cluster.outcomeLabel} discovery cluster from the local queue?`;
   }
@@ -3146,6 +4332,8 @@ function localBenefitDiscoveryActionProgress(action: LocalBenefitDiscoveryAction
       return "Creating local draft claim and linking accepted references.";
     case "link-existing-claim":
       return "Linking accepted references to existing claim.";
+    case "park-lead":
+      return "Parking benefit discovery lead.";
     case "reject-cluster":
       return "Rejecting benefit discovery cluster.";
   }
@@ -3188,6 +4376,82 @@ function localIdentityResolutionProgressMessage(action: LocalIdentityResolutionA
   }
 }
 
+function localIdentityResolutionAutomationMessage(
+  result: LocalIdentityResolutionAutomationResponse
+) {
+  const parts = [
+    `${result.counts.scannedCandidates.toLocaleString()} scanned`,
+    `${result.counts.confirmTarget.toLocaleString()} confirm`,
+    `${result.counts.reassignIntervention.toLocaleString()} reassign`,
+    `${result.counts.rejectWrongSupplement.toLocaleString()} reject`,
+    `${result.counts.hold.toLocaleString()} hold`
+  ];
+
+  if (result.applied) {
+    parts.push(`${result.counts.appliedActions.toLocaleString()} action(s) applied`);
+  }
+
+  if (result.counts.errors > 0) {
+    parts.push(`${result.counts.errors.toLocaleString()} error(s)`);
+  }
+
+  return `Identity auto-resolve ${localIdentityResolutionAutomationStrategyLabel(result.strategy)} ${localIdentityResolutionAutomationScopeLabel(result.scope)} ${result.applied ? "applied" : "preview"}: ${parts.join(", ")}.`;
+}
+
+function localIdentityResolutionAutomationConfirmMessage(
+  preview: LocalIdentityResolutionAutomationResponse | null,
+  strategy: LocalIdentityResolutionAutomationStrategy,
+  scope: LocalIdentityResolutionAutomationScope
+) {
+  if (!preview) {
+    return `Run ${localIdentityResolutionAutomationStrategyLabel(strategy)} ${localIdentityResolutionAutomationScopeLabel(scope)} identity auto-resolve? Preview first when possible; ambiguous rows stay held for manual review.`;
+  }
+
+  return `Apply ${localIdentityResolutionAutomationStrategyLabel(preview.strategy)} ${localIdentityResolutionAutomationScopeLabel(preview.scope)} identity auto-resolve? This will confirm ${preview.counts.confirmTarget.toLocaleString()} source(s), reassign ${preview.counts.reassignIntervention.toLocaleString()}, reject ${preview.counts.rejectWrongSupplement.toLocaleString()}, and hold ${preview.counts.hold.toLocaleString()}.`;
+}
+
+function localIdentityResolutionAutomationStrategyLabel(
+  strategy: LocalIdentityResolutionAutomationStrategy
+) {
+  return strategy === "source-led" ? "source-led" : "strict";
+}
+
+function localIdentityResolutionAutomationScopeLabel(
+  scope: LocalIdentityResolutionAutomationScope
+) {
+  return scope === "all-eligible" ? "all eligible" : "batch";
+}
+
+function localIdentityResolutionAutomationActionLabel(
+  action: LocalIdentityResolutionAutomationAction
+) {
+  switch (action) {
+    case "confirm-target":
+      return "confirm";
+    case "reassign-intervention":
+      return "reassign";
+    case "reject-wrong-supplement":
+      return "reject";
+    case "hold":
+      return "hold";
+  }
+}
+
+function localIdentityResolutionAutomationTone(
+  action: LocalIdentityResolutionAutomationAction
+) {
+  switch (action) {
+    case "confirm-target":
+      return "border-green-200 bg-green-50 text-green-700";
+    case "reassign-intervention":
+      return "border-signal/20 bg-signal/10 text-signal";
+    case "reject-wrong-supplement":
+      return "border-danger/20 bg-red-50 text-danger";
+    case "hold":
+      return "border-amberline/25 bg-amber-50 text-amberline";
+  }
+}
+
 function localBenefitDiscoveryAutomationMessage(
   result: LocalBenefitDiscoveryAutomationResponse
 ) {
@@ -3195,11 +4459,13 @@ function localBenefitDiscoveryAutomationMessage(
     `${result.counts.scannedClusters.toLocaleString()} scanned`,
     `${result.counts.draftClaims.toLocaleString()} draft`,
     `${result.counts.linkExistingClaims.toLocaleString()} link`,
+    `${result.counts.parkLeadClusters.toLocaleString()} park`,
     `${result.counts.holdClusters.toLocaleString()} hold`,
     `${result.counts.rejectClusters.toLocaleString()} reject`
   ];
 
   if (result.applied) {
+    parts.push(`${result.counts.appliedActions.toLocaleString()} action(s) applied`);
     parts.push(`${result.counts.linkedReferences.toLocaleString()} reference(s) linked`);
   }
 
@@ -3207,18 +4473,74 @@ function localBenefitDiscoveryAutomationMessage(
     parts.push(`${result.counts.errors.toLocaleString()} error(s)`);
   }
 
-  return `Auto-build ${result.applied ? "applied" : "preview"}: ${parts.join(", ")}.`;
+  const bands =
+    result.strategy === "park-backlog"
+      ? ` Park ${result.rejectThreshold}-${result.threshold - 1}, reject below ${result.rejectThreshold}.`
+      : "";
+
+  return `Auto-build ${localBenefitDiscoveryAutomationStrategyLabel(result.strategy)} ${localBenefitDiscoveryAutomationScopeLabel(result.scope)} ${result.applied ? "applied" : "preview"}: ${parts.join(", ")}.${bands}`;
 }
 
 function localBenefitDiscoveryAutomationConfirmMessage(
   preview: LocalBenefitDiscoveryAutomationResponse | null,
+  rejectThreshold: number,
+  scope: LocalBenefitDiscoveryAutomationScope,
+  strategy: LocalBenefitDiscoveryAutomationStrategy,
   threshold: number
 ) {
   if (!preview) {
-    return `Run auto-build at score ${threshold}? This will create unreviewed local draft claims, link existing local claims, and reject very low-confidence clusters from the local queue.`;
+    return `Run ${localBenefitDiscoveryAutomationStrategyLabel(strategy)} ${localBenefitDiscoveryAutomationScopeLabel(scope)} automation at score ${threshold}? ${localBenefitDiscoveryAutomationStrategyDescription(strategy, rejectThreshold, threshold)}`;
   }
 
-  return `Apply auto-build at score ${threshold}? This will draft ${preview.counts.draftClaims.toLocaleString()} claim(s), link ${preview.counts.linkExistingClaims.toLocaleString()} existing claim cluster(s), and reject ${preview.counts.rejectClusters.toLocaleString()} low-confidence cluster(s).`;
+  return `Apply ${localBenefitDiscoveryAutomationStrategyLabel(preview.strategy)} ${localBenefitDiscoveryAutomationScopeLabel(preview.scope)} automation at score ${preview.threshold}? This will draft ${preview.counts.draftClaims.toLocaleString()} claim(s), link ${preview.counts.linkExistingClaims.toLocaleString()} existing claim cluster(s), park ${preview.counts.parkLeadClusters.toLocaleString()} lead(s), and reject ${preview.counts.rejectClusters.toLocaleString()} low-confidence cluster(s).${preview.strategy === "park-backlog" ? ` Park ${preview.rejectThreshold}-${preview.threshold - 1}; reject below ${preview.rejectThreshold}.` : ""}`;
+}
+
+function localBenefitDiscoveryAutomationScopeLabel(
+  scope: LocalBenefitDiscoveryAutomationScope
+) {
+  return scope === "all-eligible" ? "all eligible" : "batch";
+}
+
+function localBenefitDiscoveryAutomationStrategyLabel(
+  strategy: LocalBenefitDiscoveryAutomationStrategy
+) {
+  switch (strategy) {
+    case "build-leads":
+      return "build leads";
+    case "link-existing":
+      return "link existing";
+    case "park-backlog":
+      return "park backlog";
+  }
+}
+
+function localBenefitDiscoveryAutomationStrategyButtonLabel(
+  strategy: LocalBenefitDiscoveryAutomationStrategy
+) {
+  switch (strategy) {
+    case "build-leads":
+      return "Build leads";
+    case "link-existing":
+      return "Link existing";
+    case "park-backlog":
+      return "Park backlog";
+  }
+}
+
+function localBenefitDiscoveryAutomationStrategyDescription(
+  strategy: LocalBenefitDiscoveryAutomationStrategy,
+  rejectThreshold: number,
+  threshold: number
+) {
+  if (strategy === "link-existing") {
+    return "This only links sources into existing local claims, rejects very low-confidence clusters, and leaves novel claim areas for manual review.";
+  }
+
+  if (strategy === "park-backlog") {
+    return `This parks leads from ${rejectThreshold} to ${threshold - 1}, rejects leads below ${rejectThreshold}, and holds ${threshold}+ for build/link review without creating heatmap claims.`;
+  }
+
+  return "This will create unreviewed local draft claims, link existing local claims, and reject very low-confidence clusters from the local queue.";
 }
 
 function localBenefitDiscoveryAutomationActionLabel(
@@ -3229,6 +4551,8 @@ function localBenefitDiscoveryAutomationActionLabel(
       return "draft";
     case "link-existing-claim":
       return "link";
+    case "park-lead":
+      return "park";
     case "reject-cluster":
       return "reject";
     case "hold":
@@ -3244,6 +4568,8 @@ function localBenefitDiscoveryAutomationTone(
       return "border-signal/20 bg-signal/10 text-signal";
     case "link-existing-claim":
       return "border-green-200 bg-green-50 text-green-700";
+    case "park-lead":
+      return "border-amberline/25 bg-amber-50 text-amberline";
     case "reject-cluster":
       return "border-danger/20 bg-red-50 text-danger";
     case "hold":
@@ -3612,12 +4938,20 @@ function reviewStatusLabel(status: Claim["reviewStatus"]) {
 }
 
 function classificationLabel(claim: Claim) {
+  if (isEvidenceMapPlaceholderClaim(claim)) {
+    return "Review-needed classification";
+  }
+
   return isHumanReviewed(claim.reviewStatus)
     ? "Human-reviewed classification"
     : "AI Draft Classification";
 }
 
 function compositeLabel(claim: Claim) {
+  if (isEvidenceMapPlaceholderClaim(claim)) {
+    return "Composite pending";
+  }
+
   return isHumanReviewed(claim.reviewStatus) ? "Reviewed composite" : "Draft composite";
 }
 
@@ -4117,12 +5451,154 @@ export function buildCodexReviewPacket(data: EvidenceDashboardData) {
   ].join("\n");
 }
 
+type EvidenceMapStatusFilter = "all" | "scored" | "review-work";
+
+type EvidenceMapReadinessSummary = {
+  completeSourcePackets: number;
+  draftClaims: number;
+  draftLeadClaims: number;
+  extractedReferences: number;
+  humanReviewedClaims: number;
+  incompleteSourcePackets: number;
+  pendingReferences: number;
+  reviewWorkClaims: number;
+  scoredClaims: number;
+  sourcePacketScaffoldClaims: number;
+  totalClaims: number;
+  totalReferences: number;
+};
+
+const EVIDENCE_MAP_STATUS_FILTERS: Array<{
+  id: EvidenceMapStatusFilter;
+  label: string;
+  title: string;
+}> = [
+  {
+    id: "all",
+    label: "All",
+    title: "Show every scoped evidence-map cell matching the current filters."
+  },
+  {
+    id: "scored",
+    label: "Scored",
+    title: "Show cells with composite scores assigned from the evidence."
+  },
+  {
+    id: "review-work",
+    label: "Review work",
+    title: "Show draft leads and source-packet scaffolds that still need evidence scoring."
+  }
+];
+
 type EvidenceMapSort =
   | {
       direction: "asc" | "desc";
       outcome: OutcomeArea;
     }
   | null;
+
+function isDraftLeadClaim(claim: Claim) {
+  return claim.evidenceGrade === DRAFT_LEAD_EVIDENCE_GRADE;
+}
+
+function isSourcePacketScaffoldClaim(claim: Claim) {
+  return claim.evidenceGrade === SOURCE_PACKET_REVIEW_EVIDENCE_GRADE;
+}
+
+function isEvidenceMapPlaceholderClaim(claim: Claim) {
+  return isDraftLeadClaim(claim) || isSourcePacketScaffoldClaim(claim);
+}
+
+function claimMatchesEvidenceMapStatusFilter(
+  claim: Claim,
+  statusFilter: EvidenceMapStatusFilter
+) {
+  if (statusFilter === "scored") {
+    return !isEvidenceMapPlaceholderClaim(claim);
+  }
+
+  if (statusFilter === "review-work") {
+    return isEvidenceMapPlaceholderClaim(claim);
+  }
+
+  return true;
+}
+
+function buildEvidenceMapReadinessSummary({
+  claims,
+  referencesById,
+  studies
+}: {
+  claims: Claim[];
+  referencesById: Map<string, Reference>;
+  studies: Study[];
+}): EvidenceMapReadinessSummary {
+  const packetSummary = summarizeClaimSourcePackets({ claims, referencesById, studies });
+  const draftLeadClaims = claims.filter(isDraftLeadClaim).length;
+  const sourcePacketScaffoldClaims = claims.filter(isSourcePacketScaffoldClaim).length;
+
+  return {
+    completeSourcePackets: packetSummary.completeClaims,
+    draftClaims: claims.filter((claim) => !isHumanReviewed(claim.reviewStatus)).length,
+    draftLeadClaims,
+    extractedReferences: packetSummary.extractedReferences,
+    humanReviewedClaims: claims.filter((claim) => isHumanReviewed(claim.reviewStatus)).length,
+    incompleteSourcePackets:
+      packetSummary.extractionPendingClaims +
+      packetSummary.missingSourceClaims +
+      packetSummary.unlinkedClaims,
+    pendingReferences: packetSummary.pendingReferences + packetSummary.missingReferences,
+    reviewWorkClaims: draftLeadClaims + sourcePacketScaffoldClaims,
+    scoredClaims: claims.filter((claim) => !isEvidenceMapPlaceholderClaim(claim)).length,
+    sourcePacketScaffoldClaims,
+    totalClaims: claims.length,
+    totalReferences: packetSummary.totalReferences
+  };
+}
+
+function evidenceMapSortableScore(claim: Claim | undefined) {
+  if (!claim || isEvidenceMapPlaceholderClaim(claim)) {
+    return null;
+  }
+
+  return compositeScore(claim.scores);
+}
+
+function evidenceMapCellPresentation(claim: Claim, score: number) {
+  if (isDraftLeadClaim(claim)) {
+    return {
+      ariaSummary:
+        "discovery lead awaiting source review; no final evidence score has been assigned",
+      primary: "Lead",
+      secondary: "Draft",
+      title:
+        "Discovery lead awaiting source review. The stored starter score is hidden because it is not a final evidence score.",
+      tone:
+        "border-dashed border-amberline/35 bg-amber-50 text-amberline hover:border-amberline hover:bg-amber-50"
+    };
+  }
+
+  if (isSourcePacketScaffoldClaim(claim)) {
+    return {
+      ariaSummary:
+        "source-packet scaffold awaiting evidence review; no final evidence score has been assigned",
+      primary: "Needs",
+      secondary: "Review",
+      title:
+        "Source-packet scaffold awaiting evidence review. The stored placeholder score is hidden because it is not a final evidence score.",
+      tone:
+        "border-dashed border-slate-300 bg-slate-50 text-slate-600 hover:border-signal hover:bg-blue-50"
+    };
+  }
+
+  return {
+    ariaSummary: `${compositeLabel(claim)} ${score.toFixed(1)} out of 10, ${scoreBand(score)} band`,
+    primary: score.toFixed(1),
+    secondary: scoreBand(score),
+    title: scoreExplanationTitle("composite", `${score.toFixed(1)}/10`),
+    tone: labelTone(claim.finalLabel)
+  };
+}
 
 function cycleEvidenceMapSort(
   current: EvidenceMapSort,
@@ -4159,7 +5635,7 @@ function sortEvidenceMapInterventions({
       (item) => item.interventionId === interventionId && item.outcome === sort.outcome
     );
 
-    return claim ? compositeScore(claim.scores) : null;
+    return evidenceMapSortableScore(claim);
   };
 
   return sorted.sort((left, right) => {
@@ -4197,6 +5673,108 @@ function evidenceMapSortAriaLabel(sort: EvidenceMapSort, outcome: OutcomeArea) {
   return `Clear ${outcome} sort and return to alphabetical order`;
 }
 
+function EvidenceMapReadinessStrip({
+  onStatusFilterChange,
+  statusFilter,
+  summary
+}: {
+  onStatusFilterChange: (statusFilter: EvidenceMapStatusFilter) => void;
+  statusFilter: EvidenceMapStatusFilter;
+  summary: EvidenceMapReadinessSummary;
+}) {
+  const totalClaimsLabel = summary.totalClaims.toLocaleString();
+  const scoredLabel = `${summary.scoredClaims.toLocaleString()}/${totalClaimsLabel}`;
+  const humanReviewedLabel = `${summary.humanReviewedClaims.toLocaleString()}/${totalClaimsLabel}`;
+  const sourcePacketLabel = `${summary.completeSourcePackets.toLocaleString()}/${totalClaimsLabel}`;
+  const reviewWorkDetail =
+    summary.reviewWorkClaims === 0
+      ? "No draft leads or scaffolds in the current filters"
+      : `${summary.draftLeadClaims.toLocaleString()} lead, ${summary.sourcePacketScaffoldClaims.toLocaleString()} scaffold`;
+
+  return (
+    <section aria-label="Evidence map readiness" className="mt-4 border-t border-line pt-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-ink">Evidence readiness</h3>
+            <span className="rounded-md border border-spruce/25 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
+              {summary.scoredClaims.toLocaleString()} scored
+            </span>
+            <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+              {summary.reviewWorkClaims.toLocaleString()} review work
+            </span>
+          </div>
+          <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-600">
+            Scored cells are review aids, not treatment advice. Review-work cells keep draft leads visible
+            without showing starter scores as final evidence.
+          </p>
+        </div>
+        <div
+          aria-label="Evidence map cell status"
+          className="inline-flex w-fit overflow-hidden rounded-md border border-line bg-white p-0.5 text-xs font-semibold"
+          role="group"
+        >
+          {EVIDENCE_MAP_STATUS_FILTERS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={cn(
+                "px-3 py-1.5 transition hover:text-signal focus:outline-none focus:ring-4 focus:ring-signal/20",
+                statusFilter === item.id
+                  ? "rounded bg-signal text-white hover:text-white"
+                  : "text-slate-700"
+              )}
+              onClick={() => onStatusFilterChange(item.id)}
+              title={item.title}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        <EvidenceReadinessBadge label="Scored cells" value={scoredLabel} />
+        <EvidenceReadinessBadge label="Human reviewed" value={humanReviewedLabel} />
+        <EvidenceReadinessBadge
+          label="Source packets complete"
+          value={sourcePacketLabel}
+          title={`${summary.incompleteSourcePackets.toLocaleString()} claim(s) still need source-packet linking or extraction.`}
+        />
+        <EvidenceReadinessBadge label="Review-work mix" value={reviewWorkDetail} />
+        <EvidenceReadinessBadge
+          label="References extracted"
+          value={`${summary.extractedReferences.toLocaleString()}/${summary.totalReferences.toLocaleString()}`}
+          title={`${summary.pendingReferences.toLocaleString()} linked reference(s) still need extraction or repair.`}
+        />
+        <EvidenceReadinessBadge
+          label="Pending human review"
+          value={summary.draftClaims.toLocaleString()}
+          title="AI-draft claims remain pending until a human checks the source packet against the scoped claim."
+        />
+      </div>
+    </section>
+  );
+}
+
+function EvidenceReadinessBadge({
+  label,
+  title,
+  value
+}: {
+  label: string;
+  title?: string;
+  value: string;
+}) {
+  return (
+    <span
+      className="rounded-md border border-line bg-mist px-2 py-1 text-slate-600"
+      title={title}
+    >
+      <span className="font-semibold text-ink">{label}:</span> {value}
+    </span>
+  );
+}
+
 function EvidenceMap({
   claims: visibleClaims,
   interventions: visibleInterventions,
@@ -4226,8 +5804,8 @@ function EvidenceMap({
   if (visibleClaims.length === 0) {
     return (
       <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-        No local scored claims match the current filters. Clear the search, category, label, or outcome filter to
-        rebuild the evidence map.
+        No evidence-map cells match the current filters and map mode. Clear the search, category, label,
+        outcome, or map-mode filter to rebuild the evidence map.
       </p>
     );
   }
@@ -4353,6 +5931,12 @@ function EvidenceMapLegend() {
         <strong className="text-ink">No evidence found</strong> = searched and no credible evidence found
       </span>
       <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-amberline">
+        <strong>Lead / Draft</strong> = discovery lead; no final score yet
+      </span>
+      <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1">
+        <strong className="text-ink">Needs / Review</strong> = scaffold awaiting source-packet scoring
+      </span>
+      <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-amberline">
         Unassessed cells do not imply absence of evidence.
       </span>
       <span className="rounded-md border border-line bg-mist px-2 py-1">
@@ -4390,8 +5974,8 @@ function OutcomeColumnTooltip({ outcome }: { outcome: OutcomeArea }) {
         <span className="block font-semibold text-ink">{outcome}</span>
         <span className="mt-2 block">{detail}</span>
         <span className="mt-2 block text-slate-600">
-          Cells show a draft composite score when a scoped claim exists. A dash means not yet
-          assessed, not evidence of absence.
+          Reviewed/source-scored cells show a composite score. Draft leads and scaffolds show review
+          status instead of placeholder numbers.
         </span>
       </span>
     </span>
@@ -4510,6 +6094,7 @@ function EvidenceMapRow({
         }
 
         const score = compositeScore(claim.scores);
+        const cell = evidenceMapCellPresentation(claim, score);
 
         return (
           <td key={claim.id} className="h-14 w-[4.25rem] min-w-[4.25rem] max-w-[4.75rem] p-0 align-middle">
@@ -4518,23 +6103,16 @@ function EvidenceMapRow({
               onClick={() => onSelectClaim(claim.id, { scrollToDetail: true })}
               className={cn(
                 "flex h-14 w-full flex-col items-center justify-center rounded-md border px-1 text-center text-[11px] leading-tight transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20",
-                labelTone(claim.finalLabel),
+                cell.tone,
                 activeClaimId === claim.id && "border-signal ring-2 ring-signal/25"
               )}
-              aria-label={`${intervention.name}, ${claim.outcome}: ${compositeLabel(
+              aria-label={`${intervention.name}, ${claim.outcome}: ${cell.ariaSummary}, ${classificationLabel(
                 claim
-              )} ${score.toFixed(
-                1
-              )} out of 10, ${scoreBand(score)} band, ${classificationLabel(claim)} ${
-                claim.finalLabel
-              }, review status ${reviewStatusLabel(claim.reviewStatus)}. ${scoreExplanationTitle(
-                "composite",
-                `${score.toFixed(1)}/10`
-              )}`}
-              title={scoreExplanationTitle("composite", `${score.toFixed(1)}/10`)}
+              )} ${claim.finalLabel}, review status ${reviewStatusLabel(claim.reviewStatus)}.`}
+              title={cell.title}
             >
-              <span className="font-semibold">{score.toFixed(1)}</span>
-              <span className="max-w-full truncate">{scoreBand(score)}</span>
+              <span className="font-semibold">{cell.primary}</span>
+              <span className="max-w-full truncate">{cell.secondary}</span>
             </button>
           </td>
         );
@@ -4587,14 +6165,22 @@ function ClaimTable({
       {
         accessorKey: "composite",
         header: "Score",
-        cell: ({ row }) => (
-          <ScoreWithExplainer
-            explanationKind="composite"
-            value={`${row.original.composite.toFixed(1)}/10`}
-          >
-            {row.original.composite.toFixed(1)}
-          </ScoreWithExplainer>
-        )
+        cell: ({ row }) =>
+          row.original.composite === null ? (
+            <span
+              className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600"
+              title="Composite score pending until the source packet is reviewed."
+            >
+              Review work
+            </span>
+          ) : (
+            <ScoreWithExplainer
+              explanationKind="composite"
+              value={`${row.original.composite.toFixed(1)}/10`}
+            >
+              {row.original.composite.toFixed(1)}
+            </ScoreWithExplainer>
+          )
       },
       {
         accessorKey: "safety",
@@ -4701,7 +6287,7 @@ function ClaimTable({
         </div>
       ) : (
         <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-          No local scored claims match the current filters. Clear the search, category, label, or outcome filter to
+          No claim rows match the current filters. Clear the search, category, label, or outcome filter to
           return to the full local evidence set.
         </p>
       )}
@@ -4886,7 +6472,10 @@ function EvidenceCards({
                     <MiniStat label="Duration" value={claim.durationStudied} />
                     <MiniStat label="Applicability" value={claim.applicabilityNotes} />
                     <MiniStat label="Score mover" value={claim.whatWouldChangeScore} />
-                    <MiniStat label="Last reviewed" value={claim.lastUpdated} />
+                    <MiniStat
+                      label={isEvidenceMapPlaceholderClaim(claim) ? "Last updated" : "Last reviewed"}
+                      value={claim.lastUpdated}
+                    />
                   </div>
                   <div className="mt-3 grid gap-2">
                     {claimReferences.length > 0 ? (

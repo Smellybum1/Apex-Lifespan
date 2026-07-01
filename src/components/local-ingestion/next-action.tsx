@@ -201,8 +201,16 @@ export function benefitDiscoveryNextAction(
   if (queue.counts.activeClusters > 0) {
     return {
       detail: `${queue.counts.activeClusters.toLocaleString()} cluster(s) are ready for preview or manual action.`,
-      label: "Preview auto-build",
+      label: "Preview automation",
       tone: "ready"
+    };
+  }
+
+  if (queue.counts.parkedClusters > 0) {
+    return {
+      detail: `${queue.counts.parkedClusters.toLocaleString()} lead(s) are parked for later source review.`,
+      label: "Backlog parked",
+      tone: "info"
     };
   }
 

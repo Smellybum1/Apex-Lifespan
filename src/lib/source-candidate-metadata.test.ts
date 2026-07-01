@@ -3,15 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   LOCAL_ACCEPTED_PROCESSING_METADATA_VERSION,
   LOCAL_BENEFIT_DISCOVERY_METADATA_VERSION,
+  LOCAL_CANDIDATE_REVIEW_METADATA_VERSION,
   LOCAL_IDENTITY_RESOLUTION_METADATA_VERSION,
   readLocalAcceptedCandidateProcessingMetadata,
   readLocalBenefitDiscoveryDecisionMetadata,
+  readLocalCandidateReviewDispositionMetadata,
   readLocalIdentityResolutionMetadata,
   readSourceCandidateDiscoveryClassification,
   SOURCE_CANDIDATE_DISCOVERY_CLASSIFIER_VERSION,
   SOURCE_CANDIDATE_METADATA_KEYS,
   writeLocalAcceptedCandidateProcessingMetadata,
   writeLocalBenefitDiscoveryDecisionMetadata,
+  writeLocalCandidateReviewDispositionMetadata,
   writeLocalIdentityResolutionMetadata
 } from "@/lib/source-candidate-metadata";
 
@@ -82,6 +85,22 @@ describe("source candidate metadata helpers", () => {
       status: "claim-drafted"
     });
     expect(
+      readLocalBenefitDiscoveryDecisionMetadata(
+        writeLocalBenefitDiscoveryDecisionMetadata(
+          {},
+          {
+            action: "park-lead",
+            clusterKey: "matcha::CARDIOVASCULAR_EVENTS",
+            status: "parked"
+          },
+          new Date("2026-06-29T01:30:00.000Z")
+        )
+      )
+    ).toEqual({
+      clusterKey: "matcha::CARDIOVASCULAR_EVENTS",
+      status: "parked"
+    });
+    expect(
       readLocalBenefitDiscoveryDecisionMetadata({
         [SOURCE_CANDIDATE_METADATA_KEYS.benefitDiscoveryDecision]: {
           clusterKey: "astaxanthin::SKIN",
@@ -128,6 +147,34 @@ describe("source candidate metadata helpers", () => {
     expect(readLocalIdentityResolutionMetadata(metadata)).toEqual({
       interventionId: "astaxanthin",
       status: "confirmed-target"
+    });
+  });
+
+  it("writes candidate-review parked research disposition metadata", () => {
+    const metadata = writeLocalCandidateReviewDispositionMetadata(
+      {
+        upstreamSource: "NCBI"
+      },
+      {
+        action: "park-mined-research",
+        reason: "Research signal only.",
+        status: "parked-research"
+      },
+      new Date("2026-06-29T03:00:00.000Z")
+    );
+
+    expect(metadata).toMatchObject({
+      upstreamSource: "NCBI",
+      [SOURCE_CANDIDATE_METADATA_KEYS.candidateReviewDisposition]: {
+        action: "park-mined-research",
+        decidedAt: "2026-06-29T03:00:00.000Z",
+        reason: "Research signal only.",
+        status: "parked-research",
+        version: LOCAL_CANDIDATE_REVIEW_METADATA_VERSION
+      }
+    });
+    expect(readLocalCandidateReviewDispositionMetadata(metadata)).toEqual({
+      status: "parked-research"
     });
   });
 

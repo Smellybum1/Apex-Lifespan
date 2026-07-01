@@ -11,11 +11,15 @@ export const LOCAL_BENEFIT_DISCOVERY_LIMIT_DEFAULT = 20;
 export const LOCAL_BENEFIT_DISCOVERY_LIMIT_MAX = 50;
 export const LOCAL_BENEFIT_DISCOVERY_AUTOMATION_LIMIT_DEFAULT = 25;
 export const LOCAL_BENEFIT_DISCOVERY_AUTOMATION_LIMIT_MAX = 50;
+export const LOCAL_BENEFIT_DISCOVERY_AUTOMATION_ALL_MAX = 2000;
 export const LOCAL_BENEFIT_DISCOVERY_SCORE_THRESHOLD_DEFAULT = 80;
 export const LOCAL_BENEFIT_DISCOVERY_SCORE_THRESHOLD_MIN = 55;
 export const LOCAL_BENEFIT_DISCOVERY_SCORE_THRESHOLD_MAX = 95;
 export const LOCAL_IDENTITY_RESOLUTION_LIMIT_DEFAULT = 12;
 export const LOCAL_IDENTITY_RESOLUTION_LIMIT_MAX = 50;
+export const LOCAL_IDENTITY_RESOLUTION_AUTOMATION_LIMIT_DEFAULT = 100;
+export const LOCAL_IDENTITY_RESOLUTION_AUTOMATION_LIMIT_MAX = 250;
+export const LOCAL_IDENTITY_RESOLUTION_AUTOMATION_ALL_MAX = 2000;
 
 export function normaliseRunLimit(value: unknown) {
   return normaliseLocalLimit(value, LOCAL_RUN_LIMIT_DEFAULT, LOCAL_RUN_LIMIT_MAX);
@@ -29,11 +33,14 @@ export function normaliseAcceptedProcessingLimit(value: unknown) {
   );
 }
 
-export function normaliseBenefitDiscoveryLimit(value: unknown) {
+export function normaliseBenefitDiscoveryLimit(
+  value: unknown,
+  maxValue = LOCAL_BENEFIT_DISCOVERY_LIMIT_MAX
+) {
   return normaliseLocalLimit(
     value,
     LOCAL_BENEFIT_DISCOVERY_LIMIT_DEFAULT,
-    LOCAL_BENEFIT_DISCOVERY_LIMIT_MAX
+    maxValue
   );
 }
 
@@ -50,6 +57,14 @@ export function normaliseIdentityResolutionLimit(value: unknown) {
     value,
     LOCAL_IDENTITY_RESOLUTION_LIMIT_DEFAULT,
     LOCAL_IDENTITY_RESOLUTION_LIMIT_MAX
+  );
+}
+
+export function normaliseIdentityResolutionAutomationLimit(value: unknown) {
+  return normaliseLocalLimit(
+    value,
+    LOCAL_IDENTITY_RESOLUTION_AUTOMATION_LIMIT_DEFAULT,
+    LOCAL_IDENTITY_RESOLUTION_AUTOMATION_LIMIT_MAX
   );
 }
 

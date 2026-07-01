@@ -1,7 +1,13 @@
 import {
   getLocalCandidateReviewWorkbench,
+  isLocalCandidateReviewAutomationInput,
+  isLocalCandidateReviewSignalApplyInput,
+  isLocalCandidateReviewSignalMiningInput,
   recordLocalCandidateReviewBulkDecision,
-  recordLocalCandidateReviewDecision
+  recordLocalCandidateReviewDecision,
+  runLocalCandidateReviewAutomation,
+  runLocalCandidateReviewSignalApply,
+  runLocalCandidateReviewSignalMining
 } from "@/lib/data/local-ingestion-control";
 import { guardLocalIngestionRequest } from "@/lib/data/local-ingestion-route-guard";
 
@@ -37,6 +43,18 @@ export async function POST(request: Request) {
 
   try {
     const input = await request.json();
+
+    if (isLocalCandidateReviewAutomationInput(input)) {
+      return Response.json(await runLocalCandidateReviewAutomation(input));
+    }
+
+    if (isLocalCandidateReviewSignalMiningInput(input)) {
+      return Response.json(await runLocalCandidateReviewSignalMining(input));
+    }
+
+    if (isLocalCandidateReviewSignalApplyInput(input)) {
+      return Response.json(await runLocalCandidateReviewSignalApply(input));
+    }
 
     if (hasBulkAction(input)) {
       return Response.json(await recordLocalCandidateReviewBulkDecision(input));
