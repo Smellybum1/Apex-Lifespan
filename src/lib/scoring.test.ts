@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { analyzeLabel, compositeScore, getClaimScoreRows, scoreBand } from "@/lib/scoring";
+import {
+  analyzeLabel,
+  compositeScore,
+  FINAL_LABEL_LEGEND,
+  getClaimScoreRows,
+  SCORE_BAND_LEGEND,
+  scoreBand
+} from "@/lib/scoring";
+import { EVIDENCE_LABEL_OPTIONS } from "@/lib/score-fields";
 import { references } from "@/lib/seed-data";
 import type { ScoreSet } from "@/lib/types";
 
@@ -35,6 +43,20 @@ describe("compositeScore", () => {
 
     expect(compositeScore(speculativeScores)).toBe(1.8);
     expect(scoreBand(compositeScore(speculativeScores))).toBe("Weak");
+  });
+});
+
+describe("score legends", () => {
+  it("keeps public score band legend aligned with scoreBand", () => {
+    const sampleScores = [9, 6.5, 4.5, 1.5];
+
+    expect(SCORE_BAND_LEGEND.map((row) => row.band)).toEqual(
+      sampleScores.map((score) => scoreBand(score))
+    );
+  });
+
+  it("documents every selectable final label", () => {
+    expect(FINAL_LABEL_LEGEND.map((row) => row.label)).toEqual(EVIDENCE_LABEL_OPTIONS);
   });
 });
 

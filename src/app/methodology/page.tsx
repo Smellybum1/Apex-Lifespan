@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { FINAL_LABEL_LEGEND, SCORE_BAND_LEGEND } from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -108,52 +109,9 @@ const compositeWeights = [
   ["Measurability", "6%"]
 ] as const;
 
-const scoreBands = [
-  ["8.0-10", "Strong"],
-  ["6.0-7.9", "Moderate"],
-  ["4.0-5.9", "Limited"],
-  ["2.0-3.9", "Weak"],
-  ["0-1.9", "Very weak / concern"]
-] as const;
+const scoreBands = SCORE_BAND_LEGEND.map(({ band, range }) => [range, band] as const);
 
-const finalLabels = [
-  [
-    "Core Evidence-Based",
-    "Strong, direct evidence for the scoped claim, with safety and regulatory caveats still visible."
-  ],
-  [
-    "Useful for Specific Use Case",
-    "Evidence is useful for a narrow endpoint or context, but should not be generalized."
-  ],
-  [
-    "Conditional / Biomarker-Gated",
-    "Best interpreted when baseline status, labs, risk group, or product form matches the evidence."
-  ],
-  [
-    "Reasonable N-of-1 Experiment",
-    "May be reasonable to track personally in low-risk contexts, but remains uncertain and not medical advice."
-  ],
-  [
-    "Speculative Watchlist",
-    "Interesting but early, indirect, mechanistic, or incomplete evidence."
-  ],
-  [
-    "Insufficient Evidence",
-    "Current evidence does not support the claim well enough for a positive label."
-  ],
-  [
-    "Safety Concern",
-    "Safety signals materially affect interpretation and may outweigh potential benefit."
-  ],
-  [
-    "Regulatory Concern",
-    "Regulatory or product-status concerns are central to the card and can override evidence enthusiasm."
-  ],
-  [
-    "Requires Clinician Oversight",
-    "The claim or intervention belongs in clinician-reviewed context rather than ordinary consumer self-use."
-  ]
-] as const;
+const finalLabels = FINAL_LABEL_LEGEND.map(({ label, meaning }) => [label, meaning] as const);
 
 const evidenceHierarchy = [
   "Large RCTs with clinical outcomes",
@@ -169,24 +127,12 @@ const evidenceHierarchy = [
 
 const reviewStatuses = [
   [
-    "Unreviewed extraction",
-    "A structured extraction or source lead exists, but it has not been checked by a human reviewer."
-  ],
-  [
-    "Citation checked",
-    "The citation, source identity, and basic relevance have been checked, but the claim may still need deeper review."
+    "Unreviewed AI draft",
+    "A local draft or structured extraction exists, but a human has not checked the source packet against the scoped claim."
   ],
   [
     "Human reviewed",
     "A human reviewer checked the source packet against the scoped claim. This does not mean clinical guideline endorsed."
-  ],
-  [
-    "Needs update",
-    "New evidence, safety information, product context, or regulatory status may require re-review."
-  ],
-  [
-    "Retired / superseded",
-    "The card or source packet has been replaced, withdrawn, or is no longer the best representation of the evidence."
   ]
 ] as const;
 
@@ -289,8 +235,9 @@ export default function MethodologyPage() {
               <h3 className="text-base font-semibold text-ink">Scoring readiness states</h3>
               <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-amber-950">
                 <li>Ready to score: complete source packet, but no final score yet.</li>
-                <li>Source-blocked: linked sources still need extraction, repair, or curation.</li>
+                <li>Source work: linked sources still need extraction, repair, or curation.</li>
                 <li>Default-looking score: a starter-like public score needs scoring review.</li>
+                <li>Snapshot gap: a stored score needs an audit snapshot before future changes are traceable.</li>
                 <li>Scored: a final public score is visible, still subject to future updates.</li>
               </ul>
             </div>

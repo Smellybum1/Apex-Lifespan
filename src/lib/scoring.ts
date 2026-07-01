@@ -1,5 +1,67 @@
 import type { Claim, EvidenceLabel, SafetyAlert, ScoreSet } from "@/lib/types";
 
+export const SCORE_BAND_LEGEND: Array<{
+  band: ReturnType<typeof scoreBand>;
+  range: string;
+}> = [
+  { band: "Strong", range: "8.0-10" },
+  { band: "Moderate", range: "6.0-7.9" },
+  { band: "Limited", range: "4.0-5.9" },
+  { band: "Weak", range: "0-3.9" }
+];
+
+export const FINAL_LABEL_LEGEND: Array<{
+  label: EvidenceLabel;
+  meaning: string;
+}> = [
+  {
+    label: "Core Evidence-Based",
+    meaning:
+      "Strong, direct evidence for the scoped claim, with safety and regulatory caveats still visible."
+  },
+  {
+    label: "Conditional / Biomarker-Gated",
+    meaning:
+      "Best interpreted when baseline status, labs, risk group, or product form matches the evidence."
+  },
+  {
+    label: "Useful for Specific Use Case",
+    meaning: "Evidence is useful for a narrow endpoint or context, but should not be generalized."
+  },
+  {
+    label: "Reasonable N-of-1 Experiment",
+    meaning:
+      "May be reasonable to track personally in low-risk contexts, but remains uncertain and not medical advice."
+  },
+  {
+    label: "Speculative Watchlist",
+    meaning: "Interesting but early, indirect, mechanistic, or incomplete evidence."
+  },
+  {
+    label: "Safety Concern",
+    meaning: "Safety signals materially affect interpretation and may outweigh potential benefit."
+  },
+  {
+    label: "Avoid / Not Recommended",
+    meaning:
+      "Captured safety, regulatory, mismatch, or evidence concerns argue against presenting the claim as useful."
+  },
+  {
+    label: "Requires Clinician Oversight",
+    meaning:
+      "The claim or intervention belongs in clinician-reviewed context rather than ordinary consumer self-use."
+  },
+  {
+    label: "Regulatory Concern",
+    meaning:
+      "Regulatory or product-status concerns are central to the card and can override evidence enthusiasm."
+  },
+  {
+    label: "Insufficient Evidence",
+    meaning: "Current evidence does not support the claim well enough for a positive label."
+  }
+];
+
 export function compositeScore(scores: ScoreSet) {
   const weighted =
     scores.evidenceDirectness * 0.22 +
@@ -62,19 +124,7 @@ export function getClaimScoreRows(claim: Claim) {
 }
 
 export function scoreBand(score: number) {
-  if (score >= 8) {
-    return "Strong";
-  }
-
-  if (score >= 6) {
-    return "Moderate";
-  }
-
-  if (score >= 4) {
-    return "Limited";
-  }
-
-  return "Weak";
+  return score >= 8 ? "Strong" : score >= 6 ? "Moderate" : score >= 4 ? "Limited" : "Weak";
 }
 
 export interface LabelFinding {
