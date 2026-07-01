@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  COMPOSITE_SCORE_WEIGHTS,
+  SCORE_COMPONENT_GUIDE,
   analyzeLabel,
   compositeScore,
   FINAL_LABEL_LEGEND,
@@ -57,6 +59,20 @@ describe("score legends", () => {
 
   it("documents every selectable final label", () => {
     expect(FINAL_LABEL_LEGEND.map((row) => row.label)).toEqual(EVIDENCE_LABEL_OPTIONS);
+  });
+
+  it("exposes the operator scoring contract used by the formula", () => {
+    expect(COMPOSITE_SCORE_WEIGHTS.map((row) => [row.label, row.displayWeight])).toEqual([
+      ["Directness", "22%"],
+      ["Rigor", "22%"],
+      ["Impact", "18%"],
+      ["Safety", "14%"],
+      ["Low regulatory risk", "10%"],
+      ["Low hype risk", "8%"],
+      ["Measurability", "6%"]
+    ]);
+    expect(COMPOSITE_SCORE_WEIGHTS.reduce((total, row) => total + row.weight, 0)).toBe(1);
+    expect(SCORE_COMPONENT_GUIDE.map((row) => row.name)).toContain("Product caveat context");
   });
 });
 

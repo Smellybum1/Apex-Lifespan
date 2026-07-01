@@ -1,5 +1,121 @@
 import type { Claim, EvidenceLabel, SafetyAlert, ScoreSet } from "@/lib/types";
 
+export const SCORE_COMPONENT_GUIDE = [
+  {
+    definition: "How closely the evidence matches the exact claim being scored.",
+    increases: "Same intervention, dose/form, population, outcome, comparator, and timeframe.",
+    lowers:
+      "Indirect endpoints, different forms, animal-only evidence, broad extrapolation, or a mismatched population.",
+    name: "Directness"
+  },
+  {
+    definition: "The strength and reliability of the study design and extraction quality.",
+    increases:
+      "Large randomized trials, consistent systematic reviews, clear comparators, and low bias concerns.",
+    lowers:
+      "Small uncontrolled studies, weak comparators, unclear methods, selective reporting, or poor extraction detail.",
+    name: "Rigor"
+  },
+  {
+    definition: "The practical size and importance of the observed or plausible effect.",
+    increases: "Clinically meaningful outcomes, replicated effects, and endpoints users can understand.",
+    lowers:
+      "Tiny effects, surrogate-only changes, unclear clinical meaning, or outcomes far from the claim.",
+    name: "Impact"
+  },
+  {
+    definition: "Captured adverse-event, interaction, population-risk, and safety-signal context.",
+    increases:
+      "Benign safety profile in the relevant population, clear tolerability data, and low interaction concern.",
+    lowers:
+      "Known adverse-event signals, drug interactions, high-risk populations, uncertainty, or narrow safety margins.",
+    name: "Safety"
+  },
+  {
+    definition: "Whether the claim can be checked with clear endpoints, biomarkers, or trial outcomes.",
+    increases: "Objective biomarkers, functional measures, registry outcomes, or validated clinical endpoints.",
+    lowers: "Vague wellness wording, subjective claims without measures, or hard-to-observe promises.",
+    name: "Measurability"
+  },
+  {
+    definition: "How much the claim avoids promotional overreach or unsupported lifespan extrapolation.",
+    increases:
+      "Scoped wording, clear caveats, and separation between evidence-backed claims and speculation.",
+    lowers: "Anti-aging hype, cure-all language, influencer claims, or claims broader than the cited evidence.",
+    name: "Low hype risk"
+  },
+  {
+    definition:
+      "How little product, supply, legal, and regulator-context concern is attached to the claim or intervention.",
+    increases:
+      "Clear product-level regulatory evidence, low supply concern, and no captured warning signals.",
+    lowers:
+      "Unapproved therapeutic status, peptide/watchlist context, major safety warnings, or unresolved product status.",
+    name: "Low regulatory risk"
+  },
+  {
+    definition: "Product-level quality and authorization context captured separately from intervention evidence.",
+    increases:
+      "Exact product label, verified AUST/ARTG or absence evidence, sponsor, third-party quality signals, and source URL.",
+    lowers:
+      "Unknown product status, missing AUST/ARTG evidence, proprietary blends, unverifiable labels, or supply-context uncertainty.",
+    name: "Product caveat context"
+  }
+] as const;
+
+export const COMPOSITE_SCORE_WEIGHTS = [
+  {
+    displayWeight: "22%",
+    key: "evidenceDirectness",
+    label: "Directness",
+    weight: 0.22
+  },
+  {
+    displayWeight: "22%",
+    key: "evidenceRigor",
+    label: "Rigor",
+    weight: 0.22
+  },
+  {
+    displayWeight: "18%",
+    key: "effectSize",
+    label: "Impact",
+    weight: 0.18
+  },
+  {
+    displayWeight: "14%",
+    key: "safety",
+    label: "Safety",
+    weight: 0.14
+  },
+  {
+    displayWeight: "10%",
+    invert: true,
+    key: "regulatoryRisk",
+    label: "Low regulatory risk",
+    weight: 0.1
+  },
+  {
+    displayWeight: "8%",
+    invert: true,
+    key: "hypePenalty",
+    label: "Low hype risk",
+    weight: 0.08
+  },
+  {
+    displayWeight: "6%",
+    key: "measurability",
+    label: "Measurability",
+    weight: 0.06
+  }
+] as const satisfies ReadonlyArray<{
+  displayWeight: string;
+  invert?: boolean;
+  key: keyof ScoreSet;
+  label: string;
+  weight: number;
+}>;
+
 export const SCORE_BAND_LEGEND: Array<{
   band: ReturnType<typeof scoreBand>;
   range: string;
@@ -63,14 +179,14 @@ export const FINAL_LABEL_LEGEND: Array<{
 ];
 
 export function compositeScore(scores: ScoreSet) {
-  const weighted =
-    scores.evidenceDirectness * 0.22 +
-    scores.evidenceRigor * 0.22 +
-    scores.effectSize * 0.18 +
-    scores.safety * 0.14 +
-    (10 - scores.regulatoryRisk) * 0.1 +
-    (10 - scores.hypePenalty) * 0.08 +
-    scores.measurability * 0.06;
+  const weighted = COMPOSITE_SCORE_WEIGHTS.reduce((total, component) => {
+    const value =
+      "invert" in component && component.invert
+        ? 10 - scores[component.key]
+        : scores[component.key];
+
+    return total + value * component.weight;
+  }, 0);
 
   return Math.round(weighted * 10) / 10;
 }

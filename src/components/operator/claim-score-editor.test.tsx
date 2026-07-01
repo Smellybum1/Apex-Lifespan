@@ -40,6 +40,13 @@ describe("OperatorClaimScoreEditor", () => {
 
     expect(html).toContain("Score field editor");
     expect(html).toContain("Batch review summary");
+    expect(html).toContain("Score contract");
+    expect(html).toContain("Formula weights");
+    expect(html).toContain("Directness");
+    expect(html).toContain("22%");
+    expect(html).toContain("Product caveat context");
+    expect(html).toContain("Label override reminder");
+    expect(html).toContain("Final labels");
     expect(html).toContain("Direct score rows");
     expect(html).toContain("Source-blocked");
     expect(html).toContain("Guardrail labels");

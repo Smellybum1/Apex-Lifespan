@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { FINAL_LABEL_LEGEND, SCORE_BAND_LEGEND } from "@/lib/scoring";
+import {
+  COMPOSITE_SCORE_WEIGHTS,
+  FINAL_LABEL_LEGEND,
+  SCORE_BAND_LEGEND,
+  SCORE_COMPONENT_GUIDE
+} from "@/lib/scoring";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -24,90 +29,11 @@ const anchorLinks = [
   ["Limitations", "limitations"]
 ] as const;
 
-const scoreComponents = [
-  {
-    definition:
-      "How closely the evidence matches the exact claim being scored.",
-    increases:
-      "Same intervention, dose/form, population, outcome, comparator, and timeframe.",
-    lowers:
-      "Indirect endpoints, different forms, animal-only evidence, broad extrapolation, or a mismatched population.",
-    name: "Directness"
-  },
-  {
-    definition:
-      "The strength and reliability of the study design and extraction quality.",
-    increases:
-      "Large randomized trials, consistent systematic reviews, clear comparators, and low bias concerns.",
-    lowers:
-      "Small uncontrolled studies, weak comparators, unclear methods, selective reporting, or poor extraction detail.",
-    name: "Rigor"
-  },
-  {
-    definition:
-      "The practical size and importance of the observed or plausible effect.",
-    increases:
-      "Clinically meaningful outcomes, replicated effects, and endpoints users can understand.",
-    lowers:
-      "Tiny effects, surrogate-only changes, unclear clinical meaning, or outcomes far from the claim.",
-    name: "Impact"
-  },
-  {
-    definition:
-      "Captured adverse-event, interaction, population-risk, and safety-signal context.",
-    increases:
-      "Benign safety profile in the relevant population, clear tolerability data, and low interaction concern.",
-    lowers:
-      "Known adverse-event signals, drug interactions, high-risk populations, uncertainty, or narrow safety margins.",
-    name: "Safety"
-  },
-  {
-    definition:
-      "Whether the claim can be checked with clear endpoints, biomarkers, or trial outcomes.",
-    increases:
-      "Objective biomarkers, functional measures, registry outcomes, or validated clinical endpoints.",
-    lowers:
-      "Vague wellness wording, subjective claims without measures, or hard-to-observe promises.",
-    name: "Measurability"
-  },
-  {
-    definition:
-      "How much the claim avoids promotional overreach or unsupported lifespan extrapolation.",
-    increases:
-      "Scoped wording, clear caveats, and separation between evidence-backed claims and speculation.",
-    lowers:
-      "Anti-aging hype, cure-all language, influencer claims, or claims broader than the cited evidence.",
-    name: "Low hype risk"
-  },
-  {
-    definition:
-      "How little product, supply, legal, and regulator-context concern is attached to the claim or intervention.",
-    increases:
-      "Clear product-level regulatory evidence, low supply concern, and no captured warning signals.",
-    lowers:
-      "Unapproved therapeutic status, peptide/watchlist context, major safety warnings, or unresolved product status.",
-    name: "Low regulatory risk"
-  },
-  {
-    definition:
-      "Product-level quality and authorization context captured separately from intervention evidence.",
-    increases:
-      "Exact product label, verified AUST/ARTG or absence evidence, sponsor, third-party quality signals, and source URL.",
-    lowers:
-      "Unknown product status, missing AUST/ARTG evidence, proprietary blends, unverifiable labels, or supply-context uncertainty.",
-    name: "Product caveat context"
-  }
-];
+const scoreComponents = SCORE_COMPONENT_GUIDE;
 
-const compositeWeights = [
-  ["Directness", "22%"],
-  ["Rigor", "22%"],
-  ["Impact", "18%"],
-  ["Safety", "14%"],
-  ["Low regulatory risk", "10%"],
-  ["Low hype risk", "8%"],
-  ["Measurability", "6%"]
-] as const;
+const compositeWeights = COMPOSITE_SCORE_WEIGHTS.map(
+  ({ displayWeight, label }) => [label, displayWeight] as const
+);
 
 const scoreBands = SCORE_BAND_LEGEND.map(({ band, range }) => [range, band] as const);
 

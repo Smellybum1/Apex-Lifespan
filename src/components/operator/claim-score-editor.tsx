@@ -13,7 +13,14 @@ import {
 } from "@/lib/score-batch-summary";
 import { buildClaimScoreSuggestion } from "@/lib/score-suggestions";
 import { buildScoreReviewChecklist } from "@/lib/score-update-draft";
-import { compositeScore, scoreBand } from "@/lib/scoring";
+import {
+  COMPOSITE_SCORE_WEIGHTS,
+  FINAL_LABEL_LEGEND,
+  SCORE_BAND_LEGEND,
+  SCORE_COMPONENT_GUIDE,
+  compositeScore,
+  scoreBand
+} from "@/lib/scoring";
 import type { ScoreReadinessState } from "@/lib/score-readiness";
 import type {
   Claim,
@@ -90,6 +97,7 @@ export function OperatorClaimScoreEditor({
         </p>
       </div>
       <ScoreEditorBatchSummary summary={batchSummary} />
+      <ScoreContractPanel />
       {claims.map((claim) => (
         <EditableClaimScoreCard
           applyEnabled={applyEnabled}
@@ -102,6 +110,100 @@ export function OperatorClaimScoreEditor({
           worklistContext={worklistContext[claim.id]}
         />
       ))}
+    </div>
+  );
+}
+
+function ScoreContractPanel() {
+  return (
+    <details className="rounded-md border border-slate-200 bg-white">
+      <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-slate-800">
+        Score contract
+      </summary>
+      <div className="grid gap-3 border-t border-slate-100 p-3 text-sm lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div>
+          <h4 className="font-semibold text-slate-950">Component meanings</h4>
+          <div className="mt-2 grid gap-2 md:grid-cols-2">
+            {SCORE_COMPONENT_GUIDE.map((component) => (
+              <div
+                className="rounded-md border border-slate-100 bg-slate-50 p-2"
+                key={component.name}
+              >
+                <p className="font-semibold text-slate-800">{component.name}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-600">{component.definition}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <aside className="grid gap-3">
+          <ScoreContractTable
+            columns={["Formula weight", "Value"]}
+            rows={COMPOSITE_SCORE_WEIGHTS.map(({ displayWeight, label }) => [
+              label,
+              displayWeight
+            ] as const)}
+            title="Formula weights"
+          />
+          <ScoreContractTable
+            columns={["Range", "Band"]}
+            rows={SCORE_BAND_LEGEND.map(({ band, range }) => [range, band] as const)}
+            title="Score bands"
+          />
+          <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs leading-5 text-amber-950">
+            <p className="font-semibold">Label override reminder</p>
+            <p className="mt-1">
+              Safety, regulatory, clinician-oversight, and avoid labels can override numeric
+              enthusiasm. Keep AU/TGA and product-level status separate from generic intervention
+              evidence.
+            </p>
+          </div>
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs leading-5 text-slate-700">
+            <p className="font-semibold text-slate-950">Final labels</p>
+            <ul className="mt-1 space-y-1">
+              {FINAL_LABEL_LEGEND.map(({ label, meaning }) => (
+                <li key={label}>
+                  <span className="font-semibold">{label}:</span> {meaning}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </aside>
+      </div>
+    </details>
+  );
+}
+
+function ScoreContractTable({
+  columns,
+  rows,
+  title
+}: {
+  columns: [string, string];
+  rows: Array<readonly [string, string]>;
+  title: string;
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
+      <h4 className="font-semibold text-slate-950">{title}</h4>
+      <table className="mt-2 w-full text-left text-xs">
+        <thead className="text-slate-500">
+          <tr>
+            {columns.map((column) => (
+              <th className="py-1 pr-2 font-semibold" key={column}>
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-200 text-slate-700">
+          {rows.map(([label, value]) => (
+            <tr key={`${label}-${value}`}>
+              <td className="py-1 pr-2 font-semibold">{label}</td>
+              <td className="py-1">{value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
