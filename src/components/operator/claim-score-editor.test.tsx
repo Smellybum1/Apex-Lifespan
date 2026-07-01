@@ -44,6 +44,10 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).toContain("Preview:");
     expect(html).toContain("7.4 / 10, Moderate band");
     expect(html).toContain("Draft differs from saved score");
+    expect(html).toContain("Draft changes");
+    expect(html).toContain("Directness: 9 -&gt; 8");
+    expect(html).toContain("Effect size: 8 -&gt; 6");
+    expect(html).toContain("Regulatory risk: 2 -&gt; 4");
     expect(html).toContain("Suggested scoring");
     expect(html).toContain("Use suggestion");
     expect(html).toContain("Use current");
@@ -103,6 +107,7 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).toContain("No extracted study rows are visible");
     expect(html).not.toContain("Apply score update");
     expect(html).not.toContain("Draft differs from saved score");
+    expect(html).not.toContain("Draft changes");
     expect(html).toContain("disabled");
   });
 });

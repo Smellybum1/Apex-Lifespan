@@ -138,6 +138,7 @@ function EditableClaimScoreCard({
   const changed =
     finalLabel !== claim.finalLabel ||
     CLAIM_SCORE_FIELD_DEFINITIONS.some(({ key }) => scores[key] !== claim.scores[key]);
+  const scoreFieldChanges = scoreDraftFieldChanges(claim.scores, scores);
   const scoreUpdateAllowed = canUpdateScoreFromContext(worklistContext);
 
   return (
@@ -160,6 +161,26 @@ function EditableClaimScoreCard({
               </span>
             ) : null}
           </div>
+          {changed ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              <h4 className="font-semibold">Draft changes</h4>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {scoreFieldChanges.map((change) => (
+                  <span
+                    className="rounded-md border border-amber-200 bg-white px-2 py-1 text-xs font-semibold"
+                    key={change.key}
+                  >
+                    {change.label}: {change.saved} -&gt; {change.draft}
+                  </span>
+                ))}
+                {finalLabel !== claim.finalLabel ? (
+                  <span className="rounded-md border border-amber-200 bg-white px-2 py-1 text-xs font-semibold">
+                    Label: {claim.finalLabel} -&gt; {finalLabel}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -312,6 +333,21 @@ function canUpdateScoreFromContext(context: ClaimScoreWorklistContext | undefine
 
 function shouldStartFromSuggestion(context: ClaimScoreWorklistContext | undefined) {
   return context?.state === "default_score_review" || context?.state === "ready_to_score";
+}
+
+function scoreDraftFieldChanges(savedScores: ScoreSet, draftScores: ScoreSet) {
+  return CLAIM_SCORE_FIELD_DEFINITIONS.flatMap(({ key, label }) =>
+    savedScores[key] === draftScores[key]
+      ? []
+      : [
+          {
+            draft: draftScores[key],
+            key,
+            label,
+            saved: savedScores[key]
+          }
+        ]
+  );
 }
 
 function WorklistContextSummary({ context }: { context: ClaimScoreWorklistContext }) {
