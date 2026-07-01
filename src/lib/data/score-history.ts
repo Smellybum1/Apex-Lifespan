@@ -161,7 +161,14 @@ export async function captureClaimScoreSnapshot(
 
   if (
     latest &&
-    (Number(latest.compositeScore) !== composite || latest.finalLabel !== claim.finalLabel)
+    !snapshotsEquivalent(
+      { ...scores, compositeScore: composite, finalLabel },
+      {
+        ...scoreSetFromClaimFields(latest),
+        compositeScore: Number(latest.compositeScore),
+        finalLabel: evidenceLabelFromDb[latest.finalLabel]
+      }
+    )
   ) {
     const history = await prisma.claimScoreHistory.create({
       data: {

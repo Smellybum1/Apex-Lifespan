@@ -11,7 +11,8 @@ import { Decimal } from "@prisma/client/runtime/library";
 const prismaMocks = vi.hoisted(() => ({
   claim: {
     findUnique: vi.fn(),
-    findMany: vi.fn()
+    findMany: vi.fn(),
+    update: vi.fn()
   },
   claimScoreHistory: {
     create: vi.fn(),
@@ -50,6 +51,7 @@ vi.mock("@/lib/db/prisma", () => ({
 }));
 
 import { captureClaimScoreSnapshot } from "@/lib/data/score-history";
+import { applyUpdateClaimScore } from "@/lib/data/score-update";
 import { runSprint2Backfill } from "@/lib/data/sprint2-backfill";
 import { syncSourcePacketForClaim } from "@/lib/data/source-packets";
 
@@ -104,6 +106,95 @@ describe("sprint2 normalized evidence writes", () => {
     expect(result.created).toBe(true);
     expect(result.snapshotId).toBe("snapshot-1");
     expect(result.historyId).toBe("history-1");
+  });
+
+  it("updates claim score fields and snapshots without changing review status", async () => {
+    prismaMocks.claim.findUnique.mockResolvedValue({
+      effectSizeScore: 2,
+      evidenceDirectnessScore: 3,
+      evidenceRigorScore: 3,
+      finalLabel: EvidenceLabel.INSUFFICIENT_EVIDENCE,
+      hypePenalty: 6,
+      id: "creatine-strength",
+      measurabilityScore: 4,
+      productQualityScore: 3,
+      regulatoryRiskScore: 5,
+      reviewStatus: ReviewStatus.UNREVIEWED_AI_DRAFT,
+      safetyScore: 6
+    });
+    prismaMocks.claimScoreSnapshot.findFirst.mockResolvedValue(null);
+    prismaMocks.claim.update.mockResolvedValue({
+      effectSizeScore: 7,
+      evidenceDirectnessScore: 8,
+      evidenceRigorScore: 7,
+      finalLabel: EvidenceLabel.USEFUL_FOR_SPECIFIC_USE_CASE,
+      hypePenalty: 2,
+      id: "creatine-strength",
+      measurabilityScore: 6,
+      productQualityScore: 6,
+      regulatoryRiskScore: 3,
+      reviewStatus: ReviewStatus.UNREVIEWED_AI_DRAFT,
+      safetyScore: 8
+    });
+    prismaMocks.claimScoreSnapshot.create.mockResolvedValue({
+      claimId: "creatine-strength",
+      compositeScore: new Decimal(6.9),
+      computedAt: new Date("2026-06-13T00:00:00.000Z"),
+      effectSizeScore: 7,
+      evidenceDirectnessScore: 8,
+      evidenceRigorScore: 7,
+      finalLabel: EvidenceLabel.USEFUL_FOR_SPECIFIC_USE_CASE,
+      hypePenalty: 2,
+      id: "snapshot-1",
+      measurabilityScore: 6,
+      productQualityScore: 6,
+      rationale: "Reviewed source packet.",
+      regulatoryRiskScore: 3,
+      reviewStatus: ReviewStatus.UNREVIEWED_AI_DRAFT,
+      safetyScore: 8,
+      scoreVersion: "v1"
+    });
+    prismaMocks.claimScoreHistory.create.mockResolvedValue({ id: "history-1" });
+
+    const result = await applyUpdateClaimScore({
+      changedByUserId: "operator-1",
+      claimId: "creatine-strength",
+      finalLabel: "Useful for Specific Use Case",
+      rationale: "Reviewed source packet.",
+      scores: {
+        effectSize: 7,
+        evidenceDirectness: 8,
+        evidenceRigor: 7,
+        hypePenalty: 2,
+        measurability: 6,
+        productQuality: 6,
+        regulatoryRisk: 3,
+        safety: 8
+      }
+    });
+
+    expect(result.updatedClaim).toBe(true);
+    expect(result.result).toMatchObject({
+      created: true,
+      historyId: "history-1",
+      snapshotId: "snapshot-1"
+    });
+    expect(prismaMocks.claim.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({
+          lastReviewedAt: expect.anything(),
+          reviewStatus: expect.anything()
+        }),
+        where: { id: "creatine-strength" }
+      })
+    );
+    expect(prismaMocks.claimScoreSnapshot.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          reviewStatus: ReviewStatus.UNREVIEWED_AI_DRAFT
+        })
+      })
+    );
   });
 
   it("syncs a current source packet from linked references and studies", async () => {

@@ -22,6 +22,7 @@ vi.mock("@/lib/operator/browser-write-actions", () => ({
   importOnboardingDraftFromBrowserForm: vi.fn(),
   linkCandidateClaimFromBrowserForm: vi.fn(),
   promoteCandidateFromBrowserForm: vi.fn(),
+  updateClaimScoreFromBrowserForm: vi.fn(),
   reviewCandidateFromBrowserForm: vi.fn(),
   saveOnboardingDraftFromBrowserForm: vi.fn()
 }));
@@ -257,6 +258,8 @@ describe("OperatorPage role-gated rendering", () => {
     expect(html).toContain("Promotion readiness");
     expect(html).toContain("Dry run:");
     expect(html).toContain("Permission: evidence:promote");
+    expect(html).toContain("Score field editor");
+    expect(html).toContain("it does not mark the claim as human reviewed");
     expect(html).toContain("Complete claim link before promotion.");
     expect(html).toContain("Audit trail");
     expect(html).not.toMatch(/>Promote<\/button>/);

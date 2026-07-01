@@ -11,13 +11,15 @@ import {
   importSupplementOnboardingDraftAsOperator,
   saveSupplementOnboardingDraftAsOperator
 } from "@/lib/operator/supplement-onboarding-drafts";
+import { updateClaimScoreAsOperator } from "@/lib/operator/claim-score-update";
 import {
   extractCandidateStudyFromBrowserForm,
   importOnboardingDraftFromBrowserForm,
   linkCandidateClaimFromBrowserForm,
   promoteCandidateFromBrowserForm,
   reviewCandidateFromBrowserForm,
-  saveOnboardingDraftFromBrowserForm
+  saveOnboardingDraftFromBrowserForm,
+  updateClaimScoreFromBrowserForm
 } from "@/lib/operator/browser-write-actions";
 import type { OperatorBrowserWriteControlEnv } from "@/lib/operator/browser-write-controls";
 import type { OperatorPrincipal } from "@/lib/operator/authorization";
@@ -34,12 +36,17 @@ vi.mock("@/lib/operator/supplement-onboarding-drafts", () => ({
   saveSupplementOnboardingDraftAsOperator: vi.fn()
 }));
 
+vi.mock("@/lib/operator/claim-score-update", () => ({
+  updateClaimScoreAsOperator: vi.fn()
+}));
+
 const reviewMock = vi.mocked(reviewSourceCandidateAsOperator);
 const linkMock = vi.mocked(linkSourceCandidateClaimAsOperator);
 const extractMock = vi.mocked(extractSourceCandidateStudyAsOperator);
 const promoteMock = vi.mocked(promoteSourceCandidatePublicEvidenceAsOperator);
 const importDraftMock = vi.mocked(importSupplementOnboardingDraftAsOperator);
 const saveDraftMock = vi.mocked(saveSupplementOnboardingDraftAsOperator);
+const updateScoreMock = vi.mocked(updateClaimScoreAsOperator);
 
 const admin: OperatorPrincipal = {
   email: "admin@example.test",
@@ -70,6 +77,7 @@ describe("operator browser write action parsers", () => {
     promoteMock.mockResolvedValue({ ok: true } as never);
     importDraftMock.mockResolvedValue({ ok: true } as never);
     saveDraftMock.mockResolvedValue({ ok: true } as never);
+    updateScoreMock.mockResolvedValue({ ok: true } as never);
   });
 
   it("fails closed before calling write wrappers when browser controls are not approved", async () => {
@@ -183,6 +191,68 @@ describe("operator browser write action parsers", () => {
         dedupeKey: "candidate-1",
         promotionNote: "Human reviewed the ready source packet."
       },
+      approvedEnv
+    );
+  });
+
+  it("parses claim score update forms with dry-run and apply gates", async () => {
+    const dryRun = new FormData();
+    dryRun.set("claimId", "creatine-strength");
+    dryRun.set("effectSize", "7");
+    dryRun.set("evidenceDirectness", "8");
+    dryRun.set("evidenceRigor", "7");
+    dryRun.set("finalLabel", "Useful for Specific Use Case");
+    dryRun.set("hypePenalty", "2");
+    dryRun.set("measurability", "6");
+    dryRun.set("mode", "dry-run");
+    dryRun.set("productQuality", "6");
+    dryRun.set("rationale", "Preview source packet scoring.");
+    dryRun.set("regulatoryRisk", "3");
+    dryRun.set("safety", "8");
+
+    await updateClaimScoreFromBrowserForm(admin, dryRun, {});
+
+    expect(updateScoreMock).toHaveBeenCalledWith(
+      admin,
+      {
+        claimId: "creatine-strength",
+        dryRun: true,
+        finalLabel: "Useful for Specific Use Case",
+        rationale: "Preview source packet scoring.",
+        scores: {
+          effectSize: 7,
+          evidenceDirectness: 8,
+          evidenceRigor: 7,
+          hypePenalty: 2,
+          measurability: 6,
+          productQuality: 6,
+          regulatoryRisk: 3,
+          safety: 8
+        }
+      },
+      {}
+    );
+
+    const apply = new FormData();
+    for (const [key, value] of dryRun.entries()) {
+      if (typeof value === "string") {
+        apply.set(key, value);
+      }
+    }
+    apply.set("mode", "apply");
+    apply.set("rationale", "Apply reviewed source packet scoring.");
+
+    await expect(updateClaimScoreFromBrowserForm(admin, apply, {})).rejects.toThrow(
+      "Operator browser write control is not enabled"
+    );
+    await updateClaimScoreFromBrowserForm(admin, apply, approvedEnv);
+
+    expect(updateScoreMock).toHaveBeenLastCalledWith(
+      admin,
+      expect.objectContaining({
+        dryRun: false,
+        rationale: "Apply reviewed source packet scoring."
+      }),
       approvedEnv
     );
   });

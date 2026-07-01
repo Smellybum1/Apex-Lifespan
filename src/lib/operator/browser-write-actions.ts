@@ -1,5 +1,9 @@
 import type { OperatorPrincipal } from "@/lib/operator/authorization";
 import {
+  CLAIM_SCORE_FIELD_DEFINITIONS,
+  EVIDENCE_LABEL_OPTIONS
+} from "@/lib/data/score-update";
+import {
   getOperatorBrowserWriteControlState,
   type OperatorBrowserWriteControlEnv
 } from "@/lib/operator/browser-write-controls";
@@ -10,6 +14,7 @@ import {
   reviewSourceCandidateAsOperator
 } from "@/lib/operator/source-candidate-actions";
 import { recomputeClaimScoreAsOperator } from "@/lib/operator/claim-score-recompute";
+import { updateClaimScoreAsOperator } from "@/lib/operator/claim-score-update";
 import {
   importSupplementOnboardingDraftAsOperator,
   saveSupplementOnboardingDraftAsOperator
@@ -22,6 +27,7 @@ import {
   type SupplementOnboardingProductInput
 } from "@/lib/supplement-onboarding";
 import type { InterventionCategory, OutcomeArea } from "@/lib/types";
+import type { EvidenceLabel, ScoreSet } from "@/lib/types";
 
 export async function reviewCandidateFromBrowserForm(
   principal: OperatorPrincipal,
@@ -150,6 +156,30 @@ export async function recomputeClaimScoreFromBrowserForm(
   );
 }
 
+export async function updateClaimScoreFromBrowserForm(
+  principal: OperatorPrincipal,
+  formData: FormData,
+  env?: OperatorBrowserWriteControlEnv
+) {
+  const mode = requiredFormString(formData, "mode");
+
+  if (mode !== "dry-run") {
+    requireBrowserControl(principal, "public-promotion", env);
+  }
+
+  return updateClaimScoreAsOperator(
+    principal,
+    {
+      claimId: requiredFormString(formData, "claimId"),
+      dryRun: mode === "dry-run",
+      finalLabel: evidenceLabel(requiredFormString(formData, "finalLabel")),
+      rationale: requiredFormString(formData, "rationale"),
+      scores: scoreSetFromFormData(formData)
+    },
+    env
+  );
+}
+
 export async function saveOnboardingDraftFromBrowserForm(
   principal: OperatorPrincipal,
   formData: FormData,
@@ -253,6 +283,37 @@ function optionalFormNumber(formData: FormData, key: string) {
   }
 
   return parsed;
+}
+
+function requiredFormInteger(formData: FormData, key: string) {
+  const value = optionalFormNumber(formData, key);
+
+  if (value === undefined) {
+    throw new Error(`${key} is required.`);
+  }
+
+  if (!Number.isInteger(value)) {
+    throw new Error(`${key} must be an integer.`);
+  }
+
+  return value;
+}
+
+function scoreSetFromFormData(formData: FormData): ScoreSet {
+  return CLAIM_SCORE_FIELD_DEFINITIONS.reduce((scores, { key }) => {
+    return {
+      ...scores,
+      [key]: requiredFormInteger(formData, key)
+    };
+  }, {} as ScoreSet);
+}
+
+function evidenceLabel(value: string): EvidenceLabel {
+  if (EVIDENCE_LABEL_OPTIONS.includes(value as EvidenceLabel)) {
+    return value as EvidenceLabel;
+  }
+
+  throw new Error("finalLabel is not supported.");
 }
 
 function splitLinesOrCommas(value: string | undefined) {
