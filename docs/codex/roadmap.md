@@ -82,53 +82,60 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 - `456` claim cells are source-blocked; remaining scoring work is source extraction/link repair before score assignment.
 - `0` default-looking public scores and `0` score snapshot gaps are currently reported by the local score worklist.
 
-**Scoring goal:** every active local claim ends in one clear public-safe state: scored with a traceable source packet and review status, parked/backlog with a reason, source-blocked with next action, or rejected/noise.
+**Scoring finish line:** every active local claim is either scored from a traceable source packet, parked/backlog with a reason, source-blocked with a concrete next action, or rejected/noise. Completion is proven locally by the score worklist and catalog-quality checks accounting for all claims, plus public-page spot checks showing no placeholder-looking scores as final evidence.
 
-**Completion map:**
+**Scoring execution plan:**
 
 1. **Keep public scores honest while work is incomplete.**
    - Evidence-map cells and intervention pages must distinguish scored evidence from insufficient evidence, review work, parked research, and source-blocked claims.
    - Placeholder-looking public values such as repeated `2.1` and `3.1` must either gain real scored rationale or be shown as review/source-work states.
    - Low-confidence but real evidence can stay visible as weak or limited evidence; unsupported/noise rows should not masquerade as low-confidence scores.
+   - Done when public pages never present review-only or source-blocked values as finished scores.
 
-2. **Lock the scoring contract.**
-   - Confirm dimensions, composite formula, evidence bands, final labels, safety/regulatory penalties, and public wording.
+2. **Lock the scoring contract before broad scoring.**
+   - Confirm the score dimensions: Directness, Rigor, Impact, Safety, Measurability, Low regulatory risk, Low hype risk, and product caveat context.
+   - Confirm composite weights, evidence bands, final labels, review statuses, score snapshots, and public wording in methodology copy.
    - Keep every score scoped to a specific claim and source packet, not a supplement-wide recommendation.
-   - Treat safety, regulatory/product status, and overclaim risk as first-class constraints.
-   - Preserve AU/TGA and product-level caveats without turning generic intervention evidence into product approval.
+   - Treat safety, regulatory/product status, overclaim risk, uncertainty, and AU/TGA/product-level caveats as first-class constraints.
+   - Done when a score cannot be saved without dimension values, final label, rationale, linked citations, review status, and snapshot/audit trace.
 
-3. **Make the scoring worklist exhaustive.**
+3. **Make the scoring backlog measurable.**
    - Count every active local claim as scored, ready to score, score-review, source-blocked, parked/backlog, or rejected/noise.
+   - Split source-blocked work into blocker types: identity mismatch, missing source record, missing structured extraction, weak claim support, safety/regulatory source gap, or low-value/noise.
    - Group work by intervention and outcome with current score, source packet completeness, top citations, review status, identity warnings, and next action visible.
-   - Re-run the worklist after each batch so the remaining backlog shrinks into explainable states.
+   - Done when `npx tsx scripts/local-score-worklist.ts --limit 20` and `npx tsx scripts/local-catalog-quality.ts` explain the whole backlog without mystery buckets.
 
-4. **Finish the operator scoring workflow.**
-   - Show linked citations and source extraction beside editable score dimensions.
-   - Preview composite score, evidence band, public label, caveats, and review status before saving.
-   - Generate conservative assisted suggestions from linked sources, but require operator review before saving.
-   - Save as `AI reviewed` only when citation traceability, uncertainty labels, AU/TGA caveats, product-level limits, and no-medical-advice boundaries are preserved.
-   - Use `Human reviewed` only after explicit human confirmation.
-
-5. **Score ready batches first.**
-   - Work through complete source packets before repairing source-blocked rows.
-   - Score one intervention/outcome group at a time so similar claims get consistent treatment.
-   - Park or reject rows that look ready but prove thin, mismatched, product-specific, or outside the project boundary.
-   - Repeat this step whenever source repair creates a new ready-to-score batch.
-
-6. **Repair source-blocked packets.**
+4. **Repair source-blocked packets by priority.**
    - Prioritize high-visibility public cells, safety/regulatory claims, high-quality review/trial leads, and interventions with many public claims.
-   - Add or repair structured source extraction for PubMed, ClinicalTrials, DOI, and official regulatory/safety references.
+   - For each source packet, repair PubMed, ClinicalTrials, DOI, NIH/official safety, and regulatory/product references as needed.
+   - Capture structured extraction: study design, population, comparator, endpoint, effect direction, practical impact, limitations, adverse-event context, regulatory/product caveats, and exact citation IDs.
    - Confirm intervention identity and scoped-claim support before scoring.
-   - Leave rows source-blocked, parked, or rejected when the packet still cannot support an honest score.
+   - Avoid peptide sourcing, route, reconstitution, injection, cycling, dosing, or self-administration guidance.
+   - Done when each repaired claim becomes ready-to-score, remains source-blocked with the next blocker, or is parked/rejected.
 
-7. **Close the leftover buckets.**
+5. **Score ready packets in consistent batches.**
+   - Score one intervention/outcome group at a time so similar claims use consistent evidence thresholds.
+   - Use the operator score editor or local score draft dry-run before applying any update.
+   - Apply `AI reviewed` only when citation traceability, uncertainty labels, AU/TGA caveats, product-level limits, and no-medical-advice boundaries are preserved.
+   - Use `Human reviewed` only after explicit human confirmation.
+   - Capture score snapshots so future changes are auditable.
+   - Done when each ready batch moves to scored, parked/backlog, or rejected/noise before the next batch starts.
+
+6. **Calibrate the scored catalog.**
+   - Compare similar intervention/outcome groups so strong, moderate, limited, weak, safety, and regulatory labels mean the same thing across the map.
+   - Spot-check high-impact examples such as creatine/strength, omega-3/lipids, caffeine/endurance, vitamin D/safety, zinc/immune, and peptide/regulatory rows.
+   - Reconcile any score whose public label, component values, citations, or caveats feel inconsistent.
+   - Done when sampled rows show consistent scoring logic and clear "what would change the score" language.
+
+7. **Close leftover buckets.**
    - Park weak-but-potentially-useful leads with a clear reason.
    - Reject clear noise, mismatches, unsupported claims, and non-product-relevant medical literature.
-   - Keep a small spot-check bucket for ambiguous rows that need human judgment rather than automation.
+   - Keep only a small spot-check bucket for ambiguous rows that need human judgment rather than automation.
+   - Done when the leftover queue is intentionally small and explainable.
 
 8. **Verify completion locally.**
-   - `npx tsx scripts/local-score-worklist.ts --limit 20` shows no unexplained default-looking public scores.
-   - Local catalog quality checks account for every claim state.
+   - `npx tsx scripts/local-score-worklist.ts --limit 20` shows no unexplained default-looking public scores and no ready-to-score rows left unprocessed.
+   - `npx tsx scripts/local-catalog-quality.ts` accounts for every claim state.
    - Public evidence map and intervention detail pages are spot-checked for strong, moderate, limited, weak, insufficient, safety, regulatory, parked, and source-blocked examples.
    - Promotion stays out of scope until the user explicitly asks to move local scored data to preview/production.
 
