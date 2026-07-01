@@ -8,6 +8,7 @@ export interface ScoreUpdateDraft {
   finalLabel: EvidenceLabel;
   formFields: Record<string, string>;
   rationale: string;
+  reviewChecklist: string[];
   scores: ScoreSet;
 }
 
@@ -59,6 +60,7 @@ export function buildScoreUpdateDraft(row: ScoreWorklistRow): ScoreUpdateDraft {
       safety: String(row.suggestion.scores.safety)
     },
     rationale,
+    reviewChecklist: buildScoreUpdateDraftReviewChecklist(row),
     scores: row.suggestion.scores
   };
 }
@@ -87,6 +89,24 @@ function buildScoreUpdateDraftChanges(row: ScoreWorklistRow): ScoreUpdateDraftCh
           },
     scoreFields
   };
+}
+
+function buildScoreUpdateDraftReviewChecklist(row: ScoreWorklistRow) {
+  const checklist = [
+    "Verify each cited source supports the scoped claim, outcome, population, and intervention identity before applying.",
+    "Confirm the source packet extraction is substantive, not placeholder text or unresolved source work.",
+    "Keep product-level AU/TGA clearance separate from generic intervention evidence.",
+    "Do not mark Human reviewed unless a human explicitly confirms the score.",
+    "Keep the public wording conservative: no medical advice and no product-level efficacy or supply-status inference."
+  ];
+
+  if (row.suggestion.finalLabel === "Regulatory Concern") {
+    checklist.push(
+      "For regulatory-concern scores, keep the claim framed as regulatory/product-status context rather than consumer self-use guidance."
+    );
+  }
+
+  return checklist;
 }
 
 function buildScoreUpdateDraftRationale(row: ScoreWorklistRow) {

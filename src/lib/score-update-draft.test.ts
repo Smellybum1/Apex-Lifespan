@@ -61,6 +61,13 @@ describe("score update draft", () => {
     if (draft.changes.finalLabel) {
       expect(draft.changes.finalLabel.draft).toBe(draft.finalLabel);
     }
+    expect(draft.reviewChecklist).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Verify each cited source"),
+        expect.stringContaining("Do not mark Human reviewed"),
+        expect.stringContaining("no medical advice")
+      ])
+    );
     expect(draft.rationale).toContain("Draft score update from local ready-to-score worklist");
     expect(draft.rationale).toContain("Citations:");
     expect(draft.rationale).toContain("Product-level AU/TGA clearance is not inferred");

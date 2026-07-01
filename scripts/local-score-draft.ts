@@ -192,6 +192,7 @@ async function scoreDraftResult(row: ScoreWorklistRow) {
     changes: draft.changes,
     dryRun,
     formFields: draft.formFields,
+    reviewChecklist: draft.reviewChecklist,
     row: {
       claim: row.claim,
       claimId: row.claimId,
@@ -224,6 +225,7 @@ function formatScoreDraftOutput(
       `   Current: ${draft.row.currentScoreLabel}`,
       `   Suggested: ${draft.row.suggestion.compositeScoreLabel}; ${draft.row.suggestion.finalLabel}`,
       `   Changes: ${formatScoreDraftChanges(draft.changes)}`,
+      `   Review: ${formatScoreDraftChecklistSummary(draft.reviewChecklist)}`,
       `   Dry-run would update claim: ${draft.dryRun.wouldUpdateClaim}; snapshot: ${draft.dryRun.wouldCreateSnapshot}; history: ${draft.dryRun.wouldCreateHistory}`,
       `   Citations: ${
         draft.row.references.length > 0
@@ -239,11 +241,13 @@ function formatScoreDraftLines({
   dryRun,
   formFields,
   row,
-  changes
+  changes,
+  reviewChecklist
 }: {
   changes: Awaited<ReturnType<typeof scoreDraftResult>>["changes"];
   dryRun: Awaited<ReturnType<typeof dryRunUpdateClaimScore>>;
   formFields: Record<string, string>;
+  reviewChecklist: string[];
   row: {
     claimId: string;
     currentScoreLabel: string;
@@ -262,6 +266,9 @@ function formatScoreDraftLines({
     `Dry-run would create snapshot: ${dryRun.wouldCreateSnapshot}`,
     `Dry-run would create history: ${dryRun.wouldCreateHistory}`,
     "",
+    "Review checklist:",
+    ...reviewChecklist.map((item) => `- ${item}`),
+    "",
     "Operator form fields:",
     ...Object.entries(formFields).map(([key, value]) => `- ${key}: ${value}`)
   ];
@@ -277,6 +284,10 @@ function formatScoreDraftChanges(changes: Awaited<ReturnType<typeof scoreDraftRe
   const parts = [...fieldChanges, ...labelChange];
 
   return parts.length > 0 ? parts.join("; ") : "none";
+}
+
+function formatScoreDraftChecklistSummary(checklist: string[]) {
+  return checklist.slice(0, 3).join(" ");
 }
 
 function scoreDraftState(value: string): ScoreWorklistStateFilter {
