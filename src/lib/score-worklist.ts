@@ -185,6 +185,7 @@ export interface ScoreWorklistReferenceRepairBrief {
   affectedClaims: ScoreWorklistReferenceRepairClaim[];
   extractionChecklist: string[];
   hiddenClaims: number;
+  nextActions: string[];
   reference: {
     id: string;
     label: string;
@@ -410,6 +411,12 @@ export function buildScoreWorklistReferenceRepairBrief(
     affectedClaims: affectedRows.slice(0, limit).map(referenceRepairClaim),
     extractionChecklist: REFERENCE_REPAIR_EXTRACTION_CHECKLIST,
     hiddenClaims: Math.max(affectedRows.length - limit, 0),
+    nextActions: referenceRepairNextActions({
+      affectedRows,
+      reference,
+      referenceId: normalizedReferenceId,
+      studies
+    }),
     reference: reference
       ? {
           id: reference.id,
@@ -583,6 +590,8 @@ export function formatScoreWorklistReferenceRepairBriefLines(
     lines.push("Existing study rows for this reference: none.");
   }
 
+  lines.push("Repair sequence:");
+  lines.push(...brief.nextActions.map((item, index) => `${index + 1}. ${item}`));
   lines.push("Extraction checklist:");
   lines.push(...brief.extractionChecklist.map((item) => `- ${item}`));
   lines.push("Write guardrails:");
@@ -679,6 +688,48 @@ function referenceRepairClaim(row: ScoreReadinessRow): ScoreWorklistReferenceRep
     priorityLabel: row.priorityLabel,
     sourcePacketLabel: row.packet.completeness.label
   };
+}
+
+function referenceRepairNextActions({
+  affectedRows,
+  reference,
+  referenceId,
+  studies
+}: {
+  affectedRows: ScoreReadinessRow[];
+  reference: Reference | null;
+  referenceId: string;
+  studies: Study[];
+}) {
+  const actions = [
+    reference
+      ? `Verify source type and citation identity for ${formatReferenceLabel(reference)} before editing extraction fields.`
+      : `Restore or add curated source record ${referenceId} before extraction work.`
+  ];
+
+  if (affectedRows.length === 0) {
+    return [
+      ...actions,
+      "No current source-blocked scoring rows depend on this reference; rerun the score worklist before doing extraction work."
+    ];
+  }
+
+  if (studies.length === 0) {
+    actions.push(
+      "Add structured extraction for population, intervention, comparator, duration, outcomes, safety, conflicts, and bias before scoring."
+    );
+  } else {
+    actions.push(
+      "Review existing study extraction for claim fit; fill any missing safety, comparator, outcome, or bias fields before scoring."
+    );
+  }
+
+  actions.push(
+    "Rerun npx tsx scripts/local-score-worklist.ts --state ready_to_score --limit 20 after extraction is repaired.",
+    "Dry-run score suggestions with npx tsx scripts/local-score-draft.ts --limit 15 before applying any score update."
+  );
+
+  return actions;
 }
 
 function sourceTypeHintFromReference(reference: Reference | null) {

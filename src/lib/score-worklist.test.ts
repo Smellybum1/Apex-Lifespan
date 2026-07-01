@@ -254,6 +254,14 @@ describe("score worklist", () => {
 
     expect(brief.reference?.label).toBe("PubMed PMID:87654321 2026");
     expect(brief.totalAffectedClaims).toBe(1);
+    expect(brief.nextActions).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Verify source type and citation identity"),
+        expect.stringContaining("Add structured extraction"),
+        expect.stringContaining("local-score-worklist.ts --state ready_to_score"),
+        expect.stringContaining("local-score-draft.ts --limit 15")
+      ])
+    );
     expect(brief.affectedClaims[0]).toMatchObject({
       claimId: "brief-blocked-score",
       sourcePacketLabel: "Extraction pending"
@@ -262,6 +270,9 @@ describe("score worklist", () => {
     expect(lines).toContain("Read-only score source repair brief");
     expect(lines).toContain("Affected claims:");
     expect(lines).toContain("Existing study rows for this reference: none.");
+    expect(lines).toContain("Repair sequence:");
+    expect(lines).toContain("local-score-worklist.ts --state ready_to_score");
+    expect(lines).toContain("local-score-draft.ts --limit 15");
     expect(lines).toContain("Extraction checklist:");
     expect(lines).toContain("Write guardrails:");
   });
