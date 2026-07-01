@@ -324,6 +324,73 @@ describe("score worklist", () => {
     );
   });
 
+  it("warns when pending extraction references do not visibly mention the target intervention", () => {
+    const data = seedDashboardData();
+    const creatineClaim = data.claims.find((claim) => claim.id === "creatine-strength")!;
+    const mismatchReference: Reference = {
+      id: "creatine-mismatch-pending-reference",
+      identifier: "PMID:99990003",
+      source: "PubMed",
+      title: "Effects of pre-exercise vibration training on muscle soreness",
+      url: "https://pubmed.ncbi.nlm.nih.gov/99990003/",
+      year: 2026
+    };
+    const matchingReference: Reference = {
+      id: "creatine-visible-pending-reference",
+      identifier: "PMID:99990004",
+      source: "PubMed",
+      title: "Creatine supplementation during resistance training",
+      url: "https://pubmed.ncbi.nlm.nih.gov/99990004/",
+      year: 2026
+    };
+    const mismatchClaim: Claim = {
+      ...creatineClaim,
+      id: "creatine-mismatch-blocked-score",
+      keyReferenceIds: [mismatchReference.id]
+    };
+    const matchingClaim: Claim = {
+      ...creatineClaim,
+      id: "creatine-visible-blocked-score",
+      keyReferenceIds: [matchingReference.id]
+    };
+    const report = buildScoreWorklistReport(
+      {
+        ...data,
+        claims: [mismatchClaim, matchingClaim],
+        references: [...data.references, mismatchReference, matchingReference]
+      },
+      {
+        state: "source_blocked"
+      }
+    );
+    const mismatchGroup = report.repairSummary.pendingReferenceGroups.find(
+      (group) => group.reference.id === mismatchReference.id
+    );
+    const matchingGroup = report.repairSummary.pendingReferenceGroups.find(
+      (group) => group.reference.id === matchingReference.id
+    );
+    const lines = formatScoreWorklistReportLinesWithOptions(report, {
+      repairSummary: true
+    }).join("\n");
+    const briefLines = formatScoreWorklistReferenceRepairBriefLines(
+      buildScoreWorklistReferenceRepairBrief(
+        {
+          ...data,
+          claims: [mismatchClaim],
+          references: [...data.references, mismatchReference]
+        },
+        mismatchReference.id
+      )
+    ).join("\n");
+
+    expect(mismatchGroup?.identityWarnings).toEqual([
+      "Reference title does not visibly mention Creatine monohydrate; verify accepted candidate identity before extracting this as claim evidence."
+    ]);
+    expect(matchingGroup?.identityWarnings).toEqual([]);
+    expect(lines).toContain("Identity warning: Reference title does not visibly mention");
+    expect(briefLines).toContain("Identity warnings:");
+  });
+
   it("builds a read-only extraction brief for one source-blocking reference", () => {
     const data = seedDashboardData();
     const sourceBackedClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0)!;

@@ -142,6 +142,7 @@ export interface ScoreWorklistPendingReferenceGroup {
   claimCount: number;
   extractionGaps: ScoreWorklistExtractionGapSummary[];
   highestPriority: number;
+  identityWarnings: string[];
   interventions: Array<{
     claimCount: number;
     id: string;
@@ -194,6 +195,7 @@ export interface ScoreWorklistReferenceRepairBrief {
   affectedClaims: ScoreWorklistReferenceRepairClaim[];
   extractionChecklist: string[];
   hiddenClaims: number;
+  identityWarnings: string[];
   nextActions: string[];
   reference: {
     id: string;
@@ -421,6 +423,7 @@ export function buildScoreWorklistReferenceRepairBrief(
     affectedClaims: affectedRows.slice(0, limit).map((row) => referenceRepairClaim(row, studies)),
     extractionChecklist: REFERENCE_REPAIR_EXTRACTION_CHECKLIST,
     hiddenClaims: Math.max(affectedRows.length - limit, 0),
+    identityWarnings: referenceIdentityWarnings(reference, affectedRows),
     nextActions: referenceRepairNextActions({
       affectedRows,
       reference,
@@ -514,6 +517,7 @@ export function formatScoreWorklistRepairSummaryLines(
           `${index + 1}. ${group.reference.label} - unlocks ${group.claimCount} claim(s) across ${group.interventions.length} intervention(s)`,
           `   Reference id: ${group.reference.id}`,
           `   ${group.reference.title}`,
+          ...group.identityWarnings.map((warning) => `   Identity warning: ${warning}`),
           `   Gaps: ${formatRepairExtractionGaps(group.extractionGaps)}`,
           `   Brief: npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
           `   Claims: ${formatRepairSampleClaims(group.sampleClaims)}`
@@ -566,6 +570,11 @@ export function formatScoreWorklistReferenceRepairBriefLines(
   ].filter((line): line is string => Boolean(line));
 
   if (brief.affectedClaims.length > 0) {
+    if (brief.identityWarnings.length > 0) {
+      lines.push("Identity warnings:");
+      lines.push(...brief.identityWarnings.map((warning) => `- ${warning}`));
+    }
+
     lines.push("Affected claims:");
     lines.push(
       ...brief.affectedClaims.flatMap((claim, index) => [
@@ -869,6 +878,79 @@ function sourceTypeHintFromReference(reference: Reference | null) {
   return "unknown; verify source type before writing extraction";
 }
 
+function referenceIdentityWarnings(reference: Reference | null, rows: ScoreReadinessRow[]) {
+  if (!reference) {
+    return [];
+  }
+
+  const title = normaliseIdentityText(reference.title);
+  const missingInterventions = repairInterventionGroups(rows)
+    .filter((group) => !titleMentionsIntervention(title, group.name))
+    .map((group) => group.name);
+
+  if (missingInterventions.length === 0) {
+    return [];
+  }
+
+  return [
+    `Reference title does not visibly mention ${missingInterventions.join(", ")}; verify accepted candidate identity before extracting this as claim evidence.`
+  ];
+}
+
+function titleMentionsIntervention(normalisedTitle: string, interventionName: string) {
+  const terms = interventionIdentityTerms(interventionName);
+
+  if (terms.length === 0) {
+    return true;
+  }
+
+  return terms.some((term) => identityTextIncludes(normalisedTitle, term));
+}
+
+function interventionIdentityTerms(interventionName: string) {
+  const normalised = normaliseIdentityText(interventionName);
+  const terms = new Set<string>();
+
+  if (normalised.length >= 4) {
+    terms.add(normalised);
+  }
+
+  for (const token of normalised.split(" ")) {
+    if (token.length >= 4 && !GENERIC_INTERVENTION_IDENTITY_TOKENS.has(token)) {
+      terms.add(token);
+    }
+  }
+
+  return Array.from(terms).sort((left, right) => right.length - left.length);
+}
+
+function identityTextIncludes(normalisedTitle: string, term: string) {
+  return new RegExp(`(?:^| )${escapeRegex(term)}(?: |$)`, "i").test(normalisedTitle);
+}
+
+function normaliseIdentityText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/β/g, "beta")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const GENERIC_INTERVENTION_IDENTITY_TOKENS = new Set([
+  "acid",
+  "blend",
+  "extract",
+  "monohydrate",
+  "orotate",
+  "supplement",
+  "vitamin"
+]);
+
 function pendingReferenceGroups(
   rows: ScoreReadinessRow[]
 ): ScoreWorklistPendingReferenceGroup[] {
@@ -900,6 +982,7 @@ function pendingReferenceGroups(
         claimCount: rowsForGroup.length,
         extractionGaps: scoreRepairExtractionGapSummary(rowsForGroup, reference.id),
         highestPriority: repairHighestPriority(rowsForGroup),
+        identityWarnings: referenceIdentityWarnings(reference, rowsForGroup),
         interventions: repairInterventionGroups(rowsForGroup),
         outcomes: uniqueSorted(rowsForGroup.map((row) => row.claim.outcome)),
         priority: repairPriority(rowsForGroup),
