@@ -9,6 +9,10 @@ import {
   scoreReadinessNextAction,
   scoreReadinessStateLabel
 } from "@/lib/score-readiness";
+import {
+  buildScoreWorklistRepairSummary,
+  formatScoreWorklistCompactRepairLines
+} from "@/lib/score-worklist";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -24,6 +28,7 @@ async function main() {
     const scoreWorkRows = scoreReadinessRows
       .filter((row) => row.state !== "scored")
       .sort(compareScoreReadinessForScoringPass);
+    const scoreRepairSummary = buildScoreWorklistRepairSummary(scoreWorkRows);
 
     if (json) {
       console.log(
@@ -31,6 +36,7 @@ async function main() {
           {
             catalogTrust: summary,
             scoreReadiness: {
+              repairSummary: scoreRepairSummary,
               summary: scoreReadinessSummary,
               topWorkItems: scoreWorkRows.slice(0, 12).map((row) => ({
                 claimId: row.claim.id,
@@ -56,6 +62,10 @@ async function main() {
     console.log(formatCatalogTrustSummaryLines(summary).join("\n"));
     console.log("\nScore readiness:");
     console.log(formatScoreReadinessSummaryLines(scoreReadinessSummary).join("\n"));
+    const scoreRepairLines = formatScoreWorklistCompactRepairLines(scoreRepairSummary);
+    if (scoreRepairLines.length > 0) {
+      console.log(scoreRepairLines.join("\n"));
+    }
     if (scoreWorkRows.length > 0) {
       console.log("\nTop scoring work:");
       for (const row of scoreWorkRows.slice(0, 5)) {

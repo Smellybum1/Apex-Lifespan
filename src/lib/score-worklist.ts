@@ -524,12 +524,16 @@ export function formatScoreWorklistReportLinesWithOptions(
     repairSummaryLimit?: number;
   } = {}
 ) {
+  const compactRepairLines = options.repairSummary
+    ? []
+    : formatScoreWorklistCompactRepairLines(report.repairSummary);
   const lines = [
     "Read-only local score worklist",
     ...formatScoreReadinessSummaryLines(report.summary),
     `Rows: ${report.rows.length}/${report.totalMatchingRows} shown` +
       (report.hiddenRows > 0 ? ` (${report.hiddenRows} hidden by limit)` : ""),
-    "Order: score-review and ready-to-score rows first, then audit gaps, then source-blocked extraction."
+    "Order: score-review and ready-to-score rows first, then audit gaps, then source-blocked extraction.",
+    ...compactRepairLines
   ];
 
   if (report.rows.length === 0) {
@@ -549,6 +553,25 @@ export function formatScoreWorklistReportLinesWithOptions(
       : []),
     "",
     ...report.rows.flatMap((row, index) => scoreWorklistRowLines(row, index, options))
+  ];
+}
+
+export function formatScoreWorklistCompactRepairLines(summary: ScoreWorklistRepairSummary) {
+  if (summary.sourceBlockedRows === 0) {
+    return [];
+  }
+
+  const blockerText =
+    summary.blockerBreakdown.length > 0
+      ? summary.blockerBreakdown
+          .slice(0, 4)
+          .map((blocker) => `${blocker.label} ${blocker.claimCount}`)
+          .join("; ")
+      : "none classified";
+
+  return [
+    `Repair blockers: ${blockerText}.`,
+    `Repair lanes: ${summary.extractionReadyReferenceGroups} extraction-ready reference group(s), ${summary.identityWarningReferenceGroups} identity-check reference group(s), ${summary.missingSourceRows} missing-source row(s), ${summary.unlinkedRows} unlinked claim row(s).`
   ];
 }
 

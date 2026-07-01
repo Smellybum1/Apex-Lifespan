@@ -86,6 +86,26 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 
 **Scoring objective:** complete local scoring for the `477` active public claim cells by moving each one into exactly one accountable state: `scored`, `ready-to-score`, `source-blocked`, `parked/backlog`, or `rejected/noise`. The current bottleneck is not the score formula; it is source identity, source extraction, and claim-support repair for the `456` source-blocked cells.
 
+**Scoring workload shape:** this is a substantial catalog-cleanup pass, not a simple scoring-tweak pass. The useful order is:
+
+1. Protect the public UI first so incomplete/source-blocked rows cannot look like final evidence scores.
+2. Measure the backlog until every unscored claim has one blocker and one next action.
+3. Repair source identity, claim/source links, and structured extraction in batches.
+4. Score only extraction-ready packets, with citation IDs, rationale, uncertainty wording, AU/TGA/product caveats, review status, and snapshots.
+5. Calibrate scored rows across similar interventions/outcomes so weak, limited, moderate, and strong mean the same thing everywhere.
+6. Close the leftovers deliberately as parked/backlog or rejected/noise instead of letting them sit as invisible ambiguity.
+
+**Expected scoring passes:**
+
+| Pass | Purpose | Completion signal |
+|------|---------|-------------------|
+| Public trust pass | Make source-blocked and review-only rows visibly incomplete on public pages. | Public map/detail pages do not display unscored/source-blocked values as final scores. |
+| Backlog accounting pass | Split all `456` source-blocked rows into concrete blocker types. | `local-score-worklist` has no mystery bucket. |
+| Source repair pass | Resolve identity, link, and extraction blockers for the highest-value claims first. | Each repaired row becomes ready-to-score, parked, or rejected. |
+| Batch scoring pass | Score ready packets with full rationale and traceability. | Score snapshots exist and no ready-to-score rows are left idle after each batch. |
+| Calibration pass | Normalize labels and score meaning across the evidence map. | Similar evidence earns similar bands, with clear caveats and "what would change the score" language. |
+| Closure pass | Park/reject remaining low-value or ambiguous rows. | Every active local claim is accounted for by a deliberate state. |
+
 **Per-claim completion contract:**
 
 - `Scored`: has linked citation IDs, structured extraction, dimension values, final label, rationale, uncertainty/caveat wording, review status, and a score snapshot.

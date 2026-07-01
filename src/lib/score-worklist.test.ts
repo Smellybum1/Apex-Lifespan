@@ -142,8 +142,11 @@ describe("score worklist", () => {
       ["ready-score-first", "ready_to_score"],
       ["source-blocked-second", "source_blocked"]
     ]);
-    expect(formatScoreWorklistReportLines(report).join("\n")).toContain(
-      "Order: score-review and ready-to-score rows first"
+    const lines = formatScoreWorklistReportLines(report).join("\n");
+    expect(lines).toContain("Order: score-review and ready-to-score rows first");
+    expect(lines).toContain("Repair blockers: Missing source record 1.");
+    expect(lines).toContain(
+      "Repair lanes: 0 extraction-ready reference group(s), 0 identity-check reference group(s), 1 missing-source row(s), 0 unlinked claim row(s)."
     );
   });
 
