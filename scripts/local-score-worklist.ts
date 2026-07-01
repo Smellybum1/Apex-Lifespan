@@ -66,7 +66,7 @@ async function main() {
     });
 
     if (data.dataSource === "database" && args.repairSummary && args.repairIdentityWarnings) {
-      lines.push("", ...(await formatIdentityWarningActionPreviewLines(report)));
+      lines.push("", ...(await formatIdentityWarningActionPreviewLines(report, args.repairIdentityAction)));
     }
 
     console.log(lines.join("\n"));
@@ -81,11 +81,15 @@ interface ScoreWorklistArgs {
   json: boolean;
   limit: number;
   repairReference?: string;
+  repairIdentityAction: IdentityActionFilter;
   repairIdentityWarnings: boolean;
   repairSummary: boolean;
   showHelp?: false;
   state: ScoreWorklistStateFilter;
 }
+
+type IdentityResolutionAction = LocalIdentityResolutionAutomationDecisionReadout["action"];
+type IdentityActionFilter = IdentityResolutionAction | "actionable" | "all" | "unavailable";
 
 type ParsedScoreWorklistArgs =
   | ScoreWorklistArgs
@@ -119,6 +123,8 @@ Options:
   --repair-summary        Show grouped source repair targets for source-blocked rows.
   --repair-identity-warnings
                           Focus repair summary on references whose titles do not visibly match the target intervention.
+  --repair-identity-action <action>
+                          Filter identity preview rows: all | actionable | confirm-target | reassign-intervention | reject-wrong-supplement | hold | unavailable.
   --repair-reference <id> Show a read-only extraction brief for one blocked reference id.
   --json                  Print JSON instead of text.
   --help                  Show this help.
@@ -128,7 +134,10 @@ This command does not write scores, review status, source packets, or public evi
 const CANDIDATE_KEY_B64_PREFIX = "candidate-key-b64:";
 const IDENTITY_WARNING_ACTION_PREVIEW_LIMIT = 8;
 
-async function formatIdentityWarningActionPreviewLines(report: ScoreWorklistReport) {
+async function formatIdentityWarningActionPreviewLines(
+  report: ScoreWorklistReport,
+  actionFilter: IdentityActionFilter
+) {
   const referenceIds = report.repairSummary.pendingReferenceGroups
     .filter((group) => group.identityWarnings.length > 0)
     .slice(0, IDENTITY_WARNING_ACTION_PREVIEW_LIMIT)
@@ -171,25 +180,49 @@ async function formatIdentityWarningActionPreviewLines(report: ScoreWorklistRepo
     candidates.map((candidate) => candidate.dedupeKey)
   );
   const actionCounts = identityActionCounts(candidates, identityDecisions);
+  const previewRows: Array<{
+    action: IdentityResolutionAction | "unavailable";
+    candidate: (typeof candidates)[number];
+    decision: LocalIdentityResolutionAutomationDecisionReadout | undefined;
+  }> = candidates.map((candidate) => ({
+    action: identityDecisions.get(candidate.dedupeKey)?.action ?? "unavailable",
+    candidate,
+    decision: identityDecisions.get(candidate.dedupeKey)
+  }));
+  const filteredRows = previewRows.filter((row) =>
+    identityActionMatchesFilter(row.action, actionFilter)
+  );
 
   lines.push(
     `${candidates.length} accepted candidate(s) across ${referenceIds.length} warning reference(s): ${formatIdentityActionCounts(actionCounts)}.`
   );
+  if (actionFilter !== "all") {
+    lines.push(
+      `Showing ${filteredRows.length} candidate(s) matching ${formatIdentityActionFilterLabel(actionFilter)}; ${previewRows.length - filteredRows.length} hidden by action filter.`
+    );
+  }
   lines.push(
     "Open a repair brief for candidate-level reasons; use the Candidate Review identity resolver to apply any cleanup."
   );
+
+  if (filteredRows.length === 0) {
+    return [
+      ...lines,
+      `No accepted candidate rows matched ${formatIdentityActionFilterLabel(actionFilter)} in the visible warning references.`
+    ];
+  }
+
   lines.push(
     ...referenceIds.flatMap((referenceId) => {
-      const candidatesForReference = candidates.filter(
-        (candidate) => candidate.acceptedReferenceId === referenceId
+      const rowsForReference = filteredRows.filter(
+        (row) => row.candidate.acceptedReferenceId === referenceId
       );
 
-      if (candidatesForReference.length === 0) {
+      if (rowsForReference.length === 0 && actionFilter === "all") {
         return [`- ${referenceId}: no accepted candidate rows found.`];
       }
 
-      return candidatesForReference.slice(0, 3).map((candidate) => {
-        const decision = identityDecisions.get(candidate.dedupeKey);
+      return rowsForReference.slice(0, 3).map(({ candidate, decision }) => {
         const context = [
           candidate.interventionId ? `intervention ${candidate.interventionId}` : undefined,
           candidate.claimId ? `claim ${candidate.claimId}` : undefined
@@ -207,6 +240,44 @@ async function formatIdentityWarningActionPreviewLines(report: ScoreWorklistRepo
   );
 
   return lines;
+}
+
+function identityActionMatchesFilter(
+  action: IdentityResolutionAction | "unavailable",
+  actionFilter: IdentityActionFilter
+) {
+  if (actionFilter === "all") {
+    return true;
+  }
+
+  if (actionFilter === "actionable") {
+    return (
+      action === "confirm-target" ||
+      action === "reassign-intervention" ||
+      action === "reject-wrong-supplement"
+    );
+  }
+
+  return action === actionFilter;
+}
+
+function formatIdentityActionFilterLabel(actionFilter: IdentityActionFilter) {
+  switch (actionFilter) {
+    case "actionable":
+      return "actionable cleanup";
+    case "all":
+      return "all actions";
+    case "confirm-target":
+      return "confirm-target";
+    case "reassign-intervention":
+      return "reassign-intervention";
+    case "reject-wrong-supplement":
+      return "reject-wrong-supplement";
+    case "hold":
+      return "hold";
+    case "unavailable":
+      return "unavailable";
+  }
 }
 
 function identityActionCounts(
@@ -378,6 +449,7 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
     includeScored: false,
     json: false,
     limit: 12,
+    repairIdentityAction: "all",
     repairIdentityWarnings: false,
     repairSummary: false,
     state: "work"
@@ -406,6 +478,25 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
     }
 
     if (arg === "--repair-identity-warnings") {
+      parsed.repairIdentityWarnings = true;
+      parsed.repairSummary = true;
+      continue;
+    }
+
+    if (arg === "--repair-identity-action") {
+      parsed.repairIdentityAction = identityActionFilterValue(
+        requiredNextValue(args, index, "--repair-identity-action")
+      );
+      parsed.repairIdentityWarnings = true;
+      parsed.repairSummary = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--repair-identity-action=")) {
+      parsed.repairIdentityAction = identityActionFilterValue(
+        requiredInlineValue(arg, "--repair-identity-action")
+      );
       parsed.repairIdentityWarnings = true;
       parsed.repairSummary = true;
       continue;
@@ -503,6 +594,30 @@ function scoreWorklistState(value: string): ScoreWorklistStateFilter {
   }
 
   throw new Error(`Unsupported --state value: ${value}.`);
+}
+
+function identityActionFilterValue(value: string): IdentityActionFilter {
+  switch (value.trim().toLowerCase()) {
+    case "all":
+      return "all";
+    case "actionable":
+      return "actionable";
+    case "confirm":
+    case "confirm-target":
+      return "confirm-target";
+    case "reassign":
+    case "reassign-intervention":
+      return "reassign-intervention";
+    case "reject":
+    case "reject-wrong-supplement":
+      return "reject-wrong-supplement";
+    case "hold":
+      return "hold";
+    case "unavailable":
+      return "unavailable";
+    default:
+      throw new Error(`Unsupported --repair-identity-action value: ${value}.`);
+  }
 }
 
 function positiveInteger(value: string, option: string) {
