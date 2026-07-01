@@ -217,6 +217,22 @@ describe("EvidenceDashboard", () => {
     expect(starterScoreRow?.state).toBe("default_score_review");
     expect(starterScoreRow?.currentScore).toBe(3.1);
     expect(starterScoreRow?.reasons.join(" ")).toContain("starter-score pattern");
+
+    const html = renderToStaticMarkup(
+      <EvidenceDashboard
+        data={{
+          ...data,
+          claims: [scoreReadyClaim],
+          claimScoreSnapshots: []
+        }}
+      />
+    );
+
+    expect(html).toContain("Ready-to-score classification");
+    expect(html).toContain("Complete source packet awaiting score assignment");
+    expect(html).toContain("The stored placeholder score is hidden until a claim-specific score");
+    expect(html).toContain("Ready to score");
+    expect(html).not.toContain("Draft composite 8.4");
   });
 
   it("renders sanitized seed fallback reasons in the public header", () => {

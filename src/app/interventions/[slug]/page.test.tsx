@@ -147,6 +147,36 @@ describe("intervention detail page", () => {
     );
   });
 
+  it("marks complete source packets as ready to score without showing placeholder components", async () => {
+    const data = seedDashboardData();
+    const creatine = data.interventions.find((item) => item.slug === "creatine-monohydrate");
+    const targetClaim = data.claims.find(
+      (claim) => claim.interventionId === creatine?.id && claim.keyReferenceIds.length > 0
+    );
+
+    expect(targetClaim).toBeDefined();
+
+    getEvidenceDashboardDataMock.mockResolvedValue({
+      ...data,
+      claims: data.claims.map((claim) =>
+        claim.id === targetClaim?.id
+          ? { ...claim, evidenceGrade: "Insufficient until source packets are reviewed." }
+          : claim
+      )
+    });
+
+    const html = renderToStaticMarkup(
+      await InterventionDetailPage({ params: Promise.resolve({ slug: "creatine-monohydrate" }) })
+    );
+
+    expect(html).toContain("Composite ready to score");
+    expect(html).toContain("Ready to score");
+    expect(html).toContain("Complete packet awaiting score assignment");
+    expect(html).toContain("Ready-to-score classification");
+    expect(html).toContain("Use the complete source packet to assign dimension scores");
+    expect(html).toContain("stored placeholder score and component values are hidden here");
+  });
+
   it("renders magnesium sleep coverage with trial registry labels", async () => {
     getEvidenceDashboardDataMock.mockResolvedValue(seedDashboardData());
 

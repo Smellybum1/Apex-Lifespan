@@ -5536,6 +5536,14 @@ function reviewStatusLabel(status: Claim["reviewStatus"]) {
 }
 
 function classificationLabel(claim: Claim, readinessRow?: ScoreReadinessRow) {
+  if (isDraftLeadClaim(claim)) {
+    return "Review-needed classification";
+  }
+
+  if (readinessRow?.state === "ready_to_score") {
+    return "Ready-to-score classification";
+  }
+
   if (isEvidenceMapPlaceholderClaim(claim)) {
     return "Review-needed classification";
   }
@@ -6074,6 +6082,7 @@ type EvidenceMapReadinessSummary = {
   humanReviewedClaims: number;
   incompleteSourcePackets: number;
   pendingReferences: number;
+  readyToScoreClaims: number;
   reviewWorkClaims: number;
   sourceBlockedScoredClaims: number;
   scoredClaims: number;
@@ -6170,6 +6179,7 @@ function buildEvidenceMapReadinessSummary({
   const sourceBlockedScoredClaims = readinessRows.filter(
     (row) => row.state === "source_blocked" && !isEvidenceMapPlaceholderClaim(row.claim)
   ).length;
+  const readyToScoreClaims = readinessRows.filter((row) => row.state === "ready_to_score").length;
   const snapshotGapClaims = readinessRows.filter((row) => row.state === "snapshot_gap").length;
 
   return {
@@ -6183,6 +6193,7 @@ function buildEvidenceMapReadinessSummary({
       packetSummary.missingSourceClaims +
       packetSummary.unlinkedClaims,
     pendingReferences: packetSummary.pendingReferences + packetSummary.missingReferences,
+    readyToScoreClaims,
     reviewWorkClaims: draftLeadClaims + sourcePacketScaffoldClaims,
     sourceBlockedScoredClaims,
     scoredClaims: readinessRows.filter((row) => row.state === "scored").length,
@@ -6254,6 +6265,19 @@ function evidenceMapCellPresentation(
         "Discovery lead awaiting source review. The stored starter score is hidden because it is not a final evidence score.",
       tone:
         "border-dashed border-amberline/35 bg-amber-50 text-amberline hover:border-amberline hover:bg-amber-50"
+    };
+  }
+
+  if (readinessRow?.state === "ready_to_score") {
+    return {
+      ariaSummary:
+        "complete source packet awaiting score assignment; no final evidence score has been assigned",
+      primary: "Ready",
+      secondary: "Score",
+      title:
+        "Complete source packet awaiting score assignment. The stored placeholder score is hidden until a claim-specific score is assigned from the extracted evidence.",
+      tone:
+        "border-dashed border-spruce/35 bg-teal-50 text-spruce hover:border-spruce hover:bg-teal-50"
     };
   }
 
@@ -6401,7 +6425,7 @@ function EvidenceMapReadinessStrip({
   const reviewWorkDetail =
     summary.reviewWorkClaims === 0
       ? "No draft leads or scaffolds in the current filters"
-      : `${summary.draftLeadClaims.toLocaleString()} lead, ${summary.sourcePacketScaffoldClaims.toLocaleString()} scaffold`;
+      : `${summary.draftLeadClaims.toLocaleString()} lead, ${summary.sourcePacketScaffoldClaims.toLocaleString()} scaffold, ${summary.readyToScoreClaims.toLocaleString()} ready`;
 
   return (
     <section aria-label="Evidence map readiness" className="mt-4 border-t border-line pt-3">
@@ -6453,6 +6477,11 @@ function EvidenceMapReadinessStrip({
           title={`${summary.incompleteSourcePackets.toLocaleString()} claim(s) still need source-packet linking or extraction.`}
         />
         <EvidenceReadinessBadge label="Review-work mix" value={reviewWorkDetail} />
+        <EvidenceReadinessBadge
+          label="Ready to score"
+          value={summary.readyToScoreClaims.toLocaleString()}
+          title="Complete source packets that still need claim-specific score assignment."
+        />
         <EvidenceReadinessBadge
           label="Source work"
           value={sourceWorkCount.toLocaleString()}

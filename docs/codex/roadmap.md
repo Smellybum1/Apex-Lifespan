@@ -84,6 +84,18 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 
 **Goal:** every active local claim should end in one clear public-safe state: scored with traceable source packet and review status, parked/backlog with a reason, source-blocked with next action, or rejected/noise.
 
+**Work packets to finish scoring:**
+
+1. **Public honesty guardrail:** keep ready-to-score, source-blocked, parked, and review-needed cells from looking like final scored evidence while the backlog is incomplete.
+2. **Scoring contract:** lock the dimensions, composite formula, evidence bands, final labels, safety/regulatory penalties, and public wording before doing a large scoring pass.
+3. **Score editor workflow:** make the operator view show source packet completeness, linked citations, editable dimensions, suggested composite, final public label, caveats, and dry-run preview before saving.
+4. **Ready-to-score batch:** score, park, reject, or return the current `15` ready rows to source-blocked before moving to the larger backlog.
+5. **Source extraction repair:** repair the `456` source-blocked rows in priority batches, starting with high-visibility public cells, safety/regulatory claims, high-quality reviews/trials, and intervention/outcome groups with many related rows.
+6. **Claim disposition loop:** after each repaired packet, choose exactly one state: scored, parked/backlog with a reason, source-blocked with next action, or rejected/noise.
+7. **Catalog accounting:** re-run the local score worklist after each batch until every active claim has an explainable state and no placeholder-looking score is presented as final.
+8. **Public verification:** spot-check evidence map and intervention pages for strong, moderate, limited, weak, insufficient, safety, regulatory, ready-to-score, source-blocked, and parked examples.
+9. **Promotion decision:** keep preview/production out of scope until local scoring is coherent and the user explicitly asks to promote it.
+
 **Completion checkpoints:**
 
 1. **Scoring contract locked:** dimensions, composite formula, evidence bands, final labels, safety/regulatory penalties, and public wording are documented well enough that similar claims score consistently.

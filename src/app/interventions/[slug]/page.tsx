@@ -698,6 +698,14 @@ function reviewStatusLabel(status: Claim["reviewStatus"]) {
 }
 
 function classificationLabel(claim: Claim, readinessRow?: ScoreReadinessRow) {
+  if (isDraftLeadClaim(claim)) {
+    return "Review-needed classification";
+  }
+
+  if (readinessRow?.state === "ready_to_score") {
+    return "Ready-to-score classification";
+  }
+
   if (isReviewWorkClaim(claim)) {
     return "Review-needed classification";
   }
@@ -752,6 +760,23 @@ function claimScorePresentation(
   claim: Claim,
   readinessRow?: ScoreReadinessRow
 ): ClaimScorePresentation {
+  if (readinessRow?.state === "ready_to_score" && !isDraftLeadClaim(claim)) {
+    return {
+      compositeLabel: "Composite ready to score",
+      hideComponents: true,
+      noticeBody: `${scoreReadinessNextAction(
+        readinessRow
+      )} The stored placeholder score and component values are hidden here until a claim-specific score is assigned from the complete source packet.`,
+      noticeTitle: "Complete packet awaiting score assignment",
+      noticeTone: "border-spruce/30 bg-teal-50 text-spruce",
+      primary: "Ready to score",
+      score: null,
+      secondary: "Complete packet needs score assignment",
+      tableBand: "Ready to score",
+      tone: "border-dashed border-spruce/35 bg-teal-50 text-spruce"
+    };
+  }
+
   if (isReviewWorkClaim(claim)) {
     return {
       compositeLabel: "Composite pending",
