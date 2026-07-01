@@ -126,7 +126,10 @@ export interface ScoreWorklistReport {
 
 export interface ScoreWorklistRepairSummary {
   blockerBreakdown: ScoreWorklistRepairBlockerSummary[];
+  extractionReadyReferenceClaimLinks: number;
+  extractionReadyReferenceGroups: number;
   extractionPendingRows: number;
+  identityWarningReferenceClaimLinks: number;
   identityWarningReferenceGroups: number;
   missingReferenceGroups: ScoreWorklistMissingReferenceGroup[];
   missingSourceRows: number;
@@ -405,12 +408,22 @@ export function buildScoreWorklistRepairSummary(
   ).length;
 
   const pendingGroups = pendingReferenceGroups(sourceBlockedRows);
+  const extractionReadyGroups = pendingGroups.filter((group) => group.identityWarnings.length === 0);
+  const identityWarningGroups = pendingGroups.filter((group) => group.identityWarnings.length > 0);
 
   return {
     blockerBreakdown: scoreWorklistRepairBlockerBreakdown(sourceBlockedRows),
+    extractionReadyReferenceClaimLinks: extractionReadyGroups.reduce(
+      (total, group) => total + group.claimCount,
+      0
+    ),
+    extractionReadyReferenceGroups: extractionReadyGroups.length,
     extractionPendingRows,
-    identityWarningReferenceGroups: pendingGroups.filter((group) => group.identityWarnings.length > 0)
-      .length,
+    identityWarningReferenceClaimLinks: identityWarningGroups.reduce(
+      (total, group) => total + group.claimCount,
+      0
+    ),
+    identityWarningReferenceGroups: identityWarningGroups.length,
     missingReferenceGroups: missingReferenceGroups(sourceBlockedRows),
     missingSourceRows,
     pendingReferenceGroups: pendingGroups,
@@ -537,7 +550,8 @@ export function formatScoreWorklistRepairSummaryLines(
     : summary.pendingReferenceGroups;
   const lines = [
     "Source repair summary",
-    `Blocked rows: ${summary.sourceBlockedRows}; extraction pending: ${summary.extractionPendingRows}; identity-warning references: ${summary.identityWarningReferenceGroups}; missing source records: ${summary.missingSourceRows}; unlinked claims: ${summary.unlinkedRows}.`
+    `Blocked rows: ${summary.sourceBlockedRows}; extraction pending: ${summary.extractionPendingRows}; identity-warning references: ${summary.identityWarningReferenceGroups}; missing source records: ${summary.missingSourceRows}; unlinked claims: ${summary.unlinkedRows}.`,
+    `Extraction lanes: ${summary.extractionReadyReferenceGroups} reference group(s) / ${summary.extractionReadyReferenceClaimLinks} claim-link(s) can move to extraction; ${summary.identityWarningReferenceGroups} reference group(s) / ${summary.identityWarningReferenceClaimLinks} claim-link(s) need identity cleanup first.`
   ];
 
   if (summary.sourceBlockedRows === 0) {

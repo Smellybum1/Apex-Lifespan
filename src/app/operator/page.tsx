@@ -1558,8 +1558,16 @@ function ScoreSourceRepairQueue({
           {summary.sourceBlockedRows} blocked
         </span>
       </div>
-      <div className="mt-3 grid gap-2 md:grid-cols-4">
+      <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
         <ScoreReadinessStat label="Extraction pending" value={`${summary.extractionPendingRows}`} />
+        <ScoreReadinessStat
+          label="Clean extraction refs"
+          value={`${summary.extractionReadyReferenceGroups}`}
+        />
+        <ScoreReadinessStat
+          label="Identity-check refs"
+          value={`${summary.identityWarningReferenceGroups}`}
+        />
         <ScoreReadinessStat label="Missing source records" value={`${summary.missingSourceRows}`} />
         <ScoreReadinessStat label="Unlinked claims" value={`${summary.unlinkedRows}`} />
         <ScoreReadinessStat
@@ -1567,6 +1575,13 @@ function ScoreSourceRepairQueue({
           value={`${summary.pendingReferenceGroups.length}`}
         />
       </div>
+      {summary.pendingReferenceGroups.length > 0 ? (
+        <p className="mt-2 rounded-md border border-amber-200 bg-white px-2 py-1 text-xs leading-5 text-amber-900">
+          Extraction lane: {summary.extractionReadyReferenceGroups} reference group(s) can move to
+          structured extraction now; {summary.identityWarningReferenceGroups} should clear identity
+          warnings first.
+        </p>
+      ) : null}
       {summary.blockerBreakdown.length > 0 ? (
         <div className="mt-3 rounded-md border border-amber-200 bg-white p-2">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-amber-800">

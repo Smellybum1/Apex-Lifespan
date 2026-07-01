@@ -178,7 +178,7 @@ describe("score worklist", () => {
       id: "shared-pending-score-reference",
       identifier: "PMID:12345678",
       source: "PubMed",
-      title: "Shared source that still needs extraction",
+      title: "Creatine shared source that still needs extraction",
       url: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
       year: 2026
     };
@@ -209,6 +209,10 @@ describe("score worklist", () => {
 
     expect(report.repairSummary.sourceBlockedRows).toBe(2);
     expect(report.repairSummary.extractionPendingRows).toBe(2);
+    expect(report.repairSummary.extractionReadyReferenceGroups).toBe(1);
+    expect(report.repairSummary.extractionReadyReferenceClaimLinks).toBe(2);
+    expect(report.repairSummary.identityWarningReferenceGroups).toBe(0);
+    expect(report.repairSummary.identityWarningReferenceClaimLinks).toBe(0);
     expect(report.summary.sourceBlockers).toMatchObject({
       extraction_pending: 2,
       missing_sources: 0,
@@ -253,6 +257,9 @@ describe("score worklist", () => {
       }
     });
     expect(lines).toContain("Source repair summary");
+    expect(lines).toContain(
+      "Extraction lanes: 1 reference group(s) / 2 claim-link(s) can move to extraction; 0 reference group(s) / 0 claim-link(s) need identity cleanup first."
+    );
     expect(lines).toContain("Source-blocked scoring rows: 2 (extraction pending 2)");
     expect(lines).toContain("Blocker types (rows can appear in more than one type):");
     expect(lines).toContain(
@@ -416,6 +423,9 @@ describe("score worklist", () => {
     ]);
     expect(matchingGroup?.identityWarnings).toEqual([]);
     expect(report.repairSummary.identityWarningReferenceGroups).toBe(1);
+    expect(report.repairSummary.identityWarningReferenceClaimLinks).toBe(1);
+    expect(report.repairSummary.extractionReadyReferenceGroups).toBe(1);
+    expect(report.repairSummary.extractionReadyReferenceClaimLinks).toBe(1);
     expect(report.repairSummary.blockerBreakdown).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -427,6 +437,9 @@ describe("score worklist", () => {
     );
     expect(lines).toContain("Identity warning: Reference title does not visibly mention");
     expect(lines).toContain("identity-warning references: 1");
+    expect(lines).toContain(
+      "Extraction lanes: 1 reference group(s) / 1 claim-link(s) can move to extraction; 1 reference group(s) / 1 claim-link(s) need identity cleanup first."
+    );
     expect(focusedLines).toContain(
       "Top pending extraction references with identity warnings:"
     );
