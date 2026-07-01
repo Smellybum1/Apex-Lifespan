@@ -1518,6 +1518,29 @@ function ScoreSourceRepairQueue({ summary }: { summary: ScoreWorklistRepairSumma
           value={`${summary.pendingReferenceGroups.length}`}
         />
       </div>
+      {summary.blockerBreakdown.length > 0 ? (
+        <div className="mt-3 rounded-md border border-amber-200 bg-white p-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+            Blocker types
+          </h4>
+          <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            {summary.blockerBreakdown.slice(0, 6).map((blocker) => (
+              <div
+                className="rounded-md border border-amber-100 bg-amber-50/60 p-2"
+                key={blocker.kind}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-sm font-semibold text-slate-950">{blocker.label}</p>
+                  <span className="rounded-md border border-amber-200 bg-white px-2 py-0.5 text-xs font-semibold text-amber-900">
+                    {blocker.claimCount}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-slate-700">{blocker.nextAction}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
       {summary.sourceBlockedRows === 0 ? (
         <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-emerald-950">
           No source-blocked scoring rows are visible in the current local catalog.

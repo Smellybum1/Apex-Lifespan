@@ -125,6 +125,7 @@ export interface ScoreWorklistReport {
 }
 
 export interface ScoreWorklistRepairSummary {
+  blockerBreakdown: ScoreWorklistRepairBlockerSummary[];
   extractionPendingRows: number;
   identityWarningReferenceGroups: number;
   missingReferenceGroups: ScoreWorklistMissingReferenceGroup[];
@@ -133,6 +134,22 @@ export interface ScoreWorklistRepairSummary {
   sourceBlockedRows: number;
   unlinkedInterventionGroups: ScoreWorklistUnlinkedInterventionGroup[];
   unlinkedRows: number;
+}
+
+export type ScoreWorklistRepairBlockerKind =
+  | "claim-support-gap"
+  | "identity-mismatch"
+  | "missing-source-record"
+  | "missing-structured-extraction"
+  | "safety-regulatory-context"
+  | "unlinked-claim";
+
+export interface ScoreWorklistRepairBlockerSummary {
+  claimCount: number;
+  kind: ScoreWorklistRepairBlockerKind;
+  label: string;
+  nextAction: string;
+  priority: number;
 }
 
 export interface ScoreWorklistExtractionGapSummary {
@@ -390,6 +407,7 @@ export function buildScoreWorklistRepairSummary(
   const pendingGroups = pendingReferenceGroups(sourceBlockedRows);
 
   return {
+    blockerBreakdown: scoreWorklistRepairBlockerBreakdown(sourceBlockedRows),
     extractionPendingRows,
     identityWarningReferenceGroups: pendingGroups.filter((group) => group.identityWarnings.length > 0)
       .length,
@@ -524,6 +542,16 @@ export function formatScoreWorklistRepairSummaryLines(
 
   if (summary.sourceBlockedRows === 0) {
     return [...lines, "No source-blocked scoring rows match the current filters."];
+  }
+
+  if (summary.blockerBreakdown.length > 0) {
+    lines.push("Blocker types (rows can appear in more than one type):");
+    lines.push(
+      ...summary.blockerBreakdown.slice(0, limit).map(
+        (blocker) =>
+          `- ${blocker.label}: ${blocker.claimCount} claim row(s). ${blocker.nextAction}`
+      )
+    );
   }
 
   if (options.repairIdentityWarningsOnly && pendingReferenceGroups.length === 0) {
@@ -894,6 +922,141 @@ function referenceIdentityCleanupActions(identityWarnings: string[]) {
     "Rejecting or reassigning through the identity resolver removes the accepted candidate's claim-reference link before score repair continues.",
     "After identity cleanup, rerun npx tsx scripts/local-score-worklist.ts --state source_blocked --repair-identity-warnings --limit 20 to confirm the warning cleared."
   ];
+}
+
+function scoreWorklistRepairBlockerBreakdown(
+  rows: ScoreReadinessRow[]
+): ScoreWorklistRepairBlockerSummary[] {
+  const blockerRows = new Map<ScoreWorklistRepairBlockerKind, Map<string, ScoreReadinessRow>>();
+
+  for (const row of rows) {
+    for (const kind of scoreWorklistRepairBlockerKinds(row)) {
+      const rowsForKind = blockerRows.get(kind) ?? new Map<string, ScoreReadinessRow>();
+      rowsForKind.set(row.claim.id, row);
+      blockerRows.set(kind, rowsForKind);
+    }
+  }
+
+  return REPAIR_BLOCKER_DEFINITIONS.map((definition) => {
+    const rowsForKind = Array.from(blockerRows.get(definition.kind)?.values() ?? []);
+
+    if (rowsForKind.length === 0) {
+      return null;
+    }
+
+    return {
+      claimCount: rowsForKind.length,
+      kind: definition.kind,
+      label: definition.label,
+      nextAction: definition.nextAction,
+      priority: repairPriority(rowsForKind)
+    };
+  })
+    .filter((item): item is ScoreWorklistRepairBlockerSummary => Boolean(item))
+    .sort(
+      (left, right) =>
+        right.claimCount - left.claimCount ||
+        right.priority - left.priority ||
+        repairBlockerSortIndex(left.kind) - repairBlockerSortIndex(right.kind)
+    );
+}
+
+function scoreWorklistRepairBlockerKinds(
+  row: ScoreReadinessRow
+): ScoreWorklistRepairBlockerKind[] {
+  const kinds = new Set<ScoreWorklistRepairBlockerKind>();
+
+  switch (row.packet.completeness.status) {
+    case "missing_sources":
+      kinds.add("missing-source-record");
+      break;
+    case "not_linked":
+      kinds.add("unlinked-claim");
+      break;
+    case "extraction_pending":
+      kinds.add("missing-structured-extraction");
+      break;
+    case "complete":
+      break;
+  }
+
+  if (
+    row.packet.pendingReferences.some(
+      (reference) => referenceIdentityWarnings(reference, [row]).length > 0
+    )
+  ) {
+    kinds.add("identity-mismatch");
+  }
+
+  if (
+    referenceRepairExtractionGaps(row, row.packet.studies).some((gap) =>
+      gap.startsWith("claim-relevant ")
+    )
+  ) {
+    kinds.add("claim-support-gap");
+  }
+
+  if (isSafetyRegulatoryScoringRow(row)) {
+    kinds.add("safety-regulatory-context");
+  }
+
+  return Array.from(kinds);
+}
+
+function isSafetyRegulatoryScoringRow(row: ScoreReadinessRow) {
+  const outcome = row.claim.outcome.toLowerCase();
+
+  return (
+    outcome.includes("safety") ||
+    outcome.includes("adverse") ||
+    outcome.includes("regulatory") ||
+    row.claim.finalLabel === "Safety Concern" ||
+    row.claim.finalLabel === "Regulatory Concern" ||
+    row.claim.finalLabel === "Requires Clinician Oversight"
+  );
+}
+
+const REPAIR_BLOCKER_DEFINITIONS: Array<{
+  kind: ScoreWorklistRepairBlockerKind;
+  label: string;
+  nextAction: string;
+}> = [
+  {
+    kind: "identity-mismatch",
+    label: "Identity mismatch",
+    nextAction: "Resolve candidate identity before writing extraction or scores."
+  },
+  {
+    kind: "missing-source-record",
+    label: "Missing source record",
+    nextAction: "Restore or add the curated reference record first."
+  },
+  {
+    kind: "unlinked-claim",
+    label: "Unlinked claim",
+    nextAction: "Attach curated references to the claim before scoring."
+  },
+  {
+    kind: "missing-structured-extraction",
+    label: "Missing structured extraction",
+    nextAction: "Extract study/source fields before assigning dimension scores."
+  },
+  {
+    kind: "claim-support-gap",
+    label: "Claim-support gap",
+    nextAction: "Confirm claim-relevant outcomes and result direction."
+  },
+  {
+    kind: "safety-regulatory-context",
+    label: "Safety/regulatory context",
+    nextAction: "Capture safety, adverse-event, regulatory, or clinician-oversight context."
+  }
+];
+
+function repairBlockerSortIndex(kind: ScoreWorklistRepairBlockerKind) {
+  const index = REPAIR_BLOCKER_DEFINITIONS.findIndex((definition) => definition.kind === kind);
+
+  return index === -1 ? 100 : index;
 }
 
 function sourceTypeHintFromReference(reference: Reference | null) {

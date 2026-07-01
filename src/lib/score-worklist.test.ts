@@ -209,6 +209,20 @@ describe("score worklist", () => {
 
     expect(report.repairSummary.sourceBlockedRows).toBe(2);
     expect(report.repairSummary.extractionPendingRows).toBe(2);
+    expect(report.repairSummary.blockerBreakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          claimCount: 2,
+          kind: "missing-structured-extraction",
+          label: "Missing structured extraction"
+        }),
+        expect.objectContaining({
+          claimCount: 2,
+          kind: "claim-support-gap",
+          label: "Claim-support gap"
+        })
+      ])
+    );
     expect(report.repairSummary.pendingReferenceGroups[0]).toMatchObject({
       claimCount: 2,
       extractionGaps: expect.arrayContaining([
@@ -234,6 +248,10 @@ describe("score worklist", () => {
       }
     });
     expect(lines).toContain("Source repair summary");
+    expect(lines).toContain("Blocker types (rows can appear in more than one type):");
+    expect(lines).toContain(
+      "- Missing structured extraction: 2 claim row(s). Extract study/source fields before assigning dimension scores."
+    );
     expect(lines).toContain("Top pending extraction references");
     expect(lines).toContain("unlocks 2 claim(s)");
     expect(lines).toContain(
@@ -392,6 +410,15 @@ describe("score worklist", () => {
     ]);
     expect(matchingGroup?.identityWarnings).toEqual([]);
     expect(report.repairSummary.identityWarningReferenceGroups).toBe(1);
+    expect(report.repairSummary.blockerBreakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          claimCount: 1,
+          kind: "identity-mismatch",
+          label: "Identity mismatch"
+        })
+      ])
+    );
     expect(lines).toContain("Identity warning: Reference title does not visibly mention");
     expect(lines).toContain("identity-warning references: 1");
     expect(focusedLines).toContain(
