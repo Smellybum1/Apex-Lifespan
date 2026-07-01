@@ -4,6 +4,7 @@ import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
 import {
   buildScoreReadinessRows,
   buildScoreReadinessSummary,
+  compareScoreReadinessForScoringPass,
   formatScoreReadinessSummaryLines,
   scoreReadinessNextAction,
   scoreReadinessStateLabel
@@ -20,7 +21,9 @@ async function main() {
     const summary = buildCatalogTrustSummary(data);
     const scoreReadinessRows = buildScoreReadinessRows(data);
     const scoreReadinessSummary = buildScoreReadinessSummary(scoreReadinessRows);
-    const scoreWorkRows = scoreReadinessRows.filter((row) => row.state !== "scored");
+    const scoreWorkRows = scoreReadinessRows
+      .filter((row) => row.state !== "scored")
+      .sort(compareScoreReadinessForScoringPass);
 
     if (json) {
       console.log(
