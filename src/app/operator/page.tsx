@@ -52,9 +52,11 @@ import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import {
   buildScoreReadinessRows,
+  buildScoreReadinessSummary,
   compareScoreReadinessForScoringPass,
   scoreReadinessNextAction,
-  scoreReadinessStateLabel
+  scoreReadinessStateLabel,
+  type ScoreReadinessSummary
 } from "@/lib/score-readiness";
 import type { Claim, NormalizedSourcePacketRow, Reference, Study } from "@/lib/types";
 import {
@@ -273,6 +275,7 @@ export default async function OperatorPage() {
     : { eventCount: 0, rows: [] };
   const scoreDashboardData = canReviewPromotion ? await getEvidenceDashboardData() : undefined;
   const scoreReadinessRows = scoreDashboardData ? buildScoreReadinessRows(scoreDashboardData) : [];
+  const scoreReadinessSummary = buildScoreReadinessSummary(scoreReadinessRows);
   const scoreWorkRows = scoreReadinessRows
     .filter((row) => row.state !== "scored")
     .sort(compareScoreReadinessForScoringPass);
@@ -394,6 +397,7 @@ export default async function OperatorPage() {
             recomputeAction={recomputeClaimScoreFromForm}
             sourcePackets={scoreSnapshotSourcePackets}
             studies={scoreSnapshotStudies}
+            summary={scoreReadinessSummary}
             updateAction={updateClaimScoreFromForm}
             worklistContext={scoreEditorContext}
           />
@@ -1158,6 +1162,15 @@ function OperatorStatusTile({ label, value }: { label: string; value: string }) 
   );
 }
 
+function ScoreReadinessStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+      <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
+      <p className="mt-1 text-base font-semibold text-slate-950">{value}</p>
+    </div>
+  );
+}
+
 function PromotionReadinessPanel({
   claimLinkControl,
   promotionControl,
@@ -1350,6 +1363,7 @@ function ScoreSnapshotPanel({
   recomputeAction,
   sourcePackets,
   studies,
+  summary,
   updateAction,
   worklistContext
 }: {
@@ -1359,6 +1373,7 @@ function ScoreSnapshotPanel({
   recomputeAction: (formData: FormData) => void | Promise<void>;
   sourcePackets: NormalizedSourcePacketRow[];
   studies: Study[];
+  summary: ScoreReadinessSummary;
   updateAction: (formData: FormData) => void | Promise<void>;
   worklistContext: Record<
     string,
@@ -1379,7 +1394,7 @@ function ScoreSnapshotPanel({
         <div>
           <h2 className="text-lg font-semibold tracking-normal">Score tools</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Edit local score fields, compute previews, and capture score history without changing review status.
+            Ready-first scoring pass: edit complete packets before source-blocked extraction work.
           </p>
         </div>
         <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
@@ -1388,6 +1403,16 @@ function ScoreSnapshotPanel({
       </div>
 
       <div className="space-y-2 px-4 py-4">
+        <div className="grid gap-2 border-b border-slate-100 pb-4 text-sm md:grid-cols-5">
+          <ScoreReadinessStat label="Loaded now" value={`${claims.length}`} />
+          <ScoreReadinessStat label="Ready now" value={`${summary.readyToScore}`} />
+          <ScoreReadinessStat
+            label="Score review"
+            value={`${summary.defaultLookingPublicScores}`}
+          />
+          <ScoreReadinessStat label="Source work" value={`${summary.sourceBlocked}`} />
+          <ScoreReadinessStat label="Scored cells" value={`${summary.scoredPublicClaims}`} />
+        </div>
         {claims.length > 0 ? (
           <form action={recomputeAction} className="space-y-3">
             <label className="block text-sm font-semibold text-slate-700">
@@ -1400,6 +1425,7 @@ function ScoreSnapshotPanel({
                 <option value="">Select a claim</option>
                 {claims.map((claim) => (
                   <option key={claim.id} value={claim.id}>
+                    {worklistContext[claim.id]?.stateLabel ?? "Scored"} -{" "}
                     {claim.id} · {claim.outcome}
                   </option>
                 ))}

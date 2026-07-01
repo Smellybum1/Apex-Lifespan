@@ -259,6 +259,10 @@ describe("OperatorPage role-gated rendering", () => {
     expect(html).toContain("Dry run:");
     expect(html).toContain("Permission: evidence:promote");
     expect(html).toContain("Score field editor");
+    expect(html).toContain("Ready-first scoring pass");
+    expect(html).toContain("Loaded now");
+    expect(html).toContain("Ready now");
+    expect(html).toContain("Source work");
     expect(html).toContain("unless a human explicitly confirms otherwise");
     expect(html).toContain("Complete claim link before promotion.");
     expect(html).toContain("Audit trail");
