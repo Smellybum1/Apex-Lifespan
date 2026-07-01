@@ -155,6 +155,43 @@ describe("buildClaimScoreSuggestion", () => {
     expect(suggestion.scores.regulatoryRisk).toBe(8);
   });
 
+  it("keeps complete animal-only packets as speculative instead of reasonable experiments", () => {
+    const suggestion = buildClaimScoreSuggestion({
+      claim: {
+        ...claim,
+        claimText: "Fadogia agrestis hormone support claim.",
+        finalLabel: "Insufficient Evidence"
+      },
+      references: [
+        {
+          ...reference,
+          title: "Effects of Fadogia agrestis on testosterone and testicular function in rats"
+        }
+      ],
+      sourcePacket: {
+        claimId: claim.id,
+        current: true,
+        referenceIds: [reference.id],
+        reviewStatus: "Unreviewed AI draft",
+        sourcePacketId: "packet-1",
+        status: "complete"
+      },
+      studies: [
+        {
+          ...metaAnalysis,
+          population: "Preclinical models; limited direct human extrapolation.",
+          riskOfBias: "Animal evidence only; human outcome claims remain uncertain.",
+          studyType: "Animal study",
+          title: "Effects of Fadogia agrestis on testosterone and testicular function in rats"
+        }
+      ]
+    });
+
+    expect(suggestion.finalLabel).toBe("Speculative Watchlist");
+    expect(suggestion.scores.evidenceDirectness).toBeLessThan(5);
+    expect(suggestion.scores.evidenceRigor).toBeLessThan(4);
+  });
+
   it("does not treat incomplete adverse-event reporting as a safety concern by itself", () => {
     const suggestion = buildClaimScoreSuggestion({
       claim,

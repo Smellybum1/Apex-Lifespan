@@ -183,6 +183,11 @@ function suggestedFinalLabel(
   }
 
   const score = compositeScore(scores);
+  const lowDirectnessOrRigor = scores.evidenceDirectness < 5 || scores.evidenceRigor < 4;
+
+  if (lowDirectnessOrRigor) {
+    return score >= 4 ? "Speculative Watchlist" : "Insufficient Evidence";
+  }
 
   if (score >= 8) {
     return "Core Evidence-Based";
