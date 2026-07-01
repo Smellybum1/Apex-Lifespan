@@ -1,6 +1,7 @@
 import {
   buildScoreReadinessRows,
   buildScoreReadinessSummary,
+  compareScoreReadinessForScoringPass,
   formatScoreReadinessSummaryLines,
   scoreReadinessNextAction,
   scoreReadinessStateLabel,
@@ -91,7 +92,8 @@ export function buildScoreWorklistReport(
   const matchingRows = readinessRows
     .filter((row) => (includeScored ? true : row.state !== "scored"))
     .filter((row) => matchesStateFilter(row, state))
-    .filter((row) => matchesInterventionFilter(row, options.intervention));
+    .filter((row) => matchesInterventionFilter(row, options.intervention))
+    .sort(compareScoreReadinessForScoringPass);
 
   return {
     appliedFilters: {
@@ -167,7 +169,8 @@ export function formatScoreWorklistReportLines(report: ScoreWorklistReport) {
     "Read-only local score worklist",
     ...formatScoreReadinessSummaryLines(report.summary),
     `Rows: ${report.rows.length}/${report.totalMatchingRows} shown` +
-      (report.hiddenRows > 0 ? ` (${report.hiddenRows} hidden by limit)` : "")
+      (report.hiddenRows > 0 ? ` (${report.hiddenRows} hidden by limit)` : ""),
+    "Order: score-review and ready-to-score rows first, then audit gaps, then source-blocked extraction."
   ];
 
   if (report.rows.length === 0) {

@@ -49,6 +49,7 @@ import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import {
   buildScoreReadinessRows,
+  compareScoreReadinessForScoringPass,
   scoreReadinessNextAction,
   scoreReadinessStateLabel
 } from "@/lib/score-readiness";
@@ -269,8 +270,13 @@ export default async function OperatorPage() {
     : { eventCount: 0, rows: [] };
   const scoreDashboardData = canReviewPromotion ? await getEvidenceDashboardData() : undefined;
   const scoreReadinessRows = scoreDashboardData ? buildScoreReadinessRows(scoreDashboardData) : [];
-  const scoreWorkRows = scoreReadinessRows.filter((row) => row.state !== "scored");
-  const scoreEditorRows = (scoreWorkRows.length > 0 ? scoreWorkRows : scoreReadinessRows).slice(
+  const scoreWorkRows = scoreReadinessRows
+    .filter((row) => row.state !== "scored")
+    .sort(compareScoreReadinessForScoringPass);
+  const scoredRows = scoreReadinessRows
+    .filter((row) => row.state === "scored")
+    .sort(compareScoreReadinessForScoringPass);
+  const scoreEditorRows = (scoreWorkRows.length > 0 ? scoreWorkRows : scoredRows).slice(
     0,
     12
   );

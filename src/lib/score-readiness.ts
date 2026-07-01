@@ -166,6 +166,40 @@ export function scoreReadinessNextAction(row: ScoreReadinessRow) {
   }
 }
 
+export function compareScoreReadinessForScoringPass(
+  left: ScoreReadinessRow,
+  right: ScoreReadinessRow
+) {
+  const phaseDelta =
+    scoreReadinessScoringPassPhase(left.state) - scoreReadinessScoringPassPhase(right.state);
+
+  if (phaseDelta !== 0) {
+    return phaseDelta;
+  }
+
+  const priorityDelta = right.priority - left.priority;
+
+  if (priorityDelta !== 0) {
+    return priorityDelta;
+  }
+
+  const leftName = left.intervention?.name ?? "";
+  const rightName = right.intervention?.name ?? "";
+  return leftName.localeCompare(rightName) || left.claim.outcome.localeCompare(right.claim.outcome);
+}
+
+export function scoreReadinessScoringPassPhase(state: ScoreReadinessState) {
+  const phase: Record<ScoreReadinessState, number> = {
+    default_score_review: 0,
+    ready_to_score: 1,
+    snapshot_gap: 2,
+    source_blocked: 3,
+    scored: 4
+  };
+
+  return phase[state];
+}
+
 function scoreReadinessState({
   claim,
   currentScore,

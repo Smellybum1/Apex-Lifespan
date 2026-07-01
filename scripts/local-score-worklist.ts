@@ -63,7 +63,8 @@ const VALID_STATES: ScoreWorklistStateFilter[] = [
 const HELP_TEXT = `Usage: npx tsx scripts/local-score-worklist.ts [options]
 
 Read-only local scoring run sheet. It ranks score-readiness rows, shows linked citations,
-and includes conservative suggested scores for operator review.
+and includes conservative suggested scores for operator review. Default order puts
+score-review and ready-to-score rows before source-blocked extraction work.
 
 Options:
   --env-file <path>       Env file to load before reading local data. Default: .env.local
