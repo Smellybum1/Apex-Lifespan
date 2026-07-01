@@ -141,10 +141,10 @@ async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
   });
 
   const lines = [
-    "Accepted candidate extraction hints:",
+    "Accepted candidate repair hints:",
     candidates.length === 0
       ? "No accepted source candidates currently point at this reference; repair from the source record directly."
-      : `${candidates.length} accepted candidate(s) point at this reference. Use the curation draft to reuse captured metadata before writing extraction.`
+      : `${candidates.length} accepted candidate(s) point at this reference. Use the curation draft to inspect captured metadata before identity cleanup or extraction.`
   ];
 
   lines.push(

@@ -400,6 +400,10 @@ describe("score worklist", () => {
     expect(focusedLines).toContain(mismatchReference.id);
     expect(focusedLines).not.toContain(matchingReference.id);
     expect(briefLines).toContain("Identity warnings:");
+    expect(briefLines).toContain("Identity cleanup first:");
+    expect(briefLines).toContain("Use the local Candidate Review identity resolver");
+    expect(briefLines).toContain("removes the accepted candidate's claim-reference link");
+    expect(briefLines).toContain("Resolve accepted-candidate identity first");
   });
 
   it("uses intervention synonyms and common forms before raising identity warnings", () => {
@@ -459,11 +463,14 @@ describe("score worklist", () => {
   it("builds a read-only extraction brief for one source-blocking reference", () => {
     const data = seedDashboardData();
     const sourceBackedClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0)!;
+    const sourceBackedIntervention = data.interventions.find(
+      (intervention) => intervention.id === sourceBackedClaim.interventionId
+    )!;
     const sharedPendingReference: Reference = {
       id: "brief-pending-score-reference",
       identifier: "PMID:87654321",
       source: "PubMed",
-      title: "Shared systematic review and meta-analysis that still needs extraction",
+      title: `${sourceBackedIntervention.name} systematic review and meta-analysis that still needs extraction`,
       url: "https://pubmed.ncbi.nlm.nih.gov/87654321/",
       year: 2026
     };
@@ -484,6 +491,7 @@ describe("score worklist", () => {
 
     expect(brief.reference?.label).toBe("PubMed PMID:87654321 2026");
     expect(brief.totalAffectedClaims).toBe(1);
+    expect(brief.identityCleanupActions).toEqual([]);
     expect(brief.nextActions).toEqual(
       expect.arrayContaining([
         expect.stringContaining("Verify source type and citation identity"),

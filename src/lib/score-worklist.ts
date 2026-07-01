@@ -197,6 +197,7 @@ export interface ScoreWorklistReferenceRepairBrief {
   affectedClaims: ScoreWorklistReferenceRepairClaim[];
   extractionChecklist: string[];
   hiddenClaims: number;
+  identityCleanupActions: string[];
   identityWarnings: string[];
   nextActions: string[];
   reference: {
@@ -424,14 +425,17 @@ export function buildScoreWorklistReferenceRepairBrief(
   const studies = data.studies
     .filter((study) => study.referenceId === normalizedReferenceId)
     .sort((left, right) => right.year - left.year || left.title.localeCompare(right.title));
+  const identityWarnings = referenceIdentityWarnings(reference, affectedRows);
 
   return {
     affectedClaims: affectedRows.slice(0, limit).map((row) => referenceRepairClaim(row, studies)),
     extractionChecklist: REFERENCE_REPAIR_EXTRACTION_CHECKLIST,
     hiddenClaims: Math.max(affectedRows.length - limit, 0),
-    identityWarnings: referenceIdentityWarnings(reference, affectedRows),
+    identityCleanupActions: referenceIdentityCleanupActions(identityWarnings),
+    identityWarnings,
     nextActions: referenceRepairNextActions({
       affectedRows,
+      identityWarnings,
       reference,
       referenceId: normalizedReferenceId,
       studies
@@ -599,6 +603,8 @@ export function formatScoreWorklistReferenceRepairBriefLines(
     if (brief.identityWarnings.length > 0) {
       lines.push("Identity warnings:");
       lines.push(...brief.identityWarnings.map((warning) => `- ${warning}`));
+      lines.push("Identity cleanup first:");
+      lines.push(...brief.identityCleanupActions.map((item) => `- ${item}`));
     }
 
     lines.push("Affected claims:");
@@ -830,11 +836,13 @@ const REPAIR_PLACEHOLDER_EXTRACTION_PATTERNS = [
 
 function referenceRepairNextActions({
   affectedRows,
+  identityWarnings,
   reference,
   referenceId,
   studies
 }: {
   affectedRows: ScoreReadinessRow[];
+  identityWarnings: string[];
   reference: Reference | null;
   referenceId: string;
   studies: Study[];
@@ -850,6 +858,12 @@ function referenceRepairNextActions({
       ...actions,
       "No current source-blocked scoring rows depend on this reference; rerun the score worklist before doing extraction work."
     ];
+  }
+
+  if (identityWarnings.length > 0) {
+    actions.push(
+      "Resolve accepted-candidate identity first; do not write extraction until the target supplement identity is confirmed, reassigned, or detached."
+    );
   }
 
   if (studies.length === 0) {
@@ -868,6 +882,18 @@ function referenceRepairNextActions({
   );
 
   return actions;
+}
+
+function referenceIdentityCleanupActions(identityWarnings: string[]) {
+  if (identityWarnings.length === 0) {
+    return [];
+  }
+
+  return [
+    "Use the local Candidate Review identity resolver, not a manual score update, to confirm target identity, reassign to the matched intervention, or reject wrong supplement.",
+    "Rejecting or reassigning through the identity resolver removes the accepted candidate's claim-reference link before score repair continues.",
+    "After identity cleanup, rerun npx tsx scripts/local-score-worklist.ts --state source_blocked --repair-identity-warnings --limit 20 to confirm the warning cleared."
+  ];
 }
 
 function sourceTypeHintFromReference(reference: Reference | null) {
