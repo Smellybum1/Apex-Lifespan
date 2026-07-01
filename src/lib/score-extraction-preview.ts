@@ -37,6 +37,11 @@ export type ScoreExtractionCandidateReferencePreview = {
   candidates: ScoreExtractionCandidatePreviewRow[];
   claimCount: number;
   extractionGaps: string[];
+  primaryCandidate: {
+    curationDraftCommand: string;
+    label: string;
+    reason: string;
+  } | null;
   readyCandidates: number;
   repairReferenceCommand: string;
   reference: {
@@ -253,7 +258,10 @@ function formatScoreExtractionCandidateReferenceLines(
     reference.extractionGaps.length > 0
       ? `  Gaps: ${reference.extractionGaps.join("; ")}`
       : undefined,
-    `  Repair brief: ${reference.repairReferenceCommand}`
+    `  Repair brief: ${reference.repairReferenceCommand}`,
+    reference.primaryCandidate
+      ? `  Start draft: ${reference.primaryCandidate.curationDraftCommand} (${reference.primaryCandidate.reason})`
+      : undefined
   ].filter((line): line is string => Boolean(line));
 
   if (reference.candidates.length === 0) {
@@ -301,16 +309,25 @@ function extractionCandidateReferencePreview({
       studyCount
     })
   );
-  const readyCandidates = candidateRows.filter((candidate) => candidate.extractionReady).length;
-  const blockedCandidates = candidateRows.length - readyCandidates;
+  const sortedCandidateRows = [...candidateRows].sort(compareExtractionCandidateRows);
+  const primaryCandidate = sortedCandidateRows[0] ?? null;
+  const readyCandidates = sortedCandidateRows.filter((candidate) => candidate.extractionReady).length;
+  const blockedCandidates = sortedCandidateRows.length - readyCandidates;
 
   return {
     blockedCandidates,
-    blockerCounts: scoreExtractionBlockerCountsForRows(candidateRows),
+    blockerCounts: scoreExtractionBlockerCountsForRows(sortedCandidateRows),
     candidateCount: candidates.length,
-    candidates: candidateRows.slice(0, 3),
+    candidates: sortedCandidateRows.slice(0, 3),
     claimCount: group.claimCount,
     extractionGaps: group.extractionGaps.slice(0, 5).map((gap) => gap.gap),
+    primaryCandidate: primaryCandidate
+      ? {
+          curationDraftCommand: primaryCandidate.curationDraftCommand,
+          label: `${primaryCandidate.sourceLabel} ${primaryCandidate.externalId}`,
+          reason: primaryCandidateReason(primaryCandidate)
+        }
+      : null,
     readyCandidates,
     repairReferenceCommand: `npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
     reference: {
@@ -320,6 +337,29 @@ function extractionCandidateReferencePreview({
     },
     studyCount
   };
+}
+
+function compareExtractionCandidateRows(
+  left: ScoreExtractionCandidatePreviewRow,
+  right: ScoreExtractionCandidatePreviewRow
+) {
+  return (
+    Number(right.extractionReady) - Number(left.extractionReady) ||
+    sourceTextPriority(right.sourceTextStatus) - sourceTextPriority(left.sourceTextStatus) ||
+    reviewStatusPriority(right.reviewStatus) - reviewStatusPriority(left.reviewStatus) ||
+    right.triageScore - left.triageScore ||
+    `${left.sourceLabel} ${left.externalId}`.localeCompare(`${right.sourceLabel} ${right.externalId}`)
+  );
+}
+
+function primaryCandidateReason(candidate: ScoreExtractionCandidatePreviewRow) {
+  const parts = [
+    candidate.extractionReady ? "ready" : "blocked",
+    sourceTextPriority(candidate.sourceTextStatus) > 0 ? "source text captured" : "no source text",
+    candidate.reviewStatus
+  ];
+
+  return `${parts.join(", ")}; verify before extraction`;
 }
 
 function extractionCandidatePreviewRow({
@@ -563,6 +603,22 @@ function sourceTextStatus(metadata: Prisma.JsonValue) {
   }
 
   return "No abstract or registry summary captured.";
+}
+
+function sourceTextPriority(status: string) {
+  if (status.includes("Abstract text captured")) {
+    return 2;
+  }
+
+  if (status.includes("Registry brief summary captured")) {
+    return 1;
+  }
+
+  return 0;
+}
+
+function reviewStatusPriority(status: string) {
+  return status === "Human reviewed" ? 1 : 0;
 }
 
 function metadataRecord(value: Prisma.JsonValue): Record<string, unknown> | null {

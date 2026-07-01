@@ -1,3 +1,4 @@
+import { ReviewStatus as DbReviewStatus, SourceKind as DbSourceKind } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -42,6 +43,42 @@ describe("buildScoreExtractionCandidatePreview", () => {
       pendingReferenceGroup("ready-reference", []),
       pendingReferenceGroup("identity-warning-reference", ["Identity needs review."])
     ]);
+    prismaMocks.sourceCandidateFindManyMock.mockResolvedValue([
+      {
+        acceptedReferenceId: "ready-reference",
+        claimId: "wrong-claim",
+        dedupeKey: "blocked-candidate",
+        externalId: "99999999",
+        interventionId: "creatine",
+        metadata: {},
+        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        source: DbSourceKind.PUBMED,
+        sourceType: "Journal Article, Randomized Controlled Trial",
+        title: "Higher triage but blocked candidate",
+        triageScore: 99
+      },
+      {
+        acceptedReferenceId: "ready-reference",
+        claimId: "creatine-strength",
+        dedupeKey: "ready-candidate",
+        externalId: "34610729",
+        interventionId: "creatine",
+        metadata: {
+          abstractText: "Creatine abstract."
+        },
+        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        source: DbSourceKind.PUBMED,
+        sourceType: "Journal Article, Randomized Controlled Trial",
+        title: "Ready creatine candidate",
+        triageScore: 75
+      }
+    ]);
+    prismaMocks.claimReferenceFindManyMock.mockResolvedValue([
+      {
+        claimId: "creatine-strength",
+        referenceId: "ready-reference"
+      }
+    ]);
 
     const preview = await buildScoreExtractionCandidatePreview(summary, {
       referenceLimit: 5
@@ -63,6 +100,14 @@ describe("buildScoreExtractionCandidatePreview", () => {
     expect(preview.references[0]?.repairReferenceCommand).toBe(
       "npx tsx scripts/local-score-worklist.ts --repair-reference ready-reference"
     );
+    expect(preview.references[0]?.primaryCandidate).toMatchObject({
+      curationDraftCommand: `npm run ingest:sources -- --candidate-curation-draft ${safeCandidateKey(
+        "ready-candidate"
+      )}`,
+      label: "PubMed 34610729",
+      reason: "ready, source text captured, Human reviewed; verify before extraction"
+    });
+    expect(preview.references[0]?.candidates[0]?.dedupeKey).toBe(safeCandidateKey("ready-candidate"));
   });
 });
 
@@ -117,6 +162,12 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
           ],
           claimCount: 1,
           extractionGaps: ["source type"],
+          primaryCandidate: {
+            curationDraftCommand:
+              "npm run ingest:sources -- --candidate-curation-draft b64:creatine",
+            label: "PubMed 34610729",
+            reason: "ready, source text captured, AI reviewed; verify before extraction"
+          },
           readyCandidates: 1,
           repairReferenceCommand:
             "npx tsx scripts/local-score-worklist.ts --repair-reference ref-creatine-rct",
@@ -138,6 +189,9 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
     );
     expect(lines).toContain(
       "Repair brief: npx tsx scripts/local-score-worklist.ts --repair-reference ref-creatine-rct"
+    );
+    expect(lines).toContain(
+      "Start draft: npm run ingest:sources -- --candidate-curation-draft b64:creatine (ready, source text captured, AI reviewed; verify before extraction)"
     );
     expect(lines).toContain("scanned 1/1 extraction-ready reference(s); 2 identity-blocked skipped");
     expect(lines).toContain("Skipped identity cleanup: 2 reference group(s) / 2 claim-link(s).");
@@ -165,6 +219,10 @@ function scoreRepairSummary(
     unlinkedInterventionGroups: [],
     unlinkedRows: 0
   };
+}
+
+function safeCandidateKey(dedupeKey: string) {
+  return `b64:${Buffer.from(dedupeKey, "utf8").toString("base64url")}`;
 }
 
 function pendingReferenceGroup(
