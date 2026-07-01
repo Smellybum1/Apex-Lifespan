@@ -907,7 +907,9 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
 
         {mainTab === "candidate-review" ? <LocalCandidateReviewWorkbench /> : null}
         {mainTab === "local-ingestion" ? <LocalIngestionControl /> : null}
-        {mainTab === "catalog-trust" ? <CatalogTrustPanel summary={catalogTrustSummary} /> : null}
+        {mainTab === "catalog-trust" ? (
+          <CatalogTrustPanel data={data} summary={catalogTrustSummary} />
+        ) : null}
       </div>
     </main>
   );
@@ -4756,72 +4758,441 @@ function sleep(ms: number) {
   });
 }
 
-function CatalogTrustPanel({ summary }: { summary: CatalogTrustSummary }) {
+type SourcePacketGapPriority = "High" | "Medium" | "Low";
+
+type SourcePacketGapRow = {
+  claim: Claim;
+  intervention?: Intervention;
+  packet: ClaimSourcePacket;
+  priority: number;
+  priorityLabel: SourcePacketGapPriority;
+  reasons: string[];
+};
+
+type SourcePacketGapSummary = {
+  extractionPending: number;
+  highPriority: number;
+  humanReviewedAffected: number;
+  missingSources: number;
+  noCuratedSources: number;
+  pendingReferences: number;
+  totalGaps: number;
+};
+
+export function buildSourcePacketGapRows(data: EvidenceDashboardData): SourcePacketGapRow[] {
+  const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
+  const interventionsById = new Map(
+    data.interventions.map((intervention) => [intervention.id, intervention])
+  );
+  const claimCountByIntervention = new Map<string, number>();
+
+  for (const claim of data.claims) {
+    claimCountByIntervention.set(
+      claim.interventionId,
+      (claimCountByIntervention.get(claim.interventionId) ?? 0) + 1
+    );
+  }
+
+  return data.claims
+    .map((claim) => {
+      const packet = buildClaimSourcePacket({
+        claim,
+        referencesById,
+        studies: data.studies
+      });
+
+      return {
+        claim,
+        intervention: interventionsById.get(claim.interventionId),
+        packet
+      };
+    })
+    .filter(({ packet }) => packet.completeness.status !== "complete")
+    .map(({ claim, intervention, packet }) => {
+      const priority = sourcePacketGapPriorityScore({
+        claim,
+        interventionClaimCount: claimCountByIntervention.get(claim.interventionId) ?? 0,
+        packet
+      });
+      const priorityLabel = sourcePacketGapPriorityLabel(priority);
+
+      return {
+        claim,
+        intervention,
+        packet,
+        priority,
+        priorityLabel,
+        reasons: sourcePacketGapReasons({
+          claim,
+          interventionClaimCount: claimCountByIntervention.get(claim.interventionId) ?? 0,
+          packet
+        })
+      };
+    })
+    .sort((left, right) => {
+      const priorityDelta = right.priority - left.priority;
+
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+
+      const leftName = left.intervention?.name ?? "";
+      const rightName = right.intervention?.name ?? "";
+      return leftName.localeCompare(rightName) || left.claim.outcome.localeCompare(right.claim.outcome);
+    });
+}
+
+function buildSourcePacketGapSummary(rows: SourcePacketGapRow[]): SourcePacketGapSummary {
+  return {
+    extractionPending: rows.filter((row) => row.packet.completeness.status === "extraction_pending").length,
+    highPriority: rows.filter((row) => row.priorityLabel === "High").length,
+    humanReviewedAffected: rows.filter((row) => isHumanReviewed(row.claim.reviewStatus)).length,
+    missingSources: rows.filter((row) => row.packet.completeness.status === "missing_sources").length,
+    noCuratedSources: rows.filter((row) => row.packet.completeness.status === "not_linked").length,
+    pendingReferences: rows.reduce(
+      (total, row) =>
+        total +
+        row.packet.completeness.pendingReferences +
+        row.packet.completeness.missingReferences,
+      0
+    ),
+    totalGaps: rows.length
+  };
+}
+
+function sourcePacketGapPriorityScore({
+  claim,
+  interventionClaimCount,
+  packet
+}: {
+  claim: Claim;
+  interventionClaimCount: number;
+  packet: ClaimSourcePacket;
+}) {
+  const statusScore: Record<ClaimSourcePacket["completeness"]["status"], number> = {
+    complete: 0,
+    extraction_pending: 70,
+    missing_sources: 90,
+    not_linked: 45
+  };
+  const score = evidenceMapSortableScore(claim);
+  const labelWeight = sourcePacketGapLabelWeight(claim.finalLabel);
+
+  return Math.round(
+    statusScore[packet.completeness.status] +
+      (isHumanReviewed(claim.reviewStatus) ? 30 : 10) +
+      labelWeight +
+      (score === null ? 0 : score * 3) +
+      Math.min(18, packet.completeness.totalReferences * 3) +
+      Math.min(18, packet.completeness.pendingReferences * 4) +
+      Math.min(14, interventionClaimCount)
+  );
+}
+
+function sourcePacketGapLabelWeight(label: EvidenceLabel) {
+  if (label === "Core Evidence-Based") {
+    return 22;
+  }
+
+  if (
+    label === "Conditional / Biomarker-Gated" ||
+    label === "Useful for Specific Use Case" ||
+    label === "Safety Concern" ||
+    label === "Requires Clinician Oversight" ||
+    label === "Regulatory Concern"
+  ) {
+    return 16;
+  }
+
+  if (label === "Reasonable N-of-1 Experiment" || label === "Speculative Watchlist") {
+    return 10;
+  }
+
+  return 4;
+}
+
+function sourcePacketGapPriorityLabel(priority: number): SourcePacketGapPriority {
+  if (priority >= 120) {
+    return "High";
+  }
+
+  if (priority >= 85) {
+    return "Medium";
+  }
+
+  return "Low";
+}
+
+function sourcePacketGapReasons({
+  claim,
+  interventionClaimCount,
+  packet
+}: {
+  claim: Claim;
+  interventionClaimCount: number;
+  packet: ClaimSourcePacket;
+}) {
+  const reasons = [packet.completeness.label];
+
+  if (isHumanReviewed(claim.reviewStatus)) {
+    reasons.push("human-reviewed claim affected");
+  } else {
+    reasons.push("pending human review");
+  }
+
+  if (packet.completeness.pendingReferences > 0) {
+    reasons.push(`${packet.completeness.pendingReferences} linked ref(s) need extraction`);
+  }
+
+  if (packet.completeness.missingReferences > 0) {
+    reasons.push(`${packet.completeness.missingReferences} missing ref record(s)`);
+  }
+
+  if (packet.completeness.totalReferences === 0) {
+    reasons.push("no curated references linked");
+  }
+
+  if (interventionClaimCount >= 6) {
+    reasons.push("high-coverage intervention");
+  }
+
+  if (!isEvidenceMapPlaceholderClaim(claim)) {
+    reasons.push(`${compositeScore(claim.scores).toFixed(1)} composite`);
+  }
+
+  return reasons;
+}
+
+function CatalogTrustPanel({
+  data,
+  summary
+}: {
+  data: EvidenceDashboardData;
+  summary: CatalogTrustSummary;
+}) {
   const hasAttentionItems = summary.previewAttentionItems.length > 0;
+  const sourcePacketGapRows = buildSourcePacketGapRows(data);
+  const sourcePacketGapSummary = buildSourcePacketGapSummary(sourcePacketGapRows);
 
   return (
     <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Local catalog trust
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-ink">
-            {summary.interventions.total} interventions, {summary.claims.total} scoped claims
-          </h2>
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
-            This readout checks the local database catalog only. It separates source-packet
-            completeness, trial registry leads, and product-level AU/TGA evidence so generic
-            intervention evidence does not become product authorization.
-          </p>
+      <div className="grid gap-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Local catalog trust
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-ink">
+              {summary.interventions.total} interventions, {summary.claims.total} scoped claims
+            </h2>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
+              This readout checks the local database catalog only. It separates source-packet
+              completeness, trial registry leads, and product-level AU/TGA evidence so generic
+              intervention evidence does not become product authorization.
+            </p>
+          </div>
+          <span
+            className={cn(
+              "w-fit rounded-md border px-2 py-1 text-xs font-semibold",
+              hasAttentionItems
+                ? "border-amberline/30 bg-amber-50 text-amberline"
+                : "border-spruce/30 bg-teal-50 text-spruce"
+            )}
+          >
+            {hasAttentionItems ? "Needs local attention" : "No automated local blockers"}
+          </span>
         </div>
-        <span
-          className={cn(
-            "w-fit rounded-md border px-2 py-1 text-xs font-semibold",
-            hasAttentionItems
-              ? "border-amberline/30 bg-amber-50 text-amberline"
-              : "border-spruce/30 bg-teal-50 text-spruce"
-          )}
-        >
-          {hasAttentionItems ? "Needs local attention" : "No automated local blockers"}
-        </span>
-      </div>
 
-      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        <MiniStat
-          label="Source packets"
-          value={`${summary.claims.sourcePacketsComplete}/${summary.claims.sourcePacketsTotal} complete`}
-        />
-        <MiniStat
-          label="Trial leads"
-          value={`${summary.trials.nctIdFormat} NCT IDs, ${summary.trials.searchOnly} search-only`}
-        />
-        <MiniStat
-          label="AU/TGA intervention rows"
-          value={summary.australia.interventionCoverage}
-        />
-        <MiniStat
-          label="Product AU/TGA"
-          value={`${summary.australia.productExactStatusCount}/${summary.products.total} exact product statuses`}
-        />
-      </div>
-
-      {hasAttentionItems ? (
-        <div className="mt-4 rounded-md border border-amberline/30 bg-amber-50 px-3 py-2">
-          <p className="text-sm font-semibold text-amber-950">Before preview promotion</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-amber-950">
-            {summary.previewAttentionItems.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <MiniStat
+            label="Source packets"
+            value={`${summary.claims.sourcePacketsComplete}/${summary.claims.sourcePacketsTotal} complete`}
+          />
+          <MiniStat
+            label="Trial leads"
+            value={`${summary.trials.nctIdFormat} NCT IDs, ${summary.trials.searchOnly} search-only`}
+          />
+          <MiniStat
+            label="AU/TGA intervention rows"
+            value={summary.australia.interventionCoverage}
+          />
+          <MiniStat
+            label="Product AU/TGA"
+            value={`${summary.australia.productExactStatusCount}/${summary.products.total} exact product statuses`}
+          />
         </div>
-      ) : null}
 
-      <p className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
-        Next useful local work: {summary.nextActions[0]}
-      </p>
+        <SourcePacketGapWorklist
+          rows={sourcePacketGapRows}
+          summary={sourcePacketGapSummary}
+        />
+
+        {hasAttentionItems ? (
+          <div className="rounded-md border border-amberline/30 bg-amber-50 px-3 py-2">
+            <p className="text-sm font-semibold text-amber-950">Before preview promotion</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-amber-950">
+              {summary.previewAttentionItems.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <p className="rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+          Next useful local work: {summary.nextActions[0]}
+        </p>
+      </div>
     </section>
   );
+}
+
+function SourcePacketGapWorklist({
+  rows,
+  summary
+}: {
+  rows: SourcePacketGapRow[];
+  summary: SourcePacketGapSummary;
+}) {
+  const visibleRows = rows.slice(0, 12);
+  const hiddenCount = Math.max(rows.length - visibleRows.length, 0);
+
+  return (
+    <section className="rounded-lg border border-line bg-white p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold text-ink">Source packet gap worklist</h3>
+            <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+              {summary.totalGaps.toLocaleString()} incomplete
+            </span>
+            {summary.highPriority > 0 ? (
+              <span className="rounded-md border border-danger/25 bg-red-50 px-2 py-1 text-xs font-semibold text-danger">
+                {summary.highPriority.toLocaleString()} high priority
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
+            Ranked by source-packet severity, human-review status, linked-reference work, claim
+            score, and intervention visibility. Fix these first to make public evidence cards more
+            traceable.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <MiniStat label="No curated sources" value={summary.noCuratedSources.toLocaleString()} />
+        <MiniStat label="Extraction pending" value={summary.extractionPending.toLocaleString()} />
+        <MiniStat label="Missing source records" value={summary.missingSources.toLocaleString()} />
+        <MiniStat
+          label="Human-reviewed affected"
+          value={summary.humanReviewedAffected.toLocaleString()}
+        />
+        <MiniStat label="Pending references" value={summary.pendingReferences.toLocaleString()} />
+      </div>
+
+      {visibleRows.length > 0 ? (
+        <div className="mt-3 grid gap-2">
+          {visibleRows.map((row) => (
+            <SourcePacketGapCard
+              key={row.claim.id}
+              row={row}
+            />
+          ))}
+          {hiddenCount > 0 ? (
+            <p className="rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+              Showing top {visibleRows.length.toLocaleString()} source-packet gap(s);
+              {" "}
+              {hiddenCount.toLocaleString()} lower-priority gap(s) remain below this cutoff.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-spruce/30 bg-teal-50 px-3 py-2 text-sm leading-6 text-spruce">
+          No incomplete source packets are visible in the current local catalog.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function SourcePacketGapCard({ row }: { row: SourcePacketGapRow }) {
+  const claimUrl = row.intervention
+    ? `/interventions/${row.intervention.slug}#claim-${row.claim.id}`
+    : undefined;
+
+  return (
+    <article className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-semibold",
+                sourcePacketGapPriorityTone(row.priorityLabel)
+              )}
+              title={`Priority ${row.priority}`}
+            >
+              {row.priorityLabel} priority
+            </span>
+            <span
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-semibold",
+                sourcePacketCompletenessTone(row.packet.completeness.status)
+              )}
+            >
+              {row.packet.completeness.label}
+            </span>
+            <ReviewStatusBadge status={row.claim.reviewStatus} />
+          </div>
+          <h4 className="mt-3 text-sm font-semibold text-ink">
+            {row.intervention?.name ?? "Unknown intervention"} - {shortOutcome(row.claim.outcome)}
+          </h4>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {row.packet.completeness.nextStep}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {row.reasons.map((reason) => (
+              <span
+                className="rounded-md border border-line bg-white px-2 py-1 text-xs text-slate-600"
+                key={reason}
+              >
+                {reason}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col gap-2 text-xs lg:items-end">
+          <span className="rounded-md border border-line bg-white px-2 py-1 font-semibold text-slate-700">
+            {row.packet.completeness.extractedReferences}/
+            {row.packet.completeness.totalReferences} refs extracted
+          </span>
+          <span className={cn("rounded-md border px-2 py-1 font-semibold", labelTone(row.claim.finalLabel))}>
+            {row.claim.finalLabel}
+          </span>
+          {claimUrl ? (
+            <a
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 font-semibold text-signal hover:border-signal"
+              href={claimUrl}
+            >
+              Open claim
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function sourcePacketGapPriorityTone(priority: SourcePacketGapPriority) {
+  if (priority === "High") {
+    return "border-danger/30 bg-red-50 text-danger";
+  }
+
+  if (priority === "Medium") {
+    return "border-amberline/30 bg-amber-50 text-amberline";
+  }
+
+  return "border-slate-300 bg-slate-50 text-slate-700";
 }
 
 function FilteredClaimDetailEmptyState({
@@ -5394,19 +5765,12 @@ export function buildCodexReviewPacket(data: EvidenceDashboardData) {
     referencesById,
     studies: data.studies
   });
-  const sourceWorkClaims = data.claims
-    .map((claim) => ({
-      claim,
-      intervention: interventionsById.get(claim.interventionId),
-      packet: buildClaimSourcePacket({ claim, referencesById, studies: data.studies })
-    }))
-    .filter(({ packet }) => packet.completeness.status !== "complete")
-    .slice(0, 5);
+  const sourceWorkClaims = buildSourcePacketGapRows(data).slice(0, 5);
 
   const sourceWorkLines =
     sourceWorkClaims.length > 0
-      ? sourceWorkClaims.map(({ claim, intervention, packet }) => {
-          return `- ${claim.id} (${intervention?.name ?? "Unknown intervention"} / ${claim.outcome}): ${packet.completeness.label}; ${packet.completeness.nextStep}`;
+      ? sourceWorkClaims.map(({ claim, intervention, packet, priorityLabel }) => {
+          return `- ${claim.id} (${intervention?.name ?? "Unknown intervention"} / ${claim.outcome}): ${priorityLabel} priority; ${packet.completeness.label}; ${packet.completeness.nextStep}`;
         })
       : ["- No incomplete local source packets in the current dashboard data."];
   const claimBoundaryLines = data.claims.map((claim) => {
@@ -5440,7 +5804,7 @@ export function buildCodexReviewPacket(data: EvidenceDashboardData) {
     "Claim boundaries (what this does not prove):",
     ...claimBoundaryLines,
     "",
-    "Top local source-packet gaps:",
+    "Priority source-packet work:",
     ...sourceWorkLines,
     "",
     "Requested Codex output:",

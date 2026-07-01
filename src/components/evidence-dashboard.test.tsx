@@ -1,7 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { buildCodexReviewPacket, EvidenceDashboard } from "@/components/evidence-dashboard";
+import {
+  buildCodexReviewPacket,
+  buildSourcePacketGapRows,
+  EvidenceDashboard
+} from "@/components/evidence-dashboard";
 import {
   australiaRegulatoryStatuses,
   claims,
@@ -47,7 +51,7 @@ describe("EvidenceDashboard", () => {
   it("renders cautious empty states when no local claims are available", () => {
     const html = renderToStaticMarkup(<EvidenceDashboard data={emptyDashboardData()} />);
 
-    expect(html).toContain("No local scored claims match the current filters.");
+    expect(html).toContain("No evidence-map cells match the current filters and map mode.");
     expect(html).toContain("Claim Details");
     expect(html).toContain("Catalog Trust");
   });
@@ -104,7 +108,7 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("All labels");
     expect(html).toContain("All outcomes");
     expect(html).not.toContain("Local catalog trust");
-    expect(html).not.toContain("Source packets");
+    expect(html).not.toContain("Source packet gap worklist");
     expect(html).not.toContain("Selected claim");
     expect(html).toContain("Showing 6 interventions · 9 scoped claims");
     expect(html).not.toContain("Dashboard detail sections");
@@ -124,6 +128,26 @@ describe("EvidenceDashboard", () => {
 
     expect(html).toContain("Pending human review");
     expect(sourcePacketSummary.completeClaims).toBeGreaterThan(0);
+  });
+
+  it("ranks source-packet gaps by actionable extraction work", () => {
+    const data = seedDashboardData();
+    const targetClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0);
+
+    expect(targetClaim).toBeDefined();
+
+    const gapRows = buildSourcePacketGapRows({
+      ...data,
+      studies: data.studies.filter(
+        (study) => !targetClaim?.keyReferenceIds.includes(study.referenceId)
+      )
+    });
+    const targetRow = gapRows.find((row) => row.claim.id === targetClaim?.id);
+
+    expect(targetRow).toBeDefined();
+    expect(targetRow?.packet.completeness.status).toBe("extraction_pending");
+    expect(targetRow?.reasons.join(" ")).toContain("linked ref(s) need extraction");
+    expect(targetRow?.intervention?.slug).toBeTruthy();
   });
 
   it("renders sanitized seed fallback reasons in the public header", () => {
@@ -165,6 +189,7 @@ describe("EvidenceDashboard", () => {
     expect(packet).toContain(
       `- Source packets: ${sourcePacketSummary.completeClaims}/${sourcePacketSummary.totalClaims} complete`
     );
+    expect(packet).toContain("Priority source-packet work:");
     expect(packet).toContain("Claim boundaries (what this does not prove):");
     expect(packet).toContain("Does not prove direct lifespan extension.");
     expect(packet).toContain("Does not prove safe or effective human use.");
