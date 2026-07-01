@@ -131,6 +131,31 @@ describe("EvidenceDashboard", () => {
     expect(sourcePacketSummary.completeClaims).toBeGreaterThan(0);
   });
 
+  it("marks scored-looking map cells as source work when linked extraction is incomplete", () => {
+    const data = seedDashboardData();
+    const targetClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0);
+
+    expect(targetClaim).toBeDefined();
+
+    const html = renderToStaticMarkup(
+      <EvidenceDashboard
+        data={{
+          ...data,
+          studies: data.studies.filter(
+            (study) => !targetClaim?.keyReferenceIds.includes(study.referenceId)
+          )
+        }}
+      />
+    );
+
+    expect(html).toContain("Source / Work");
+    expect(html).toContain("Source work");
+    expect(html).toContain("stored score needs source extraction");
+    expect(html).toContain(
+      "stored score, but linked references still need extraction or source-packet repair"
+    );
+  });
+
   it("ranks source-packet gaps by actionable extraction work", () => {
     const data = seedDashboardData();
     const targetClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0);

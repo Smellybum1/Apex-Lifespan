@@ -664,12 +664,28 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     [claims, labelFilter, outcomeFilter, visibleInterventionIds]
   );
   const hasFilteredClaims = filteredClaims.length > 0;
+  const evidenceMapReadinessRows = useMemo(
+    () =>
+      buildScoreReadinessRows({
+        ...data,
+        claims: filteredClaims
+      }),
+    [data, filteredClaims]
+  );
+  const evidenceMapReadinessByClaimId = useMemo(
+    () => new Map(evidenceMapReadinessRows.map((row) => [row.claim.id, row])),
+    [evidenceMapReadinessRows]
+  );
   const evidenceMapClaims = useMemo(
     () =>
       filteredClaims.filter((claim) =>
-        claimMatchesEvidenceMapStatusFilter(claim, evidenceMapStatusFilter)
+        claimMatchesEvidenceMapStatusFilter(
+          claim,
+          evidenceMapStatusFilter,
+          evidenceMapReadinessByClaimId.get(claim.id)
+        )
       ),
-    [evidenceMapStatusFilter, filteredClaims]
+    [evidenceMapReadinessByClaimId, evidenceMapStatusFilter, filteredClaims]
   );
   const evidenceMapInterventions = useMemo(() => {
     if (evidenceMapStatusFilter === "all") {
@@ -683,10 +699,11 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     () =>
       buildEvidenceMapReadinessSummary({
         claims: filteredClaims,
+        readinessRows: evidenceMapReadinessRows,
         referencesById,
         studies
       }),
-    [filteredClaims, referencesById, studies]
+    [evidenceMapReadinessRows, filteredClaims, referencesById, studies]
   );
 
   useEffect(() => {
@@ -870,12 +887,13 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
                 summary={evidenceMapReadinessSummary}
               />
 
-              <EvidenceMap
-                claims={evidenceMapClaims}
-                interventions={evidenceMapInterventions}
-                activeClaimId={activeClaimIdForDisplay}
-                onSelectClaim={handleSelectClaim}
-              />
+          <EvidenceMap
+            claims={evidenceMapClaims}
+            readinessByClaimId={evidenceMapReadinessByClaimId}
+            interventions={evidenceMapInterventions}
+            activeClaimId={activeClaimIdForDisplay}
+            onSelectClaim={handleSelectClaim}
+          />
             </div>
           </section>
         ) : null}
@@ -6026,7 +6044,7 @@ export function buildCodexReviewPacket(data: EvidenceDashboardData) {
   ].join("\n");
 }
 
-type EvidenceMapStatusFilter = "all" | "scored" | "review-work";
+type EvidenceMapStatusFilter = "all" | "scored" | "review-work" | "source-work";
 
 type EvidenceMapReadinessSummary = {
   completeSourcePackets: number;
@@ -6037,8 +6055,10 @@ type EvidenceMapReadinessSummary = {
   incompleteSourcePackets: number;
   pendingReferences: number;
   reviewWorkClaims: number;
+  sourceBlockedScoredClaims: number;
   scoredClaims: number;
   sourcePacketScaffoldClaims: number;
+  snapshotGapClaims: number;
   totalClaims: number;
   totalReferences: number;
 };
@@ -6062,6 +6082,11 @@ const EVIDENCE_MAP_STATUS_FILTERS: Array<{
     id: "review-work",
     label: "Review work",
     title: "Show draft leads and source-packet scaffolds that still need evidence scoring."
+  },
+  {
+    id: "source-work",
+    label: "Source work",
+    title: "Show scored-looking cells that still need source extraction or score snapshot repair."
   }
 ];
 
@@ -6086,31 +6111,46 @@ function isEvidenceMapPlaceholderClaim(claim: Claim) {
 
 function claimMatchesEvidenceMapStatusFilter(
   claim: Claim,
-  statusFilter: EvidenceMapStatusFilter
+  statusFilter: EvidenceMapStatusFilter,
+  readinessRow?: ScoreReadinessRow
 ) {
   if (statusFilter === "scored") {
-    return !isEvidenceMapPlaceholderClaim(claim);
+    return !isEvidenceMapPlaceholderClaim(claim) && readinessRow?.state === "scored";
   }
 
   if (statusFilter === "review-work") {
     return isEvidenceMapPlaceholderClaim(claim);
   }
 
+  if (statusFilter === "source-work") {
+    return !isEvidenceMapPlaceholderClaim(claim) && isEvidenceMapSourceWorkRow(readinessRow);
+  }
+
   return true;
+}
+
+function isEvidenceMapSourceWorkRow(row: ScoreReadinessRow | undefined) {
+  return row?.state === "source_blocked" || row?.state === "snapshot_gap";
 }
 
 function buildEvidenceMapReadinessSummary({
   claims,
+  readinessRows,
   referencesById,
   studies
 }: {
   claims: Claim[];
+  readinessRows: ScoreReadinessRow[];
   referencesById: Map<string, Reference>;
   studies: Study[];
 }): EvidenceMapReadinessSummary {
   const packetSummary = summarizeClaimSourcePackets({ claims, referencesById, studies });
   const draftLeadClaims = claims.filter(isDraftLeadClaim).length;
   const sourcePacketScaffoldClaims = claims.filter(isSourcePacketScaffoldClaim).length;
+  const sourceBlockedScoredClaims = readinessRows.filter(
+    (row) => row.state === "source_blocked" && !isEvidenceMapPlaceholderClaim(row.claim)
+  ).length;
+  const snapshotGapClaims = readinessRows.filter((row) => row.state === "snapshot_gap").length;
 
   return {
     completeSourcePackets: packetSummary.completeClaims,
@@ -6124,8 +6164,10 @@ function buildEvidenceMapReadinessSummary({
       packetSummary.unlinkedClaims,
     pendingReferences: packetSummary.pendingReferences + packetSummary.missingReferences,
     reviewWorkClaims: draftLeadClaims + sourcePacketScaffoldClaims,
-    scoredClaims: claims.filter((claim) => !isEvidenceMapPlaceholderClaim(claim)).length,
+    sourceBlockedScoredClaims,
+    scoredClaims: readinessRows.filter((row) => row.state === "scored").length,
     sourcePacketScaffoldClaims,
+    snapshotGapClaims,
     totalClaims: claims.length,
     totalReferences: packetSummary.totalReferences
   };
@@ -6139,7 +6181,11 @@ function evidenceMapSortableScore(claim: Claim | undefined) {
   return compositeScore(claim.scores);
 }
 
-function evidenceMapCellPresentation(claim: Claim, score: number) {
+function evidenceMapCellPresentation(
+  claim: Claim,
+  score: number,
+  readinessRow?: ScoreReadinessRow
+) {
   if (isDraftLeadClaim(claim)) {
     return {
       ariaSummary:
@@ -6163,6 +6209,32 @@ function evidenceMapCellPresentation(claim: Claim, score: number) {
         "Source-packet scaffold awaiting evidence review. The stored placeholder score is hidden because it is not a final evidence score.",
       tone:
         "border-dashed border-slate-300 bg-slate-50 text-slate-600 hover:border-signal hover:bg-blue-50"
+    };
+  }
+
+  if (readinessRow?.state === "source_blocked") {
+    return {
+      ariaSummary:
+        "scored draft has linked sources awaiting extraction before the score should be treated as current",
+      primary: "Source",
+      secondary: "Work",
+      title:
+        "This claim has a stored score, but linked references still need extraction or source-packet repair before the cell should be treated as current scored evidence.",
+      tone:
+        "border-dashed border-amberline/35 bg-amber-50 text-amberline hover:border-amberline hover:bg-amber-50"
+    };
+  }
+
+  if (readinessRow?.state === "snapshot_gap") {
+    return {
+      ariaSummary:
+        "scored draft needs a score snapshot before future score changes are auditable",
+      primary: score.toFixed(1),
+      secondary: "Audit",
+      title:
+        "This claim has a score, but no score snapshot is recorded. Capture a snapshot before treating future changes as auditable.",
+      tone:
+        "border-dashed border-signal/35 bg-blue-50 text-signal hover:border-signal hover:bg-blue-50"
     };
   }
 
@@ -6261,6 +6333,7 @@ function EvidenceMapReadinessStrip({
   const scoredLabel = `${summary.scoredClaims.toLocaleString()}/${totalClaimsLabel}`;
   const humanReviewedLabel = `${summary.humanReviewedClaims.toLocaleString()}/${totalClaimsLabel}`;
   const sourcePacketLabel = `${summary.completeSourcePackets.toLocaleString()}/${totalClaimsLabel}`;
+  const sourceWorkCount = summary.sourceBlockedScoredClaims + summary.snapshotGapClaims;
   const reviewWorkDetail =
     summary.reviewWorkClaims === 0
       ? "No draft leads or scaffolds in the current filters"
@@ -6280,8 +6353,8 @@ function EvidenceMapReadinessStrip({
             </span>
           </div>
           <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-600">
-            Scored cells are review aids, not treatment advice. Review-work cells keep draft leads visible
-            without showing starter scores as final evidence.
+            Scored cells are review aids, not treatment advice. Review-work and source-work cells keep
+            draft/source gaps visible without showing starter or stale scores as final evidence.
           </p>
         </div>
         <div
@@ -6316,6 +6389,11 @@ function EvidenceMapReadinessStrip({
           title={`${summary.incompleteSourcePackets.toLocaleString()} claim(s) still need source-packet linking or extraction.`}
         />
         <EvidenceReadinessBadge label="Review-work mix" value={reviewWorkDetail} />
+        <EvidenceReadinessBadge
+          label="Source work"
+          value={sourceWorkCount.toLocaleString()}
+          title={`${summary.sourceBlockedScoredClaims.toLocaleString()} scored-looking cell(s) need source extraction; ${summary.snapshotGapClaims.toLocaleString()} need score snapshots.`}
+        />
         <EvidenceReadinessBadge
           label="References extracted"
           value={`${summary.extractedReferences.toLocaleString()}/${summary.totalReferences.toLocaleString()}`}
@@ -6353,11 +6431,13 @@ function EvidenceReadinessBadge({
 function EvidenceMap({
   claims: visibleClaims,
   interventions: visibleInterventions,
+  readinessByClaimId,
   activeClaimId,
   onSelectClaim
 }: {
   claims: Claim[];
   interventions: Intervention[];
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
   activeClaimId: string;
   onSelectClaim: SelectClaimHandler;
 }) {
@@ -6477,6 +6557,7 @@ function EvidenceMap({
                 intervention={intervention}
                 outcomes={outcomes}
                 claims={visibleClaims}
+                readinessByClaimId={readinessByClaimId}
                 activeClaimId={activeClaimId}
                 onSelectClaim={onSelectClaim}
               />
@@ -6510,6 +6591,12 @@ function EvidenceMapLegend() {
       </span>
       <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1">
         <strong className="text-ink">Needs / Review</strong> = scaffold awaiting source-packet scoring
+      </span>
+      <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-amberline">
+        <strong>Source / Work</strong> = stored score needs source extraction before display as current
+      </span>
+      <span className="rounded-md border border-signal/25 bg-blue-50 px-2 py-1 text-signal">
+        <strong>Score / Audit</strong> = scored cell needs a score snapshot
       </span>
       <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-amberline">
         Unassessed cells do not imply absence of evidence.
@@ -6622,12 +6709,14 @@ function EvidenceMapRow({
   intervention,
   outcomes,
   claims: visibleClaims,
+  readinessByClaimId,
   activeClaimId,
   onSelectClaim
 }: {
   intervention: Intervention;
   outcomes: OutcomeArea[];
   claims: Claim[];
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
   activeClaimId: string;
   onSelectClaim: SelectClaimHandler;
 }) {
@@ -6669,7 +6758,11 @@ function EvidenceMapRow({
         }
 
         const score = compositeScore(claim.scores);
-        const cell = evidenceMapCellPresentation(claim, score);
+        const cell = evidenceMapCellPresentation(
+          claim,
+          score,
+          readinessByClaimId.get(claim.id)
+        );
 
         return (
           <td key={claim.id} className="h-14 w-[4.25rem] min-w-[4.25rem] max-w-[4.75rem] p-0 align-middle">
