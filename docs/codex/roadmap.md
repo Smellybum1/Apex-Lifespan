@@ -76,10 +76,10 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 
 **Current local scoring status (2026-07-02, read-only worklist):**
 
-- `6/477` public claim cells are scored with substantive source extraction.
-- `471/477` claim cells still need scoring work.
-- `15` claim cells are ready to score now because their source packets have substantive extraction rather than placeholder rows.
-- `456` claim cells are source-blocked; most remaining scoring work is source extraction/link repair before score assignment.
+- `21/477` public claim cells are scored with substantive source extraction.
+- `456/477` claim cells still need scoring work.
+- `0` claim cells are ready to score now because the first ready batch has been scored into AI-draft public states with score snapshots.
+- `456` claim cells are source-blocked; remaining scoring work is source extraction/link repair before score assignment.
 - `0` default-looking public scores and `0` score snapshot gaps are currently reported by the local score worklist.
 
 **Goal:** every active local claim should end in one clear public-safe state: scored with traceable source packet and review status, parked/backlog with a reason, source-blocked with next action, or rejected/noise.
@@ -99,7 +99,7 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 **Completion checkpoints:**
 
 1. **Scoring contract locked:** dimensions, composite formula, evidence bands, final labels, safety/regulatory penalties, and public wording are documented well enough that similar claims score consistently.
-2. **Ready batch scored or parked:** the current ready-to-score batch is reviewed first; each row is saved, parked, rejected, or returned to source-blocked with a concrete reason.
+2. **Ready batch scored or parked:** the first ready-to-score batch has been scored into AI-draft public states; repeat this checkpoint whenever source repair creates a new ready batch.
 3. **Source-blocked backlog reduced into states:** the source-blocked cells are repaired in priority batches and no longer sit behind placeholder-looking public scores.
 4. **Every active claim accounted for:** the local worklist reports each claim as scored, score-review, source-blocked, parked/backlog, or rejected/noise, with no unexplained default-looking scores.
 5. **Public display verified:** the evidence map and intervention pages clearly distinguish final scored evidence from insufficient evidence, parked research, review work, and source-blocked source work.
