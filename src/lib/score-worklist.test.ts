@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildScoreWorklistExtractionBatchBrief,
   buildScoreWorklistReferenceRepairBrief,
   buildScoreWorklistReport,
+  formatScoreWorklistExtractionBatchBriefLines,
   formatScoreWorklistReferenceRepairBriefLines,
   formatScoreWorklistReportLines,
   formatScoreWorklistReportLinesWithOptions
@@ -196,16 +198,14 @@ describe("score worklist", () => {
       keyReferenceIds: [sharedPendingReference.id],
       outcome: "Safety/adverse effects"
     };
-    const report = buildScoreWorklistReport(
-      {
-        ...data,
-        claims: [firstBlockedClaim, secondBlockedClaim],
-        references: [...data.references, sharedPendingReference]
-      },
-      {
-        state: "source_blocked"
-      }
-    );
+    const fixtureData = {
+      ...data,
+      claims: [firstBlockedClaim, secondBlockedClaim],
+      references: [...data.references, sharedPendingReference]
+    };
+    const report = buildScoreWorklistReport(fixtureData, {
+      state: "source_blocked"
+    });
     const lines = formatScoreWorklistReportLinesWithOptions(report, {
       repairSummary: true
     }).join("\n");
@@ -265,6 +265,7 @@ describe("score worklist", () => {
           claimCount: 1,
           claimLinks: 1,
           outcome: firstBlockedClaim.outcome,
+          key: expect.stringContaining("::muscle-strength"),
           referenceCount: 1,
           sampleReferences: [
             expect.objectContaining({
@@ -286,6 +287,7 @@ describe("score worklist", () => {
       "Extraction lanes: 1 reference group(s) / 2 claim-link(s) can move to extraction; 0 reference group(s) / 0 claim-link(s) need identity cleanup first."
     );
     expect(lines).toContain("Top extraction batches:");
+    expect(lines).toContain("::muscle-strength -");
     expect(lines).toContain("First brief: npx tsx scripts/local-score-worklist.ts --repair-reference shared-pending-score-reference");
     expect(lines).toContain("Source-blocked scoring rows: 2 (extraction pending 2)");
     expect(lines).toContain("Blocker types (rows can appear in more than one type):");
@@ -302,6 +304,31 @@ describe("score worklist", () => {
     );
     expect(lines).toContain("blocked-score-first");
     expect(lines).toContain("blocked-score-second");
+
+    const batch = report.repairSummary.extractionBatchGroups.find(
+      (group) => group.outcome === firstBlockedClaim.outcome
+    );
+    expect(batch).toBeDefined();
+
+    const brief = buildScoreWorklistExtractionBatchBrief(fixtureData, batch!.key, {
+      limit: 1
+    });
+    const briefLines = formatScoreWorklistExtractionBatchBriefLines(brief).join("\n");
+
+    expect(brief.batch?.key).toBe(batch!.key);
+    expect(brief.totalReferences).toBe(1);
+    expect(brief.references[0]).toMatchObject({
+      repairCommand:
+        "npx tsx scripts/local-score-worklist.ts --repair-reference shared-pending-score-reference",
+      reference: {
+        id: sharedPendingReference.id
+      }
+    });
+    expect(briefLines).toContain("Read-only score extraction batch brief");
+    expect(briefLines).toContain(`Batch key: ${batch!.key}`);
+    expect(briefLines).toContain("References to extract:");
+    expect(briefLines).toContain("Batch repair sequence:");
+    expect(briefLines).toContain("Dry-run score suggestions before applying any score update");
   });
 
   it("prioritizes source repair groups by highest blocked claim before batch size", () => {

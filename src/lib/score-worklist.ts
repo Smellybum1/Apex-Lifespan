@@ -5,6 +5,7 @@ import {
   formatScoreReadinessSummaryLines,
   scoreReadinessNextAction,
   scoreReadinessStateLabel,
+  type ScoreReadinessPriority,
   type ScoreReadinessRow,
   type ScoreReadinessState,
   type ScoreReadinessSummary
@@ -170,6 +171,7 @@ export interface ScoreWorklistExtractionBatchGroup {
     name: string;
     slug: string;
   } | null;
+  key: string;
   nextAction: string;
   outcome: string;
   priority: number;
@@ -185,6 +187,38 @@ export interface ScoreWorklistExtractionBatchGroup {
     url: string;
     year?: number;
   }>;
+}
+
+export interface ScoreWorklistExtractionBatchBrief {
+  batch: ScoreWorklistExtractionBatchGroup | null;
+  batchKey: string;
+  candidateBatches: Array<{
+    claimCount: number;
+    key: string;
+    label: string;
+    referenceCount: number;
+  }>;
+  hiddenReferences: number;
+  nextActions: string[];
+  references: ScoreWorklistExtractionBatchReferenceBrief[];
+  totalReferences: number;
+  writeGuardrails: string[];
+}
+
+export interface ScoreWorklistExtractionBatchReferenceBrief {
+  claimCount: number;
+  extractionGaps: ScoreWorklistExtractionGapSummary[];
+  repairCommand: string;
+  reference: {
+    id: string;
+    label: string;
+    source: string;
+    title: string;
+    url: string;
+    year?: number;
+  };
+  sampleClaims: ScoreWorklistRepairSampleClaim[];
+  sourceTypeHint: string;
 }
 
 export interface ScoreWorklistPendingReferenceGroup {
@@ -527,6 +561,58 @@ export function buildScoreWorklistReferenceRepairBrief(
   };
 }
 
+export function buildScoreWorklistExtractionBatchBrief(
+  data: EvidenceDashboardData,
+  batchKey: string,
+  options: { limit?: number } = {}
+): ScoreWorklistExtractionBatchBrief {
+  const normalizedBatchKey = batchKey.trim();
+
+  if (!normalizedBatchKey) {
+    throw new Error("Batch key is required for extraction batch repair brief.");
+  }
+
+  const sourceBlockedRows = buildScoreReadinessRows(data).filter(
+    (row) => row.state === "source_blocked"
+  );
+  const summary = buildScoreWorklistRepairSummary(sourceBlockedRows);
+  const batch = findExtractionBatch(summary.extractionBatchGroups, normalizedBatchKey);
+  const limit = options.limit ?? DEFAULT_LIMIT;
+
+  if (!batch) {
+    return {
+      batch: null,
+      batchKey: normalizedBatchKey,
+      candidateBatches: summary.extractionBatchGroups.slice(0, limit).map(extractionBatchCandidate),
+      hiddenReferences: 0,
+      nextActions: [
+        "Use one of the listed batch keys with --repair-batch, or rerun --repair-summary to inspect the current source repair lanes."
+      ],
+      references: [],
+      totalReferences: 0,
+      writeGuardrails: REFERENCE_REPAIR_WRITE_GUARDRAILS
+    };
+  }
+
+  const referenceGroups = extractionBatchReferenceBriefs(sourceBlockedRows, batch);
+
+  return {
+    batch,
+    batchKey: batch.key,
+    candidateBatches: [],
+    hiddenReferences: Math.max(referenceGroups.length - limit, 0),
+    nextActions: [
+      "Open the listed reference briefs and verify source identity before writing any structured extraction.",
+      "Extract study/source fields for the batch one reference at a time: source type, sample/results, population, intervention, comparator, outcomes, adverse events, funding/conflicts, and risk of bias.",
+      "Rerun npx tsx scripts/local-score-worklist.ts --state ready_to_score --limit 20 after the batch references are repaired.",
+      "Dry-run score suggestions before applying any score update, and keep Human reviewed reserved for explicit human confirmation."
+    ],
+    references: referenceGroups.slice(0, limit),
+    totalReferences: referenceGroups.length,
+    writeGuardrails: REFERENCE_REPAIR_WRITE_GUARDRAILS
+  };
+}
+
 export function scoreWorklistExtractionReadyReferenceGroups(
   summary: Pick<ScoreWorklistRepairSummary, "pendingReferenceGroups">
 ) {
@@ -603,7 +689,7 @@ export function formatScoreWorklistCompactRepairLines(summary: ScoreWorklistRepa
     summary.extractionBatchGroups[0]
       ? `Next extraction batch: ${formatExtractionBatchLabel(
           summary.extractionBatchGroups[0]
-        )} - ${summary.extractionBatchGroups[0].referenceCount} clean reference group(s), ${summary.extractionBatchGroups[0].claimCount} claim row(s). ${summary.extractionBatchGroups[0].nextAction}`
+        )} - ${summary.extractionBatchGroups[0].referenceCount} clean reference group(s), ${summary.extractionBatchGroups[0].claimCount} claim row(s). Batch brief: npx tsx scripts/local-score-worklist.ts --repair-batch ${summary.extractionBatchGroups[0].key}`
       : undefined
   ].filter((line): line is string => Boolean(line));
 }
@@ -644,7 +730,7 @@ export function formatScoreWorklistRepairSummaryLines(
       ...summary.extractionBatchGroups
         .slice(0, limit)
         .flatMap((batch, index) => [
-          `${index + 1}. ${formatExtractionBatchLabel(batch)} - ${batch.referenceCount} clean reference group(s), ${batch.claimCount} claim row(s), ${batch.claimLinks} claim-link(s)`,
+          `${index + 1}. ${batch.key} - ${formatExtractionBatchLabel(batch)} - ${batch.referenceCount} clean reference group(s), ${batch.claimCount} claim row(s), ${batch.claimLinks} claim-link(s)`,
           `   First brief: ${
             batch.sampleReferences[0]
               ? `npx tsx scripts/local-score-worklist.ts --repair-reference ${batch.sampleReferences[0].id}`
@@ -796,6 +882,65 @@ export function formatScoreWorklistReferenceRepairBriefLines(
   lines.push(...brief.nextActions.map((item, index) => `${index + 1}. ${item}`));
   lines.push("Extraction checklist:");
   lines.push(...brief.extractionChecklist.map((item) => `- ${item}`));
+  lines.push("Write guardrails:");
+  lines.push(...brief.writeGuardrails.map((item) => `- ${item}`));
+
+  return lines;
+}
+
+export function formatScoreWorklistExtractionBatchBriefLines(
+  brief: ScoreWorklistExtractionBatchBrief
+) {
+  const lines = [
+    "Read-only score extraction batch brief",
+    `Batch key: ${brief.batchKey}`
+  ];
+
+  if (!brief.batch) {
+    lines.push("Batch: not found");
+
+    if (brief.candidateBatches.length > 0) {
+      lines.push("Available extraction batches:");
+      lines.push(
+        ...brief.candidateBatches.map(
+          (batch, index) =>
+            `${index + 1}. ${batch.key} - ${batch.label} (${batch.referenceCount} reference group(s), ${batch.claimCount} claim row(s))`
+        )
+      );
+    } else {
+      lines.push("No clean extraction batches are currently available.");
+    }
+
+    lines.push("Next actions:");
+    lines.push(...brief.nextActions.map((item, index) => `${index + 1}. ${item}`));
+    return lines;
+  }
+
+  lines.push(
+    `Batch: ${formatExtractionBatchLabel(brief.batch)}`,
+    `Scope: ${brief.batch.referenceCount} clean reference group(s), ${brief.batch.claimCount} claim row(s), ${brief.batch.claimLinks} claim-link(s).`,
+    `Shown references: ${brief.references.length}/${brief.totalReferences}` +
+      (brief.hiddenReferences > 0 ? ` (${brief.hiddenReferences} hidden by limit)` : "")
+  );
+
+  if (brief.references.length > 0) {
+    lines.push("References to extract:");
+    lines.push(
+      ...brief.references.flatMap((item, index) => [
+        `${index + 1}. ${item.reference.label} - ${item.reference.title}`,
+        `   Reference id: ${item.reference.id}`,
+        `   Brief: ${item.repairCommand}`,
+        `   Source type hint: ${item.sourceTypeHint}`,
+        `   Gaps: ${formatRepairExtractionGaps(item.extractionGaps)}`,
+        `   Claims: ${formatRepairSampleClaims(item.sampleClaims)}`
+      ])
+    );
+  } else {
+    lines.push("No clean references are visible for this batch.");
+  }
+
+  lines.push("Batch repair sequence:");
+  lines.push(...brief.nextActions.map((item, index) => `${index + 1}. ${item}`));
   lines.push("Write guardrails:");
   lines.push(...brief.writeGuardrails.map((item) => `- ${item}`));
 
@@ -1434,7 +1579,7 @@ function extractionBatchGroups(rows: ScoreReadinessRow[]): ScoreWorklistExtracti
         continue;
       }
 
-      const key = `${row.intervention?.id ?? "unknown"}::${row.claim.outcome}`;
+      const key = extractionBatchKey(row.intervention, row.claim.outcome);
       const group = groups.get(key) ?? {
         claimLinks: 0,
         claimsById: new Map<string, ScoreReadinessRow>(),
@@ -1513,6 +1658,7 @@ function extractionBatchGroups(rows: ScoreReadinessRow[]): ScoreWorklistExtracti
               slug: group.intervention.slug
             }
           : null,
+        key: extractionBatchKey(group.intervention, group.outcome),
         nextAction: sampleReferences[0]
           ? `Start with npx tsx scripts/local-score-worklist.ts --repair-reference ${sampleReferences[0].id}.`
           : "No clean reference brief is available for this batch.",
@@ -1524,6 +1670,90 @@ function extractionBatchGroups(rows: ScoreReadinessRow[]): ScoreWorklistExtracti
       };
     })
     .sort(compareExtractionBatchGroups);
+}
+
+function extractionBatchReferenceBriefs(
+  rows: ScoreReadinessRow[],
+  batch: ScoreWorklistExtractionBatchGroup
+): ScoreWorklistExtractionBatchReferenceBrief[] {
+  const referenceGroups = new Map<
+    string,
+    {
+      reference: Reference;
+      rows: ScoreReadinessRow[];
+    }
+  >();
+
+  for (const row of rows) {
+    if (!scoreReadinessRowMatchesExtractionBatch(row, batch)) {
+      continue;
+    }
+
+    for (const reference of row.packet.pendingReferences) {
+      if (referenceIdentityWarnings(reference, [row]).length > 0) {
+        continue;
+      }
+
+      const group = referenceGroups.get(reference.id) ?? {
+        reference,
+        rows: []
+      };
+
+      group.rows.push(row);
+      referenceGroups.set(reference.id, group);
+    }
+  }
+
+  return Array.from(referenceGroups.values())
+    .map(({ reference, rows: groupRows }) => {
+      const rowsForReference = sortRepairRows(dedupeRepairRows(groupRows));
+
+      return {
+        claimCount: rowsForReference.length,
+        extractionGaps: scoreRepairExtractionGapSummary(rowsForReference, reference.id),
+        repairCommand: `npx tsx scripts/local-score-worklist.ts --repair-reference ${reference.id}`,
+        reference: {
+          id: reference.id,
+          label: formatReferenceLabel(reference),
+          source: reference.source,
+          title: reference.title,
+          url: reference.url,
+          year: reference.year
+        },
+        sampleClaims: repairSampleClaims(rowsForReference),
+        sourceTypeHint: sourceTypeHintFromReference(reference)
+      };
+    })
+    .sort(
+      (left, right) =>
+        repairPriorityFromSamples(right.sampleClaims) - repairPriorityFromSamples(left.sampleClaims) ||
+        right.claimCount - left.claimCount ||
+        left.reference.label.localeCompare(right.reference.label)
+    );
+}
+
+function scoreReadinessRowMatchesExtractionBatch(
+  row: ScoreReadinessRow,
+  batch: Pick<ScoreWorklistExtractionBatchGroup, "intervention" | "outcome">
+) {
+  return (
+    row.packet.completeness.status === "extraction_pending" &&
+    row.claim.outcome === batch.outcome &&
+    (row.intervention?.id ?? "unknown") === (batch.intervention?.id ?? "unknown")
+  );
+}
+
+function repairPriorityFromSamples(samples: ScoreWorklistRepairSampleClaim[]) {
+  const weight: Record<ScoreReadinessPriority, number> = {
+    High: 3,
+    Medium: 2,
+    Low: 1
+  };
+
+  return samples.reduce(
+    (total, sample) => total + (weight[sample.priorityLabel as ScoreReadinessPriority] ?? 0),
+    0
+  );
 }
 
 function compareExtractionBatchGroups(
@@ -1539,7 +1769,55 @@ function compareExtractionBatchGroups(
   );
 }
 
-function formatExtractionBatchLabel(batch: Pick<ScoreWorklistExtractionBatchGroup, "intervention" | "outcome">) {
+function findExtractionBatch(
+  batches: ScoreWorklistExtractionBatchGroup[],
+  batchKey: string
+) {
+  const normalized = normalizeBatchLookup(batchKey);
+
+  return (
+    batches.find((batch) => normalizeBatchLookup(batch.key) === normalized) ??
+    batches.find((batch) => normalizeBatchLookup(formatExtractionBatchLabel(batch)) === normalized) ??
+    batches.find((batch) => normalizeBatchLookup(batch.key).includes(normalized)) ??
+    batches.find((batch) => normalizeBatchLookup(formatExtractionBatchLabel(batch)).includes(normalized)) ??
+    null
+  );
+}
+
+function extractionBatchCandidate(batch: ScoreWorklistExtractionBatchGroup) {
+  return {
+    claimCount: batch.claimCount,
+    key: batch.key,
+    label: formatExtractionBatchLabel(batch),
+    referenceCount: batch.referenceCount
+  };
+}
+
+function extractionBatchKey(
+  intervention: ScoreReadinessRow["intervention"],
+  outcome: string
+) {
+  return `${intervention?.slug ?? intervention?.id ?? "unknown"}::${slugForBatchKey(outcome)}`;
+}
+
+function slugForBatchKey(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function normalizeBatchLookup(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatExtractionBatchLabel(
+  batch: Pick<ScoreWorklistExtractionBatchGroup, "intervention" | "outcome">
+) {
   return `${batch.intervention?.name ?? "Unknown intervention"} / ${batch.outcome}`;
 }
 

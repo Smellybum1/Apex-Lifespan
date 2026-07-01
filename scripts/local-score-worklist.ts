@@ -17,8 +17,10 @@ import {
   type ScoreIdentityActionFilter
 } from "@/lib/score-identity-preview";
 import {
+  buildScoreWorklistExtractionBatchBrief,
   buildScoreWorklistReferenceRepairBrief,
   buildScoreWorklistReport,
+  formatScoreWorklistExtractionBatchBriefLines,
   formatScoreWorklistReferenceRepairBriefLines,
   formatScoreWorklistReportLinesWithOptions,
   type ScoreWorklistStateFilter
@@ -37,6 +39,20 @@ async function main() {
 
   await withProcessEnv(env, async () => {
     const data = await getEvidenceDashboardData();
+
+    if (args.repairBatch) {
+      const brief = buildScoreWorklistExtractionBatchBrief(data, args.repairBatch, {
+        limit: args.limit
+      });
+
+      if (args.json) {
+        console.log(JSON.stringify(brief, null, 2));
+        return;
+      }
+
+      console.log(formatScoreWorklistExtractionBatchBriefLines(brief).join("\n"));
+      return;
+    }
 
     if (args.repairReference) {
       const brief = buildScoreWorklistReferenceRepairBrief(data, args.repairReference, {
@@ -118,6 +134,7 @@ interface ScoreWorklistArgs {
   intervention?: string;
   json: boolean;
   limit: number;
+  repairBatch?: string;
   repairReference?: string;
   repairExtractionCandidates: boolean;
   repairExtractionLimit: number;
@@ -169,6 +186,7 @@ Options:
                           Show accepted candidates attached to pending extraction references.
   --repair-extraction-limit <count>
                           Number of pending extraction references to scan for accepted candidates. Default: 8
+  --repair-batch <key>    Show a read-only extraction batch brief. Use a key from --repair-summary.
   --repair-reference <id> Show a read-only extraction brief for one blocked reference id.
   --json                  Print JSON instead of text.
   --help                  Show this help.
@@ -436,6 +454,17 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
 
     if (arg.startsWith("--repair-reference=")) {
       parsed.repairReference = requiredInlineValue(arg, "--repair-reference");
+      continue;
+    }
+
+    if (arg === "--repair-batch") {
+      parsed.repairBatch = requiredNextValue(args, index, "--repair-batch");
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--repair-batch=")) {
+      parsed.repairBatch = requiredInlineValue(arg, "--repair-batch");
       continue;
     }
 
