@@ -126,6 +126,7 @@ export interface ScoreWorklistReport {
 
 export interface ScoreWorklistRepairSummary {
   blockerBreakdown: ScoreWorklistRepairBlockerSummary[];
+  extractionBatchGroups: ScoreWorklistExtractionBatchGroup[];
   extractionReadyReferenceClaimLinks: number;
   extractionReadyReferenceGroups: number;
   extractionPendingRows: number;
@@ -158,6 +159,32 @@ export interface ScoreWorklistRepairBlockerSummary {
 export interface ScoreWorklistExtractionGapSummary {
   claimCount: number;
   gap: string;
+}
+
+export interface ScoreWorklistExtractionBatchGroup {
+  claimCount: number;
+  claimLinks: number;
+  highestPriority: number;
+  intervention: {
+    id: string;
+    name: string;
+    slug: string;
+  } | null;
+  nextAction: string;
+  outcome: string;
+  priority: number;
+  referenceCount: number;
+  sampleClaims: ScoreWorklistRepairSampleClaim[];
+  sampleReferences: Array<{
+    claimCount: number;
+    id: string;
+    label: string;
+    source: string;
+    sourceTypeHint: string;
+    title: string;
+    url: string;
+    year?: number;
+  }>;
 }
 
 export interface ScoreWorklistPendingReferenceGroup {
@@ -413,6 +440,7 @@ export function buildScoreWorklistRepairSummary(
 
   return {
     blockerBreakdown: scoreWorklistRepairBlockerBreakdown(sourceBlockedRows),
+    extractionBatchGroups: extractionBatchGroups(sourceBlockedRows),
     extractionReadyReferenceClaimLinks: extractionReadyGroups.reduce(
       (total, group) => total + group.claimCount,
       0
@@ -571,8 +599,13 @@ export function formatScoreWorklistCompactRepairLines(summary: ScoreWorklistRepa
 
   return [
     `Repair blockers: ${blockerText}.`,
-    `Repair lanes: ${summary.extractionReadyReferenceGroups} extraction-ready reference group(s), ${summary.identityWarningReferenceGroups} identity-check reference group(s), ${summary.missingSourceRows} missing-source row(s), ${summary.unlinkedRows} unlinked claim row(s).`
-  ];
+    `Repair lanes: ${summary.extractionReadyReferenceGroups} extraction-ready reference group(s), ${summary.identityWarningReferenceGroups} identity-check reference group(s), ${summary.missingSourceRows} missing-source row(s), ${summary.unlinkedRows} unlinked claim row(s).`,
+    summary.extractionBatchGroups[0]
+      ? `Next extraction batch: ${formatExtractionBatchLabel(
+          summary.extractionBatchGroups[0]
+        )} - ${summary.extractionBatchGroups[0].referenceCount} clean reference group(s), ${summary.extractionBatchGroups[0].claimCount} claim row(s). ${summary.extractionBatchGroups[0].nextAction}`
+      : undefined
+  ].filter((line): line is string => Boolean(line));
 }
 
 export function formatScoreWorklistRepairSummaryLines(
@@ -602,6 +635,24 @@ export function formatScoreWorklistRepairSummaryLines(
         (blocker) =>
           `- ${blocker.label}: ${blocker.claimCount} claim row(s). ${blocker.nextAction}`
       )
+    );
+  }
+
+  if (!options.repairIdentityWarningsOnly && summary.extractionBatchGroups.length > 0) {
+    lines.push("Top extraction batches:");
+    lines.push(
+      ...summary.extractionBatchGroups
+        .slice(0, limit)
+        .flatMap((batch, index) => [
+          `${index + 1}. ${formatExtractionBatchLabel(batch)} - ${batch.referenceCount} clean reference group(s), ${batch.claimCount} claim row(s), ${batch.claimLinks} claim-link(s)`,
+          `   First brief: ${
+            batch.sampleReferences[0]
+              ? `npx tsx scripts/local-score-worklist.ts --repair-reference ${batch.sampleReferences[0].id}`
+              : "No clean reference brief available."
+          }`,
+          `   Source hints: ${formatExtractionBatchSourceHints(batch)}`,
+          `   Claims: ${formatRepairSampleClaims(batch.sampleClaims)}`
+        ])
     );
   }
 
@@ -1351,6 +1402,153 @@ function pendingReferenceGroups(
       };
     })
     .sort(compareRepairGroups);
+}
+
+function extractionBatchGroups(rows: ScoreReadinessRow[]): ScoreWorklistExtractionBatchGroup[] {
+  const groups = new Map<
+    string,
+    {
+      claimLinks: number;
+      claimsById: Map<string, ScoreReadinessRow>;
+      highestPriority: number;
+      intervention: ScoreReadinessRow["intervention"];
+      outcome: string;
+      priority: number;
+      referencesById: Map<
+        string,
+        {
+          claimRowsById: Map<string, ScoreReadinessRow>;
+          reference: Reference;
+        }
+      >;
+    }
+  >();
+
+  for (const row of rows) {
+    if (row.packet.completeness.status !== "extraction_pending") {
+      continue;
+    }
+
+    for (const reference of row.packet.pendingReferences) {
+      if (referenceIdentityWarnings(reference, [row]).length > 0) {
+        continue;
+      }
+
+      const key = `${row.intervention?.id ?? "unknown"}::${row.claim.outcome}`;
+      const group = groups.get(key) ?? {
+        claimLinks: 0,
+        claimsById: new Map<string, ScoreReadinessRow>(),
+        highestPriority: 0,
+        intervention: row.intervention,
+        outcome: row.claim.outcome,
+        priority: 0,
+        referencesById: new Map<
+          string,
+          {
+            claimRowsById: Map<string, ScoreReadinessRow>;
+            reference: Reference;
+          }
+        >()
+      };
+      const referenceGroup = group.referencesById.get(reference.id) ?? {
+        claimRowsById: new Map<string, ScoreReadinessRow>(),
+        reference
+      };
+
+      group.claimLinks += 1;
+      group.claimsById.set(row.claim.id, row);
+      group.highestPriority = Math.max(group.highestPriority, row.priority);
+      group.priority += row.priority;
+      referenceGroup.claimRowsById.set(row.claim.id, row);
+      group.referencesById.set(reference.id, referenceGroup);
+      groups.set(key, group);
+    }
+  }
+
+  return Array.from(groups.values())
+    .map((group) => {
+      const claimRows = sortRepairRows(Array.from(group.claimsById.values()));
+      const sampleReferences = Array.from(group.referencesById.values())
+        .map(({ claimRowsById, reference }) => {
+          const referenceRows = Array.from(claimRowsById.values());
+
+          return {
+            claimCount: claimRowsById.size,
+            id: reference.id,
+            label: formatReferenceLabel(reference),
+            priority: repairPriority(referenceRows),
+            source: reference.source,
+            sourceTypeHint: sourceTypeHintFromReference(reference),
+            title: reference.title,
+            url: reference.url,
+            year: reference.year
+          };
+        })
+        .sort(
+          (left, right) =>
+            right.priority - left.priority ||
+            right.claimCount - left.claimCount ||
+            left.label.localeCompare(right.label)
+        )
+        .slice(0, 4)
+        .map((reference) => ({
+          claimCount: reference.claimCount,
+          id: reference.id,
+          label: reference.label,
+          source: reference.source,
+          sourceTypeHint: reference.sourceTypeHint,
+          title: reference.title,
+          url: reference.url,
+          year: reference.year
+        }));
+
+      return {
+        claimCount: claimRows.length,
+        claimLinks: group.claimLinks,
+        highestPriority: group.highestPriority,
+        intervention: group.intervention
+          ? {
+              id: group.intervention.id,
+              name: group.intervention.name,
+              slug: group.intervention.slug
+            }
+          : null,
+        nextAction: sampleReferences[0]
+          ? `Start with npx tsx scripts/local-score-worklist.ts --repair-reference ${sampleReferences[0].id}.`
+          : "No clean reference brief is available for this batch.",
+        outcome: group.outcome,
+        priority: group.priority,
+        referenceCount: group.referencesById.size,
+        sampleClaims: repairSampleClaims(claimRows),
+        sampleReferences
+      };
+    })
+    .sort(compareExtractionBatchGroups);
+}
+
+function compareExtractionBatchGroups(
+  left: ScoreWorklistExtractionBatchGroup,
+  right: ScoreWorklistExtractionBatchGroup
+) {
+  return (
+    right.highestPriority - left.highestPriority ||
+    right.priority - left.priority ||
+    right.referenceCount - left.referenceCount ||
+    right.claimLinks - left.claimLinks ||
+    formatExtractionBatchLabel(left).localeCompare(formatExtractionBatchLabel(right))
+  );
+}
+
+function formatExtractionBatchLabel(batch: Pick<ScoreWorklistExtractionBatchGroup, "intervention" | "outcome">) {
+  return `${batch.intervention?.name ?? "Unknown intervention"} / ${batch.outcome}`;
+}
+
+function formatExtractionBatchSourceHints(batch: ScoreWorklistExtractionBatchGroup) {
+  const hints = Array.from(
+    new Set(batch.sampleReferences.map((reference) => reference.sourceTypeHint))
+  );
+
+  return hints.length > 0 ? hints.slice(0, 3).join("; ") : "verify source type before extraction";
 }
 
 function missingReferenceGroups(

@@ -228,6 +228,7 @@ function scoreRepairSummary(
 
   return {
     blockerBreakdown: [],
+    extractionBatchGroups: [],
     extractionPendingRows: pendingReferenceGroups.length,
     extractionReadyReferenceClaimLinks: pendingReferenceGroups.length - identityWarningGroups.length,
     extractionReadyReferenceGroups: pendingReferenceGroups.length - identityWarningGroups.length,

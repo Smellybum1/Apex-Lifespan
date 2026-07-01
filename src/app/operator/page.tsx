@@ -1617,59 +1617,82 @@ function ScoreSourceRepairQueue({
           No source-blocked scoring rows are visible in the current local catalog.
         </p>
       ) : (
-        <div className="mt-3 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
-          <SourceRepairGroupList
-            emptyText="No clean extraction-ready references."
-            groups={extractionReadyGroups.slice(0, 3).map((group) => ({
-              actionLabel: "Read-only brief command",
-              actionText: `npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
-              detail: `${group.claimCount} claim(s), ${group.interventions.length} intervention(s)`,
-              gapText: formatSourceRepairGaps(group.extractionGaps),
-              sampleClaims: group.sampleClaims,
-              subtitle: group.reference.title,
-              title: group.reference.label
-            }))}
-            title="Top extraction-ready references"
-          />
-          <SourceRepairGroupList
-            emptyText="No identity-warning references."
-            groups={identityWarningGroups.slice(0, 3).map((group) => ({
-              actionLabel: "Identity cleanup preview",
-              actionText:
-                "npx tsx scripts/local-score-worklist.ts --state source_blocked --repair-identity-warnings --repair-identity-action actionable --limit 1",
-              detail: `${group.claimCount} claim-link(s) blocked`,
-              gapText: group.identityWarnings.join("; "),
-              sampleClaims: group.sampleClaims,
-              subtitle: group.reference.title,
-              title: group.reference.label
-            }))}
-            title="Identity cleanup lane"
-          />
-          <SourceRepairGroupList
-            emptyText="No missing source records."
-            groups={summary.missingReferenceGroups.slice(0, 3).map((group) => ({
-              actionLabel: "Next repair",
-              actionText: `Restore or add source record ${group.referenceId}, then rerun the score worklist.`,
-              detail: `${group.claimCount} claim(s) blocked`,
-              sampleClaims: group.sampleClaims,
-              subtitle: group.outcomes.slice(0, 3).join("; "),
-              title: group.referenceId
-            }))}
-            title="Top missing source records"
-          />
-          <SourceRepairGroupList
-            emptyText="No unlinked claim groups."
-            groups={summary.unlinkedInterventionGroups.slice(0, 3).map((group) => ({
-              actionLabel: "Next repair",
-              actionText: `Curate claim references for ${group.intervention?.name ?? "this intervention"}, then rerun the score worklist.`,
-              detail: `${group.claimCount} claim(s) need curated references`,
-              sampleClaims: group.sampleClaims,
-              subtitle: group.outcomes.slice(0, 3).join("; "),
-              title: group.intervention?.name ?? "Unknown intervention"
-            }))}
-            title="Top unlinked claim groups"
-          />
-        </div>
+        <>
+          <div className="mt-3 rounded-md border border-amber-200 bg-white p-2">
+            <SourceRepairGroupList
+              emptyText="No clean extraction batches are ready; clear identity warnings or source links first."
+              groups={summary.extractionBatchGroups.slice(0, 3).map((batch) => ({
+                actionLabel: "Start batch",
+                actionText: batch.nextAction,
+                detail: `${batch.referenceCount} clean reference group(s), ${batch.claimCount} claim row(s), ${batch.claimLinks} claim-link(s)`,
+                gapText: batch.sampleReferences
+                  .slice(0, 3)
+                  .map((reference) => `${reference.label}: ${reference.sourceTypeHint}`)
+                  .join("; "),
+                sampleClaims: batch.sampleClaims,
+                subtitle: batch.sampleReferences
+                  .slice(0, 3)
+                  .map((reference) => reference.title)
+                  .join("; "),
+                title: `${batch.intervention?.name ?? "Unknown intervention"} - ${batch.outcome}`
+              }))}
+              title="Top extraction batches"
+            />
+          </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+            <SourceRepairGroupList
+              emptyText="No clean extraction-ready references."
+              groups={extractionReadyGroups.slice(0, 3).map((group) => ({
+                actionLabel: "Read-only brief command",
+                actionText: `npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
+                detail: `${group.claimCount} claim(s), ${group.interventions.length} intervention(s)`,
+                gapText: formatSourceRepairGaps(group.extractionGaps),
+                sampleClaims: group.sampleClaims,
+                subtitle: group.reference.title,
+                title: group.reference.label
+              }))}
+              title="Top extraction-ready references"
+            />
+            <SourceRepairGroupList
+              emptyText="No identity-warning references."
+              groups={identityWarningGroups.slice(0, 3).map((group) => ({
+                actionLabel: "Identity cleanup preview",
+                actionText:
+                  "npx tsx scripts/local-score-worklist.ts --state source_blocked --repair-identity-warnings --repair-identity-action actionable --limit 1",
+                detail: `${group.claimCount} claim-link(s) blocked`,
+                gapText: group.identityWarnings.join("; "),
+                sampleClaims: group.sampleClaims,
+                subtitle: group.reference.title,
+                title: group.reference.label
+              }))}
+              title="Identity cleanup lane"
+            />
+            <SourceRepairGroupList
+              emptyText="No missing source records."
+              groups={summary.missingReferenceGroups.slice(0, 3).map((group) => ({
+                actionLabel: "Next repair",
+                actionText: `Restore or add source record ${group.referenceId}, then rerun the score worklist.`,
+                detail: `${group.claimCount} claim(s) blocked`,
+                sampleClaims: group.sampleClaims,
+                subtitle: group.outcomes.slice(0, 3).join("; "),
+                title: group.referenceId
+              }))}
+              title="Top missing source records"
+            />
+            <SourceRepairGroupList
+              emptyText="No unlinked claim groups."
+              groups={summary.unlinkedInterventionGroups.slice(0, 3).map((group) => ({
+                actionLabel: "Next repair",
+                actionText: `Curate claim references for ${group.intervention?.name ?? "this intervention"}, then rerun the score worklist.`,
+                detail: `${group.claimCount} claim(s) need curated references`,
+                sampleClaims: group.sampleClaims,
+                subtitle: group.outcomes.slice(0, 3).join("; "),
+                title: group.intervention?.name ?? "Unknown intervention"
+              }))}
+              title="Top unlinked claim groups"
+            />
+          </div>
+        </>
       )}
     </div>
   );

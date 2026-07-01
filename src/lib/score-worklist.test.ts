@@ -259,10 +259,34 @@ describe("score worklist", () => {
         label: "PubMed PMID:12345678 2026"
       }
     });
+    expect(report.repairSummary.extractionBatchGroups).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          claimCount: 1,
+          claimLinks: 1,
+          outcome: firstBlockedClaim.outcome,
+          referenceCount: 1,
+          sampleReferences: [
+            expect.objectContaining({
+              id: sharedPendingReference.id,
+              sourceTypeHint: "unknown; verify source type before writing extraction"
+            })
+          ]
+        }),
+        expect.objectContaining({
+          claimCount: 1,
+          claimLinks: 1,
+          outcome: secondBlockedClaim.outcome,
+          referenceCount: 1
+        })
+      ])
+    );
     expect(lines).toContain("Source repair summary");
     expect(lines).toContain(
       "Extraction lanes: 1 reference group(s) / 2 claim-link(s) can move to extraction; 0 reference group(s) / 0 claim-link(s) need identity cleanup first."
     );
+    expect(lines).toContain("Top extraction batches:");
+    expect(lines).toContain("First brief: npx tsx scripts/local-score-worklist.ts --repair-reference shared-pending-score-reference");
     expect(lines).toContain("Source-blocked scoring rows: 2 (extraction pending 2)");
     expect(lines).toContain("Blocker types (rows can appear in more than one type):");
     expect(lines).toContain(
