@@ -107,11 +107,17 @@ describe("buildScoreExtractionCandidatePreview", () => {
       label: "PubMed 34610729",
       reason: "ready, source text captured, Human reviewed; verify before extraction"
     });
+    expect(preview.references[0]?.candidateCount).toBe(2);
+    expect(preview.references[0]?.hiddenCandidates).toBe(1);
+    expect(preview.references[0]?.candidates).toHaveLength(1);
     expect(preview.references[0]?.candidates[0]?.dedupeKey).toBe(safeCandidateKey("ready-candidate"));
     expect(preview.references[0]?.candidates[0]?.extractionDraftCoverage).toMatchObject({
       prefillCues: ["source type", "source text"],
       summary: expect.stringContaining("manual verify: sample size, population, intervention")
     });
+    expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
+      "1 extra same-reference candidate(s) hidden; counts above include them."
+    );
   });
 });
 
@@ -180,6 +186,7 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
           ],
           claimCount: 1,
           extractionGaps: ["source type"],
+          hiddenCandidates: 0,
           primaryCandidate: {
             curationDraftCommand:
               "npm run ingest:sources -- --candidate-curation-draft b64:creatine",

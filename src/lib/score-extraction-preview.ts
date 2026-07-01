@@ -37,6 +37,7 @@ export type ScoreExtractionCandidateReferencePreview = {
   candidates: ScoreExtractionCandidatePreviewRow[];
   claimCount: number;
   extractionGaps: string[];
+  hiddenCandidates: number;
   primaryCandidate: {
     curationDraftCommand: string;
     label: string;
@@ -266,6 +267,9 @@ function formatScoreExtractionCandidateReferenceLines(
     `  Repair brief: ${reference.repairReferenceCommand}`,
     reference.primaryCandidate
       ? `  Start draft: ${reference.primaryCandidate.curationDraftCommand} (${reference.primaryCandidate.reason})`
+      : undefined,
+    reference.hiddenCandidates > 0
+      ? `  ${reference.hiddenCandidates} extra same-reference candidate(s) hidden; counts above include them. Inspect reference matches/siblings before choosing a different draft.`
       : undefined
   ].filter((line): line is string => Boolean(line));
 
@@ -324,9 +328,10 @@ function extractionCandidateReferencePreview({
     blockedCandidates,
     blockerCounts: scoreExtractionBlockerCountsForRows(sortedCandidateRows),
     candidateCount: candidates.length,
-    candidates: sortedCandidateRows.slice(0, 3),
+    candidates: sortedCandidateRows.slice(0, 1),
     claimCount: group.claimCount,
     extractionGaps: group.extractionGaps.slice(0, 5).map((gap) => gap.gap),
+    hiddenCandidates: Math.max(sortedCandidateRows.length - 1, 0),
     primaryCandidate: primaryCandidate
       ? {
           curationDraftCommand: primaryCandidate.curationDraftCommand,
