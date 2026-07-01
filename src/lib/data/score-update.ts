@@ -59,6 +59,7 @@ export interface ApplyClaimScoreUpdateResult {
 
 const claimScoreUpdateSelect = {
   effectSizeScore: true,
+  evidenceGrade: true,
   evidenceDirectnessScore: true,
   evidenceRigorScore: true,
   finalLabel: true,
@@ -70,6 +71,13 @@ const claimScoreUpdateSelect = {
   reviewStatus: true,
   safetyScore: true
 } as const;
+
+const SCORED_SOURCE_PACKET_EVIDENCE_GRADE =
+  "Scored from linked source packet; pending human review.";
+const PLACEHOLDER_EVIDENCE_GRADES = new Set([
+  "Draft lead",
+  "Insufficient until source packets are reviewed."
+]);
 
 export async function dryRunUpdateClaimScore(
   input: UpdateClaimScoreInput
@@ -85,11 +93,13 @@ export async function applyUpdateClaimScore(
     await buildUpdateClaimScorePreview(input);
 
   let claimForSnapshot = sourceClaim;
+  const nextEvidenceGrade = scoredEvidenceGrade(sourceClaim.evidenceGrade);
 
   if (preview.wouldUpdateClaim) {
     claimForSnapshot = await prisma.claim.update({
       data: {
         effectSizeScore: normalizedScores.effectSize,
+        evidenceGrade: nextEvidenceGrade,
         evidenceDirectnessScore: normalizedScores.evidenceDirectness,
         evidenceRigorScore: normalizedScores.evidenceRigor,
         finalLabel: dbFinalLabel,
@@ -151,6 +161,7 @@ async function buildUpdateClaimScorePreview(input: UpdateClaimScoreInput) {
   const currentFinalLabel = evidenceLabelFromDb[sourceClaim.finalLabel];
   const currentComposite = compositeScore(currentScores);
   const nextComposite = compositeScore(normalizedScores);
+  const nextEvidenceGrade = scoredEvidenceGrade(sourceClaim.evidenceGrade);
   const latest = await getLatestClaimScoreSnapshot(claimId);
   const next = {
     ...normalizedScores,
@@ -166,6 +177,8 @@ async function buildUpdateClaimScorePreview(input: UpdateClaimScoreInput) {
     });
   const wouldUpdateClaim =
     currentFinalLabel !== input.finalLabel ||
+    sourceClaim.evidenceGrade !== nextEvidenceGrade ||
+    sourceClaim.reviewStatus !== DbReviewStatus.UNREVIEWED_AI_DRAFT ||
     CLAIM_SCORE_FIELD_DEFINITIONS.some(
       ({ key }) => currentScores[key] !== normalizedScores[key]
     );
@@ -209,4 +222,10 @@ function normalizeScoreSet(scores: ScoreSet): ScoreSet {
       [key]: value
     };
   }, {} as ScoreSet);
+}
+
+function scoredEvidenceGrade(evidenceGrade: string) {
+  return PLACEHOLDER_EVIDENCE_GRADES.has(evidenceGrade)
+    ? SCORED_SOURCE_PACKET_EVIDENCE_GRADE
+    : evidenceGrade;
 }

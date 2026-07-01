@@ -111,6 +111,7 @@ describe("sprint2 normalized evidence writes", () => {
   it("updates claim score fields and resets review status to AI draft", async () => {
     prismaMocks.claim.findUnique.mockResolvedValue({
       effectSizeScore: 2,
+      evidenceGrade: "Insufficient until source packets are reviewed.",
       evidenceDirectnessScore: 3,
       evidenceRigorScore: 3,
       finalLabel: EvidenceLabel.INSUFFICIENT_EVIDENCE,
@@ -125,6 +126,7 @@ describe("sprint2 normalized evidence writes", () => {
     prismaMocks.claimScoreSnapshot.findFirst.mockResolvedValue(null);
     prismaMocks.claim.update.mockResolvedValue({
       effectSizeScore: 7,
+      evidenceGrade: "Scored from linked source packet; pending human review.",
       evidenceDirectnessScore: 8,
       evidenceRigorScore: 7,
       finalLabel: EvidenceLabel.USEFUL_FOR_SPECIFIC_USE_CASE,
@@ -182,6 +184,7 @@ describe("sprint2 normalized evidence writes", () => {
     expect(prismaMocks.claim.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          evidenceGrade: "Scored from linked source packet; pending human review.",
           reviewStatus: ReviewStatus.UNREVIEWED_AI_DRAFT
         }),
         where: { id: "creatine-strength" }
