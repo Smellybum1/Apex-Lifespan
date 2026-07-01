@@ -14,6 +14,7 @@ import { compositeScore, scoreBand } from "@/lib/scoring";
 import type {
   EvidenceDashboardData,
   EvidenceLabel,
+  Intervention,
   NormalizedSourcePacketRow,
   Reference,
   ScoreSet,
@@ -125,6 +126,7 @@ export interface ScoreWorklistReport {
 
 export interface ScoreWorklistRepairSummary {
   extractionPendingRows: number;
+  identityWarningReferenceGroups: number;
   missingReferenceGroups: ScoreWorklistMissingReferenceGroup[];
   missingSourceRows: number;
   pendingReferenceGroups: ScoreWorklistPendingReferenceGroup[];
@@ -384,11 +386,15 @@ export function buildScoreWorklistRepairSummary(
     (row) => row.packet.completeness.status === "not_linked"
   ).length;
 
+  const pendingGroups = pendingReferenceGroups(sourceBlockedRows);
+
   return {
     extractionPendingRows,
+    identityWarningReferenceGroups: pendingGroups.filter((group) => group.identityWarnings.length > 0)
+      .length,
     missingReferenceGroups: missingReferenceGroups(sourceBlockedRows),
     missingSourceRows,
-    pendingReferenceGroups: pendingReferenceGroups(sourceBlockedRows),
+    pendingReferenceGroups: pendingGroups,
     sourceBlockedRows: sourceBlockedRows.length,
     unlinkedInterventionGroups: unlinkedInterventionGroups(sourceBlockedRows),
     unlinkedRows
@@ -501,7 +507,7 @@ export function formatScoreWorklistRepairSummaryLines(
   const limit = options.repairSummaryLimit ?? 8;
   const lines = [
     "Source repair summary",
-    `Blocked rows: ${summary.sourceBlockedRows}; extraction pending: ${summary.extractionPendingRows}; missing source records: ${summary.missingSourceRows}; unlinked claims: ${summary.unlinkedRows}.`
+    `Blocked rows: ${summary.sourceBlockedRows}; extraction pending: ${summary.extractionPendingRows}; identity-warning references: ${summary.identityWarningReferenceGroups}; missing source records: ${summary.missingSourceRows}; unlinked claims: ${summary.unlinkedRows}.`
   ];
 
   if (summary.sourceBlockedRows === 0) {
@@ -884,8 +890,8 @@ function referenceIdentityWarnings(reference: Reference | null, rows: ScoreReadi
   }
 
   const title = normaliseIdentityText(reference.title);
-  const missingInterventions = repairInterventionGroups(rows)
-    .filter((group) => !titleMentionsIntervention(title, group.name))
+  const missingInterventions = repairInterventionIdentityGroups(rows)
+    .filter((group) => !titleMentionsIntervention(title, group.terms))
     .map((group) => group.name);
 
   if (missingInterventions.length === 0) {
@@ -897,31 +903,91 @@ function referenceIdentityWarnings(reference: Reference | null, rows: ScoreReadi
   ];
 }
 
-function titleMentionsIntervention(normalisedTitle: string, interventionName: string) {
-  const terms = interventionIdentityTerms(interventionName);
-
-  if (terms.length === 0) {
-    return true;
-  }
-
+function titleMentionsIntervention(normalisedTitle: string, terms: string[]) {
   return terms.some((term) => identityTextIncludes(normalisedTitle, term));
 }
 
-function interventionIdentityTerms(interventionName: string) {
-  const normalised = normaliseIdentityText(interventionName);
+function repairInterventionIdentityGroups(rows: ScoreReadinessRow[]) {
+  const groups = new Map<
+    string,
+    {
+      name: string;
+      terms: string[];
+    }
+  >();
+
+  for (const row of rows) {
+    if (!row.intervention) {
+      continue;
+    }
+
+    groups.set(row.intervention.id, {
+      name: row.intervention.name,
+      terms: interventionIdentityTerms(row.intervention)
+    });
+  }
+
+  return Array.from(groups.values());
+}
+
+function interventionIdentityTerms(intervention: Intervention) {
+  const terms = new Set<string>();
+  const values = [intervention.name, ...intervention.synonyms];
+
+  for (const value of values) {
+    for (const term of identityTermsFromValue(value, { includeFullPhrase: true })) {
+      terms.add(term);
+    }
+  }
+
+  for (const commonForm of intervention.commonForms) {
+    for (const term of identityTermsFromValue(commonForm, { includeFullPhrase: false })) {
+      terms.add(term);
+    }
+  }
+
+  addDerivedInterventionIdentityTerms(terms);
+
+  return Array.from(terms).sort((left, right) => right.length - left.length);
+}
+
+function identityTermsFromValue(
+  value: string,
+  options: { includeFullPhrase: boolean }
+) {
+  const normalised = normaliseIdentityText(value);
   const terms = new Set<string>();
 
-  if (normalised.length >= 4) {
+  if (options.includeFullPhrase && normalised.length >= 2) {
     terms.add(normalised);
   }
 
   for (const token of normalised.split(" ")) {
-    if (token.length >= 4 && !GENERIC_INTERVENTION_IDENTITY_TOKENS.has(token)) {
+    if (isUsefulIdentityToken(token)) {
       terms.add(token);
     }
   }
 
-  return Array.from(terms).sort((left, right) => right.length - left.length);
+  return Array.from(terms);
+}
+
+function addDerivedInterventionIdentityTerms(terms: Set<string>) {
+  if (terms.has("omega 3") || terms.has("omega") || terms.has("epa") || terms.has("dha")) {
+    terms.add("n 3");
+  }
+
+  if (terms.has("vitamin d") || terms.has("cholecalciferol") || terms.has("ergocalciferol")) {
+    terms.add("d3");
+    terms.add("d2");
+  }
+}
+
+function isUsefulIdentityToken(token: string) {
+  if (GENERIC_INTERVENTION_IDENTITY_TOKENS.has(token)) {
+    return false;
+  }
+
+  return token.length >= 4 || SHORT_INTERVENTION_IDENTITY_TOKENS.has(token) || /\d/.test(token);
 }
 
 function identityTextIncludes(normalisedTitle: string, term: string) {
@@ -949,6 +1015,17 @@ const GENERIC_INTERVENTION_IDENTITY_TOKENS = new Set([
   "orotate",
   "supplement",
   "vitamin"
+]);
+
+const SHORT_INTERVENTION_IDENTITY_TOKENS = new Set([
+  "d2",
+  "d3",
+  "dha",
+  "epa",
+  "hmb",
+  "nad",
+  "nmn",
+  "q10"
 ]);
 
 function pendingReferenceGroups(

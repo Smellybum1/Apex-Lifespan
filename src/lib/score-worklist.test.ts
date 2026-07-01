@@ -387,8 +387,64 @@ describe("score worklist", () => {
       "Reference title does not visibly mention Creatine monohydrate; verify accepted candidate identity before extracting this as claim evidence."
     ]);
     expect(matchingGroup?.identityWarnings).toEqual([]);
+    expect(report.repairSummary.identityWarningReferenceGroups).toBe(1);
     expect(lines).toContain("Identity warning: Reference title does not visibly mention");
+    expect(lines).toContain("identity-warning references: 1");
     expect(briefLines).toContain("Identity warnings:");
+  });
+
+  it("uses intervention synonyms and common forms before raising identity warnings", () => {
+    const data = seedDashboardData();
+    const vitaminDClaim = data.claims.find((claim) => claim.interventionId === "vitamin-d")!;
+    const omegaClaim = data.claims.find((claim) => claim.interventionId === "omega-3")!;
+    const vitaminD3Reference: Reference = {
+      id: "vitamin-d3-visible-pending-reference",
+      identifier: "PMID:99990005",
+      source: "PubMed",
+      title: "Vitamin D3 supplementation in adults with low 25(OH)D",
+      url: "https://pubmed.ncbi.nlm.nih.gov/99990005/",
+      year: 2026
+    };
+    const n3Reference: Reference = {
+      id: "n3-visible-pending-reference",
+      identifier: "PMID:99990006",
+      source: "PubMed",
+      title: "N-3 fatty acid supplementation and lipid profile outcomes",
+      url: "https://pubmed.ncbi.nlm.nih.gov/99990006/",
+      year: 2026
+    };
+    const report = buildScoreWorklistReport(
+      {
+        ...data,
+        claims: [
+          {
+            ...vitaminDClaim,
+            id: "vitamin-d3-visible-blocked-score",
+            keyReferenceIds: [vitaminD3Reference.id]
+          },
+          {
+            ...omegaClaim,
+            id: "n3-visible-blocked-score",
+            keyReferenceIds: [n3Reference.id]
+          }
+        ],
+        references: [...data.references, vitaminD3Reference, n3Reference]
+      },
+      {
+        state: "source_blocked"
+      }
+    );
+
+    expect(
+      report.repairSummary.pendingReferenceGroups.find(
+        (group) => group.reference.id === vitaminD3Reference.id
+      )?.identityWarnings
+    ).toEqual([]);
+    expect(
+      report.repairSummary.pendingReferenceGroups.find(
+        (group) => group.reference.id === n3Reference.id
+      )?.identityWarnings
+    ).toEqual([]);
   });
 
   it("builds a read-only extraction brief for one source-blocking reference", () => {
