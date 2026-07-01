@@ -99,8 +99,8 @@ export function buildClaimScoreSuggestion({
       ? "Safety wording was detected; safety score is conservative."
       : "No local safety warning wording was detected in the linked packet text.",
     regulatoryConcern
-      ? "Regulatory concern wording was detected; regulatory risk is conservative."
-      : "No product-level AU/TGA clearance is inferred from intervention evidence."
+      ? "High-signal regulatory concern wording was detected; regulatory risk is conservative."
+      : "No high-signal regulatory warning was detected; product-level AU/TGA clearance is still not inferred from intervention evidence."
   ];
 
   return {
@@ -200,22 +200,50 @@ function suggestedFinalLabel(
 }
 
 function safetyConcernDetected(claim: Claim, studies: Study[], references: Reference[]) {
-  const text = safetyConcernText(claim, studies, references);
-
-  if (/\b(no|none|without)\s+(?:serious\s+)?adverse\b/i.test(text)) {
-    return false;
+  if (
+    claim.finalLabel === "Safety Concern" ||
+    claim.finalLabel === "Avoid / Not Recommended" ||
+    claim.finalLabel === "Requires Clinician Oversight"
+  ) {
+    return true;
   }
 
-  return /\b(adverse|toxicity|warning|risk|injury|contraindicat|serious|death|hospitali[sz]ation)\b/i.test(
+  const text = safetyConcernText(claim, studies, references)
+    .replace(/\b(no|none|without)\s+(?:serious\s+)?adverse(?:\s+events?)?(?:\s+(?:reported|observed|captured))?\b/gi, " ")
+    .replace(/\b(adverse events?|side effects?)\s+(?:were\s+)?(?:not|rarely|inconsistently)\s+(?:reported|captured|observed)\b/gi, " ")
+    .replace(/\bgenerally\s+well\s+tolerated\b/gi, " ")
+    .replace(/\bno\s+major\s+safety\s+signals?\b/gi, " ");
+
+  return /\b(toxicity|toxic|black\s+box|boxed\s+warning|safety\s+warning|contraindicat|serious\s+adverse|severe\s+adverse|increased\s+(?:risk|adverse)|adverse\s+event\s+risk|death|hospitali[sz]ation|liver\s+injury|kidney\s+injury|arrhythmia|seizure)\b/i.test(
     text
   );
 }
 
 function regulatoryConcernDetected(claim: Claim, studies: Study[], references: Reference[]) {
+  if (
+    claim.finalLabel === "Regulatory Concern" ||
+    claim.finalLabel === "Requires Clinician Oversight" ||
+    claim.finalLabel === "Avoid / Not Recommended"
+  ) {
+    return true;
+  }
+
+  if (studies.some((study) => study.studyType === "Regulatory safety warning")) {
+    return true;
+  }
+
+  if (references.some((reference) => regulatorySourcePattern.test(reference.source))) {
+    return true;
+  }
+
   const text = regulatoryConcernText(claim, studies, references);
 
-  return /\b(tga|artg|aust|unapproved|regulatory|warning|peptide|injectable|prescription)\b/i.test(
-    text
+  return (
+    regulatoryWarningPattern.test(text) ||
+    /\b(?:unapproved|not\s+(?:artg|tga)\s+(?:listed|approved)|prescription|injectable|reconstitution|research\s+use\s+only)\b/i.test(
+      text
+    ) ||
+    therapeuticPeptidePattern.test(text)
   );
 }
 
@@ -242,7 +270,6 @@ function regulatoryConcernText(claim: Claim, studies: Study[], references: Refer
     claim.claimText,
     claim.safetyNotes,
     claim.applicabilityNotes,
-    claim.whatWouldChangeScore,
     ...references.map((reference) => reference.title),
     ...studies.flatMap((study) => [
       study.title,
@@ -251,6 +278,24 @@ function regulatoryConcernText(claim: Claim, studies: Study[], references: Refer
     ])
   ].join(" ");
 }
+
+const therapeuticPeptidePattern =
+  /\b(bpc[-\s]?157|tb[-\s]?500|thymosin|cjc[-\s]?1295|ipamorelin|tesamorelin|semaglutide|mots[-\s]?c|epitalon|aod[-\s]?9604)\b/i;
+
+const regulatoryAuthorityTerms = String.raw`(?:tga|therapeutic goods administration|artg|aust l|aust r)`;
+const regulatoryActionTerms =
+  String.raw`(?:warning|alert|recall|unapproved|illegal|not\s+(?:listed|approved)|import|prescription|schedule|prohibited)`;
+
+const regulatorySourcePattern = new RegExp(
+  String.raw`\b${regulatoryAuthorityTerms}\b`,
+  "i"
+);
+
+const regulatoryWarningPattern = new RegExp(
+  String.raw`\b${regulatoryAuthorityTerms}\b.{0,120}\b${regulatoryActionTerms}\b|` +
+    String.raw`\b${regulatoryActionTerms}\b.{0,120}\b${regulatoryAuthorityTerms}\b`,
+  "i"
+);
 
 function sourcePacketStatusText(status: NormalizedSourcePacketRow["status"]) {
   switch (status) {

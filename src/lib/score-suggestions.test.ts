@@ -49,6 +49,158 @@ describe("buildClaimScoreSuggestion", () => {
     expect(suggestion.scores.regulatoryRisk).toBe(8);
     expect(suggestion.warning).toContain("Source packet is not complete");
   });
+
+  it("does not promote ordinary supplement product-status caveats into regulatory concern labels", () => {
+    const suggestion = buildClaimScoreSuggestion({
+      claim: {
+        ...claim,
+        safetyNotes:
+          "Do not infer product safety, interaction safety, or AU/TGA clearance from this intervention evidence.",
+        whatWouldChangeScore:
+          "Product-level AU/TGA status would improve product confidence, but the intervention evidence is otherwise ordinary supplement evidence."
+      },
+      references: [
+        {
+          ...reference,
+          title: "Effect of Ashwagandha extract on sleep: a systematic review and meta-analysis"
+        }
+      ],
+      sourcePacket: {
+        claimId: claim.id,
+        current: true,
+        referenceIds: [reference.id],
+        reviewStatus: "Unreviewed AI draft",
+        sourcePacketId: "packet-1",
+        status: "complete"
+      },
+      studies: [
+        {
+          ...metaAnalysis,
+          title: "Effect of Ashwagandha extract on sleep: a systematic review and meta-analysis"
+        }
+      ]
+    });
+
+    expect(suggestion.finalLabel).toBe("Useful for Specific Use Case");
+    expect(suggestion.scores.regulatoryRisk).toBe(4);
+    expect(suggestion.rationale.join(" ")).toContain("No high-signal regulatory warning");
+  });
+
+  it("keeps official regulatory source packets conservative even without peptide wording", () => {
+    const suggestion = buildClaimScoreSuggestion({
+      claim: {
+        ...claim,
+        finalLabel: "Insufficient Evidence"
+      },
+      references: [
+        {
+          ...reference,
+          source: "TGA",
+          title: "Therapeutic Goods Administration safety alert"
+        }
+      ],
+      sourcePacket: {
+        claimId: claim.id,
+        current: true,
+        referenceIds: [reference.id],
+        reviewStatus: "Unreviewed AI draft",
+        sourcePacketId: "packet-1",
+        status: "complete"
+      },
+      studies: [
+        {
+          ...metaAnalysis,
+          title: "Therapeutic Goods Administration safety alert"
+        }
+      ]
+    });
+
+    expect(suggestion.finalLabel).toBe("Regulatory Concern");
+    expect(suggestion.scores.regulatoryRisk).toBe(8);
+  });
+
+  it("keeps TGA peptide warning packets as regulatory concerns", () => {
+    const suggestion = buildClaimScoreSuggestion({
+      claim: {
+        ...claim,
+        claimText: "CJC-1295 peptide lifespan claim.",
+        finalLabel: "Insufficient Evidence"
+      },
+      references: [
+        {
+          ...reference,
+          source: "TGA",
+          title: "TGA warning on risks of importing unapproved peptide products"
+        }
+      ],
+      sourcePacket: {
+        claimId: claim.id,
+        current: true,
+        referenceIds: [reference.id],
+        reviewStatus: "Unreviewed AI draft",
+        sourcePacketId: "packet-1",
+        status: "complete"
+      },
+      studies: [
+        {
+          ...metaAnalysis,
+          intervention: "CJC-1295",
+          studyType: "Regulatory safety warning",
+          title: "TGA warning on risks of importing unapproved peptide products"
+        }
+      ]
+    });
+
+    expect(suggestion.finalLabel).toBe("Regulatory Concern");
+    expect(suggestion.scores.regulatoryRisk).toBe(8);
+  });
+
+  it("does not treat incomplete adverse-event reporting as a safety concern by itself", () => {
+    const suggestion = buildClaimScoreSuggestion({
+      claim,
+      references: [reference],
+      sourcePacket: {
+        claimId: claim.id,
+        current: true,
+        referenceIds: [reference.id],
+        reviewStatus: "Unreviewed AI draft",
+        sourcePacketId: "packet-1",
+        status: "complete"
+      },
+      studies: [
+        {
+          ...metaAnalysis,
+          adverseEvents: "Adverse events were not consistently reported."
+        }
+      ]
+    });
+
+    expect(suggestion.finalLabel).toBe("Useful for Specific Use Case");
+    expect(suggestion.scores.safety).toBe(7);
+    expect(suggestion.rationale.join(" ")).toContain("No local safety warning wording");
+  });
+
+  it("keeps explicit toxicity or warning language safety-conservative", () => {
+    const suggestion = buildClaimScoreSuggestion({
+      claim: {
+        ...claim,
+        safetyNotes: "Potential liver toxicity warning and serious adverse event risk."
+      },
+      references: [reference],
+      sourcePacket: {
+        claimId: claim.id,
+        current: true,
+        referenceIds: [reference.id],
+        reviewStatus: "Unreviewed AI draft",
+        sourcePacketId: "packet-1",
+        status: "complete"
+      },
+      studies: [metaAnalysis]
+    });
+
+    expect(suggestion.finalLabel).toBe("Safety Concern");
+    expect(suggestion.scores.safety).toBe(4);
+  });
 });
 
 const claim: Claim = {
