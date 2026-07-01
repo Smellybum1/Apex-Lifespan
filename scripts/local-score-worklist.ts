@@ -1,4 +1,5 @@
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
+import { prisma } from "@/lib/db/prisma";
 import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
 import {
   buildScoreWorklistReferenceRepairBrief,
@@ -31,7 +32,13 @@ async function main() {
         return;
       }
 
-      console.log(formatScoreWorklistReferenceRepairBriefLines(brief).join("\n"));
+      const lines = formatScoreWorklistReferenceRepairBriefLines(brief);
+
+      if (data.dataSource === "database") {
+        lines.push("", ...(await formatAcceptedCandidateRepairHintLines(args.repairReference)));
+      }
+
+      console.log(lines.join("\n"));
       return;
     }
 
@@ -104,6 +111,80 @@ Options:
   --help                  Show this help.
 
 This command does not write scores, review status, source packets, or public evidence.`;
+
+const CANDIDATE_KEY_B64_PREFIX = "candidate-key-b64:";
+
+async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
+  const candidates = await prisma.sourceCandidate.findMany({
+    orderBy: [{ triageScore: "desc" }, { updatedAt: "desc" }],
+    select: {
+      claimId: true,
+      dedupeKey: true,
+      externalId: true,
+      interventionId: true,
+      reviewNote: true,
+      reviewStatus: true,
+      source: true,
+      sourceType: true,
+      title: true,
+      triageScore: true
+    },
+    take: 8,
+    where: {
+      acceptedReferenceId: referenceId,
+      decision: "ACCEPTED"
+    }
+  });
+
+  const lines = [
+    "Accepted candidate extraction hints:",
+    candidates.length === 0
+      ? "No accepted source candidates currently point at this reference; repair from the source record directly."
+      : `${candidates.length} accepted candidate(s) point at this reference. Use the curation draft to reuse captured metadata before writing extraction.`
+  ];
+
+  lines.push(
+    ...candidates.flatMap((candidate, index) => {
+      const key = safeCandidateKey(candidate.dedupeKey);
+      const context = [
+        candidate.interventionId ? `intervention ${candidate.interventionId}` : undefined,
+        candidate.claimId ? `claim ${candidate.claimId}` : undefined
+      ]
+        .filter(Boolean)
+        .join("; ");
+
+      return [
+        `${index + 1}. ${sourceKindLabel(candidate.source)} ${candidate.externalId} - triage ${candidate.triageScore}` +
+          (candidate.sourceType ? ` / ${candidate.sourceType}` : ""),
+        `   ${candidate.title}`,
+        context ? `   Context: ${context}` : undefined,
+        `   Draft: npm run ingest:sources -- --candidate-curation-draft ${key}`,
+        candidate.reviewNote ? `   Review note: ${candidate.reviewNote}` : undefined
+      ].filter((line): line is string => Boolean(line));
+    })
+  );
+
+  return lines;
+}
+
+function safeCandidateKey(dedupeKey: string) {
+  return `${CANDIDATE_KEY_B64_PREFIX}${Buffer.from(dedupeKey, "utf8").toString("base64url")}`;
+}
+
+function sourceKindLabel(source: string) {
+  switch (source) {
+    case "PUBMED":
+      return "PubMed";
+    case "CLINICALTRIALS_GOV":
+      return "ClinicalTrials.gov";
+    default:
+      return source
+        .toLowerCase()
+        .split("_")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+  }
+}
 
 function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
   const parsed: ScoreWorklistArgs = {
