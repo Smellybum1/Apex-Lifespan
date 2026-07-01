@@ -11,6 +11,7 @@ export const metadata: Metadata = {
 
 const anchorLinks = [
   ["Core Principle", "core-principle"],
+  ["Source Packet Gate", "source-packet-gate"],
   ["Score Components", "score-components"],
   ["Composite Score", "composite-score"],
   ["Score Bands", "score-bands"],
@@ -85,19 +86,19 @@ const scoreComponents = [
     lowers:
       "Unapproved therapeutic status, peptide/watchlist context, major safety warnings, or unresolved product status.",
     name: "Low regulatory risk"
+  },
+  {
+    definition:
+      "Product-level quality and authorization context captured separately from intervention evidence.",
+    increases:
+      "Exact product label, verified AUST/ARTG or absence evidence, sponsor, third-party quality signals, and source URL.",
+    lowers:
+      "Unknown product status, missing AUST/ARTG evidence, proprietary blends, unverifiable labels, or supply-context uncertainty.",
+    name: "Product caveat context"
   }
 ];
 
 const compositeWeights = [
-  ["Directness", "20%"],
-  ["Rigor", "20%"],
-  ["Impact", "20%"],
-  ["Safety", "20%"],
-  ["Measurability", "10%"],
-  ["Low hype risk", "10%"]
-] as const;
-
-const implementationWeights = [
   ["Directness", "22%"],
   ["Rigor", "22%"],
   ["Impact", "18%"],
@@ -270,6 +271,32 @@ export default function MethodologyPage() {
           </div>
         </section>
 
+        <section className="mt-8" id="source-packet-gate">
+          <SectionHeading
+            eyebrow="Source Packet Gate"
+            title="A score needs a traceable source packet"
+          />
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr]">
+            <div className="rounded-lg border border-line bg-white p-4 shadow-panel">
+              <p className="text-sm leading-6 text-slate-700">
+                A public score should be backed by a claim-specific source packet: curated
+                references, structured extractions, and visible review status. If a claim is only a
+                draft lead or source-packet scaffold, Apex hides starter component values and labels
+                the cell as review work instead of final evidence.
+              </p>
+            </div>
+            <div className="rounded-lg border border-amberline/30 bg-amber-50 p-4">
+              <h3 className="text-base font-semibold text-ink">Scoring readiness states</h3>
+              <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-amber-950">
+                <li>Ready to score: complete source packet, but no final score yet.</li>
+                <li>Source-blocked: linked sources still need extraction, repair, or curation.</li>
+                <li>Default-looking score: a starter-like public score needs scoring review.</li>
+                <li>Scored: a final public score is visible, still subject to future updates.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
         <section className="mt-8" id="score-components">
           <SectionHeading eyebrow="Score Components" title="What each component means" />
           <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -294,10 +321,11 @@ export default function MethodologyPage() {
           <div className="mt-4 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
             <div className="rounded-lg border border-line bg-white p-4 shadow-panel">
               <p className="text-sm leading-6 text-slate-700">
-                The composite score is a transparent heuristic based on weighted components. The
-                simple public explanation uses rounded weights so the intent is easy to understand.
-                The current implementation weights are shown separately for traceability. Both are
-                provisional review heuristics, not clinical recommendations.
+                The composite score is a transparent heuristic based on weighted components. Each
+                component is scored from 0 to 10 for the scoped claim, then combined with the
+                current weights shown here. Product caveat context is tracked separately and can
+                shape labels, caveats, or regulatory-risk interpretation; it is not proof of
+                product authorization.
               </p>
               <p className="mt-3 text-sm leading-6 text-slate-700">
                 Regulatory risk can cap or override the final label for peptides, unapproved
@@ -308,14 +336,9 @@ export default function MethodologyPage() {
             </div>
             <div className="grid gap-4">
               <DataTable
-                ariaLabel="Simple public composite score weighting"
-                columns={["Simple public component", "Rounded weight"]}
+                ariaLabel="Current composite score weighting"
+                columns={["Current component", "Weight"]}
                 rows={compositeWeights}
-              />
-              <DataTable
-                ariaLabel="Current implementation composite score weighting"
-                columns={["Current implementation component", "Weight"]}
-                rows={implementationWeights}
               />
             </div>
           </div>
@@ -423,6 +446,7 @@ export default function MethodologyPage() {
               <li>Scores are not personal medical advice.</li>
               <li>Scores do not replace clinician guidance.</li>
               <li>Scores are claim-specific, not compound-wide.</li>
+              <li>Scores do not prove product-level AU/TGA authorization.</li>
               <li>Uncertainty should remain visible.</li>
             </ul>
           </div>

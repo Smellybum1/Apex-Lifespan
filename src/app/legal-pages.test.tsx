@@ -16,14 +16,16 @@ describe("public legal pages", () => {
       "How Apex Lifespan scores supplement, peptide, and healthspan-intervention claims."
     );
     expect(html).toContain("Apex scores claims, not compounds.");
+    expect(html).toContain("A score needs a traceable source packet");
     expect(html).toContain("Directness");
     expect(html).toContain("Low regulatory risk");
+    expect(html).toContain("Product caveat context");
     expect(html).toContain("Regulatory risk can cap or override");
     expect(html).toContain("Directness</th><td");
-    expect(html).toContain("20%");
-    expect(html).toContain("Current implementation component");
     expect(html).toContain("22%");
-    expect(html).toContain("provisional review heuristics, not clinical recommendations");
+    expect(html).toContain("current weights shown here");
+    expect(html).toContain("starter component values");
+    expect(html).toContain("Source-blocked");
     expect(html).toContain("8.0-10");
     expect(html).toContain("Core Evidence-Based");
     expect(html).toContain("Animal lifespan evidence is not human longevity evidence.");
@@ -31,6 +33,7 @@ describe("public legal pages", () => {
     expect(html).toContain("Human reviewed does not mean clinical guideline endorsed.");
     expect(html).toContain("New RCT");
     expect(html).toContain("Scores are claim-specific, not compound-wide.");
+    expect(html).toContain("Scores do not prove product-level AU/TGA authorization.");
     expect(html).toContain("Creatine");
     expect(html).toContain("Vitamin D");
     expect(html).toContain("BPC-157");
@@ -42,7 +45,9 @@ describe("public legal pages", () => {
     const termsHtml = renderToStaticMarkup(<TermsPage />);
 
     expect(methodologyHtml).toContain("Apex scores claims, not compounds.");
+    expect(methodologyHtml).toContain("A score needs a traceable source packet");
     expect(methodologyHtml).toContain("Scores are not personal medical advice.");
+    expect(methodologyHtml).toContain("Scores do not prove product-level AU/TGA authorization.");
     expect(methodologyHtml).toContain("Human reviewed does not mean clinical guideline endorsed.");
     expect(methodologyHtml).toContain("Animal lifespan evidence is not human longevity evidence.");
     expect(methodologyHtml).toContain("Biomarker effects are not automatically clinical outcomes.");
