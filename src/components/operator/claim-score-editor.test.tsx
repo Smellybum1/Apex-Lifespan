@@ -31,6 +31,7 @@ describe("OperatorClaimScoreEditor", () => {
               "Use the complete source packet to assign dimension scores, final label, and uncertainty language.",
             priorityLabel: "High",
             reasons: ["Ready to score", "source packet complete", "review-level source extracted"],
+            state: "ready_to_score",
             stateLabel: "Ready to score"
           }
         }}
@@ -50,6 +51,46 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).toContain("Complete");
     expect(html).toContain("Creatine review");
     expect(html).toContain("Apply score update");
+  });
+
+  it("keeps source-blocked rows dry-run only until extraction is complete", () => {
+    const html = renderToStaticMarkup(
+      <OperatorClaimScoreEditor
+        applyEnabled={true}
+        claimReferences={{
+          "creatine-strength": [reference]
+        }}
+        claims={[claim]}
+        sourcePackets={[
+          {
+            claimId: "creatine-strength",
+            current: true,
+            referenceIds: ["ref-creatine"],
+            reviewStatus: "Unreviewed AI draft",
+            sourcePacketId: "packet-1",
+            status: "extraction_pending"
+          }
+        ]}
+        studies={[]}
+        updateAction={vi.fn()}
+        worklistContext={{
+          "creatine-strength": {
+            nextAction:
+              "Add structured extraction for the pending references before treating this packet as complete.",
+            priorityLabel: "High",
+            reasons: ["Source-blocked", "Extraction pending"],
+            state: "source_blocked",
+            stateLabel: "Source-blocked"
+          }
+        }}
+      />
+    );
+
+    expect(html).toContain("Source-blocked");
+    expect(html).toContain("Apply waits for ready-to-score or score-review work");
+    expect(html).toContain("Extraction pending");
+    expect(html).not.toContain("Apply score update");
+    expect(html).toContain("disabled");
   });
 });
 

@@ -3,7 +3,10 @@ import { LogIn, LogOut, ShieldCheck, ShieldX } from "lucide-react";
 import { revalidatePath } from "next/cache";
 
 import { signIn, signOut } from "@/auth";
-import { OperatorClaimScoreEditor } from "@/components/operator/claim-score-editor";
+import {
+  OperatorClaimScoreEditor,
+  type ClaimScoreWorklistContext
+} from "@/components/operator/claim-score-editor";
 import { OperatorOnboardingWizard } from "@/components/operator/onboarding-wizard";
 import { canOperatorAccess, operatorWritesEnabled } from "@/lib/operator/authorization";
 import {
@@ -288,6 +291,7 @@ export default async function OperatorPage() {
         nextAction: scoreReadinessNextAction(row),
         priorityLabel: row.priorityLabel,
         reasons: row.reasons,
+        state: row.state,
         stateLabel: scoreReadinessStateLabel(row.state)
       }
     ])
@@ -1362,6 +1366,7 @@ function ScoreSnapshotPanel({
       nextAction: string;
       priorityLabel: string;
       reasons: string[];
+      state: ClaimScoreWorklistContext["state"];
       stateLabel: string;
     }
   >;

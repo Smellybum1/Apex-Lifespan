@@ -8,6 +8,7 @@ import {
 } from "@/lib/score-fields";
 import { buildClaimScoreSuggestion } from "@/lib/score-suggestions";
 import { compositeScore, scoreBand } from "@/lib/scoring";
+import type { ScoreReadinessState } from "@/lib/score-readiness";
 import type {
   Claim,
   EvidenceLabel,
@@ -31,6 +32,7 @@ export interface ClaimScoreWorklistContext {
   nextAction: string;
   priorityLabel: string;
   reasons: string[];
+  state: ScoreReadinessState;
   stateLabel: string;
 }
 
@@ -116,6 +118,7 @@ function EditableClaimScoreCard({
   const changed =
     finalLabel !== claim.finalLabel ||
     CLAIM_SCORE_FIELD_DEFINITIONS.some(({ key }) => scores[key] !== claim.scores[key]);
+  const scoreUpdateAllowed = canUpdateScoreFromContext(worklistContext);
 
   return (
     <details className="rounded-md border border-slate-200 bg-slate-50" key={claim.id}>
@@ -145,16 +148,28 @@ function EditableClaimScoreCard({
                 </p>
               </div>
               <button
-                className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-900"
+                className="rounded-md border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-900 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                disabled={!scoreUpdateAllowed}
                 onClick={() => {
                   setScores(suggestion.scores);
                   setFinalLabel(suggestion.finalLabel);
                 }}
+                title={
+                  scoreUpdateAllowed
+                    ? "Use this conservative suggestion as an editable draft."
+                    : "Complete source extraction or capture the needed snapshot before applying scoring suggestions."
+                }
                 type="button"
               >
                 Use suggestion
               </button>
             </div>
+            {!scoreUpdateAllowed ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900">
+                Apply waits for ready-to-score or score-review work. Use this card for dry-run
+                triage until the source packet is complete or the snapshot gap is handled.
+              </p>
+            ) : null}
             {suggestion.warning ? (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900">
                 {suggestion.warning}
@@ -218,7 +233,9 @@ function EditableClaimScoreCard({
               required
             >
               <option value="dry-run">Dry run</option>
-              {applyEnabled ? <option value="apply">Apply score update</option> : null}
+              {applyEnabled && scoreUpdateAllowed ? (
+                <option value="apply">Apply score update</option>
+              ) : null}
             </select>
           </label>
           <label className="block text-sm font-semibold text-slate-700">
@@ -240,6 +257,18 @@ function EditableClaimScoreCard({
         <SourcePacketContext references={references} sourcePacket={sourcePacket} />
       </div>
     </details>
+  );
+}
+
+function canUpdateScoreFromContext(context: ClaimScoreWorklistContext | undefined) {
+  if (!context) {
+    return true;
+  }
+
+  return (
+    context.state === "default_score_review" ||
+    context.state === "ready_to_score" ||
+    context.state === "scored"
   );
 }
 
