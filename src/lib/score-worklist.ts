@@ -108,9 +108,68 @@ export interface ScoreWorklistReport {
     state: ScoreWorklistStateFilter;
   };
   hiddenRows: number;
+  repairSummary: ScoreWorklistRepairSummary;
   rows: ScoreWorklistRow[];
   summary: ScoreReadinessSummary;
   totalMatchingRows: number;
+}
+
+export interface ScoreWorklistRepairSummary {
+  extractionPendingRows: number;
+  missingReferenceGroups: ScoreWorklistMissingReferenceGroup[];
+  missingSourceRows: number;
+  pendingReferenceGroups: ScoreWorklistPendingReferenceGroup[];
+  sourceBlockedRows: number;
+  unlinkedInterventionGroups: ScoreWorklistUnlinkedInterventionGroup[];
+  unlinkedRows: number;
+}
+
+export interface ScoreWorklistPendingReferenceGroup {
+  claimCount: number;
+  interventions: Array<{
+    claimCount: number;
+    id: string;
+    name: string;
+    slug: string;
+  }>;
+  outcomes: string[];
+  priority: number;
+  reference: {
+    id: string;
+    label: string;
+    source: string;
+    title: string;
+    url: string;
+    year?: number;
+  };
+  sampleClaims: ScoreWorklistRepairSampleClaim[];
+}
+
+export interface ScoreWorklistMissingReferenceGroup {
+  claimCount: number;
+  outcomes: string[];
+  priority: number;
+  referenceId: string;
+  sampleClaims: ScoreWorklistRepairSampleClaim[];
+}
+
+export interface ScoreWorklistUnlinkedInterventionGroup {
+  claimCount: number;
+  intervention: {
+    id: string;
+    name: string;
+    slug: string;
+  } | null;
+  outcomes: string[];
+  priority: number;
+  sampleClaims: ScoreWorklistRepairSampleClaim[];
+}
+
+export interface ScoreWorklistRepairSampleClaim {
+  claimId: string;
+  interventionName: string;
+  outcome: string;
+  priorityLabel: string;
 }
 
 const DEFAULT_LIMIT = 12;
@@ -145,6 +204,7 @@ export function buildScoreWorklistReport(
       state
     },
     hiddenRows: Math.max(matchingRows.length - limit, 0),
+    repairSummary: buildScoreWorklistRepairSummary(matchingRows),
     rows: matchingRows.slice(0, limit).map((row) => {
       const references = row.claim.keyReferenceIds
         .map((referenceId) => referenceById.get(referenceId))
@@ -234,13 +294,38 @@ export function buildScoreWorklistReport(
   };
 }
 
+export function buildScoreWorklistRepairSummary(
+  rows: ScoreReadinessRow[]
+): ScoreWorklistRepairSummary {
+  const sourceBlockedRows = rows.filter((row) => row.state === "source_blocked");
+  const extractionPendingRows = sourceBlockedRows.filter(
+    (row) => row.packet.completeness.status === "extraction_pending"
+  ).length;
+  const missingSourceRows = sourceBlockedRows.filter(
+    (row) => row.packet.completeness.status === "missing_sources"
+  ).length;
+  const unlinkedRows = sourceBlockedRows.filter(
+    (row) => row.packet.completeness.status === "not_linked"
+  ).length;
+
+  return {
+    extractionPendingRows,
+    missingReferenceGroups: missingReferenceGroups(sourceBlockedRows),
+    missingSourceRows,
+    pendingReferenceGroups: pendingReferenceGroups(sourceBlockedRows),
+    sourceBlockedRows: sourceBlockedRows.length,
+    unlinkedInterventionGroups: unlinkedInterventionGroups(sourceBlockedRows),
+    unlinkedRows
+  };
+}
+
 export function formatScoreWorklistReportLines(report: ScoreWorklistReport) {
   return formatScoreWorklistReportLinesWithOptions(report);
 }
 
 export function formatScoreWorklistReportLinesWithOptions(
   report: ScoreWorklistReport,
-  options: { detail?: boolean } = {}
+  options: { detail?: boolean; repairSummary?: boolean; repairSummaryLimit?: number } = {}
 ) {
   const lines = [
     "Read-only local score worklist",
@@ -253,15 +338,76 @@ export function formatScoreWorklistReportLinesWithOptions(
   if (report.rows.length === 0) {
     return [
       ...lines,
+      ...(options.repairSummary
+        ? ["", ...formatScoreWorklistRepairSummaryLines(report.repairSummary, options)]
+        : []),
       "No score worklist rows match the current filters."
     ];
   }
 
   return [
     ...lines,
+    ...(options.repairSummary
+      ? ["", ...formatScoreWorklistRepairSummaryLines(report.repairSummary, options)]
+      : []),
     "",
     ...report.rows.flatMap((row, index) => scoreWorklistRowLines(row, index, options))
   ];
+}
+
+export function formatScoreWorklistRepairSummaryLines(
+  summary: ScoreWorklistRepairSummary,
+  options: { repairSummaryLimit?: number } = {}
+) {
+  const limit = options.repairSummaryLimit ?? 8;
+  const lines = [
+    "Source repair summary",
+    `Blocked rows: ${summary.sourceBlockedRows}; extraction pending: ${summary.extractionPendingRows}; missing source records: ${summary.missingSourceRows}; unlinked claims: ${summary.unlinkedRows}.`
+  ];
+
+  if (summary.sourceBlockedRows === 0) {
+    return [...lines, "No source-blocked scoring rows match the current filters."];
+  }
+
+  if (summary.pendingReferenceGroups.length > 0) {
+    lines.push("Top pending extraction references:");
+    lines.push(
+      ...summary.pendingReferenceGroups
+        .slice(0, limit)
+        .flatMap((group, index) => [
+          `${index + 1}. ${group.reference.label} - unlocks ${group.claimCount} claim(s) across ${group.interventions.length} intervention(s)`,
+          `   ${group.reference.title}`,
+          `   Claims: ${formatRepairSampleClaims(group.sampleClaims)}`
+        ])
+    );
+  }
+
+  if (summary.missingReferenceGroups.length > 0) {
+    lines.push("Top missing source records:");
+    lines.push(
+      ...summary.missingReferenceGroups
+        .slice(0, limit)
+        .flatMap((group, index) => [
+          `${index + 1}. ${group.referenceId} - blocks ${group.claimCount} claim(s)`,
+          `   Claims: ${formatRepairSampleClaims(group.sampleClaims)}`
+        ])
+    );
+  }
+
+  if (summary.unlinkedInterventionGroups.length > 0) {
+    lines.push("Top unlinked claim groups:");
+    lines.push(
+      ...summary.unlinkedInterventionGroups
+        .slice(0, limit)
+        .flatMap((group, index) => [
+          `${index + 1}. ${group.intervention?.name ?? "Unknown intervention"} - ${group.claimCount} claim(s) need curated references`,
+          `   Outcomes: ${group.outcomes.slice(0, 5).join("; ")}`,
+          `   Claims: ${formatRepairSampleClaims(group.sampleClaims)}`
+        ])
+    );
+  }
+
+  return lines;
 }
 
 function scoreWorklistRowLines(
@@ -312,6 +458,198 @@ function scoreWorklistRowLines(
     ]),
     `   What would change score: ${row.claim.whatWouldChangeScore}`
   ];
+}
+
+function pendingReferenceGroups(
+  rows: ScoreReadinessRow[]
+): ScoreWorklistPendingReferenceGroup[] {
+  const groups = new Map<
+    string,
+    {
+      reference: Reference;
+      rows: ScoreReadinessRow[];
+    }
+  >();
+
+  for (const row of rows) {
+    for (const reference of row.packet.pendingReferences) {
+      const group = groups.get(reference.id) ?? {
+        reference,
+        rows: []
+      };
+
+      group.rows.push(row);
+      groups.set(reference.id, group);
+    }
+  }
+
+  return Array.from(groups.values())
+    .map(({ reference, rows: groupRows }) => {
+      const rowsForGroup = sortRepairRows(dedupeRepairRows(groupRows));
+
+      return {
+        claimCount: rowsForGroup.length,
+        interventions: repairInterventionGroups(rowsForGroup),
+        outcomes: uniqueSorted(rowsForGroup.map((row) => row.claim.outcome)),
+        priority: repairPriority(rowsForGroup),
+        reference: {
+          id: reference.id,
+          label: formatReferenceLabel(reference),
+          source: reference.source,
+          title: reference.title,
+          url: reference.url,
+          year: reference.year
+        },
+        sampleClaims: repairSampleClaims(rowsForGroup)
+      };
+    })
+    .sort(compareRepairGroups);
+}
+
+function missingReferenceGroups(
+  rows: ScoreReadinessRow[]
+): ScoreWorklistMissingReferenceGroup[] {
+  const groups = new Map<string, ScoreReadinessRow[]>();
+
+  for (const row of rows) {
+    for (const referenceId of row.packet.missingReferenceIds) {
+      groups.set(referenceId, [...(groups.get(referenceId) ?? []), row]);
+    }
+  }
+
+  return Array.from(groups.entries())
+    .map(([referenceId, groupRows]) => {
+      const rowsForGroup = sortRepairRows(dedupeRepairRows(groupRows));
+
+      return {
+        claimCount: rowsForGroup.length,
+        outcomes: uniqueSorted(rowsForGroup.map((row) => row.claim.outcome)),
+        priority: repairPriority(rowsForGroup),
+        referenceId,
+        sampleClaims: repairSampleClaims(rowsForGroup)
+      };
+    })
+    .sort(compareRepairGroups);
+}
+
+function unlinkedInterventionGroups(
+  rows: ScoreReadinessRow[]
+): ScoreWorklistUnlinkedInterventionGroup[] {
+  const groups = new Map<string, ScoreReadinessRow[]>();
+
+  for (const row of rows) {
+    if (row.packet.completeness.status !== "not_linked") {
+      continue;
+    }
+
+    const key = row.intervention?.id ?? "unknown";
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+  }
+
+  return Array.from(groups.values())
+    .map((groupRows) => {
+      const rowsForGroup = sortRepairRows(dedupeRepairRows(groupRows));
+      const intervention = rowsForGroup[0]?.intervention;
+
+      return {
+        claimCount: rowsForGroup.length,
+        intervention: intervention
+          ? {
+              id: intervention.id,
+              name: intervention.name,
+              slug: intervention.slug
+            }
+          : null,
+        outcomes: uniqueSorted(rowsForGroup.map((row) => row.claim.outcome)),
+        priority: repairPriority(rowsForGroup),
+        sampleClaims: repairSampleClaims(rowsForGroup)
+      };
+    })
+    .sort(compareRepairGroups);
+}
+
+function repairInterventionGroups(rows: ScoreReadinessRow[]) {
+  const groups = new Map<
+    string,
+    {
+      claimCount: number;
+      id: string;
+      name: string;
+      slug: string;
+    }
+  >();
+
+  for (const row of rows) {
+    if (!row.intervention) {
+      continue;
+    }
+
+    const current = groups.get(row.intervention.id) ?? {
+      claimCount: 0,
+      id: row.intervention.id,
+      name: row.intervention.name,
+      slug: row.intervention.slug
+    };
+
+    current.claimCount += 1;
+    groups.set(row.intervention.id, current);
+  }
+
+  return Array.from(groups.values()).sort(
+    (left, right) => right.claimCount - left.claimCount || left.name.localeCompare(right.name)
+  );
+}
+
+function repairSampleClaims(rows: ScoreReadinessRow[]): ScoreWorklistRepairSampleClaim[] {
+  return rows.slice(0, 4).map((row) => ({
+    claimId: row.claim.id,
+    interventionName: row.intervention?.name ?? "Unknown intervention",
+    outcome: row.claim.outcome,
+    priorityLabel: row.priorityLabel
+  }));
+}
+
+function formatRepairSampleClaims(samples: ScoreWorklistRepairSampleClaim[]) {
+  return samples
+    .map(
+      (sample) =>
+        `${sample.interventionName} / ${sample.outcome} (${sample.claimId}, ${sample.priorityLabel})`
+    )
+    .join("; ");
+}
+
+function sortRepairRows(rows: ScoreReadinessRow[]) {
+  return [...rows].sort(
+    (left, right) =>
+      right.priority - left.priority ||
+      (left.intervention?.name ?? "").localeCompare(right.intervention?.name ?? "") ||
+      left.claim.outcome.localeCompare(right.claim.outcome)
+  );
+}
+
+function dedupeRepairRows(rows: ScoreReadinessRow[]) {
+  return Array.from(new Map(rows.map((row) => [row.claim.id, row])).values());
+}
+
+function repairPriority(rows: ScoreReadinessRow[]) {
+  return rows.reduce((total, row) => total + row.priority, 0);
+}
+
+function compareRepairGroups(
+  left:
+    | ScoreWorklistPendingReferenceGroup
+    | ScoreWorklistMissingReferenceGroup
+    | ScoreWorklistUnlinkedInterventionGroup,
+  right:
+    | ScoreWorklistPendingReferenceGroup
+    | ScoreWorklistMissingReferenceGroup
+    | ScoreWorklistUnlinkedInterventionGroup
+) {
+  return right.claimCount - left.claimCount || right.priority - left.priority;
+}
+
+function uniqueSorted(values: string[]) {
+  return Array.from(new Set(values)).sort((left, right) => left.localeCompare(right));
 }
 
 function groupStudiesByReferenceId(studies: Study[]) {

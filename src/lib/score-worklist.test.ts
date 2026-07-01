@@ -15,7 +15,7 @@ import {
   studies,
   trialWatchItems
 } from "@/lib/seed-data";
-import type { Claim, EvidenceDashboardData } from "@/lib/types";
+import type { Claim, EvidenceDashboardData, Reference } from "@/lib/types";
 
 function seedDashboardData(): EvidenceDashboardData {
   return {
@@ -167,5 +167,57 @@ describe("score worklist", () => {
     expect(lines).toContain("Source packet:");
     expect(lines).toContain("Study 1:");
     expect(lines).toContain("What would change score:");
+  });
+
+  it("groups source-blocked rows by pending extraction reference", () => {
+    const data = seedDashboardData();
+    const sourceBackedClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0)!;
+    const sharedPendingReference: Reference = {
+      id: "shared-pending-score-reference",
+      identifier: "PMID:12345678",
+      source: "PubMed",
+      title: "Shared source that still needs extraction",
+      url: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+      year: 2026
+    };
+    const firstBlockedClaim: Claim = {
+      ...sourceBackedClaim,
+      id: "blocked-score-first",
+      keyReferenceIds: [sharedPendingReference.id]
+    };
+    const secondBlockedClaim: Claim = {
+      ...sourceBackedClaim,
+      id: "blocked-score-second",
+      keyReferenceIds: [sharedPendingReference.id],
+      outcome: "Safety/adverse effects"
+    };
+    const report = buildScoreWorklistReport(
+      {
+        ...data,
+        claims: [firstBlockedClaim, secondBlockedClaim],
+        references: [...data.references, sharedPendingReference]
+      },
+      {
+        state: "source_blocked"
+      }
+    );
+    const lines = formatScoreWorklistReportLinesWithOptions(report, {
+      repairSummary: true
+    }).join("\n");
+
+    expect(report.repairSummary.sourceBlockedRows).toBe(2);
+    expect(report.repairSummary.extractionPendingRows).toBe(2);
+    expect(report.repairSummary.pendingReferenceGroups[0]).toMatchObject({
+      claimCount: 2,
+      reference: {
+        id: sharedPendingReference.id,
+        label: "PubMed PMID:12345678 2026"
+      }
+    });
+    expect(lines).toContain("Source repair summary");
+    expect(lines).toContain("Top pending extraction references");
+    expect(lines).toContain("unlocks 2 claim(s)");
+    expect(lines).toContain("blocked-score-first");
+    expect(lines).toContain("blocked-score-second");
   });
 });

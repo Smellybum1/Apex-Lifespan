@@ -30,7 +30,12 @@ async function main() {
       return;
     }
 
-    console.log(formatScoreWorklistReportLinesWithOptions(report, { detail: args.detail }).join("\n"));
+    console.log(
+      formatScoreWorklistReportLinesWithOptions(report, {
+        detail: args.detail,
+        repairSummary: args.repairSummary
+      }).join("\n")
+    );
   });
 }
 
@@ -41,6 +46,7 @@ interface ScoreWorklistArgs {
   intervention?: string;
   json: boolean;
   limit: number;
+  repairSummary: boolean;
   showHelp?: false;
   state: ScoreWorklistStateFilter;
 }
@@ -74,6 +80,7 @@ Options:
   --limit <count>         Number of rows to show. Default: 12
   --include-scored        Include already-scored rows when state is not all.
   --detail                Print claim boundary and extracted study fields for scoring review.
+  --repair-summary        Show grouped source repair targets for source-blocked rows.
   --json                  Print JSON instead of text.
   --help                  Show this help.
 
@@ -86,6 +93,7 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
     includeScored: false,
     json: false,
     limit: 12,
+    repairSummary: false,
     state: "work"
   };
 
@@ -103,6 +111,11 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
 
     if (arg === "--detail") {
       parsed.detail = true;
+      continue;
+    }
+
+    if (arg === "--repair-summary") {
+      parsed.repairSummary = true;
       continue;
     }
 
