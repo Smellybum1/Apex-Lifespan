@@ -53,9 +53,18 @@ async function main() {
       limit: args.limit,
       state: args.state
     });
+    const identityActionPreview =
+      data.dataSource === "database" && args.repairSummary && args.repairIdentityWarnings
+        ? await buildIdentityWarningActionPreview(report, {
+            actionFilter: args.repairIdentityAction,
+            referenceLimit: args.repairIdentityLimit
+          })
+        : undefined;
 
     if (args.json) {
-      console.log(JSON.stringify(report, null, 2));
+      console.log(
+        JSON.stringify(identityActionPreview ? { ...report, identityActionPreview } : report, null, 2)
+      );
       return;
     }
 
@@ -66,13 +75,7 @@ async function main() {
     });
 
     if (data.dataSource === "database" && args.repairSummary && args.repairIdentityWarnings) {
-      lines.push(
-        "",
-        ...(await formatIdentityWarningActionPreviewLines(report, {
-          actionFilter: args.repairIdentityAction,
-          referenceLimit: args.repairIdentityLimit
-        }))
-      );
+      lines.push("", ...formatIdentityWarningActionPreviewLines(identityActionPreview));
     }
 
     console.log(lines.join("\n"));
@@ -110,6 +113,38 @@ type IdentityPreviewCandidateRow = {
     triageScore: number;
   };
   decision: LocalIdentityResolutionAutomationDecisionReadout | undefined;
+};
+type IdentityActionCounts = Record<IdentityResolutionAction | "unavailable", number>;
+type IdentityWarningActionPreviewRow = {
+  acceptedReferenceId: string | null;
+  action: IdentityResolutionAction | "unavailable";
+  actionLabel: string;
+  claimId: string | null;
+  dedupeKey: string;
+  draftCommand: string;
+  externalId: string;
+  interventionId: string | null;
+  matchedInterventionId?: string;
+  matchedInterventionName?: string;
+  reasons: string[];
+  source: string;
+  sourceLabel: string;
+  title: string;
+  triageScore: number;
+};
+
+type IdentityWarningActionPreview = {
+  acceptedCandidates: number;
+  actionCounts: IdentityActionCounts;
+  actionFilter: IdentityActionFilter;
+  actionFilterLabel: string;
+  hiddenByActionFilter: number;
+  rawMatches: number;
+  referenceLimit: number;
+  rows: IdentityWarningActionPreviewRow[];
+  scannedWarningReferences: number;
+  totalWarningReferences: number;
+  uniqueMatches: number;
 };
 
 type ParsedScoreWorklistArgs =
@@ -157,7 +192,7 @@ This command does not write scores, review status, source packets, or public evi
 const CANDIDATE_KEY_B64_PREFIX = "candidate-key-b64:";
 const DEFAULT_IDENTITY_WARNING_ACTION_PREVIEW_LIMIT = 8;
 
-async function formatIdentityWarningActionPreviewLines(
+async function buildIdentityWarningActionPreview(
   report: ScoreWorklistReport,
   {
     actionFilter,
@@ -166,18 +201,19 @@ async function formatIdentityWarningActionPreviewLines(
     actionFilter: IdentityActionFilter;
     referenceLimit: number;
   }
-) {
+): Promise<IdentityWarningActionPreview> {
   const warningReferenceIds = report.repairSummary.pendingReferenceGroups
     .filter((group) => group.identityWarnings.length > 0)
     .map((group) => group.reference.id);
   const referenceIds = warningReferenceIds.slice(0, referenceLimit);
 
-  const lines = [
-    `Identity action preview (source-led, read-only; scanned ${referenceIds.length}/${warningReferenceIds.length} warning reference(s)):`
-  ];
-
   if (referenceIds.length === 0) {
-    return [...lines, "No identity-warning references are visible in the current repair summary."];
+    return emptyIdentityWarningActionPreview({
+      actionFilter,
+      referenceLimit,
+      scannedWarningReferences: 0,
+      totalWarningReferences: warningReferenceIds.length
+    });
   }
 
   const candidates = await prisma.sourceCandidate.findMany({
@@ -201,10 +237,12 @@ async function formatIdentityWarningActionPreviewLines(
   });
 
   if (candidates.length === 0) {
-    return [
-      ...lines,
-      `${referenceIds.length} scanned identity-warning reference(s) have no accepted source candidates attached.`
-    ];
+    return emptyIdentityWarningActionPreview({
+      actionFilter,
+      referenceLimit,
+      scannedWarningReferences: referenceIds.length,
+      totalWarningReferences: warningReferenceIds.length
+    });
   }
 
   const identityDecisions = await sourceLedIdentityDecisionByCandidateKey(
@@ -221,53 +259,126 @@ async function formatIdentityWarningActionPreviewLines(
   );
   const displayRows = dedupeIdentityPreviewRows(filteredRows);
 
+  return {
+    acceptedCandidates: candidates.length,
+    actionCounts,
+    actionFilter,
+    actionFilterLabel: formatIdentityActionFilterLabel(actionFilter),
+    hiddenByActionFilter: previewRows.length - filteredRows.length,
+    rawMatches: filteredRows.length,
+    referenceLimit,
+    rows: displayRows.map(identityWarningActionPreviewRow),
+    scannedWarningReferences: referenceIds.length,
+    totalWarningReferences: warningReferenceIds.length,
+    uniqueMatches: displayRows.length
+  };
+}
+
+function formatIdentityWarningActionPreviewLines(preview: IdentityWarningActionPreview | undefined) {
+  const lines = [
+    preview
+      ? `Identity action preview (source-led, read-only; scanned ${preview.scannedWarningReferences}/${preview.totalWarningReferences} warning reference(s)):`
+      : "Identity action preview (source-led, read-only):"
+  ];
+
+  if (!preview || preview.scannedWarningReferences === 0) {
+    return [...lines, "No identity-warning references are visible in the current repair summary."];
+  }
+
+  if (preview.acceptedCandidates === 0) {
+    return [
+      ...lines,
+      `${preview.scannedWarningReferences} scanned identity-warning reference(s) have no accepted source candidates attached.`
+    ];
+  }
+
   lines.push(
-    `${candidates.length} accepted candidate(s) across ${referenceIds.length} warning reference(s): ${formatIdentityActionCounts(actionCounts)}.`
+    `${preview.acceptedCandidates} accepted candidate(s) across ${preview.scannedWarningReferences} warning reference(s): ${formatIdentityActionCounts(preview.actionCounts)}.`
   );
-  if (actionFilter !== "all") {
+  if (preview.actionFilter !== "all") {
     lines.push(
-      `Showing ${displayRows.length} unique candidate cleanup row(s) matching ${formatIdentityActionFilterLabel(actionFilter)}; ${filteredRows.length} raw match(es), ${previewRows.length - filteredRows.length} hidden by action filter.`
+      `Showing ${preview.uniqueMatches} unique candidate cleanup row(s) matching ${preview.actionFilterLabel}; ${preview.rawMatches} raw match(es), ${preview.hiddenByActionFilter} hidden by action filter.`
     );
   }
   lines.push(
     "Open a repair brief for candidate-level reasons; use the Candidate Review identity resolver to apply any cleanup."
   );
 
-  if (displayRows.length === 0) {
+  if (preview.rows.length === 0) {
     return [
       ...lines,
-      `No accepted candidate rows matched ${formatIdentityActionFilterLabel(actionFilter)} in the visible warning references.`
+      `No accepted candidate rows matched ${preview.actionFilterLabel} in the visible warning references.`
     ];
   }
 
-  lines.push(
-    ...referenceIds.flatMap((referenceId) => {
-      const rowsForReference = displayRows.filter(
-        (row) => row.candidate.acceptedReferenceId === referenceId
-      );
-
-      if (rowsForReference.length === 0 && actionFilter === "all") {
-        return [`- ${referenceId}: no accepted candidate rows found.`];
-      }
-
-      return rowsForReference.slice(0, 3).map(({ candidate, decision }) => {
-        const context = [
-          candidate.interventionId ? `intervention ${candidate.interventionId}` : undefined,
-          candidate.claimId ? `claim ${candidate.claimId}` : undefined
-        ]
-          .filter(Boolean)
-          .join("; ");
-
-        return [
-          `- ${referenceId}: ${sourceKindLabel(candidate.source)} ${candidate.externalId}`,
-          context ? ` (${context})` : "",
-          ` - ${identityActionLabel(decision)}`
-        ].join("");
-      });
-    })
-  );
+  lines.push(...preview.rows.map(formatIdentityWarningActionPreviewRow));
 
   return lines;
+}
+
+function emptyIdentityWarningActionPreview({
+  actionFilter,
+  referenceLimit,
+  scannedWarningReferences,
+  totalWarningReferences
+}: {
+  actionFilter: IdentityActionFilter;
+  referenceLimit: number;
+  scannedWarningReferences: number;
+  totalWarningReferences: number;
+}): IdentityWarningActionPreview {
+  return {
+    acceptedCandidates: 0,
+    actionCounts: emptyIdentityActionCounts(),
+    actionFilter,
+    actionFilterLabel: formatIdentityActionFilterLabel(actionFilter),
+    hiddenByActionFilter: 0,
+    rawMatches: 0,
+    referenceLimit,
+    rows: [],
+    scannedWarningReferences,
+    totalWarningReferences,
+    uniqueMatches: 0
+  };
+}
+
+function identityWarningActionPreviewRow({
+  action,
+  candidate,
+  decision
+}: IdentityPreviewCandidateRow): IdentityWarningActionPreviewRow {
+  return {
+    acceptedReferenceId: candidate.acceptedReferenceId,
+    action,
+    actionLabel: identityActionLabel(decision),
+    claimId: candidate.claimId,
+    dedupeKey: safeCandidateKey(candidate.dedupeKey),
+    draftCommand: `npm run ingest:sources -- --candidate-curation-draft ${safeCandidateKey(candidate.dedupeKey)}`,
+    externalId: candidate.externalId,
+    interventionId: candidate.interventionId,
+    matchedInterventionId: decision?.matchedInterventionId,
+    matchedInterventionName: decision?.matchedInterventionName,
+    reasons: decision?.reasons ?? [],
+    source: candidate.source,
+    sourceLabel: sourceKindLabel(candidate.source),
+    title: candidate.title,
+    triageScore: candidate.triageScore
+  };
+}
+
+function formatIdentityWarningActionPreviewRow(row: IdentityWarningActionPreviewRow) {
+  const context = [
+    row.interventionId ? `intervention ${row.interventionId}` : undefined,
+    row.claimId ? `claim ${row.claimId}` : undefined
+  ]
+    .filter(Boolean)
+    .join("; ");
+
+  return [
+    `- ${row.acceptedReferenceId}: ${row.sourceLabel} ${row.externalId}`,
+    context ? ` (${context})` : "",
+    ` - ${row.actionLabel}`
+  ].join("");
 }
 
 function dedupeIdentityPreviewRows(rows: IdentityPreviewCandidateRow[]) {
@@ -349,19 +460,21 @@ function identityActionCounts(
       counts[action] += 1;
       return counts;
     },
-    {
-      "confirm-target": 0,
-      "reassign-intervention": 0,
-      "reject-wrong-supplement": 0,
-      hold: 0,
-      unavailable: 0
-    } as Record<LocalIdentityResolutionAutomationDecisionReadout["action"] | "unavailable", number>
+    emptyIdentityActionCounts()
   );
 }
 
-function formatIdentityActionCounts(
-  counts: Record<LocalIdentityResolutionAutomationDecisionReadout["action"] | "unavailable", number>
-) {
+function emptyIdentityActionCounts(): IdentityActionCounts {
+  return {
+    "confirm-target": 0,
+    "reassign-intervention": 0,
+    "reject-wrong-supplement": 0,
+    hold: 0,
+    unavailable: 0
+  };
+}
+
+function formatIdentityActionCounts(counts: IdentityActionCounts) {
   return [
     `${counts["confirm-target"]} confirm`,
     `${counts["reassign-intervention"]} reassign`,
