@@ -1,6 +1,6 @@
 # Roadmap
 
-Last updated: 2026-06-28
+Last updated: 2026-07-02
 
 Compact product roadmap. The old internal artifact chain is not active roadmap work.
 
@@ -69,6 +69,53 @@ The local database now has a large source-candidate backlog. Build the tooling t
 4. Hide likely-noise candidates by default while keeping them searchable.
 
 Done when the useful/maybe-useful candidate backlog can be reviewed quickly from the local dashboard and promising novel benefit signals can become draft claim/source links.
+
+### 3B. Complete Local Evidence Scoring
+
+Turn accepted sources and draft claim clusters into honest, traceable evidence scores for the local catalog. This is a meaningful body of work because scoring has to separate source readiness, claim confidence, safety/regulatory caveats, public display language, and review status. Do this against the local database first; do not promote scored results to preview/production until the user explicitly asks.
+
+1. Define the scoring model users should trust:
+   - Keep the visible dimensions understandable: directness, rigor, impact, safety, measurability, regulatory/product caveat, and hype/overclaim risk.
+   - Document how those dimensions produce the composite score, evidence band, and public label.
+   - Make clear that scores are scoped to a claim and source packet, not to a whole supplement as a blanket recommendation.
+
+2. Build a score-readiness inventory:
+   - Count local claims by scored, unscored, default-looking score, source-packet incomplete, source-packet complete, parked/backlog, and rejected/noise.
+   - Flag repeated starter-looking scores such as `2.1`, `3.1`, or other placeholder/default patterns as scoring-review work unless they have an explicit scored rationale.
+   - Separate "ready to score now" from "needs source extraction/linking first."
+
+3. Add a scoring worklist:
+   - Prioritize high-visibility public cells, complete source packets, high-quality reviews/trials, safety/regulatory claims, and interventions with many user-facing claims.
+   - Group by intervention and outcome so a scoring pass can finish one area at a time.
+   - Show the current score, source packet completeness, top citations, review status, and the next scoring action.
+
+4. Polish the local scoring editor:
+   - Show the source packet beside the score dimensions.
+   - Allow editing each scoring dimension and previewing the composite, band, and label before saving.
+   - Save as `AI reviewed` only when citation traceability, uncertainty labels, AU/TGA caveats, product-level limits, and no-medical-advice boundaries are preserved.
+   - Use `Human reviewed` only after explicit human confirmation.
+
+5. Add assisted scoring suggestions without auto-publishing:
+   - Generate suggested dimension scores and rationale from the linked source packet.
+   - Require operator review before saving suggestions.
+   - Surface uncertainty, mixed evidence, source limitations, and safety/regulatory caveats instead of smoothing them away.
+
+6. Run the scoring pass over the local catalog:
+   - Score complete packets first.
+   - Park claims whose source packets are too thin, mismatched, product-specific, or outside the current evidence boundary.
+   - Reject or hide claim shells that cannot support a useful public evidence cell.
+
+7. Improve the public evidence map representation:
+   - Do not make starter/default scores look like final evidence.
+   - Distinguish scored evidence, review work, parked/backlog, insufficient evidence, and unassessed cells.
+   - Make low-confidence scored claims useful without implying clinical advice or broad supplement endorsement.
+
+8. Verify scoring quality before promotion:
+   - Local catalog quality checks should report no unexplained default-looking public scores.
+   - Public smoke should pass against the local database.
+   - Spot-check representative high, medium, low, safety, and regulatory claims on the public evidence map and intervention detail pages.
+
+Done when every active local claim is in one of these clear states: scored with a traceable source packet and review status, parked/backlog with a reason, source-blocked with next action, or rejected/noise. Public pages should no longer show placeholder-looking scores as if they are final evidence.
 
 ### 4. Improve Trust And Readability
 
