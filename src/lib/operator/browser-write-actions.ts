@@ -2,7 +2,7 @@ import type { OperatorPrincipal } from "@/lib/operator/authorization";
 import {
   CLAIM_SCORE_FIELD_DEFINITIONS,
   EVIDENCE_LABEL_OPTIONS
-} from "@/lib/data/score-update";
+} from "@/lib/score-fields";
 import {
   getOperatorBrowserWriteControlState,
   type OperatorBrowserWriteControlEnv

@@ -259,7 +259,7 @@ describe("OperatorPage role-gated rendering", () => {
     expect(html).toContain("Dry run:");
     expect(html).toContain("Permission: evidence:promote");
     expect(html).toContain("Score field editor");
-    expect(html).toContain("it does not mark the claim as human reviewed");
+    expect(html).toContain("unless a human explicitly confirms otherwise");
     expect(html).toContain("Complete claim link before promotion.");
     expect(html).toContain("Audit trail");
     expect(html).not.toMatch(/>Promote<\/button>/);

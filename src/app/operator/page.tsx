@@ -3,6 +3,7 @@ import { LogIn, LogOut, ShieldCheck, ShieldX } from "lucide-react";
 import { revalidatePath } from "next/cache";
 
 import { signIn, signOut } from "@/auth";
+import { OperatorClaimScoreEditor } from "@/components/operator/claim-score-editor";
 import { OperatorOnboardingWizard } from "@/components/operator/onboarding-wizard";
 import { canOperatorAccess, operatorWritesEnabled } from "@/lib/operator/authorization";
 import {
@@ -46,12 +47,7 @@ import {
 } from "@/lib/operator/supplement-onboarding-drafts";
 import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
-import {
-  CLAIM_SCORE_FIELD_DEFINITIONS,
-  EVIDENCE_LABEL_OPTIONS
-} from "@/lib/data/score-update";
-import { compositeScore } from "@/lib/scoring";
-import type { Claim } from "@/lib/types";
+import type { Claim, NormalizedSourcePacketRow, Reference } from "@/lib/types";
 import {
   australiaRegulatoryStatuses,
   claims,
@@ -266,9 +262,10 @@ export default async function OperatorPage() {
   const auditTrail = canReadAudit
     ? await getOperatorAuditTrailSnapshot(5)
     : { eventCount: 0, rows: [] };
-  const scoreSnapshotClaims = canReviewPromotion
-    ? (await getEvidenceDashboardData()).claims.slice(0, 12)
-    : [];
+  const scoreDashboardData = canReviewPromotion ? await getEvidenceDashboardData() : undefined;
+  const scoreSnapshotClaims = scoreDashboardData?.claims.slice(0, 12) ?? [];
+  const scoreSnapshotReferences = scoreDashboardData?.references ?? [];
+  const scoreSnapshotSourcePackets = scoreDashboardData?.normalizedSourcePackets ?? [];
 
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-8 text-slate-950">
@@ -360,7 +357,9 @@ export default async function OperatorPage() {
           <ScoreSnapshotPanel
             claims={scoreSnapshotClaims}
             promotionControl={promotionControl}
+            references={scoreSnapshotReferences}
             recomputeAction={recomputeClaimScoreFromForm}
+            sourcePackets={scoreSnapshotSourcePackets}
             updateAction={updateClaimScoreFromForm}
           />
         ) : null}
@@ -1312,14 +1311,20 @@ function CandidateReviewQueuePanel({
 function ScoreSnapshotPanel({
   claims,
   promotionControl,
+  references,
   recomputeAction,
+  sourcePackets,
   updateAction
 }: {
   claims: Claim[];
   promotionControl: OperatorBrowserWriteControlState;
+  references: Reference[];
   recomputeAction: (formData: FormData) => void | Promise<void>;
+  sourcePackets: NormalizedSourcePacketRow[];
   updateAction: (formData: FormData) => void | Promise<void>;
 }) {
+  const claimReferences = buildClaimReferences(claims, references);
+
   return (
     <section className="rounded-md border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
@@ -1386,88 +1391,13 @@ function ScoreSnapshotPanel({
         )}
 
         {claims.length > 0 ? (
-          <div className="space-y-2 border-t border-slate-100 pt-4">
-            <div>
-              <h3 className="text-base font-semibold tracking-normal text-slate-950">
-                Score field editor
-              </h3>
-              <p className="mt-1 text-sm text-slate-600">
-                Dry-run first. Apply updates numeric score fields, final label, score snapshot,
-                history, and audit trail; it does not mark the claim as human reviewed.
-              </p>
-            </div>
-            {claims.map((claim) => (
-              <details className="rounded-md border border-slate-200 bg-slate-50" key={claim.id}>
-                <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-slate-800">
-                  {claim.outcome} - score {compositeScore(claim.scores)} - {claim.finalLabel}
-                </summary>
-                <form action={updateAction} className="space-y-3 border-t border-slate-200 p-3">
-                  <input name="claimId" type="hidden" value={claim.id} />
-                  <p className="text-sm text-slate-700">{claim.claimText}</p>
-                  <div className="grid gap-3 md:grid-cols-4">
-                    {CLAIM_SCORE_FIELD_DEFINITIONS.map(({ key, label }) => (
-                      <label className="block text-sm font-semibold text-slate-700" key={key}>
-                        {label}
-                        <input
-                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                          defaultValue={claim.scores[key]}
-                          max={10}
-                          min={0}
-                          name={key}
-                          required
-                          step={1}
-                          type="number"
-                        />
-                      </label>
-                    ))}
-                  </div>
-                  <label className="block text-sm font-semibold text-slate-700">
-                    Final label
-                    <select
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                      defaultValue={claim.finalLabel}
-                      name="finalLabel"
-                      required
-                    >
-                      {EVIDENCE_LABEL_OPTIONS.map((label) => (
-                        <option key={label} value={label}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block text-sm font-semibold text-slate-700">
-                    Mode
-                    <select
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                      name="mode"
-                      required
-                    >
-                      <option value="dry-run">Dry run</option>
-                      {promotionControl.enabled ? (
-                        <option value="apply">Apply score update</option>
-                      ) : null}
-                    </select>
-                  </label>
-                  <label className="block text-sm font-semibold text-slate-700">
-                    Rationale
-                    <textarea
-                      className="mt-1 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                      name="rationale"
-                      placeholder="Which source packet or scoring rationale supports this change?"
-                      required
-                    />
-                  </label>
-                  <button
-                    className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900"
-                    type="submit"
-                  >
-                    Run score update
-                  </button>
-                </form>
-              </details>
-            ))}
-          </div>
+          <OperatorClaimScoreEditor
+            applyEnabled={promotionControl.enabled}
+            claimReferences={claimReferences}
+            claims={claims}
+            sourcePackets={sourcePackets}
+            updateAction={updateAction}
+          />
         ) : null}
 
         {!promotionControl.enabled ? (
@@ -1481,6 +1411,19 @@ function ScoreSnapshotPanel({
       </div>
     </section>
   );
+}
+
+function buildClaimReferences(claims: Claim[], references: Reference[]) {
+  const referencesById = new Map(references.map((reference) => [reference.id, reference]));
+  const claimReferences: Record<string, Reference[]> = {};
+
+  for (const claim of claims) {
+    claimReferences[claim.id] = claim.keyReferenceIds
+      .map((referenceId) => referencesById.get(referenceId))
+      .filter((reference): reference is Reference => Boolean(reference));
+  }
+
+  return claimReferences;
 }
 
 function AuditTrailPanel({ snapshot }: { snapshot: OperatorAuditTrailSnapshot }) {
