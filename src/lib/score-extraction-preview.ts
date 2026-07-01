@@ -11,7 +11,7 @@ import type {
   ScoreWorklistRepairSummary
 } from "@/lib/score-worklist";
 
-const CANDIDATE_KEY_B64_PREFIX = "candidate-key-b64:";
+const CANDIDATE_KEY_B64_PREFIX = "b64:";
 
 export const DEFAULT_SCORE_EXTRACTION_CANDIDATE_PREVIEW_LIMIT = 8;
 

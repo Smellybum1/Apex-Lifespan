@@ -174,7 +174,7 @@ Options:
 
 This command does not write scores, review status, source packets, or public evidence.`;
 
-const CANDIDATE_KEY_B64_PREFIX = "candidate-key-b64:";
+const CANDIDATE_KEY_B64_PREFIX = "b64:";
 
 async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
   const candidates = await prisma.sourceCandidate.findMany({
@@ -211,6 +211,10 @@ async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
       : `${candidates.length} accepted candidate(s) point at this reference. Use the curation draft to inspect captured metadata before identity cleanup or extraction.`
   ];
 
+  if (candidates.length > 0) {
+    lines.push(`Accepted candidate source types: ${formatCandidateSourceTypeCounts(candidates)}.`);
+  }
+
   lines.push(
     ...candidates.flatMap((candidate, index) => {
       const key = safeCandidateKey(candidate.dedupeKey);
@@ -236,6 +240,20 @@ async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
   );
 
   return lines;
+}
+
+function formatCandidateSourceTypeCounts(candidates: Array<{ sourceType: string | null }>) {
+  const counts = new Map<string, number>();
+
+  for (const candidate of candidates) {
+    const sourceType = candidate.sourceType?.trim() || "unknown";
+    counts.set(sourceType, (counts.get(sourceType) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([sourceType, count]) => `${sourceType} (${count})`)
+    .join("; ");
 }
 
 async function sourceLedIdentityDecisionByCandidateKey(dedupeKeys: string[]) {
