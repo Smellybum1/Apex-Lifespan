@@ -80,6 +80,7 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 - `456/477` claim cells still need scoring work.
 - `0` claim cells are ready to score now because the first ready batch has been scored into AI-draft public states with score snapshots.
 - `456` claim cells are source-blocked; remaining scoring work is source extraction/link repair before score assignment.
+- Linked reference extraction is still sparse (`93/3713` extracted in the local quality readout), so the work is mostly choosing and extracting the right references, not changing the visible score formula.
 - `0` default-looking public scores and `0` score snapshot gaps are currently reported by the local score worklist.
 
 **Scoring finish line:** every active local claim is either scored from a traceable source packet, parked/backlog with a reason, source-blocked with a concrete next action, or rejected/noise. Completion is proven locally by the score worklist and catalog-quality checks accounting for all claims, plus public-page spot checks showing no placeholder-looking scores as final evidence.
@@ -95,6 +96,8 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 5. Calibrate scored rows across similar interventions/outcomes so weak, limited, moderate, and strong mean the same thing everywhere.
 6. Close the leftovers deliberately as parked/backlog or rejected/noise instead of letting them sit as invisible ambiguity.
 
+Do not try to exhaustively extract all linked references. For each claim, extract enough high-quality, identity-confirmed sources to support an honest scoped score, then park or reject the rest with a reason.
+
 **Expected scoring passes:**
 
 | Pass | Purpose | Completion signal |
@@ -105,6 +108,55 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 | Batch scoring pass | Score ready packets with full rationale and traceability. | Score snapshots exist and no ready-to-score rows are left idle after each batch. |
 | Calibration pass | Normalize labels and score meaning across the evidence map. | Similar evidence earns similar bands, with clear caveats and "what would change the score" language. |
 | Closure pass | Park/reject remaining low-value or ambiguous rows. | Every active local claim is accounted for by a deliberate state. |
+
+**Scoring execution checklist:**
+
+1. **Keep the public app honest during scoring.**
+   - Confirm evidence-map and intervention-detail pages show source-blocked, insufficient, parked, or review-only states instead of finished-looking numbers.
+   - Spot-check the old repeated `2.1` and `3.1` pattern so it no longer reads as a final score without source rationale.
+   - Exit when public pages make unfinished scoring obvious to a normal user.
+
+2. **Lock the save contract.**
+   - A score must require linked citation IDs, structured extraction, dimension values, final label, rationale, uncertainty/caveat language, review status, and a snapshot.
+   - `AI reviewed` is allowed only when citation traceability, uncertainty labels, AU/TGA caveats, product-level limits, and no-medical-advice boundaries are preserved.
+   - Exit when the app/tooling cannot save a public score that lacks the required trace.
+
+3. **Run the scoring worklist before each batch.**
+   - Use `npx tsx scripts/local-score-worklist.ts --limit 20`.
+   - Track scored, ready-to-score, source-blocked, parked/backlog, rejected/noise, default-looking scores, and score snapshot gaps.
+   - Exit when every unscored row has one blocker and one recommended next action.
+
+4. **Repair identity and source links before extraction.**
+   - Resolve identity mismatch rows first, especially accepted candidates where the source title supports a different intervention.
+   - Reassign or reject sources that belong to another intervention or scoped claim.
+   - Exit when the batch has identity-confirmed references linked to the right claim.
+
+5. **Extract the best source packet for each claim.**
+   - Prioritize systematic reviews, meta-analyses, randomized trials, official safety/regulatory sources, and high-interest public cells.
+   - Capture design, population, comparator, endpoint, effect direction, practical impact, limitations, adverse events, regulatory/product context, and exact citation IDs.
+   - Avoid peptide sourcing, route, reconstitution, injection, cycling, dosing, or self-administration detail.
+   - Exit when the claim is ready-to-score, still source-blocked with a narrower blocker, or intentionally parked/rejected.
+
+6. **Score one intervention/outcome batch at a time.**
+   - Use the batch brief, dry-run/draft the score, review citations, then apply only when the packet supports the scoped claim.
+   - Capture the component values, final score band, public rationale, caveats, review status, and snapshot.
+   - Exit when the batch has no idle ready-to-score rows.
+
+7. **Calibrate across comparable cells.**
+   - Compare similar evidence packets across interventions and outcomes so weak, limited, moderate, and strong mean the same thing everywhere.
+   - Spot-check high-impact examples such as creatine/strength, omega-3/lipids, caffeine/endurance, vitamin D/safety, zinc/immune, and peptide/regulatory rows.
+   - Exit when sampled rows have consistent labels, component scores, caveats, and "what would change the score" language.
+
+8. **Close the leftovers deliberately.**
+   - Park weak but potentially useful leads with a revisit reason.
+   - Reject mismatches, duplicates, unsupported claims, irrelevant medical literature, and low-signal rows.
+   - Exit when the remaining ambiguous queue is small enough for manual spot-checking.
+
+9. **Verify local completion.**
+   - `npx tsx scripts/local-score-worklist.ts --limit 20` shows no mystery blockers, no default-looking public scores, no unprocessed ready-to-score rows, and no score snapshot gaps.
+   - `npx tsx scripts/local-catalog-quality.ts` accounts for every claim state.
+   - Public pages are spot-checked across strong, moderate, limited, weak, insufficient, safety, regulatory, parked, and source-blocked examples.
+   - Preview/production promotion remains out of scope until the user explicitly asks.
 
 **Per-claim completion contract:**
 
