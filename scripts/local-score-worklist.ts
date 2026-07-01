@@ -1,4 +1,8 @@
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
+import {
+  previewLocalIdentityResolutionActionsForCandidates,
+  type LocalIdentityResolutionAutomationDecisionReadout
+} from "@/lib/data/local-ingestion-control";
 import { prisma } from "@/lib/db/prisma";
 import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
 import {
@@ -139,6 +143,12 @@ async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
       decision: "ACCEPTED"
     }
   });
+  const identityDecisions =
+    candidates.length > 0
+      ? await sourceLedIdentityDecisionByCandidateKey(
+          candidates.map((candidate) => candidate.dedupeKey)
+        )
+      : new Map<string, LocalIdentityResolutionAutomationDecisionReadout>();
 
   const lines = [
     "Accepted candidate repair hints:",
@@ -150,6 +160,7 @@ async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
   lines.push(
     ...candidates.flatMap((candidate, index) => {
       const key = safeCandidateKey(candidate.dedupeKey);
+      const identityDecision = identityDecisions.get(candidate.dedupeKey);
       const context = [
         candidate.interventionId ? `intervention ${candidate.interventionId}` : undefined,
         candidate.claimId ? `claim ${candidate.claimId}` : undefined
@@ -162,6 +173,8 @@ async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
           (candidate.sourceType ? ` / ${candidate.sourceType}` : ""),
         `   ${candidate.title}`,
         context ? `   Context: ${context}` : undefined,
+        `   Identity preview: ${formatIdentityResolutionPreview(identityDecision)}`,
+        ...(identityDecision ? formatIdentityResolutionReasons(identityDecision) : []),
         `   Draft: npm run ingest:sources -- --candidate-curation-draft ${key}`,
         candidate.reviewNote ? `   Review note: ${candidate.reviewNote}` : undefined
       ].filter((line): line is string => Boolean(line));
@@ -169,6 +182,40 @@ async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
   );
 
   return lines;
+}
+
+async function sourceLedIdentityDecisionByCandidateKey(dedupeKeys: string[]) {
+  const decisions = await previewLocalIdentityResolutionActionsForCandidates({
+    dedupeKeys,
+    strategy: "source-led"
+  });
+
+  return new Map(decisions.map((decision) => [decision.dedupeKey, decision]));
+}
+
+function formatIdentityResolutionPreview(
+  decision: LocalIdentityResolutionAutomationDecisionReadout | undefined
+) {
+  if (!decision) {
+    return "identity preview unavailable; inspect the curation draft and source record before extraction.";
+  }
+
+  switch (decision.action) {
+    case "confirm-target":
+      return "source-led resolver would confirm the current supplement identity.";
+    case "reassign-intervention":
+      return `source-led resolver would reassign to ${decision.matchedInterventionName ?? decision.matchedInterventionId ?? "the matched intervention"}.`;
+    case "reject-wrong-supplement":
+      return "source-led resolver would reject this as the wrong supplement.";
+    case "hold":
+      return "source-led resolver would hold for manual identity review.";
+  }
+}
+
+function formatIdentityResolutionReasons(
+  decision: LocalIdentityResolutionAutomationDecisionReadout
+) {
+  return decision.reasons.slice(0, 3).map((reason) => `   Identity reason: ${reason}`);
 }
 
 function safeCandidateKey(dedupeKey: string) {

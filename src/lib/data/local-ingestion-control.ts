@@ -1005,6 +1005,11 @@ export interface LocalIdentityResolutionAutomationInput {
   strategy?: unknown;
 }
 
+export interface LocalIdentityResolutionCandidatePreviewInput {
+  dedupeKeys: string[];
+  strategy?: unknown;
+}
+
 export interface LocalIdentityResolutionQueueReadout {
   candidates: LocalIdentityResolutionCandidateReadout[];
   counts: {
@@ -2828,6 +2833,67 @@ export async function runLocalIdentityResolutionAutomation(
     strategy,
     updatedAt: new Date().toISOString()
   };
+}
+
+export async function previewLocalIdentityResolutionActionsForCandidates(
+  input: LocalIdentityResolutionCandidatePreviewInput
+): Promise<LocalIdentityResolutionAutomationDecisionReadout[]> {
+  const dedupeKeys = Array.from(
+    new Set(input.dedupeKeys.map((key) => key.trim()).filter(Boolean))
+  );
+
+  if (dedupeKeys.length === 0) {
+    return [];
+  }
+
+  const strategy = normaliseIdentityResolutionAutomationStrategy(input.strategy);
+  const [candidates, acceptedCandidates, interventions] = await Promise.all([
+    prisma.sourceCandidate.findMany({
+      where: {
+        decision: DbSourceCandidateDecision.ACCEPTED,
+        dedupeKey: {
+          in: dedupeKeys
+        }
+      },
+      select: LOCAL_BENEFIT_DISCOVERY_CANDIDATE_SELECT
+    }),
+    prisma.sourceCandidate.findMany({
+      where: localAcceptedCandidateWhere({
+        acceptedReferenceId: {
+          not: null
+        }
+      }),
+      select: {
+        externalId: true,
+        interventionId: true,
+        source: true
+      }
+    }),
+    prisma.intervention.findMany({
+      orderBy: [{ name: "asc" }],
+      select: LOCAL_BENEFIT_DISCOVERY_INTERVENTION_SELECT
+    })
+  ]);
+  const interventionTerms = buildLocalBenefitDiscoveryInterventionTerms(interventions);
+  const acceptedSourceInterventionKeys = new Set(
+    acceptedCandidates
+      .filter((candidate) => candidate.interventionId)
+      .map((candidate) => localIdentityResolutionSourceInterventionKey(candidate))
+  );
+
+  return candidates
+    .filter((candidate) => candidate.interventionId && candidate.intervention)
+    .map((candidate) =>
+      localIdentityResolutionAutomationDecision(
+        localIdentityResolutionCandidateReadout(
+          candidate,
+          localBenefitDiscoveryMismatch(candidate, interventionTerms),
+          acceptedSourceInterventionKeys
+        ),
+        interventionTerms,
+        strategy
+      )
+    );
 }
 
 export async function recordLocalIdentityResolutionAction(
