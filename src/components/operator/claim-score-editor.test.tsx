@@ -40,9 +40,13 @@ describe("OperatorClaimScoreEditor", () => {
 
     expect(html).toContain("Score field editor");
     expect(html).toContain("current 8.2 Strong");
+    expect(html).toContain("preview 7.4 Moderate");
     expect(html).toContain("Preview:");
+    expect(html).toContain("7.4 / 10, Moderate band");
+    expect(html).toContain("Draft differs from saved score");
     expect(html).toContain("Suggested scoring");
     expect(html).toContain("Use suggestion");
+    expect(html).toContain("Use current");
     expect(html).toContain("Strongest linked study type: Meta-analysis.");
     expect(html).toContain("Ready to score");
     expect(html).toContain("High priority");
@@ -95,8 +99,10 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).toContain("Source-blocked");
     expect(html).toContain("Apply waits for ready-to-score or score-review work");
     expect(html).toContain("Extraction pending");
+    expect(html).toContain("preview 8.2 Strong");
     expect(html).toContain("No extracted study rows are visible");
     expect(html).not.toContain("Apply score update");
+    expect(html).not.toContain("Draft differs from saved score");
     expect(html).toContain("disabled");
   });
 });

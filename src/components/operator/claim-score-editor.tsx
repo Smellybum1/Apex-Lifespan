@@ -93,8 +93,6 @@ function EditableClaimScoreCard({
   updateAction: (formData: FormData) => void | Promise<void>;
   worklistContext?: ClaimScoreWorklistContext;
 }) {
-  const [scores, setScores] = useState<ScoreSet>(claim.scores);
-  const [finalLabel, setFinalLabel] = useState<EvidenceLabel>(claim.finalLabel);
   const linkedReferenceIds = useMemo(
     () => new Set(references.map((reference) => reference.id)),
     [references]
@@ -113,6 +111,17 @@ function EditableClaimScoreCard({
       }),
     [claim, linkedStudies, references, sourcePacket]
   );
+  const initialDraft = shouldStartFromSuggestion(worklistContext)
+    ? {
+        finalLabel: suggestion.finalLabel,
+        scores: suggestion.scores
+      }
+    : {
+        finalLabel: claim.finalLabel,
+        scores: claim.scores
+      };
+  const [scores, setScores] = useState<ScoreSet>(() => initialDraft.scores);
+  const [finalLabel, setFinalLabel] = useState<EvidenceLabel>(() => initialDraft.finalLabel);
   const suggestedRationale = useMemo(
     () =>
       buildScoreEditorRationale({
@@ -146,7 +155,9 @@ function EditableClaimScoreCard({
             <span className="font-semibold">Preview:</span> {previewScore.toFixed(1)} / 10,{" "}
             {scoreBand(previewScore)} band, {finalLabel}
             {changed ? (
-              <span className="ml-2 font-semibold text-amber-800">Unsaved changes</span>
+              <span className="ml-2 font-semibold text-amber-800">
+                Draft differs from saved score
+              </span>
             ) : null}
           </div>
           <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
@@ -173,6 +184,17 @@ function EditableClaimScoreCard({
                 type="button"
               >
                 Use suggestion
+              </button>
+              <button
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+                onClick={() => {
+                  setScores(claim.scores);
+                  setFinalLabel(claim.finalLabel);
+                }}
+                title="Restore the saved score values before running a dry run."
+                type="button"
+              >
+                Use current
               </button>
             </div>
             {!scoreUpdateAllowed ? (
@@ -286,6 +308,10 @@ function canUpdateScoreFromContext(context: ClaimScoreWorklistContext | undefine
     context.state === "ready_to_score" ||
     context.state === "scored"
   );
+}
+
+function shouldStartFromSuggestion(context: ClaimScoreWorklistContext | undefined) {
+  return context?.state === "default_score_review" || context?.state === "ready_to_score";
 }
 
 function WorklistContextSummary({ context }: { context: ClaimScoreWorklistContext }) {
