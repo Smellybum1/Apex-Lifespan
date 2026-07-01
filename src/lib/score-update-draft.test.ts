@@ -52,6 +52,15 @@ describe("score update draft", () => {
       finalLabel: draft.finalLabel,
       mode: "dry-run"
     });
+    expect(draft.changes.scoreFields.length).toBeGreaterThan(0);
+    expect(draft.changes.scoreFields[0]).toMatchObject({
+      draft: expect.any(Number),
+      label: expect.any(String),
+      saved: expect.any(Number)
+    });
+    if (draft.changes.finalLabel) {
+      expect(draft.changes.finalLabel.draft).toBe(draft.finalLabel);
+    }
     expect(draft.rationale).toContain("Draft score update from local ready-to-score worklist");
     expect(draft.rationale).toContain("Citations:");
     expect(draft.rationale).toContain("Product-level AU/TGA clearance is not inferred");

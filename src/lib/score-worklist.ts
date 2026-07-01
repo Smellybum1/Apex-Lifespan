@@ -11,7 +11,14 @@ import {
 } from "@/lib/score-readiness";
 import { buildClaimScoreSuggestion, type ClaimScoreSuggestion } from "@/lib/score-suggestions";
 import { compositeScore, scoreBand } from "@/lib/scoring";
-import type { EvidenceDashboardData, NormalizedSourcePacketRow, Reference, Study } from "@/lib/types";
+import type {
+  EvidenceDashboardData,
+  EvidenceLabel,
+  NormalizedSourcePacketRow,
+  Reference,
+  ScoreSet,
+  Study
+} from "@/lib/types";
 
 export type ScoreWorklistStateFilter = ScoreReadinessState | "all" | "work";
 
@@ -45,8 +52,10 @@ export interface ScoreWorklistRow {
     whatWouldChangeScore: string;
   };
   claimId: string;
+  currentFinalLabel: EvidenceLabel;
   currentScore: number | null;
   currentScoreLabel: string;
+  currentScores: ScoreSet;
   disposition: ScoreWorklistDisposition;
   intervention: {
     id: string;
@@ -293,11 +302,13 @@ export function buildScoreWorklistReport(
           whatWouldChangeScore: row.claim.whatWouldChangeScore
         },
         claimId: row.claim.id,
+        currentFinalLabel: row.claim.finalLabel,
         currentScore: row.currentScore,
         currentScoreLabel:
           row.currentScore === null
             ? "No final score"
             : `${row.currentScore.toFixed(1)} ${scoreBand(row.currentScore)}`,
+        currentScores: row.claim.scores,
         disposition: dispositionForReadinessState(row.state),
         intervention: row.intervention
           ? {

@@ -189,6 +189,7 @@ async function scoreDraftResult(row: ScoreWorklistRow) {
   });
 
   return {
+    changes: draft.changes,
     dryRun,
     formFields: draft.formFields,
     row: {
@@ -222,6 +223,7 @@ function formatScoreDraftOutput(
       `${index + 1}. ${draft.row.intervention?.name ?? "Unknown intervention"} / ${draft.row.outcome} (${draft.row.claimId})`,
       `   Current: ${draft.row.currentScoreLabel}`,
       `   Suggested: ${draft.row.suggestion.compositeScoreLabel}; ${draft.row.suggestion.finalLabel}`,
+      `   Changes: ${formatScoreDraftChanges(draft.changes)}`,
       `   Dry-run would update claim: ${draft.dryRun.wouldUpdateClaim}; snapshot: ${draft.dryRun.wouldCreateSnapshot}; history: ${draft.dryRun.wouldCreateHistory}`,
       `   Citations: ${
         draft.row.references.length > 0
@@ -236,8 +238,10 @@ function formatScoreDraftOutput(
 function formatScoreDraftLines({
   dryRun,
   formFields,
-  row
+  row,
+  changes
 }: {
+  changes: Awaited<ReturnType<typeof scoreDraftResult>>["changes"];
   dryRun: Awaited<ReturnType<typeof dryRunUpdateClaimScore>>;
   formFields: Record<string, string>;
   row: {
@@ -253,6 +257,7 @@ function formatScoreDraftLines({
     `${row.intervention?.name ?? "Unknown intervention"} / ${row.outcome} (${row.claimId})`,
     `Current: ${row.currentScoreLabel}`,
     `Suggested: ${row.suggestion.compositeScoreLabel}; ${row.suggestion.finalLabel}`,
+    `Changes: ${formatScoreDraftChanges(changes)}`,
     `Dry-run would update claim: ${dryRun.wouldUpdateClaim}`,
     `Dry-run would create snapshot: ${dryRun.wouldCreateSnapshot}`,
     `Dry-run would create history: ${dryRun.wouldCreateHistory}`,
@@ -260,6 +265,18 @@ function formatScoreDraftLines({
     "Operator form fields:",
     ...Object.entries(formFields).map(([key, value]) => `- ${key}: ${value}`)
   ];
+}
+
+function formatScoreDraftChanges(changes: Awaited<ReturnType<typeof scoreDraftResult>>["changes"]) {
+  const fieldChanges = changes.scoreFields.map(
+    (change) => `${change.label} ${change.saved}->${change.draft}`
+  );
+  const labelChange = changes.finalLabel
+    ? [`Label ${changes.finalLabel.saved}->${changes.finalLabel.draft}`]
+    : [];
+  const parts = [...fieldChanges, ...labelChange];
+
+  return parts.length > 0 ? parts.join("; ") : "none";
 }
 
 function scoreDraftState(value: string): ScoreWorklistStateFilter {

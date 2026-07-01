@@ -1,12 +1,29 @@
 import type { ScoreWorklistRow } from "@/lib/score-worklist";
+import { CLAIM_SCORE_FIELD_DEFINITIONS } from "@/lib/score-fields";
 import type { EvidenceLabel, ScoreSet } from "@/lib/types";
 
 export interface ScoreUpdateDraft {
+  changes: ScoreUpdateDraftChanges;
   claimId: string;
   finalLabel: EvidenceLabel;
   formFields: Record<string, string>;
   rationale: string;
   scores: ScoreSet;
+}
+
+export interface ScoreUpdateDraftChanges {
+  finalLabel?: {
+    draft: EvidenceLabel;
+    saved: EvidenceLabel;
+  };
+  scoreFields: ScoreUpdateDraftFieldChange[];
+}
+
+export interface ScoreUpdateDraftFieldChange {
+  draft: number;
+  key: keyof ScoreSet;
+  label: string;
+  saved: number;
 }
 
 const SCORE_DRAFTABLE_STATES = new Set<ScoreWorklistRow["state"]>([
@@ -24,6 +41,7 @@ export function buildScoreUpdateDraft(row: ScoreWorklistRow): ScoreUpdateDraft {
   const rationale = buildScoreUpdateDraftRationale(row);
 
   return {
+    changes: buildScoreUpdateDraftChanges(row),
     claimId: row.claimId,
     finalLabel: row.suggestion.finalLabel,
     formFields: {
@@ -42,6 +60,32 @@ export function buildScoreUpdateDraft(row: ScoreWorklistRow): ScoreUpdateDraft {
     },
     rationale,
     scores: row.suggestion.scores
+  };
+}
+
+function buildScoreUpdateDraftChanges(row: ScoreWorklistRow): ScoreUpdateDraftChanges {
+  const scoreFields = CLAIM_SCORE_FIELD_DEFINITIONS.flatMap(({ key, label }) =>
+    row.currentScores[key] === row.suggestion.scores[key]
+      ? []
+      : [
+          {
+            draft: row.suggestion.scores[key],
+            key,
+            label,
+            saved: row.currentScores[key]
+          }
+        ]
+  );
+
+  return {
+    finalLabel:
+      row.currentFinalLabel === row.suggestion.finalLabel
+        ? undefined
+        : {
+            draft: row.suggestion.finalLabel,
+            saved: row.currentFinalLabel
+          },
+    scoreFields
   };
 }
 
