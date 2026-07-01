@@ -84,6 +84,15 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 
 **Goal:** every active local claim should end in one clear public-safe state: scored with traceable source packet and review status, parked/backlog with a reason, source-blocked with next action, or rejected/noise.
 
+**Completion checkpoints:**
+
+1. **Scoring contract locked:** dimensions, composite formula, evidence bands, final labels, safety/regulatory penalties, and public wording are documented well enough that similar claims score consistently.
+2. **Ready batch scored or parked:** the current ready-to-score batch is reviewed first; each row is saved, parked, rejected, or returned to source-blocked with a concrete reason.
+3. **Source-blocked backlog reduced into states:** the source-blocked cells are repaired in priority batches and no longer sit behind placeholder-looking public scores.
+4. **Every active claim accounted for:** the local worklist reports each claim as scored, score-review, source-blocked, parked/backlog, or rejected/noise, with no unexplained default-looking scores.
+5. **Public display verified:** the evidence map and intervention pages clearly distinguish final scored evidence from insufficient evidence, parked research, review work, and source-blocked source work.
+6. **Promotion remains separate:** local scoring can be considered complete before preview/production promotion; remote scoring promotion waits for explicit user approval.
+
 **Recommended execution order:**
 
 1. Keep public pages honest while the backlog is incomplete: cells that are source-blocked, parked, or review-needed should not look like final scored evidence.
