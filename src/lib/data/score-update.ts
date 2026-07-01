@@ -1,4 +1,7 @@
-import { ScoreChangeKind as DbScoreChangeKind } from "@prisma/client";
+import {
+  ReviewStatus as DbReviewStatus,
+  ScoreChangeKind as DbScoreChangeKind
+} from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
 import {
@@ -94,6 +97,7 @@ export async function applyUpdateClaimScore(
         measurabilityScore: normalizedScores.measurability,
         productQualityScore: normalizedScores.productQuality,
         regulatoryRiskScore: normalizedScores.regulatoryRisk,
+        reviewStatus: DbReviewStatus.UNREVIEWED_AI_DRAFT,
         safetyScore: normalizedScores.safety
       },
       select: claimScoreUpdateSelect,

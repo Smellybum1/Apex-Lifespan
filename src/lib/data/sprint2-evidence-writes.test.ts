@@ -108,7 +108,7 @@ describe("sprint2 normalized evidence writes", () => {
     expect(result.historyId).toBe("history-1");
   });
 
-  it("updates claim score fields and snapshots without changing review status", async () => {
+  it("updates claim score fields and resets review status to AI draft", async () => {
     prismaMocks.claim.findUnique.mockResolvedValue({
       effectSizeScore: 2,
       evidenceDirectnessScore: 3,
@@ -119,7 +119,7 @@ describe("sprint2 normalized evidence writes", () => {
       measurabilityScore: 4,
       productQualityScore: 3,
       regulatoryRiskScore: 5,
-      reviewStatus: ReviewStatus.UNREVIEWED_AI_DRAFT,
+      reviewStatus: ReviewStatus.HUMAN_REVIEWED,
       safetyScore: 6
     });
     prismaMocks.claimScoreSnapshot.findFirst.mockResolvedValue(null);
@@ -181,9 +181,8 @@ describe("sprint2 normalized evidence writes", () => {
     });
     expect(prismaMocks.claim.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.not.objectContaining({
-          lastReviewedAt: expect.anything(),
-          reviewStatus: expect.anything()
+        data: expect.objectContaining({
+          reviewStatus: ReviewStatus.UNREVIEWED_AI_DRAFT
         }),
         where: { id: "creatine-strength" }
       })
