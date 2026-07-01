@@ -55,9 +55,12 @@ async function main() {
       if (data.dataSource === "database" && brief.references.length > 0) {
         lines.push(
           "",
-          ...(await formatAcceptedCandidateBatchHintLines(
-            brief.references.map((reference) => reference.reference.id)
-          ))
+          ...(await formatAcceptedCandidateBatchHintLines({
+            batchClaimIds: brief.references.flatMap((reference) =>
+              reference.sampleClaims.map((claim) => claim.claimId)
+            ),
+            referenceIds: brief.references.map((reference) => reference.reference.id)
+          }))
         );
       }
 
@@ -279,8 +282,15 @@ async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
   return lines;
 }
 
-async function formatAcceptedCandidateBatchHintLines(referenceIds: string[]) {
+async function formatAcceptedCandidateBatchHintLines({
+  batchClaimIds,
+  referenceIds
+}: {
+  batchClaimIds: string[];
+  referenceIds: string[];
+}) {
   const uniqueReferenceIds = Array.from(new Set(referenceIds.filter(Boolean)));
+  const batchClaimIdSet = new Set(batchClaimIds.filter(Boolean));
 
   if (uniqueReferenceIds.length === 0) {
     return [];
@@ -344,15 +354,32 @@ async function formatAcceptedCandidateBatchHintLines(referenceIds: string[]) {
       continue;
     }
 
+    const prioritizedCandidates = referenceCandidates
+      .map((candidate, index) => ({
+        candidate,
+        index,
+        isBatchClaim: Boolean(candidate.claimId && batchClaimIdSet.has(candidate.claimId))
+      }))
+      .sort(
+        (left, right) =>
+          Number(right.isBatchClaim) - Number(left.isBatchClaim) ||
+          right.candidate.triageScore - left.candidate.triageScore ||
+          left.index - right.index
+      );
+    const shownCandidates = prioritizedCandidates.slice(0, 1);
+    const hiddenCandidates = Math.max(referenceCandidates.length - shownCandidates.length, 0);
+
     lines.push(
-      `- ${referenceId}: ${referenceCandidates.length} accepted candidate(s), showing ${Math.min(
-        2,
-        referenceCandidates.length
-      )}.`
+      `- ${referenceId}: ${referenceCandidates.length} accepted candidate(s), showing the ${
+        shownCandidates[0]?.isBatchClaim ? "batch-claim" : "highest-triage"
+      } draft.` +
+        (hiddenCandidates > 0
+          ? ` ${hiddenCandidates} extra same-reference candidate(s) hidden; use curation siblings/reference matches if needed.`
+          : "")
     );
 
     lines.push(
-      ...referenceCandidates.slice(0, 2).flatMap((candidate) => {
+      ...shownCandidates.flatMap(({ candidate, isBatchClaim }) => {
         const identityDecision = identityDecisions.get(candidate.dedupeKey);
         const context = [
           candidate.interventionId ? `intervention ${candidate.interventionId}` : undefined,
@@ -366,6 +393,7 @@ async function formatAcceptedCandidateBatchHintLines(referenceIds: string[]) {
             (candidate.sourceType ? ` / ${candidate.sourceType}` : ""),
           `   Title: ${candidate.title}`,
           context ? `   Context: ${context}` : undefined,
+          `   Batch fit: ${isBatchClaim ? "candidate claim matches this extraction batch" : "candidate claim is not one of this batch's sample claims"}`,
           `   Study-type flag hint: ${formatStudySourceTypeCommandHints([
             candidate.sourceType
           ])}. Verify before writing extraction.`,
