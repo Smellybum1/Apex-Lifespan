@@ -6,9 +6,10 @@ import {
 } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
-import type {
-  ScoreWorklistPendingReferenceGroup,
-  ScoreWorklistRepairSummary
+import {
+  scoreWorklistExtractionReadyReferenceGroups,
+  type ScoreWorklistPendingReferenceGroup,
+  type ScoreWorklistRepairSummary
 } from "@/lib/score-worklist";
 import { formatStudySourceTypeCommandHints } from "@/lib/study-source-type-hints";
 
@@ -20,6 +21,8 @@ export type ScoreExtractionCandidatePreview = {
   acceptedCandidates: number;
   blockedCandidates: number;
   blockerCounts: ScoreExtractionCandidateBlockerCounts;
+  identityBlockedClaimLinks: number;
+  identityBlockedReferences: number;
   referenceLimit: number;
   references: ScoreExtractionCandidateReferencePreview[];
   readyCandidates: number;
@@ -98,7 +101,8 @@ export async function buildScoreExtractionCandidatePreview(
   summary: ScoreWorklistRepairSummary,
   { referenceLimit }: { referenceLimit: number }
 ): Promise<ScoreExtractionCandidatePreview> {
-  const referenceGroups = summary.pendingReferenceGroups.slice(0, referenceLimit);
+  const extractionReadyGroups = scoreWorklistExtractionReadyReferenceGroups(summary);
+  const referenceGroups = extractionReadyGroups.slice(0, referenceLimit);
   const referenceIds = referenceGroups.map((group) => group.reference.id);
 
   if (referenceIds.length === 0) {
@@ -106,11 +110,13 @@ export async function buildScoreExtractionCandidatePreview(
       acceptedCandidates: 0,
       blockedCandidates: 0,
       blockerCounts: emptyScoreExtractionBlockerCounts(),
+      identityBlockedClaimLinks: summary.identityWarningReferenceClaimLinks,
+      identityBlockedReferences: summary.identityWarningReferenceGroups,
       referenceLimit,
       references: [],
       readyCandidates: 0,
       scannedReferences: 0,
-      totalPendingReferences: summary.pendingReferenceGroups.length
+      totalPendingReferences: extractionReadyGroups.length
     };
   }
 
@@ -190,11 +196,13 @@ export async function buildScoreExtractionCandidatePreview(
     acceptedCandidates: candidates.length,
     blockedCandidates,
     blockerCounts: scoreExtractionBlockerCounts(references),
+    identityBlockedClaimLinks: summary.identityWarningReferenceClaimLinks,
+    identityBlockedReferences: summary.identityWarningReferenceGroups,
     referenceLimit,
     references,
     readyCandidates,
     scannedReferences: referenceIds.length,
-    totalPendingReferences: summary.pendingReferenceGroups.length
+    totalPendingReferences: extractionReadyGroups.length
   };
 }
 
@@ -203,17 +211,27 @@ export function formatScoreExtractionCandidatePreviewLines(
 ) {
   const lines = [
     preview
-      ? `Extraction candidate preview (read-only; scanned ${preview.scannedReferences}/${preview.totalPendingReferences} pending reference(s)):`
+      ? `Extraction candidate preview (read-only; scanned ${preview.scannedReferences}/${preview.totalPendingReferences} extraction-ready reference(s); ${preview.identityBlockedReferences} identity-blocked skipped):`
       : "Extraction candidate preview (read-only):"
   ];
 
   if (!preview || preview.scannedReferences === 0) {
-    return [...lines, "No pending extraction references are visible in the current repair summary."];
+    return [
+      ...lines,
+      preview && preview.identityBlockedReferences > 0
+        ? "No identity-clean extraction references are visible in the current repair summary; use the identity cleanup lane first."
+        : "No pending extraction references are visible in the current repair summary."
+    ];
   }
 
   lines.push(
     `${preview.acceptedCandidates} accepted candidate(s) are attached to the scanned references: ${preview.readyCandidates} ready, ${preview.blockedCandidates} blocked. Use curation drafts before any extraction write.`
   );
+  if (preview.identityBlockedReferences > 0) {
+    lines.push(
+      `Skipped identity cleanup: ${preview.identityBlockedReferences} reference group(s) / ${preview.identityBlockedClaimLinks} claim-link(s).`
+    );
+  }
   lines.push(`Blockers: ${formatScoreExtractionBlockerCounts(preview.blockerCounts)}.`);
 
   if (preview.references.length === 0) {

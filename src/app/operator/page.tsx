@@ -1773,14 +1773,14 @@ function ScoreExtractionPreviewCard({
       </div>
       <div className="mt-3 grid gap-2 text-xs md:grid-cols-3">
         <ScoreReadinessStat
-          label="Refs scanned"
+          label="Ready refs scanned"
           value={`${preview.scannedReferences}/${preview.totalPendingReferences}`}
         />
         <ScoreReadinessStat
           label="Accepted candidates"
           value={`${preview.acceptedCandidates}`}
         />
-        <ScoreReadinessStat label="Scan limit" value={`${preview.referenceLimit}`} />
+        <ScoreReadinessStat label="Identity skipped" value={`${preview.identityBlockedReferences}`} />
       </div>
       <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
         <ScoreReadinessStat label="Ready candidates" value={`${preview.readyCandidates}`} />

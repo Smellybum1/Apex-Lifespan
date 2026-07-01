@@ -1,7 +1,67 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { formatScoreExtractionCandidatePreviewLines } from "@/lib/score-extraction-preview";
+import {
+  buildScoreExtractionCandidatePreview,
+  formatScoreExtractionCandidatePreviewLines
+} from "@/lib/score-extraction-preview";
 import type { ScoreExtractionCandidatePreview } from "@/lib/score-extraction-preview";
+import type {
+  ScoreWorklistPendingReferenceGroup,
+  ScoreWorklistRepairSummary
+} from "@/lib/score-worklist";
+
+const prismaMocks = vi.hoisted(() => ({
+  claimReferenceFindManyMock: vi.fn(),
+  sourceCandidateFindManyMock: vi.fn(),
+  studyGroupByMock: vi.fn()
+}));
+
+vi.mock("@/lib/db/prisma", () => ({
+  prisma: {
+    claimReference: {
+      findMany: prismaMocks.claimReferenceFindManyMock
+    },
+    sourceCandidate: {
+      findMany: prismaMocks.sourceCandidateFindManyMock
+    },
+    study: {
+      groupBy: prismaMocks.studyGroupByMock
+    }
+  }
+}));
+
+beforeEach(() => {
+  prismaMocks.sourceCandidateFindManyMock.mockResolvedValue([]);
+  prismaMocks.claimReferenceFindManyMock.mockResolvedValue([]);
+  prismaMocks.studyGroupByMock.mockResolvedValue([]);
+});
+
+describe("buildScoreExtractionCandidatePreview", () => {
+  it("scans identity-clean extraction references before identity-warning references", async () => {
+    const summary = scoreRepairSummary([
+      pendingReferenceGroup("ready-reference", []),
+      pendingReferenceGroup("identity-warning-reference", ["Identity needs review."])
+    ]);
+
+    const preview = await buildScoreExtractionCandidatePreview(summary, {
+      referenceLimit: 5
+    });
+
+    expect(prismaMocks.sourceCandidateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          acceptedReferenceId: {
+            in: ["ready-reference"]
+          }
+        })
+      })
+    );
+    expect(preview.scannedReferences).toBe(1);
+    expect(preview.totalPendingReferences).toBe(1);
+    expect(preview.identityBlockedReferences).toBe(1);
+    expect(preview.identityBlockedClaimLinks).toBe(1);
+  });
+});
 
 describe("formatScoreExtractionCandidatePreviewLines", () => {
   it("includes study source-type flag hints for accepted extraction candidates", () => {
@@ -15,6 +75,8 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
         "existing-extraction": 0,
         "identity-warning": 0
       },
+      identityBlockedClaimLinks: 2,
+      identityBlockedReferences: 2,
       readyCandidates: 1,
       referenceLimit: 1,
       references: [
@@ -64,9 +126,72 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
       scannedReferences: 1,
       totalPendingReferences: 1
     };
+    const lines = formatScoreExtractionCandidatePreviewLines(preview).join("\n");
 
-    expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
+    expect(lines).toContain(
       "Study-type flag hint: randomized-controlled-trial; verify before writing extraction."
     );
+    expect(lines).toContain("scanned 1/1 extraction-ready reference(s); 2 identity-blocked skipped");
+    expect(lines).toContain("Skipped identity cleanup: 2 reference group(s) / 2 claim-link(s).");
   });
 });
+
+function scoreRepairSummary(
+  pendingReferenceGroups: ScoreWorklistPendingReferenceGroup[]
+): ScoreWorklistRepairSummary {
+  const identityWarningGroups = pendingReferenceGroups.filter(
+    (group) => group.identityWarnings.length > 0
+  );
+
+  return {
+    blockerBreakdown: [],
+    extractionPendingRows: pendingReferenceGroups.length,
+    extractionReadyReferenceClaimLinks: pendingReferenceGroups.length - identityWarningGroups.length,
+    extractionReadyReferenceGroups: pendingReferenceGroups.length - identityWarningGroups.length,
+    identityWarningReferenceClaimLinks: identityWarningGroups.length,
+    identityWarningReferenceGroups: identityWarningGroups.length,
+    missingReferenceGroups: [],
+    missingSourceRows: 0,
+    pendingReferenceGroups,
+    sourceBlockedRows: pendingReferenceGroups.length,
+    unlinkedInterventionGroups: [],
+    unlinkedRows: 0
+  };
+}
+
+function pendingReferenceGroup(
+  referenceId: string,
+  identityWarnings: string[]
+): ScoreWorklistPendingReferenceGroup {
+  return {
+    claimCount: 1,
+    extractionGaps: [],
+    highestPriority: 100,
+    identityWarnings,
+    interventions: [
+      {
+        claimCount: 1,
+        id: "creatine",
+        name: "Creatine monohydrate",
+        slug: "creatine"
+      }
+    ],
+    outcomes: ["Muscle/strength"],
+    priority: 100,
+    reference: {
+      id: referenceId,
+      label: referenceId,
+      source: "PubMed",
+      title: `${referenceId} title`,
+      url: `https://example.test/${referenceId}`
+    },
+    sampleClaims: [
+      {
+        claimId: "creatine-strength",
+        interventionName: "Creatine monohydrate",
+        outcome: "Muscle/strength",
+        priorityLabel: "High"
+      }
+    ]
+  };
+}
