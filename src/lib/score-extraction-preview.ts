@@ -70,6 +70,7 @@ export type ScoreExtractionCandidatePreviewRow = {
   interventionId: string | null;
   nextAction: string;
   query: string;
+  queryOriginWarning: string | null;
   reviewStatus: string;
   sourceLabel: string;
   sourceTextStatus: string;
@@ -290,10 +291,13 @@ function formatScoreExtractionCandidateReferenceLines(
         `  - ${candidate.sourceLabel} ${candidate.externalId} triage ${candidate.triageScore}: ${candidate.extractionReady ? "ready" : "blocked"} - ${candidate.nextAction}`,
         `    ${candidate.reviewStatus}; ${candidate.sourceType}; ${candidate.sourceTextStatus}`,
         `    Context: ${formatExtractionCandidateContext(candidate)}`,
+        candidate.queryOriginWarning ? `    Query warning: ${candidate.queryOriginWarning}` : undefined,
         `    Study-type flag hint: ${candidate.studySourceTypeFlagHint}; verify before writing extraction.`,
         `    Draft coverage: ${candidate.extractionDraftCoverage.summary}`,
         `    Draft: ${candidate.curationDraftCommand}`
-      ].join("\n")
+      ]
+        .filter((line): line is string => Boolean(line))
+        .join("\n")
     )
   ];
 }
@@ -319,6 +323,7 @@ function extractionCandidateReferencePreview({
           linkedClaimKeys.has(`${candidate.acceptedReferenceId}\u0000${candidate.claimId}`)
       ),
       contextMatchesGroup: scoreExtractionCandidateMatchesGroup(candidate, groupContext),
+      groupContext,
       identityWarningBlocked: group.identityWarnings.length > 0,
       studyCount
     })
@@ -381,12 +386,14 @@ function extractionCandidatePreviewRow({
   candidate,
   claimLinkReady,
   contextMatchesGroup,
+  groupContext,
   identityWarningBlocked,
   studyCount
 }: {
   candidate: AcceptedCandidate;
   claimLinkReady: boolean;
   contextMatchesGroup: boolean;
+  groupContext: ReturnType<typeof scoreExtractionGroupContext>;
   identityWarningBlocked: boolean;
   studyCount: number;
 }): ScoreExtractionCandidatePreviewRow {
@@ -419,6 +426,7 @@ function extractionCandidatePreviewRow({
       studyCount
     }),
     query: candidate.query,
+    queryOriginWarning: scoreExtractionCandidateQueryWarning(candidate, groupContext),
     reviewStatus: reviewStatusLabel(candidate.reviewStatus),
     sourceLabel: sourceKindLabel(candidate.source),
     sourceTextStatus: sourceTextStatus(candidate.metadata),
@@ -574,8 +582,55 @@ function scoreExtractionGroupContext(group: ScoreWorklistPendingReferenceGroup) 
   return {
     claimIds: new Set(group.sampleClaims.map((sample) => sample.claimId)),
     hasCompleteClaimSample: group.claimCount <= group.sampleClaims.length,
-    interventionIds: new Set(group.interventions.map((intervention) => intervention.id))
+    interventionIds: new Set(group.interventions.map((intervention) => intervention.id)),
+    interventionsById: new Map(
+      group.interventions.map((intervention) => [
+        intervention.id,
+        {
+          name: intervention.name,
+          slug: intervention.slug
+        }
+      ])
+    )
   };
+}
+
+function scoreExtractionCandidateQueryWarning(
+  candidate: AcceptedCandidate,
+  groupContext: ReturnType<typeof scoreExtractionGroupContext>
+) {
+  if (!candidate.interventionId) {
+    return null;
+  }
+
+  const intervention = groupContext.interventionsById.get(candidate.interventionId);
+
+  if (!intervention || queryMentionsIntervention(candidate.query, candidate.interventionId, intervention)) {
+    return null;
+  }
+
+  return `Original query does not visibly mention ${intervention.name}; verify accepted reference identity before extraction.`;
+}
+
+function queryMentionsIntervention(
+  query: string,
+  interventionId: string,
+  intervention: { name: string; slug: string }
+) {
+  const normalizedQuery = normalizeExtractionQueryTerm(query);
+  const terms = [intervention.name, intervention.slug, interventionId]
+    .map(normalizeExtractionQueryTerm)
+    .filter(Boolean);
+
+  return terms.some((term) => normalizedQuery.includes(term));
+}
+
+function normalizeExtractionQueryTerm(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function scoreExtractionCandidateMatchesGroup(

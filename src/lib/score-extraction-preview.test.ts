@@ -67,7 +67,7 @@ describe("buildScoreExtractionCandidatePreview", () => {
         metadata: {
           abstractText: "Creatine abstract."
         },
-        query: "creatine randomized trial",
+        query: "calcium randomized trial",
         reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
         source: DbSourceKind.PUBMED,
         sourceType: "Journal Article, Randomized Controlled Trial",
@@ -117,8 +117,14 @@ describe("buildScoreExtractionCandidatePreview", () => {
       prefillCues: ["source type", "source text"],
       summary: expect.stringContaining("manual verify: sample size, population, intervention")
     });
+    expect(preview.references[0]?.candidates[0]?.queryOriginWarning).toBe(
+      "Original query does not visibly mention Creatine monohydrate; verify accepted reference identity before extraction."
+    );
     expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
       "1 extra same-reference candidate(s) hidden; counts above include them."
+    );
+    expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
+      "Query warning: Original query does not visibly mention Creatine monohydrate; verify accepted reference identity before extraction."
     );
   });
 });
@@ -178,6 +184,7 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
               interventionId: "creatine",
               nextAction: "Ready for operator-reviewed study extraction.",
               query: "creatine randomized trial",
+              queryOriginWarning: null,
               reviewStatus: "AI reviewed",
               sourceLabel: "PubMed",
               sourceTextStatus: "Abstract text captured for prefill review.",
