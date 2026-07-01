@@ -10,6 +10,11 @@ import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import { australiaRegulatoryKindDescription, australiaRegulatoryTone } from "@/lib/regulatory";
 import { summarizeReviewStatus } from "@/lib/review-summary";
 import {
+  buildScoreReadinessRows,
+  scoreReadinessNextAction,
+  type ScoreReadinessRow
+} from "@/lib/score-readiness";
+import {
   buildClaimSourcePacket,
   summarizeClaimSourcePackets,
   type ClaimSourcePacket,
@@ -66,17 +71,24 @@ export default async function InterventionDetailPage({ params }: InterventionDet
 
   const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
   const claims = data.claims.filter((claim) => claim.interventionId === intervention.id);
+  const scoreReadinessRows = buildScoreReadinessRows({ ...data, claims });
+  const readinessByClaimId = new Map(
+    scoreReadinessRows.map((row) => [row.claim.id, row])
+  );
   const sourcePackets = claims.map((claim) => ({
     claim,
-    packet: buildClaimSourcePacket({
-      claim,
-      referencesById,
-      studies: data.studies
-    })
+    packet:
+      readinessByClaimId.get(claim.id)?.packet ??
+      buildClaimSourcePacket({
+        claim,
+        referencesById,
+        studies: data.studies
+      })
   }));
   const readiness = buildInterventionReadinessSummary({
     claims,
     referencesById,
+    readinessRows: scoreReadinessRows,
     studies: data.studies
   });
   const safetyAlerts = data.safetyAlerts.filter(
@@ -167,33 +179,37 @@ export default async function InterventionDetailPage({ params }: InterventionDet
           {claims.length > 0 ? (
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
               {claims.map((claim) => {
-                const score = claimCompositeScore(claim);
+                const scoreState = claimScorePresentation(
+                  claim,
+                  readinessByClaimId.get(claim.id)
+                );
 
                 return (
                   <article
-                    className={cn("rounded-lg border p-3", labelTone(claim.finalLabel))}
+                    className={cn("rounded-lg border p-3", scoreState.tone)}
                     id={`claim-${claim.id}`}
                     key={claim.id}
                   >
                     <p className="text-xs font-semibold uppercase tracking-wide">
                       {shortOutcome(claim.outcome)}
                     </p>
-                    <p className="mt-2 text-xs font-semibold">{compositeLabel(claim)}</p>
-                    {score === null ? (
+                    <p className="mt-2 text-xs font-semibold">{scoreState.compositeLabel}</p>
+                    {scoreState.score === null ? (
                       <>
-                        <p className="mt-2 text-lg font-semibold">Review work</p>
-                        <p className="mt-1 text-xs font-semibold">
-                          No final evidence score assigned yet
-                        </p>
+                        <p className="mt-2 text-lg font-semibold">{scoreState.primary}</p>
+                        <p className="mt-1 text-xs font-semibold">{scoreState.secondary}</p>
                       </>
                     ) : (
                       <>
-                        <p className="mt-2 text-2xl font-semibold">{score.toFixed(1)}</p>
-                        <p className="mt-1 text-xs font-semibold">{scoreBand(score)}</p>
+                        <p className="mt-2 text-2xl font-semibold">
+                          {scoreState.score.toFixed(1)}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold">{scoreState.secondary}</p>
                       </>
                     )}
                     <p className="mt-2 text-xs leading-5">
-                      {classificationLabel(claim)}: {claim.finalLabel}
+                      {classificationLabel(claim, readinessByClaimId.get(claim.id))}:{" "}
+                      {claim.finalLabel}
                     </p>
                     <p className="mt-1 text-xs leading-5">{reviewStatusLabel(claim.reviewStatus)}</p>
                   </article>
@@ -212,6 +228,7 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                 claim={claim}
                 key={claim.id}
                 packet={sourcePackets.find((item) => item.claim.id === claim.id)?.packet}
+                readinessRow={readinessByClaimId.get(claim.id)}
                 referencesById={referencesById}
               />
             ))}
@@ -297,9 +314,10 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                   <tbody>
                     {claims.map((claim) => {
                       const snapshot = snapshotsByClaimId.get(claim.id);
-                      const score = isReviewWorkClaim(claim)
-                        ? null
-                        : snapshot?.compositeScore ?? compositeScore(claim.scores);
+                      const scoreState = claimScorePresentation(
+                        claim,
+                        readinessByClaimId.get(claim.id)
+                      );
                       const finalLabel = snapshot?.finalLabel ?? claim.finalLabel;
                       const snapshotDate = snapshot
                         ? formatSnapshotDate(snapshot.computedAt)
@@ -311,10 +329,12 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                             {shortOutcome(claim.outcome)}
                           </td>
                           <td className="border-b border-line px-3 py-3 font-semibold text-ink">
-                            {score === null ? "Review work" : score.toFixed(1)}
+                            {scoreState.score === null
+                              ? scoreState.primary
+                              : scoreState.score.toFixed(1)}
                           </td>
                           <td className="border-b border-line px-3 py-3 text-slate-700">
-                            {score === null ? "Pending source review" : scoreBand(score)}
+                            {scoreState.tableBand}
                           </td>
                           <td className="border-b border-line px-3 py-3">
                             <span
@@ -443,13 +463,17 @@ function InfoCard({ label, value }: { label: string; value: string }) {
 
 type InterventionReadinessSummary = {
   completeSourcePackets: number;
+  defaultScoreReviewClaims: number;
   extractedReferences: number;
   humanReviewedClaims: number;
   incompleteSourcePackets: number;
   pendingHumanReview: number;
   pendingReferences: number;
+  readyToScoreClaims: number;
   reviewWorkClaims: number;
   scoredClaims: Array<{ claim: Claim; score: number }>;
+  scoreAuditClaims: number;
+  sourceWorkClaims: number;
   totalClaims: number;
   totalReferences: number;
 };
@@ -457,24 +481,28 @@ type InterventionReadinessSummary = {
 function buildInterventionReadinessSummary({
   claims,
   referencesById,
+  readinessRows,
   studies
 }: {
   claims: Claim[];
   referencesById: Map<string, Reference>;
+  readinessRows: ScoreReadinessRow[];
   studies: Study[];
 }): InterventionReadinessSummary {
   const sourcePacketSummary = summarizeClaimSourcePackets({ claims, referencesById, studies });
   const reviewSummary = summarizeReviewStatus(claims);
-  const scoredClaims = claims
-    .filter((claim) => !isReviewWorkClaim(claim))
-    .map((claim) => ({
-      claim,
-      score: compositeScore(claim.scores)
+  const scoredClaims = readinessRows
+    .filter((row) => row.state === "scored" && row.currentScore !== null)
+    .map((row) => ({
+      claim: row.claim,
+      score: row.currentScore ?? compositeScore(row.claim.scores)
     }))
     .sort((left, right) => right.score - left.score);
 
   return {
     completeSourcePackets: sourcePacketSummary.completeClaims,
+    defaultScoreReviewClaims: readinessRows.filter((row) => row.state === "default_score_review")
+      .length,
     extractedReferences: sourcePacketSummary.extractedReferences,
     humanReviewedClaims: reviewSummary.humanReviewed,
     incompleteSourcePackets:
@@ -483,8 +511,13 @@ function buildInterventionReadinessSummary({
       sourcePacketSummary.unlinkedClaims,
     pendingHumanReview: reviewSummary.unreviewedDrafts,
     pendingReferences: sourcePacketSummary.pendingReferences + sourcePacketSummary.missingReferences,
-    reviewWorkClaims: claims.length - scoredClaims.length,
+    readyToScoreClaims: readinessRows.filter((row) => row.state === "ready_to_score").length,
+    reviewWorkClaims: claims.filter(isReviewWorkClaim).length,
     scoredClaims,
+    scoreAuditClaims: readinessRows.filter((row) => row.state === "snapshot_gap").length,
+    sourceWorkClaims: readinessRows.filter(
+      (row) => row.state === "source_blocked" && !isReviewWorkClaim(row.claim)
+    ).length,
     totalClaims: claims.length,
     totalReferences: sourcePacketSummary.totalReferences
   };
@@ -513,13 +546,23 @@ function InterventionReadinessPanel({
             <span className="rounded-md border border-spruce/25 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
               {readiness.scoredClaims.length} scored
             </span>
+            {readiness.sourceWorkClaims > 0 ? (
+              <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+                {readiness.sourceWorkClaims} source work
+              </span>
+            ) : null}
             <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
               {readiness.reviewWorkClaims} review work
             </span>
+            {readiness.scoreAuditClaims > 0 || readiness.defaultScoreReviewClaims > 0 ? (
+              <span className="rounded-md border border-signal/25 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
+                {readiness.scoreAuditClaims + readiness.defaultScoreReviewClaims} score audit
+              </span>
+            ) : null}
           </div>
           <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
-            Scored claims are review aids, not treatment advice. Review-work claims remain visible
-            without treating starter scores as final evidence.
+            Scored claims are review aids, not treatment advice. Source-work and review-work claims
+            remain visible without treating stored or starter scores as final evidence.
           </p>
         </div>
         <Link
@@ -534,6 +577,10 @@ function InterventionReadinessPanel({
         <ReadinessStat
           label="Scored claims"
           value={hasClaims ? `${readiness.scoredClaims.length}/${readiness.totalClaims}` : "0/0"}
+        />
+        <ReadinessStat
+          label="Source work"
+          value={hasClaims ? `${readiness.sourceWorkClaims}/${readiness.totalClaims}` : "0/0"}
         />
         <ReadinessStat
           label="Human reviewed"
@@ -612,6 +659,15 @@ function InterventionReadinessPanel({
             ) : (
               <li>No linked-reference extraction gaps are visible locally.</li>
             )}
+            {readiness.sourceWorkClaims > 0 ? (
+              <li>
+                {readiness.sourceWorkClaims} stored score(s) are shown as source work until their
+                source packets are complete.
+              </li>
+            ) : null}
+            {readiness.readyToScoreClaims > 0 ? (
+              <li>{readiness.readyToScoreClaims} reviewed packet(s) are ready for scoring.</li>
+            ) : null}
             {productSignals.length === 0 ? (
               <li>Product-level AU/TGA status is not established by intervention evidence alone.</li>
             ) : (
@@ -641,9 +697,17 @@ function reviewStatusLabel(status: Claim["reviewStatus"]) {
   return isHumanReviewed(status) ? "Human reviewed" : "Pending human review";
 }
 
-function classificationLabel(claim: Claim) {
+function classificationLabel(claim: Claim, readinessRow?: ScoreReadinessRow) {
   if (isReviewWorkClaim(claim)) {
     return "Review-needed classification";
+  }
+
+  if (readinessRow?.state === "source_blocked") {
+    return "Source-work classification";
+  }
+
+  if (readinessRow?.state === "default_score_review") {
+    return "Scoring-review classification";
   }
 
   return isHumanReviewed(claim.reviewStatus)
@@ -671,8 +735,106 @@ function isReviewWorkClaim(claim: Claim) {
   return isDraftLeadClaim(claim) || isSourcePacketScaffoldClaim(claim);
 }
 
-function claimCompositeScore(claim: Claim) {
-  return isReviewWorkClaim(claim) ? null : compositeScore(claim.scores);
+type ClaimScorePresentation = {
+  compositeLabel: string;
+  hideComponents: boolean;
+  noticeBody?: string;
+  noticeTitle?: string;
+  noticeTone?: string;
+  primary: string;
+  score: number | null;
+  secondary: string;
+  tableBand: string;
+  tone: string;
+};
+
+function claimScorePresentation(
+  claim: Claim,
+  readinessRow?: ScoreReadinessRow
+): ClaimScorePresentation {
+  if (isReviewWorkClaim(claim)) {
+    return {
+      compositeLabel: "Composite pending",
+      hideComponents: true,
+      noticeBody: `${reviewWorkReason(
+        claim
+      )} Starter component values are hidden here until the claim is scored from reviewed, citation-linked evidence.`,
+      noticeTitle: "Score pending source review",
+      noticeTone: "border-amberline/30 bg-amber-50 text-amber-950",
+      primary: "Review work",
+      score: null,
+      secondary: "No final evidence score assigned yet",
+      tableBand: "Pending source review",
+      tone: "border-dashed border-amberline/35 bg-amber-50 text-amberline"
+    };
+  }
+
+  if (readinessRow?.state === "source_blocked") {
+    return {
+      compositeLabel: "Composite source work",
+      hideComponents: true,
+      noticeBody: `${scoreReadinessNextAction(
+        readinessRow
+      )} The stored score and component values are hidden here because linked references still need extraction or source-packet repair before this should be treated as current scored evidence.`,
+      noticeTitle: "Stored score needs source extraction",
+      noticeTone: "border-amberline/30 bg-amber-50 text-amber-950",
+      primary: "Source work",
+      score: null,
+      secondary: "Stored score needs source extraction",
+      tableBand: "Pending extraction",
+      tone: "border-dashed border-amberline/35 bg-amber-50 text-amberline"
+    };
+  }
+
+  if (readinessRow?.state === "default_score_review") {
+    return {
+      compositeLabel: "Composite needs review",
+      hideComponents: true,
+      noticeBody: `${scoreReadinessNextAction(
+        readinessRow
+      )} The starter-looking component values are hidden here until a claim-specific score rationale is saved.`,
+      noticeTitle: "Starter-looking score needs review",
+      noticeTone: "border-danger/30 bg-red-50 text-danger",
+      primary: "Score review",
+      score: null,
+      secondary: "Starter-looking score needs claim-specific review",
+      tableBand: "Needs score review",
+      tone: "border-dashed border-danger/30 bg-red-50 text-danger"
+    };
+  }
+
+  const score = readinessRow?.currentScore ?? compositeScore(claim.scores);
+
+  if (readinessRow?.state === "snapshot_gap") {
+    return {
+      compositeLabel: compositeLabel(claim),
+      hideComponents: false,
+      noticeBody: scoreReadinessNextAction(readinessRow),
+      noticeTitle: "Score audit gap",
+      noticeTone: "border-signal/25 bg-blue-50 text-signal",
+      primary: score.toFixed(1),
+      score,
+      secondary: "Audit gap",
+      tableBand: "Audit gap",
+      tone: "border-dashed border-signal/35 bg-blue-50 text-signal"
+    };
+  }
+
+  return {
+    compositeLabel: compositeLabel(claim),
+    hideComponents: false,
+    primary: score.toFixed(1),
+    score,
+    secondary: scoreBand(score),
+    tableBand: scoreBand(score),
+    tone: labelTone(claim.finalLabel)
+  };
+}
+
+function reviewWorkReason(claim: Claim) {
+  return isDraftLeadClaim(claim)
+    ? "This is a discovery lead awaiting source review."
+    : "This source-packet scaffold is awaiting evidence review.";
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
@@ -686,13 +848,15 @@ function EmptyState({ children }: { children: ReactNode }) {
 function ClaimCard({
   claim,
   packet,
+  readinessRow,
   referencesById
 }: {
   claim: Claim;
   packet?: ClaimSourcePacket;
+  readinessRow?: ScoreReadinessRow;
   referencesById: Map<string, Reference>;
 }) {
-  const score = claimCompositeScore(claim);
+  const scoreState = claimScorePresentation(claim, readinessRow);
 
   return (
     <article className="rounded-lg border border-line bg-white p-3">
@@ -702,15 +866,15 @@ function ClaimCard({
           <p className="mt-2 text-sm leading-6 text-slate-700">{claim.claimText}</p>
         </div>
         <div className="rounded-md border border-line bg-mist px-3 py-2 text-right">
-          <p className="text-xs text-slate-600">{compositeLabel(claim)}</p>
+          <p className="text-xs text-slate-600">{scoreState.compositeLabel}</p>
           <p className="text-2xl font-semibold text-ink">
-            {score === null ? "Pending" : score.toFixed(1)}
+            {scoreState.score === null ? scoreState.primary : scoreState.score.toFixed(1)}
           </p>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
         <span className={cn("rounded-md border px-2 py-1 font-semibold", labelTone(claim.finalLabel))}>
-          {classificationLabel(claim)}: {claim.finalLabel}
+          {classificationLabel(claim, readinessRow)}: {claim.finalLabel}
         </span>
         <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 font-semibold text-slate-700">
           {reviewStatusLabel(claim.reviewStatus)}
@@ -732,25 +896,24 @@ function ClaimCard({
         <Detail label="Safety" value={claim.safetyNotes} />
         <Detail label="Applicability" value={claim.applicabilityNotes} />
       </dl>
-      {isReviewWorkClaim(claim) ? <ReviewWorkScoreNotice claim={claim} /> : <ScoreComponentBreakdown claim={claim} />}
+      {scoreState.noticeTitle ? <ScoreReadinessNotice scoreState={scoreState} /> : null}
+      {scoreState.hideComponents ? null : <ScoreComponentBreakdown claim={claim} />}
       <NonProofList claim={claim} />
       <ReferenceLinks claim={claim} referencesById={referencesById} />
     </article>
   );
 }
 
-function ReviewWorkScoreNotice({ claim }: { claim: Claim }) {
-  const reason = isDraftLeadClaim(claim)
-    ? "This is a discovery lead awaiting source review."
-    : "This source-packet scaffold is awaiting evidence review.";
-
+function ScoreReadinessNotice({ scoreState }: { scoreState: ClaimScorePresentation }) {
   return (
-    <section className="mt-3 rounded-md border border-amberline/30 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
-      <p className="font-semibold">Score pending source review</p>
-      <p className="mt-1">
-        {reason} Starter component values are hidden here until the claim is scored from reviewed,
-        citation-linked evidence.
-      </p>
+    <section
+      className={cn(
+        "mt-3 rounded-md border px-3 py-2 text-xs leading-5",
+        scoreState.noticeTone
+      )}
+    >
+      <p className="font-semibold">{scoreState.noticeTitle}</p>
+      <p className="mt-1">{scoreState.noticeBody}</p>
     </section>
   );
 }

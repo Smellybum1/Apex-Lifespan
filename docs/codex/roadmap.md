@@ -74,46 +74,67 @@ Done when the useful/maybe-useful candidate backlog can be reviewed quickly from
 
 Turn accepted sources and draft claim clusters into honest, traceable evidence scores for the local catalog. This is a meaningful body of work because scoring has to separate source readiness, claim confidence, safety/regulatory caveats, public display language, and review status. Do this against the local database first; do not promote scored results to preview/production until the user explicitly asks.
 
-1. Define the scoring model users should trust:
+**Current local scoring status (2026-07-02, read-only worklist):**
+
+- `8/477` public claim cells are scored.
+- `469/477` claim cells still need scoring work.
+- `67` claim cells are ready to score now because their source packets are complete enough for an operator pass.
+- `402` claim cells are source-blocked; most remaining scoring work is source extraction/link repair before score assignment.
+- `0` default-looking public scores and `0` score snapshot gaps are currently reported by the local score worklist.
+
+**Goal:** every active local claim should end in one clear public-safe state: scored with traceable source packet and review status, parked/backlog with a reason, source-blocked with next action, or rejected/noise.
+
+1. Lock the scoring model users should trust:
    - Keep the visible dimensions understandable: directness, rigor, impact, safety, measurability, regulatory/product caveat, and hype/overclaim risk.
    - Document how those dimensions produce the composite score, evidence band, and public label.
    - Make clear that scores are scoped to a claim and source packet, not to a whole supplement as a blanket recommendation.
+   - Confirm the public band language for weak, limited, moderate, strong, insufficient-evidence, and regulatory-concern outcomes.
 
-2. Build a score-readiness inventory:
+2. Keep the score-readiness inventory authoritative:
    - Count local claims by scored, unscored, default-looking score, source-packet incomplete, source-packet complete, parked/backlog, and rejected/noise.
    - Flag repeated starter-looking scores such as `2.1`, `3.1`, or other placeholder/default patterns as scoring-review work unless they have an explicit scored rationale.
    - Separate "ready to score now" from "needs source extraction/linking first."
+   - Use `npx tsx scripts/local-score-worklist.ts --limit 20` as the local read-only run sheet before and after scoring batches.
 
-3. Add a scoring worklist:
+3. Finish the ready-to-score batch first:
+   - Work through the `67` ready rows before touching source-blocked rows.
+   - Score complete packets one intervention/outcome group at a time so labels, evidence bands, and caveats stay consistent.
+   - Use assisted suggestions only as a draft aid; the saved score still needs operator review and citation traceability.
+   - Park or reject any "ready" row that proves too thin, mismatched, product-specific, or outside the current evidence boundary.
+
+4. Complete source packets for source-blocked rows:
+   - Prioritize high-visibility public cells, complete-enough review/trial leads, safety/regulatory claims, and interventions with many user-facing claims.
+   - Add or repair structured extraction for linked PubMed, ClinicalTrials, DOI, and official safety/regulatory references.
+   - Confirm the source actually supports the scoped claim and intervention identity before scoring.
+   - Keep rows source-blocked, parked, or rejected when the packet cannot support an honest public score.
+
+5. Keep the scoring worklist practical:
    - Prioritize high-visibility public cells, complete source packets, high-quality reviews/trials, safety/regulatory claims, and interventions with many user-facing claims.
    - Group by intervention and outcome so a scoring pass can finish one area at a time.
    - Show the current score, source packet completeness, top citations, review status, and the next scoring action.
 
-4. Polish the local scoring editor:
+6. Polish the local scoring editor:
    - Show the source packet beside the score dimensions.
    - Allow editing each scoring dimension and previewing the composite, band, and label before saving.
    - Save as `AI reviewed` only when citation traceability, uncertainty labels, AU/TGA caveats, product-level limits, and no-medical-advice boundaries are preserved.
    - Use `Human reviewed` only after explicit human confirmation.
 
-5. Add assisted scoring suggestions without auto-publishing:
+7. Keep assisted scoring suggestions conservative:
    - Generate suggested dimension scores and rationale from the linked source packet.
    - Require operator review before saving suggestions.
    - Surface uncertainty, mixed evidence, source limitations, and safety/regulatory caveats instead of smoothing them away.
 
-6. Run the scoring pass over the local catalog:
-   - Score complete packets first.
-   - Park claims whose source packets are too thin, mismatched, product-specific, or outside the current evidence boundary.
-   - Reject or hide claim shells that cannot support a useful public evidence cell.
-
-7. Improve the public evidence map representation:
+8. Improve public score representation:
    - Do not make starter/default scores look like final evidence.
    - Distinguish scored evidence, review work, parked/backlog, insufficient evidence, and unassessed cells.
    - Make low-confidence scored claims useful without implying clinical advice or broad supplement endorsement.
+   - Apply the same source-work and audit-gap language on intervention detail pages, not only the evidence map.
 
-8. Verify scoring quality before promotion:
+9. Verify scoring quality before promotion:
    - Local catalog quality checks should report no unexplained default-looking public scores.
    - Public smoke should pass against the local database.
    - Spot-check representative high, medium, low, safety, and regulatory claims on the public evidence map and intervention detail pages.
+   - Re-run the score worklist until ready-to-score, source-blocked, parked, rejected, and scored counts explain the whole local catalog.
 
 Done when every active local claim is in one of these clear states: scored with a traceable source packet and review status, parked/backlog with a reason, source-blocked with next action, or rejected/noise. Public pages should no longer show placeholder-looking scores as if they are final evidence.
 

@@ -110,6 +110,35 @@ describe("intervention detail page", () => {
     expect(html).toContain("Starter component values are hidden here until the claim is scored");
   });
 
+  it("marks scored-looking detail claims as source work when extraction is incomplete", async () => {
+    const data = seedDashboardData();
+    const creatine = data.interventions.find((item) => item.slug === "creatine-monohydrate");
+    const targetClaim = data.claims.find(
+      (claim) => claim.interventionId === creatine?.id && claim.keyReferenceIds.length > 0
+    );
+
+    expect(targetClaim).toBeDefined();
+
+    getEvidenceDashboardDataMock.mockResolvedValue({
+      ...data,
+      studies: data.studies.filter(
+        (study) => !targetClaim?.keyReferenceIds.includes(study.referenceId)
+      )
+    });
+
+    const html = renderToStaticMarkup(
+      await InterventionDetailPage({ params: Promise.resolve({ slug: "creatine-monohydrate" }) })
+    );
+
+    expect(html).toContain("Source work");
+    expect(html).toContain("Composite source work");
+    expect(html).toContain("Stored score needs source extraction");
+    expect(html).toContain("Pending extraction");
+    expect(html).toContain("Source-work classification");
+    expect(html).toContain("stored score and component values are hidden here");
+    expect(html).toContain("linked references still need extraction or source-packet repair");
+  });
+
   it("renders magnesium sleep coverage with trial registry labels", async () => {
     getEvidenceDashboardDataMock.mockResolvedValue(seedDashboardData());
 
