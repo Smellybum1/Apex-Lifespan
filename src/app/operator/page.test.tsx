@@ -268,6 +268,9 @@ describe("OperatorPage role-gated rendering", () => {
     expect(html).toContain("Missing source records");
     expect(html).toContain("Unlinked claims");
     expect(html).toContain("Reference groups");
+    expect(html).toContain("Reference briefs are read-only");
+    expect(html).toContain("npx tsx scripts/local-score-worklist.ts");
+    expect(html).toContain("--repair-reference");
     expect(html).toContain("unless a human explicitly confirms otherwise");
     expect(html).toContain("Complete claim link before promotion.");
     expect(html).toContain("Audit trail");

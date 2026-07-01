@@ -1500,6 +1500,10 @@ function ScoreSourceRepairQueue({ summary }: { summary: ScoreWorklistRepairSumma
             Source-blocked scoring rows need extraction, source records, or curated links before
             they can become real scores.
           </p>
+          <p className="mt-2 rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-900">
+            Reference briefs are read-only: npx tsx scripts/local-score-worklist.ts
+            --repair-reference &lt;reference-id&gt;
+          </p>
         </div>
         <span className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-semibold">
           {summary.sourceBlockedRows} blocked
@@ -1523,6 +1527,8 @@ function ScoreSourceRepairQueue({ summary }: { summary: ScoreWorklistRepairSumma
           <SourceRepairGroupList
             emptyText="No pending extraction references."
             groups={summary.pendingReferenceGroups.slice(0, 3).map((group) => ({
+              actionLabel: "Read-only brief command",
+              actionText: `npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
               detail: `${group.claimCount} claim(s), ${group.interventions.length} intervention(s)`,
               sampleClaims: group.sampleClaims,
               subtitle: group.reference.title,
@@ -1533,6 +1539,8 @@ function ScoreSourceRepairQueue({ summary }: { summary: ScoreWorklistRepairSumma
           <SourceRepairGroupList
             emptyText="No missing source records."
             groups={summary.missingReferenceGroups.slice(0, 3).map((group) => ({
+              actionLabel: "Next repair",
+              actionText: `Restore or add source record ${group.referenceId}, then rerun the score worklist.`,
               detail: `${group.claimCount} claim(s) blocked`,
               sampleClaims: group.sampleClaims,
               subtitle: group.outcomes.slice(0, 3).join("; "),
@@ -1543,6 +1551,8 @@ function ScoreSourceRepairQueue({ summary }: { summary: ScoreWorklistRepairSumma
           <SourceRepairGroupList
             emptyText="No unlinked claim groups."
             groups={summary.unlinkedInterventionGroups.slice(0, 3).map((group) => ({
+              actionLabel: "Next repair",
+              actionText: `Curate claim references for ${group.intervention?.name ?? "this intervention"}, then rerun the score worklist.`,
               detail: `${group.claimCount} claim(s) need curated references`,
               sampleClaims: group.sampleClaims,
               subtitle: group.outcomes.slice(0, 3).join("; "),
@@ -1563,6 +1573,8 @@ function SourceRepairGroupList({
 }: {
   emptyText: string;
   groups: Array<{
+    actionLabel: string;
+    actionText: string;
     detail: string;
     sampleClaims: ScoreWorklistRepairSampleClaim[];
     subtitle: string;
@@ -1582,6 +1594,9 @@ function SourceRepairGroupList({
                 {group.subtitle || "No outcome summary available."}
               </p>
               <p className="mt-1 text-xs font-semibold text-amber-900">{group.detail}</p>
+              <p className="mt-1 break-words text-xs leading-5 text-slate-700">
+                <span className="font-semibold">{group.actionLabel}:</span> {group.actionText}
+              </p>
               {group.sampleClaims.length > 0 ? (
                 <p className="mt-1 break-words text-xs leading-5 text-slate-600">
                   Claims: {formatSourceRepairSamples(group.sampleClaims)}
