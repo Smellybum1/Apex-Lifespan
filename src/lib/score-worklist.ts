@@ -133,8 +133,14 @@ export interface ScoreWorklistRepairSummary {
   unlinkedRows: number;
 }
 
+export interface ScoreWorklistExtractionGapSummary {
+  claimCount: number;
+  gap: string;
+}
+
 export interface ScoreWorklistPendingReferenceGroup {
   claimCount: number;
+  extractionGaps: ScoreWorklistExtractionGapSummary[];
   interventions: Array<{
     claimCount: number;
     id: string;
@@ -505,6 +511,7 @@ export function formatScoreWorklistRepairSummaryLines(
           `${index + 1}. ${group.reference.label} - unlocks ${group.claimCount} claim(s) across ${group.interventions.length} intervention(s)`,
           `   Reference id: ${group.reference.id}`,
           `   ${group.reference.title}`,
+          `   Gaps: ${formatRepairExtractionGaps(group.extractionGaps)}`,
           `   Brief: npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
           `   Claims: ${formatRepairSampleClaims(group.sampleClaims)}`
         ])
@@ -888,6 +895,7 @@ function pendingReferenceGroups(
 
       return {
         claimCount: rowsForGroup.length,
+        extractionGaps: scoreRepairExtractionGapSummary(rowsForGroup, reference.id),
         interventions: repairInterventionGroups(rowsForGroup),
         outcomes: uniqueSorted(rowsForGroup.map((row) => row.claim.outcome)),
         priority: repairPriority(rowsForGroup),
@@ -1017,6 +1025,17 @@ function formatRepairSampleClaims(samples: ScoreWorklistRepairSampleClaim[]) {
     .join("; ");
 }
 
+function formatRepairExtractionGaps(gaps: ScoreWorklistExtractionGapSummary[]) {
+  if (gaps.length === 0) {
+    return "no extraction field gaps surfaced";
+  }
+
+  return gaps
+    .slice(0, 6)
+    .map((gap) => `${gap.gap} (${gap.claimCount})`)
+    .join("; ");
+}
+
 function sortRepairRows(rows: ScoreReadinessRow[]) {
   return [...rows].sort(
     (left, right) =>
@@ -1024,6 +1043,49 @@ function sortRepairRows(rows: ScoreReadinessRow[]) {
       (left.intervention?.name ?? "").localeCompare(right.intervention?.name ?? "") ||
       left.claim.outcome.localeCompare(right.claim.outcome)
   );
+}
+
+function scoreRepairExtractionGapSummary(
+  rows: ScoreReadinessRow[],
+  referenceId?: string
+): ScoreWorklistExtractionGapSummary[] {
+  const counts = new Map<string, number>();
+
+  for (const row of rows) {
+    const studies = referenceId
+      ? row.packet.studies.filter((study) => study.referenceId === referenceId)
+      : row.packet.studies;
+
+    for (const gap of referenceRepairExtractionGaps(row, studies)) {
+      counts.set(gap, (counts.get(gap) ?? 0) + 1);
+    }
+  }
+
+  return Array.from(counts.entries())
+    .map(([gap, claimCount]) => ({ claimCount, gap }))
+    .sort(
+      (left, right) =>
+        right.claimCount - left.claimCount ||
+        extractionGapSortIndex(left.gap) - extractionGapSortIndex(right.gap) ||
+        left.gap.localeCompare(right.gap)
+    );
+}
+
+function extractionGapSortIndex(gap: string) {
+  const normalized = gap.toLowerCase();
+
+  if (normalized === "source type") return 0;
+  if (normalized === "sample size/results status") return 1;
+  if (normalized === "population fit") return 2;
+  if (normalized === "intervention fit") return 3;
+  if (normalized.startsWith("claim-relevant ")) return 4;
+  if (normalized === "adverse events/tolerability") return 5;
+  if (normalized === "funding/conflicts") return 6;
+  if (normalized === "risk of bias/evidence quality") return 7;
+  if (normalized === "curated source record") return 8;
+  if (normalized === "curated reference link") return 9;
+
+  return 100;
 }
 
 function dedupeRepairRows(rows: ScoreReadinessRow[]) {

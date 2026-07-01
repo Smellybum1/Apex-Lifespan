@@ -211,6 +211,23 @@ describe("score worklist", () => {
     expect(report.repairSummary.extractionPendingRows).toBe(2);
     expect(report.repairSummary.pendingReferenceGroups[0]).toMatchObject({
       claimCount: 2,
+      extractionGaps: expect.arrayContaining([
+        { claimCount: 2, gap: "source type" },
+        { claimCount: 2, gap: "sample size/results status" },
+        { claimCount: 2, gap: "population fit" },
+        { claimCount: 2, gap: "intervention fit" },
+        { claimCount: 2, gap: "adverse events/tolerability" },
+        { claimCount: 2, gap: "funding/conflicts" },
+        { claimCount: 2, gap: "risk of bias/evidence quality" },
+        {
+          claimCount: 1,
+          gap: `claim-relevant ${firstBlockedClaim.outcome} outcomes/result direction`
+        },
+        {
+          claimCount: 1,
+          gap: `claim-relevant ${secondBlockedClaim.outcome} outcomes/result direction`
+        }
+      ]),
       reference: {
         id: sharedPendingReference.id,
         label: "PubMed PMID:12345678 2026"
@@ -219,6 +236,9 @@ describe("score worklist", () => {
     expect(lines).toContain("Source repair summary");
     expect(lines).toContain("Top pending extraction references");
     expect(lines).toContain("unlocks 2 claim(s)");
+    expect(lines).toContain(
+      "Gaps: source type (2); sample size/results status (2); population fit (2)"
+    );
     expect(lines).toContain(
       "Brief: npx tsx scripts/local-score-worklist.ts --repair-reference shared-pending-score-reference"
     );

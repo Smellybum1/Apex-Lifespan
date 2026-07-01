@@ -1530,6 +1530,7 @@ function ScoreSourceRepairQueue({ summary }: { summary: ScoreWorklistRepairSumma
               actionLabel: "Read-only brief command",
               actionText: `npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
               detail: `${group.claimCount} claim(s), ${group.interventions.length} intervention(s)`,
+              gapText: formatSourceRepairGaps(group.extractionGaps),
               sampleClaims: group.sampleClaims,
               subtitle: group.reference.title,
               title: group.reference.label
@@ -1576,6 +1577,7 @@ function SourceRepairGroupList({
     actionLabel: string;
     actionText: string;
     detail: string;
+    gapText?: string;
     sampleClaims: ScoreWorklistRepairSampleClaim[];
     subtitle: string;
     title: string;
@@ -1594,6 +1596,11 @@ function SourceRepairGroupList({
                 {group.subtitle || "No outcome summary available."}
               </p>
               <p className="mt-1 text-xs font-semibold text-amber-900">{group.detail}</p>
+              {group.gapText ? (
+                <p className="mt-1 break-words text-xs leading-5 text-amber-900">
+                  Top gaps: {group.gapText}
+                </p>
+              ) : null}
               <p className="mt-1 break-words text-xs leading-5 text-slate-700">
                 <span className="font-semibold">{group.actionLabel}:</span> {group.actionText}
               </p>
@@ -1616,6 +1623,17 @@ function formatSourceRepairSamples(samples: ScoreWorklistRepairSampleClaim[]) {
   return samples
     .slice(0, 3)
     .map((sample) => `${sample.interventionName} / ${sample.outcome}`)
+    .join("; ");
+}
+
+function formatSourceRepairGaps(gaps: Array<{ claimCount: number; gap: string }>) {
+  if (gaps.length === 0) {
+    return "";
+  }
+
+  return gaps
+    .slice(0, 6)
+    .map((gap) => `${gap.gap} (${gap.claimCount})`)
     .join("; ");
 }
 
