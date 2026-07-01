@@ -429,6 +429,7 @@ describe("score worklist", () => {
     expect(briefLines).toContain("Identity warnings:");
     expect(briefLines).toContain("Identity cleanup first:");
     expect(briefLines).toContain("Use the local Candidate Review identity resolver");
+    expect(briefLines).toContain("--repair-identity-action actionable");
     expect(briefLines).toContain("removes the accepted candidate's claim-reference link");
     expect(briefLines).toContain("Resolve accepted-candidate identity first");
   });

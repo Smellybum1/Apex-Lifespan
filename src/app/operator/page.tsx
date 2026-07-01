@@ -1504,6 +1504,13 @@ function ScoreSourceRepairQueue({ summary }: { summary: ScoreWorklistRepairSumma
             Reference briefs are read-only: npx tsx scripts/local-score-worklist.ts
             --repair-reference &lt;reference-id&gt;
           </p>
+          {summary.identityWarningReferenceGroups > 0 ? (
+            <p className="mt-2 rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-amber-900">
+              Actionable identity preview: npx tsx scripts/local-score-worklist.ts --state
+              source_blocked --repair-identity-action actionable --repair-identity-limit 50
+              --limit 1
+            </p>
+          ) : null}
         </div>
         <span className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-semibold">
           {summary.sourceBlockedRows} blocked

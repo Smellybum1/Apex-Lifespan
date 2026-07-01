@@ -919,6 +919,7 @@ function referenceIdentityCleanupActions(identityWarnings: string[]) {
 
   return [
     "Use the local Candidate Review identity resolver, not a manual score update, to confirm target identity, reassign to the matched intervention, or reject wrong supplement.",
+    "Find actionable source-led cleanup rows with npx tsx scripts/local-score-worklist.ts --state source_blocked --repair-identity-action actionable --repair-identity-limit 50 --limit 1.",
     "Rejecting or reassigning through the identity resolver removes the accepted candidate's claim-reference link before score repair continues.",
     "After identity cleanup, rerun npx tsx scripts/local-score-worklist.ts --state source_blocked --repair-identity-warnings --limit 20 to confirm the warning cleared."
   ];
