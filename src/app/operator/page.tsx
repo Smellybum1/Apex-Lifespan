@@ -51,6 +51,10 @@ import {
 import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import {
+  buildScoreExtractionCandidatePreview,
+  type ScoreExtractionCandidatePreview
+} from "@/lib/score-extraction-preview";
+import {
   buildScoreIdentityWarningActionPreview,
   formatScoreIdentityActionCounts,
   type ScoreIdentityWarningActionPreview
@@ -295,6 +299,12 @@ export default async function OperatorPage() {
           referenceLimit: 50
         })
       : undefined;
+  const scoreExtractionPreview =
+    scoreDashboardData?.dataSource === "database" && scoreRepairSummary.extractionPendingRows > 0
+      ? await buildScoreExtractionCandidatePreview(scoreRepairSummary, {
+          referenceLimit: 8
+        })
+      : undefined;
   const scoreEditorRows = selectScoreReadinessEditorRows(scoreReadinessRows);
   const scoreSnapshotClaims = scoreEditorRows.map((row) => row.claim);
   const scoreEditorContext = Object.fromEntries(
@@ -402,6 +412,7 @@ export default async function OperatorPage() {
         {canReviewPromotion ? (
           <ScoreSnapshotPanel
             claims={scoreSnapshotClaims}
+            extractionPreview={scoreExtractionPreview}
             identityPreview={scoreIdentityPreview}
             promotionControl={promotionControl}
             references={scoreSnapshotReferences}
@@ -1370,6 +1381,7 @@ function CandidateReviewQueuePanel({
 
 function ScoreSnapshotPanel({
   claims,
+  extractionPreview,
   identityPreview,
   promotionControl,
   references,
@@ -1382,6 +1394,7 @@ function ScoreSnapshotPanel({
   worklistContext
 }: {
   claims: Claim[];
+  extractionPreview?: ScoreExtractionCandidatePreview;
   identityPreview?: ScoreIdentityWarningActionPreview;
   promotionControl: OperatorBrowserWriteControlState;
   references: Reference[];
@@ -1429,7 +1442,11 @@ function ScoreSnapshotPanel({
           <ScoreReadinessStat label="Source work" value={`${summary.sourceBlocked}`} />
           <ScoreReadinessStat label="Scored cells" value={`${summary.scoredPublicClaims}`} />
         </div>
-        <ScoreSourceRepairQueue identityPreview={identityPreview} summary={repairSummary} />
+        <ScoreSourceRepairQueue
+          extractionPreview={extractionPreview}
+          identityPreview={identityPreview}
+          summary={repairSummary}
+        />
         {claims.length > 0 ? (
           <form action={recomputeAction} className="space-y-3">
             <label className="block text-sm font-semibold text-slate-700">
@@ -1507,9 +1524,11 @@ function ScoreSnapshotPanel({
 }
 
 function ScoreSourceRepairQueue({
+  extractionPreview,
   identityPreview,
   summary
 }: {
+  extractionPreview?: ScoreExtractionCandidatePreview;
   identityPreview?: ScoreIdentityWarningActionPreview;
   summary: ScoreWorklistRepairSummary;
 }) {
@@ -1571,6 +1590,7 @@ function ScoreSourceRepairQueue({
         </div>
       ) : null}
       {identityPreview ? <ScoreIdentityPreviewCard preview={identityPreview} /> : null}
+      {extractionPreview ? <ScoreExtractionPreviewCard preview={extractionPreview} /> : null}
       {summary.sourceBlockedRows === 0 ? (
         <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-emerald-950">
           No source-blocked scoring rows are visible in the current local catalog.
@@ -1689,6 +1709,109 @@ function ScoreIdentityPreviewCard({
       ) : (
         <p className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs leading-5 text-slate-600">
           No actionable candidate cleanup rows were found in the scanned warning references.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ScoreExtractionPreviewCard({
+  preview
+}: {
+  preview: ScoreExtractionCandidatePreview;
+}) {
+  const references = preview.references.slice(0, 4);
+
+  return (
+    <div className="mt-3 rounded-md border border-amber-200 bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-950">Extraction candidate handoff</h4>
+          <p className="mt-1 text-xs leading-5 text-slate-700">
+            Accepted candidates attached to the highest-priority source-blocked references. Use
+            the curation draft to verify source fields before any structured extraction write.
+          </p>
+        </div>
+        <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">
+          {references.length}/{preview.references.length} refs
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs md:grid-cols-3">
+        <ScoreReadinessStat
+          label="Refs scanned"
+          value={`${preview.scannedReferences}/${preview.totalPendingReferences}`}
+        />
+        <ScoreReadinessStat
+          label="Accepted candidates"
+          value={`${preview.acceptedCandidates}`}
+        />
+        <ScoreReadinessStat label="Scan limit" value={`${preview.referenceLimit}`} />
+      </div>
+      {references.length > 0 ? (
+        <div className="mt-3 divide-y divide-amber-100">
+          {references.map((reference) => (
+            <article className="py-3" key={reference.reference.id}>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="break-words text-sm font-semibold text-slate-950">
+                    {reference.reference.label}
+                  </p>
+                  <p className="mt-1 break-words text-xs leading-5 text-slate-600">
+                    {reference.reference.title}
+                  </p>
+                </div>
+                <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">
+                  {reference.candidateCount} candidate(s)
+                </span>
+              </div>
+              <p className="mt-2 break-words text-xs leading-5 text-slate-700">
+                {reference.claimCount} claim(s), {reference.studyCount} extraction(s). Gaps:{" "}
+                {reference.extractionGaps.join("; ") || "none listed"}
+              </p>
+              {reference.candidates.length > 0 ? (
+                <div className="mt-2 grid gap-2 lg:grid-cols-2">
+                  {reference.candidates.slice(0, 2).map((candidate) => (
+                    <div
+                      className="rounded-md border border-slate-200 bg-slate-50 p-2"
+                      key={`${reference.reference.id}:${candidate.dedupeKey}:${candidate.claimId ?? ""}`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="break-words text-xs font-semibold text-slate-950">
+                          {candidate.sourceLabel} {candidate.externalId} - triage{" "}
+                          {candidate.triageScore}
+                        </p>
+                        <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs font-semibold text-slate-700">
+                          {candidate.extractionReady ? "ready" : "blocked"}
+                        </span>
+                      </div>
+                      <p className="mt-1 break-words text-xs leading-5 text-slate-600">
+                        {candidate.title}
+                      </p>
+                      <p className="mt-1 break-words text-xs leading-5 text-slate-700">
+                        {candidate.nextAction}
+                      </p>
+                      <p className="mt-1 break-words text-xs leading-5 text-slate-600">
+                        {candidate.reviewStatus}; {candidate.sourceType};{" "}
+                        {candidate.sourceTextStatus}
+                      </p>
+                      <p className="mt-1 break-words text-xs leading-5 text-slate-700">
+                        <span className="font-semibold">Draft:</span>{" "}
+                        {candidate.curationDraftCommand}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs leading-5 text-slate-600">
+                  No accepted source candidate is attached to this reference.
+                </p>
+              )}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs leading-5 text-slate-600">
+          No pending extraction references are visible in this score repair summary.
         </p>
       )}
     </div>
