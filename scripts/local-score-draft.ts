@@ -26,37 +26,26 @@ async function main() {
       limit: Math.max(data.claims.length, 1),
       state: args.claimId ? "all" : args.state
     });
-    const row = selectScoreDraftRow(report.rows, args);
-    const draft = buildScoreUpdateDraft(row);
-    const dryRun = await dryRunUpdateClaimScore({
-      claimId: draft.claimId,
-      finalLabel: draft.finalLabel,
-      rationale: draft.rationale,
-      scores: draft.scores
-    });
-    const result = {
-      dryRun,
-      formFields: draft.formFields,
-      row: {
-        claim: row.claim,
-        claimId: row.claimId,
-        currentScoreLabel: row.currentScoreLabel,
-        intervention: row.intervention,
-        outcome: row.outcome,
-        references: row.references,
-        sourcePacket: row.sourcePacket,
-        state: row.state,
-        stateLabel: row.stateLabel,
-        suggestion: row.suggestion
-      }
-    };
+    const rows = selectScoreDraftRows(report.rows, args);
+    const drafts = await Promise.all(rows.map(scoreDraftResult));
 
     if (args.json) {
-      console.log(JSON.stringify(result, null, 2));
+      console.log(
+        JSON.stringify(
+          args.limit === 1
+            ? drafts[0]
+            : {
+                drafts,
+                totalDrafts: drafts.length
+              },
+          null,
+          2
+        )
+      );
       return;
     }
 
-    console.log(formatScoreDraftLines(result).join("\n"));
+    console.log(formatScoreDraftOutput(drafts).join("\n"));
   });
 }
 
@@ -65,6 +54,7 @@ interface ScoreDraftArgs {
   envFile: string;
   intervention?: string;
   json: boolean;
+  limit: number;
   showHelp?: false;
   state: ScoreWorklistStateFilter;
 }
@@ -91,6 +81,7 @@ Options:
   --env-file <path>       Env file to load before reading local data. Default: .env.local
   --claim <claim-id>      Draft a score update for a specific claim.
   --intervention <query>  Filter by intervention id, slug, or name text.
+  --limit <count>         Number of matching rows to draft when --claim is omitted. Default: 1
   --state <state>         ready_to_score | default_score_review | work. Default: ready_to_score
   --json                  Print JSON with dry-run and form fields.
   --help                  Show this help.`;
@@ -99,6 +90,7 @@ function readScoreDraftArgs(args: string[]): ParsedScoreDraftArgs {
   const parsed: ScoreDraftArgs = {
     envFile: ".env.local",
     json: false,
+    limit: 1,
     state: "ready_to_score"
   };
 
@@ -147,6 +139,17 @@ function readScoreDraftArgs(args: string[]): ParsedScoreDraftArgs {
       continue;
     }
 
+    if (arg === "--limit") {
+      parsed.limit = positiveInteger(requiredNextValue(args, index, "--limit"), "--limit");
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--limit=")) {
+      parsed.limit = positiveInteger(requiredInlineValue(arg, "--limit"), "--limit");
+      continue;
+    }
+
     if (arg === "--state") {
       parsed.state = scoreDraftState(requiredNextValue(args, index, "--state"));
       index += 1;
@@ -164,16 +167,70 @@ function readScoreDraftArgs(args: string[]): ParsedScoreDraftArgs {
   return parsed;
 }
 
-function selectScoreDraftRow(rows: ScoreWorklistRow[], args: ScoreDraftArgs) {
-  const row = args.claimId
-    ? rows.find((item) => item.claimId === args.claimId)
-    : rows[0];
+function selectScoreDraftRows(rows: ScoreWorklistRow[], args: ScoreDraftArgs) {
+  const selectedRows = args.claimId
+    ? rows.filter((item) => item.claimId === args.claimId)
+    : rows.slice(0, args.limit);
 
-  if (!row) {
+  if (selectedRows.length === 0) {
     throw new Error("No score worklist row matched the current filters.");
   }
 
-  return row;
+  return selectedRows;
+}
+
+async function scoreDraftResult(row: ScoreWorklistRow) {
+  const draft = buildScoreUpdateDraft(row);
+  const dryRun = await dryRunUpdateClaimScore({
+    claimId: draft.claimId,
+    finalLabel: draft.finalLabel,
+    rationale: draft.rationale,
+    scores: draft.scores
+  });
+
+  return {
+    dryRun,
+    formFields: draft.formFields,
+    row: {
+      claim: row.claim,
+      claimId: row.claimId,
+      currentScoreLabel: row.currentScoreLabel,
+      intervention: row.intervention,
+      outcome: row.outcome,
+      references: row.references,
+      sourcePacket: row.sourcePacket,
+      state: row.state,
+      stateLabel: row.stateLabel,
+      suggestion: row.suggestion
+    }
+  };
+}
+
+function formatScoreDraftOutput(
+  drafts: Awaited<ReturnType<typeof scoreDraftResult>>[]
+) {
+  if (drafts.length === 1) {
+    return formatScoreDraftLines(drafts[0]!);
+  }
+
+  return [
+    "Read-only local score draft batch",
+    `Drafts: ${drafts.length}`,
+    "This command did not write scores, review status, source packets, or public evidence.",
+    "",
+    ...drafts.flatMap((draft, index) => [
+      `${index + 1}. ${draft.row.intervention?.name ?? "Unknown intervention"} / ${draft.row.outcome} (${draft.row.claimId})`,
+      `   Current: ${draft.row.currentScoreLabel}`,
+      `   Suggested: ${draft.row.suggestion.compositeScoreLabel}; ${draft.row.suggestion.finalLabel}`,
+      `   Dry-run would update claim: ${draft.dryRun.wouldUpdateClaim}; snapshot: ${draft.dryRun.wouldCreateSnapshot}; history: ${draft.dryRun.wouldCreateHistory}`,
+      `   Citations: ${
+        draft.row.references.length > 0
+          ? draft.row.references.map((reference) => reference.label).join("; ")
+          : "none linked"
+      }`,
+      `   Full form fields: rerun with --claim ${draft.row.claimId}`
+    ])
+  ];
 }
 
 function formatScoreDraftLines({
@@ -231,6 +288,16 @@ function requiredInlineValue(arg: string, option: string) {
   }
 
   return value;
+}
+
+function positiveInteger(value: string, option: string) {
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${option} must be a positive integer.`);
+  }
+
+  return parsed;
 }
 
 main().catch((error) => {
