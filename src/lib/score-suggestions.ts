@@ -170,16 +170,16 @@ function suggestedFinalLabel(
   safetyConcern: boolean,
   regulatoryConcern: boolean
 ): EvidenceLabel {
+  if (!sourcePacket || sourcePacket.status !== "complete") {
+    return regulatoryConcern ? "Regulatory Concern" : "Insufficient Evidence";
+  }
+
   if (regulatoryConcern) {
     return "Regulatory Concern";
   }
 
   if (safetyConcern && scores.safety <= 4) {
     return "Safety Concern";
-  }
-
-  if (!sourcePacket || sourcePacket.status !== "complete") {
-    return "Insufficient Evidence";
   }
 
   const score = compositeScore(scores);
@@ -200,7 +200,7 @@ function suggestedFinalLabel(
 }
 
 function safetyConcernDetected(claim: Claim, studies: Study[], references: Reference[]) {
-  const text = packetText(claim, studies, references);
+  const text = safetyConcernText(claim, studies, references);
 
   if (/\b(no|none|without)\s+(?:serious\s+)?adverse\b/i.test(text)) {
     return false;
@@ -212,7 +212,7 @@ function safetyConcernDetected(claim: Claim, studies: Study[], references: Refer
 }
 
 function regulatoryConcernDetected(claim: Claim, studies: Study[], references: Reference[]) {
-  const text = packetText(claim, studies, references);
+  const text = regulatoryConcernText(claim, studies, references);
 
   return /\b(tga|artg|aust|unapproved|regulatory|warning|peptide|injectable|prescription)\b/i.test(
     text
@@ -225,7 +225,19 @@ function hypeConcernDetected(claim: Claim) {
   );
 }
 
-function packetText(claim: Claim, studies: Study[], references: Reference[]) {
+function safetyConcernText(claim: Claim, studies: Study[], references: Reference[]) {
+  return [
+    claim.claimText,
+    claim.safetyNotes,
+    ...references.map((reference) => reference.title),
+    ...studies.flatMap((study) => [
+      study.title,
+      study.adverseEvents
+    ])
+  ].join(" ");
+}
+
+function regulatoryConcernText(claim: Claim, studies: Study[], references: Reference[]) {
   return [
     claim.claimText,
     claim.safetyNotes,
@@ -234,13 +246,8 @@ function packetText(claim: Claim, studies: Study[], references: Reference[]) {
     ...references.map((reference) => reference.title),
     ...studies.flatMap((study) => [
       study.title,
-      study.adverseEvents,
-      study.fundingConflicts,
       study.intervention,
-      study.outcomes.join(" "),
-      study.population,
-      study.riskOfBias,
-      study.sampleSize
+      study.outcomes.join(" ")
     ])
   ].join(" ");
 }
