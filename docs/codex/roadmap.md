@@ -84,6 +84,16 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 
 **Goal:** every active local claim should end in one clear public-safe state: scored with traceable source packet and review status, parked/backlog with a reason, source-blocked with next action, or rejected/noise.
 
+**Recommended execution order:**
+
+1. Keep public pages honest while the backlog is incomplete: cells that are source-blocked, parked, or review-needed should not look like final scored evidence.
+2. Score the `15` ready-to-score claim cells first, because those already have enough source extraction to review dimensions, labels, uncertainty, and caveats.
+3. Use the ready batch to calibrate the scoring contract: dimension ranges, final labels, weak/limited/moderate/strong thresholds, safety/regulatory penalties, and public wording.
+4. Repair source packets in priority groups instead of one giant pass: high-visibility public cells, safety/regulatory rows, high-quality review/trial leads, and interventions with many claims.
+5. For each repaired packet, either score it, park it with a reason, reject it as noise/mismatch/unsupported, or leave it source-blocked with the next missing source action.
+6. Re-run the local score worklist after each batch so the remaining backlog shrinks into explainable states rather than hidden placeholder scores.
+7. Only after local scoring is coherent, spot-check the public evidence map and intervention pages for representative strong, moderate, limited, weak, insufficient, safety, and regulatory examples.
+
 **Scoring completion map:** this is a substantial milestone, not a tiny scoring pass. The work splits into a small direct-scoring batch and a larger source-readiness batch.
 
 1. Define the score contract:

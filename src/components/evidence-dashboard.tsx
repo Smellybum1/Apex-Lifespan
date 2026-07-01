@@ -181,6 +181,7 @@ type ClaimTableRow = {
   sourcePacketStatus: ClaimSourcePacket["completeness"]["status"];
   sourcePacketLabel: string;
   composite: number | null;
+  scoreStatusLabel: string;
   safety: number;
   regulatoryRisk: number;
   confidence: string;
@@ -328,12 +329,14 @@ function formatEvidenceMapFilterSummary({
 
 function ActiveClaimContextBar({
   activeClaim,
-  activeIntervention
+  activeIntervention,
+  readinessRow
 }: {
   activeClaim: Claim;
   activeIntervention?: Intervention;
+  readinessRow?: ScoreReadinessRow;
 }) {
-  const score = evidenceMapSortableScore(activeClaim);
+  const score = evidenceMapSortableScore(activeClaim, readinessRow);
 
   return (
     <div className="mb-3 rounded-lg border border-signal/25 bg-blue-50 px-3 py-2">
@@ -343,7 +346,9 @@ function ActiveClaimContextBar({
           {activeIntervention?.name ?? "Unknown intervention"} · {shortOutcome(activeClaim.outcome)}
         </span>
         <span>
-          {score === null ? "Composite pending source review" : `${compositeLabel(activeClaim)} ${score.toFixed(1)}/10`}
+          {score === null
+            ? evidenceMapScoreStatusLabel(activeClaim, readinessRow)
+            : `${compositeLabel(activeClaim)} ${score.toFixed(1)}/10`}
         </span>
         <span className={cn("rounded-md border px-2 py-0.5 text-xs font-semibold", labelTone(activeClaim.finalLabel))}>
           {activeClaim.finalLabel}
@@ -377,6 +382,7 @@ function EvidenceDashboardTabbedPanels({
   productAustraliaVerificationById,
   productSignals,
   referencesById,
+  readinessByClaimId,
   safetyAlerts,
   setLabelText,
   studies,
@@ -397,6 +403,7 @@ function EvidenceDashboardTabbedPanels({
   productAustraliaVerificationById: Map<string, ProductAustraliaRegulatoryVerification>;
   productSignals: ProductSignal[];
   referencesById: Map<string, Reference>;
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
   safetyAlerts: SafetyAlert[];
   setLabelText: (value: string) => void;
   studies: Study[];
@@ -513,6 +520,7 @@ function EvidenceDashboardTabbedPanels({
             claims={filteredClaims}
             interventionsById={interventionsById}
             referencesById={referencesById}
+            readinessByClaimId={readinessByClaimId}
             studies={studies}
             activeClaimId={activeClaimId}
             onSelectClaim={onSelectClaim}
@@ -756,6 +764,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const tableRows = useMemo(
     () =>
       filteredClaims.map((claim) => {
+        const readinessRow = evidenceMapReadinessByClaimId.get(claim.id);
         const sourcePacket = buildClaimSourcePacket({
           claim,
           referencesById,
@@ -769,14 +778,15 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
           label: claim.finalLabel,
           sourcePacketStatus: sourcePacket.completeness.status,
           sourcePacketLabel: sourcePacket.completeness.label,
-          composite: evidenceMapSortableScore(claim),
+          composite: evidenceMapSortableScore(claim, readinessRow),
+          scoreStatusLabel: evidenceMapScoreStatusLabel(claim, readinessRow),
           safety: claim.scores.safety,
           regulatoryRisk: claim.scores.regulatoryRisk,
           confidence: claim.confidenceLevel,
           updated: claim.lastUpdated
         };
       }),
-    [filteredClaims, interventionsById, referencesById, studies]
+    [evidenceMapReadinessByClaimId, filteredClaims, interventionsById, referencesById, studies]
   );
 
   return (
@@ -908,6 +918,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
               <ActiveClaimContextBar
                 activeClaim={activeClaim}
                 activeIntervention={activeIntervention}
+                readinessRow={evidenceMapReadinessByClaimId.get(activeClaim.id)}
               />
             ) : null}
             <EvidenceDashboardTabbedPanels
@@ -925,6 +936,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
               productAustraliaVerificationById={productAustraliaVerificationById}
               productSignals={productSignals}
               referencesById={referencesById}
+              readinessByClaimId={evidenceMapReadinessByClaimId}
               safetyAlerts={safetyAlerts}
               setLabelText={setLabelText}
               studies={studies}
@@ -5523,9 +5535,17 @@ function reviewStatusLabel(status: Claim["reviewStatus"]) {
   return isHumanReviewed(status) ? "Human reviewed" : "Pending human review";
 }
 
-function classificationLabel(claim: Claim) {
+function classificationLabel(claim: Claim, readinessRow?: ScoreReadinessRow) {
   if (isEvidenceMapPlaceholderClaim(claim)) {
     return "Review-needed classification";
+  }
+
+  if (readinessRow?.state === "source_blocked") {
+    return "Source-work classification";
+  }
+
+  if (readinessRow?.state === "default_score_review") {
+    return "Scoring-review classification";
   }
 
   return isHumanReviewed(claim.reviewStatus)
@@ -6173,12 +6193,50 @@ function buildEvidenceMapReadinessSummary({
   };
 }
 
-function evidenceMapSortableScore(claim: Claim | undefined) {
+function evidenceMapSortableScore(
+  claim: Claim | undefined,
+  readinessRow?: ScoreReadinessRow
+) {
   if (!claim || isEvidenceMapPlaceholderClaim(claim)) {
     return null;
   }
 
+  if (readinessRow && readinessRow.state !== "scored") {
+    return null;
+  }
+
   return compositeScore(claim.scores);
+}
+
+function evidenceMapScoreStatusLabel(
+  claim: Claim,
+  readinessRow?: ScoreReadinessRow
+) {
+  if (isDraftLeadClaim(claim)) {
+    return "Discovery lead pending source review";
+  }
+
+  if (isSourcePacketScaffoldClaim(claim)) {
+    return "Source-packet review pending";
+  }
+
+  if (readinessRow?.state === "source_blocked") {
+    return "Source work pending extraction";
+  }
+
+  if (readinessRow?.state === "default_score_review") {
+    return "Score review pending";
+  }
+
+  if (readinessRow?.state === "ready_to_score") {
+    return "Ready to score";
+  }
+
+  if (readinessRow?.state === "snapshot_gap") {
+    return "Score audit pending";
+  }
+
+  return "Composite pending source review";
 }
 
 function evidenceMapCellPresentation(
@@ -6265,10 +6323,12 @@ function cycleEvidenceMapSort(
 function sortEvidenceMapInterventions({
   claims,
   interventions,
+  readinessByClaimId,
   sort
 }: {
   claims: Claim[];
   interventions: Intervention[];
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
   sort: EvidenceMapSort;
 }) {
   const sorted = [...interventions];
@@ -6282,7 +6342,11 @@ function sortEvidenceMapInterventions({
       (item) => item.interventionId === interventionId && item.outcome === sort.outcome
     );
 
-    return evidenceMapSortableScore(claim);
+    if (!claim) {
+      return null;
+    }
+
+    return evidenceMapSortableScore(claim, readinessByClaimId.get(claim.id));
   };
 
   return sorted.sort((left, right) => {
@@ -6451,9 +6515,10 @@ function EvidenceMap({
       sortEvidenceMapInterventions({
         claims: visibleClaims,
         interventions: visibleInterventions,
+        readinessByClaimId,
         sort
       }),
-    [sort, visibleClaims, visibleInterventions]
+    [readinessByClaimId, sort, visibleClaims, visibleInterventions]
   );
 
   if (visibleClaims.length === 0) {
@@ -6757,11 +6822,12 @@ function EvidenceMapRow({
           );
         }
 
+        const readinessRow = readinessByClaimId.get(claim.id);
         const score = compositeScore(claim.scores);
         const cell = evidenceMapCellPresentation(
           claim,
           score,
-          readinessByClaimId.get(claim.id)
+          readinessRow
         );
 
         return (
@@ -6775,7 +6841,8 @@ function EvidenceMapRow({
                 activeClaimId === claim.id && "border-signal ring-2 ring-signal/25"
               )}
               aria-label={`${intervention.name}, ${claim.outcome}: ${cell.ariaSummary}, ${classificationLabel(
-                claim
+                claim,
+                readinessRow
               )} ${claim.finalLabel}, review status ${reviewStatusLabel(claim.reviewStatus)}.`}
               title={cell.title}
             >
@@ -6837,9 +6904,9 @@ function ClaimTable({
           row.original.composite === null ? (
             <span
               className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600"
-              title="Composite score pending until the source packet is reviewed."
+              title={row.original.scoreStatusLabel}
             >
-              Review work
+              {row.original.scoreStatusLabel}
             </span>
           ) : (
             <ScoreWithExplainer
@@ -7020,6 +7087,7 @@ function EvidenceCards({
   embedded,
   interventionsById,
   onSelectClaim,
+  readinessByClaimId,
   referencesById,
   studies
 }: {
@@ -7028,6 +7096,7 @@ function EvidenceCards({
   embedded?: boolean;
   interventionsById: Map<string, Intervention>;
   onSelectClaim: SelectClaimHandler;
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
   referencesById: Map<string, Reference>;
   studies: Study[];
 }) {
@@ -7065,6 +7134,7 @@ function EvidenceCards({
           <>
             {displayClaims.map((claim) => {
             const intervention = interventionsById.get(claim.interventionId);
+            const readinessRow = readinessByClaimId.get(claim.id);
             const claimReferences = claim.keyReferenceIds
               .map((referenceId) => referencesById.get(referenceId))
               .filter((reference): reference is Reference => Boolean(reference));
@@ -7104,7 +7174,7 @@ function EvidenceCards({
                     <p className="mt-1 text-sm leading-6 text-slate-700">{claim.claimText}</p>
                   </div>
                   <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", labelTone(claim.finalLabel))}>
-                    {classificationLabel(claim)}: {claim.finalLabel}
+                    {classificationLabel(claim, readinessRow)}: {claim.finalLabel}
                   </span>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-600">{claim.clinicalRelevance}</p>

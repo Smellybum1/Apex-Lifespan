@@ -150,6 +150,7 @@ describe("EvidenceDashboard", () => {
 
     expect(html).toContain("Source / Work");
     expect(html).toContain("Source work");
+    expect(html).toContain("Source-work classification");
     expect(html).toContain("stored score needs source extraction");
     expect(html).toContain(
       "stored score, but linked references still need extraction or source-packet repair"
