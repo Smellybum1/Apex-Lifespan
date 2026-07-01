@@ -111,6 +111,8 @@ describe("buildScoreExtractionCandidatePreview", () => {
     });
     expect(preview.references[0]?.candidateCount).toBe(2);
     expect(preview.references[0]?.hiddenCandidates).toBe(1);
+    expect(preview.queryWarningCandidates).toBe(1);
+    expect(preview.references[0]?.queryWarningCandidates).toBe(1);
     expect(preview.references[0]?.candidates).toHaveLength(1);
     expect(preview.references[0]?.candidates[0]?.dedupeKey).toBe(safeCandidateKey("ready-candidate"));
     expect(preview.references[0]?.candidates[0]?.extractionDraftCoverage).toMatchObject({
@@ -125,6 +127,9 @@ describe("buildScoreExtractionCandidatePreview", () => {
     );
     expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
       "Query warning: Original query does not visibly mention Creatine monohydrate; verify accepted reference identity before extraction."
+    );
+    expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
+      "Warnings: query-origin 1."
     );
   });
 });
@@ -143,6 +148,7 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
       },
       identityBlockedClaimLinks: 2,
       identityBlockedReferences: 2,
+      queryWarningCandidates: 0,
       readyCandidates: 1,
       referenceLimit: 1,
       references: [
@@ -203,6 +209,7 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
             label: "PubMed 34610729",
             reason: "ready, source text captured, AI reviewed; verify before extraction"
           },
+          queryWarningCandidates: 0,
           readyCandidates: 1,
           repairReferenceCommand:
             "npx tsx scripts/local-score-worklist.ts --repair-reference ref-creatine-rct",

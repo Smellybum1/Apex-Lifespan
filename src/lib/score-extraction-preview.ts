@@ -23,6 +23,7 @@ export type ScoreExtractionCandidatePreview = {
   blockerCounts: ScoreExtractionCandidateBlockerCounts;
   identityBlockedClaimLinks: number;
   identityBlockedReferences: number;
+  queryWarningCandidates: number;
   referenceLimit: number;
   references: ScoreExtractionCandidateReferencePreview[];
   readyCandidates: number;
@@ -43,6 +44,7 @@ export type ScoreExtractionCandidateReferencePreview = {
     label: string;
     reason: string;
   } | null;
+  queryWarningCandidates: number;
   readyCandidates: number;
   repairReferenceCommand: string;
   reference: {
@@ -127,6 +129,7 @@ export async function buildScoreExtractionCandidatePreview(
       blockerCounts: emptyScoreExtractionBlockerCounts(),
       identityBlockedClaimLinks: summary.identityWarningReferenceClaimLinks,
       identityBlockedReferences: summary.identityWarningReferenceGroups,
+      queryWarningCandidates: 0,
       referenceLimit,
       references: [],
       readyCandidates: 0,
@@ -207,6 +210,10 @@ export async function buildScoreExtractionCandidatePreview(
     (total, reference) => total + reference.blockedCandidates,
     0
   );
+  const queryWarningCandidates = references.reduce(
+    (total, reference) => total + reference.queryWarningCandidates,
+    0
+  );
 
   return {
     acceptedCandidates: candidates.length,
@@ -214,6 +221,7 @@ export async function buildScoreExtractionCandidatePreview(
     blockerCounts: scoreExtractionBlockerCounts(references),
     identityBlockedClaimLinks: summary.identityWarningReferenceClaimLinks,
     identityBlockedReferences: summary.identityWarningReferenceGroups,
+    queryWarningCandidates,
     referenceLimit,
     references,
     readyCandidates,
@@ -249,6 +257,7 @@ export function formatScoreExtractionCandidatePreviewLines(
     );
   }
   lines.push(`Blockers: ${formatScoreExtractionBlockerCounts(preview.blockerCounts)}.`);
+  lines.push(`Warnings: query-origin ${preview.queryWarningCandidates}.`);
 
   if (preview.references.length === 0) {
     return [...lines, "No extraction reference rows matched the current repair summary."];
@@ -263,7 +272,7 @@ function formatScoreExtractionCandidateReferenceLines(
   reference: ScoreExtractionCandidateReferencePreview
 ) {
   const lines = [
-    `- ${reference.reference.label}: ${reference.candidateCount} accepted candidate(s), ${reference.readyCandidates} ready, ${reference.blockedCandidates} blocked, ${reference.claimCount} claim(s), ${reference.studyCount} existing extraction(s).`,
+    `- ${reference.reference.label}: ${reference.candidateCount} accepted candidate(s), ${reference.readyCandidates} ready, ${reference.blockedCandidates} blocked, ${reference.queryWarningCandidates} query warning(s), ${reference.claimCount} claim(s), ${reference.studyCount} existing extraction(s).`,
     `  ${reference.reference.title}`,
     reference.extractionGaps.length > 0
       ? `  Gaps: ${reference.extractionGaps.join("; ")}`
@@ -348,6 +357,8 @@ function extractionCandidateReferencePreview({
           reason: primaryCandidateReason(primaryCandidate)
         }
       : null,
+    queryWarningCandidates: sortedCandidateRows.filter((candidate) => candidate.queryOriginWarning)
+      .length,
     readyCandidates,
     repairReferenceCommand: `npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
     reference: {
