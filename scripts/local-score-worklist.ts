@@ -50,7 +50,18 @@ async function main() {
         return;
       }
 
-      console.log(formatScoreWorklistExtractionBatchBriefLines(brief).join("\n"));
+      const lines = formatScoreWorklistExtractionBatchBriefLines(brief);
+
+      if (data.dataSource === "database" && brief.references.length > 0) {
+        lines.push(
+          "",
+          ...(await formatAcceptedCandidateBatchHintLines(
+            brief.references.map((reference) => reference.reference.id)
+          ))
+        );
+      }
+
+      console.log(lines.join("\n"));
       return;
     }
 
@@ -264,6 +275,108 @@ async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
       ].filter((line): line is string => Boolean(line));
     })
   );
+
+  return lines;
+}
+
+async function formatAcceptedCandidateBatchHintLines(referenceIds: string[]) {
+  const uniqueReferenceIds = Array.from(new Set(referenceIds.filter(Boolean)));
+
+  if (uniqueReferenceIds.length === 0) {
+    return [];
+  }
+
+  const candidates = await prisma.sourceCandidate.findMany({
+    orderBy: [{ acceptedReferenceId: "asc" }, { triageScore: "desc" }, { updatedAt: "desc" }],
+    select: {
+      acceptedReferenceId: true,
+      claimId: true,
+      dedupeKey: true,
+      externalId: true,
+      interventionId: true,
+      reviewStatus: true,
+      source: true,
+      sourceType: true,
+      title: true,
+      triageScore: true
+    },
+    take: Math.max(12, uniqueReferenceIds.length * 3),
+    where: {
+      acceptedReferenceId: {
+        in: uniqueReferenceIds
+      },
+      decision: "ACCEPTED"
+    }
+  });
+  const identityDecisions =
+    candidates.length > 0
+      ? await sourceLedIdentityDecisionByCandidateKey(
+          candidates.map((candidate) => candidate.dedupeKey)
+        )
+      : new Map<string, LocalIdentityResolutionAutomationDecisionReadout>();
+  const candidatesByReferenceId = new Map<
+    string,
+    Array<(typeof candidates)[number]>
+  >();
+
+  for (const candidate of candidates) {
+    if (!candidate.acceptedReferenceId) {
+      continue;
+    }
+
+    const current = candidatesByReferenceId.get(candidate.acceptedReferenceId) ?? [];
+    current.push(candidate);
+    candidatesByReferenceId.set(candidate.acceptedReferenceId, current);
+  }
+
+  const lines = [
+    "Accepted candidate batch hints:",
+    candidates.length === 0
+      ? "No accepted source candidates were found for the shown batch references; repair from source records directly."
+      : `${candidates.length} accepted candidate(s) match the shown batch references. Use draft commands to inspect captured metadata before writing extraction.`
+  ];
+
+  for (const referenceId of uniqueReferenceIds) {
+    const referenceCandidates = candidatesByReferenceId.get(referenceId) ?? [];
+
+    if (referenceCandidates.length === 0) {
+      lines.push(`- ${referenceId}: no accepted candidate draft attached.`);
+      continue;
+    }
+
+    lines.push(
+      `- ${referenceId}: ${referenceCandidates.length} accepted candidate(s), showing ${Math.min(
+        2,
+        referenceCandidates.length
+      )}.`
+    );
+
+    lines.push(
+      ...referenceCandidates.slice(0, 2).flatMap((candidate) => {
+        const identityDecision = identityDecisions.get(candidate.dedupeKey);
+        const context = [
+          candidate.interventionId ? `intervention ${candidate.interventionId}` : undefined,
+          candidate.claimId ? `claim ${candidate.claimId}` : undefined
+        ]
+          .filter(Boolean)
+          .join("; ");
+
+        return [
+          `   ${sourceKindLabel(candidate.source)} ${candidate.externalId} - triage ${candidate.triageScore}` +
+            (candidate.sourceType ? ` / ${candidate.sourceType}` : ""),
+          `   Title: ${candidate.title}`,
+          context ? `   Context: ${context}` : undefined,
+          `   Study-type flag hint: ${formatStudySourceTypeCommandHints([
+            candidate.sourceType
+          ])}. Verify before writing extraction.`,
+          `   Identity preview: ${formatIdentityResolutionPreview(identityDecision)}`,
+          `   Draft: npm run ingest:sources -- --candidate-curation-draft ${safeCandidateKey(
+            candidate.dedupeKey
+          )}`
+        ].filter((line): line is string => Boolean(line));
+      })
+    );
+  }
 
   return lines;
 }
