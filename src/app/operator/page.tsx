@@ -51,6 +51,11 @@ import {
 import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import {
+  buildScoreIdentityWarningActionPreview,
+  formatScoreIdentityActionCounts,
+  type ScoreIdentityWarningActionPreview
+} from "@/lib/score-identity-preview";
+import {
   buildScoreReadinessRows,
   buildScoreReadinessSummary,
   scoreReadinessNextAction,
@@ -282,6 +287,14 @@ export default async function OperatorPage() {
   const scoreReadinessRows = scoreDashboardData ? buildScoreReadinessRows(scoreDashboardData) : [];
   const scoreReadinessSummary = buildScoreReadinessSummary(scoreReadinessRows);
   const scoreRepairSummary = buildScoreWorklistRepairSummary(scoreReadinessRows);
+  const scoreIdentityPreview =
+    scoreDashboardData?.dataSource === "database" &&
+    scoreRepairSummary.identityWarningReferenceGroups > 0
+      ? await buildScoreIdentityWarningActionPreview(scoreRepairSummary, {
+          actionFilter: "actionable",
+          referenceLimit: 50
+        })
+      : undefined;
   const scoreEditorRows = selectScoreReadinessEditorRows(scoreReadinessRows);
   const scoreSnapshotClaims = scoreEditorRows.map((row) => row.claim);
   const scoreEditorContext = Object.fromEntries(
@@ -389,6 +402,7 @@ export default async function OperatorPage() {
         {canReviewPromotion ? (
           <ScoreSnapshotPanel
             claims={scoreSnapshotClaims}
+            identityPreview={scoreIdentityPreview}
             promotionControl={promotionControl}
             references={scoreSnapshotReferences}
             repairSummary={scoreRepairSummary}
@@ -1356,6 +1370,7 @@ function CandidateReviewQueuePanel({
 
 function ScoreSnapshotPanel({
   claims,
+  identityPreview,
   promotionControl,
   references,
   repairSummary,
@@ -1367,6 +1382,7 @@ function ScoreSnapshotPanel({
   worklistContext
 }: {
   claims: Claim[];
+  identityPreview?: ScoreIdentityWarningActionPreview;
   promotionControl: OperatorBrowserWriteControlState;
   references: Reference[];
   repairSummary: ScoreWorklistRepairSummary;
@@ -1413,7 +1429,7 @@ function ScoreSnapshotPanel({
           <ScoreReadinessStat label="Source work" value={`${summary.sourceBlocked}`} />
           <ScoreReadinessStat label="Scored cells" value={`${summary.scoredPublicClaims}`} />
         </div>
-        <ScoreSourceRepairQueue summary={repairSummary} />
+        <ScoreSourceRepairQueue identityPreview={identityPreview} summary={repairSummary} />
         {claims.length > 0 ? (
           <form action={recomputeAction} className="space-y-3">
             <label className="block text-sm font-semibold text-slate-700">
@@ -1490,7 +1506,13 @@ function ScoreSnapshotPanel({
   );
 }
 
-function ScoreSourceRepairQueue({ summary }: { summary: ScoreWorklistRepairSummary }) {
+function ScoreSourceRepairQueue({
+  identityPreview,
+  summary
+}: {
+  identityPreview?: ScoreIdentityWarningActionPreview;
+  summary: ScoreWorklistRepairSummary;
+}) {
   return (
     <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1548,6 +1570,7 @@ function ScoreSourceRepairQueue({ summary }: { summary: ScoreWorklistRepairSumma
           </div>
         </div>
       ) : null}
+      {identityPreview ? <ScoreIdentityPreviewCard preview={identityPreview} /> : null}
       {summary.sourceBlockedRows === 0 ? (
         <p className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 p-2 text-emerald-950">
           No source-blocked scoring rows are visible in the current local catalog.
@@ -1592,6 +1615,81 @@ function ScoreSourceRepairQueue({ summary }: { summary: ScoreWorklistRepairSumma
             title="Top unlinked claim groups"
           />
         </div>
+      )}
+    </div>
+  );
+}
+
+function ScoreIdentityPreviewCard({
+  preview
+}: {
+  preview: ScoreIdentityWarningActionPreview;
+}) {
+  const rows = preview.rows.slice(0, 5);
+
+  return (
+    <div className="mt-3 rounded-md border border-amber-200 bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-950">Actionable identity cleanup</h4>
+          <p className="mt-1 text-xs leading-5 text-slate-700">
+            Source-led, read-only preview for accepted candidates blocking score repair. Apply
+            cleanup from Candidate Review identity resolver, then rerun the score worklist.
+          </p>
+        </div>
+        <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">
+          {rows.length}/{preview.uniqueMatches} listed
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs md:grid-cols-4">
+        <ScoreReadinessStat
+          label="Warning refs scanned"
+          value={`${preview.scannedWarningReferences}/${preview.totalWarningReferences}`}
+        />
+        <ScoreReadinessStat label="Accepted candidates" value={`${preview.acceptedCandidates}`} />
+        <ScoreReadinessStat label="Raw actionable" value={`${preview.rawMatches}`} />
+        <ScoreReadinessStat label="Filtered out" value={`${preview.hiddenByActionFilter}`} />
+      </div>
+      <p className="mt-2 break-words rounded-md border border-amber-100 bg-amber-50/60 px-2 py-1 text-xs leading-5 text-amber-900">
+        Actions: {formatScoreIdentityActionCounts(preview.actionCounts)}
+      </p>
+      {rows.length > 0 ? (
+        <div className="mt-3 divide-y divide-amber-100">
+          {rows.map((row) => (
+            <article
+              className="grid gap-2 py-2 lg:grid-cols-[minmax(0,1fr)_minmax(14rem,18rem)]"
+              key={`${row.dedupeKey}:${row.action}:${row.acceptedReferenceId ?? ""}:${row.matchedInterventionId ?? ""}`}
+            >
+              <div>
+                <p className="break-words text-sm font-semibold text-slate-950">
+                  {row.sourceLabel} {row.externalId} - triage {row.triageScore}
+                </p>
+                <p className="mt-1 break-words text-xs leading-5 text-slate-600">{row.title}</p>
+                <p className="mt-1 break-words text-xs leading-5 text-slate-700">
+                  {row.interventionId ? `Intervention: ${row.interventionId}` : "No intervention"}{" "}
+                  {row.claimId ? `- Claim: ${row.claimId}` : ""}
+                </p>
+              </div>
+              <div>
+                <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">
+                  {row.actionLabel}
+                </p>
+                {row.reasons.length > 0 ? (
+                  <p className="mt-1 break-words text-xs leading-5 text-slate-600">
+                    {row.reasons.slice(0, 2).join(" ")}
+                  </p>
+                ) : null}
+                <p className="mt-1 break-words text-xs leading-5 text-slate-700">
+                  <span className="font-semibold">Draft:</span> {row.draftCommand}
+                </p>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs leading-5 text-slate-600">
+          No actionable candidate cleanup rows were found in the scanned warning references.
+        </p>
       )}
     </div>
   );
