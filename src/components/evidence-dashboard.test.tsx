@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCodexReviewPacket,
-  buildScoreReadinessRows,
   buildSourcePacketGapRows,
   EvidenceDashboard
 } from "@/components/evidence-dashboard";
+import { buildScoreReadinessRows } from "@/lib/score-readiness";
 import {
   australiaRegulatoryStatuses,
   claims,
