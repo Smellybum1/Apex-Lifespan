@@ -60,7 +60,7 @@ export function buildScoreUpdateDraft(row: ScoreWorklistRow): ScoreUpdateDraft {
       safety: String(row.suggestion.scores.safety)
     },
     rationale,
-    reviewChecklist: buildScoreUpdateDraftReviewChecklist(row),
+    reviewChecklist: buildScoreReviewChecklist(row.suggestion.finalLabel),
     scores: row.suggestion.scores
   };
 }
@@ -91,7 +91,7 @@ function buildScoreUpdateDraftChanges(row: ScoreWorklistRow): ScoreUpdateDraftCh
   };
 }
 
-function buildScoreUpdateDraftReviewChecklist(row: ScoreWorklistRow) {
+export function buildScoreReviewChecklist(finalLabel: EvidenceLabel) {
   const checklist = [
     "Verify each cited source supports the scoped claim, outcome, population, and intervention identity before applying.",
     "Confirm the source packet extraction is substantive, not placeholder text or unresolved source work.",
@@ -100,7 +100,7 @@ function buildScoreUpdateDraftReviewChecklist(row: ScoreWorklistRow) {
     "Keep the public wording conservative: no medical advice and no product-level efficacy or supply-status inference."
   ];
 
-  if (row.suggestion.finalLabel === "Regulatory Concern") {
+  if (finalLabel === "Regulatory Concern") {
     checklist.push(
       "For regulatory-concern scores, keep the claim framed as regulatory/product-status context rather than consumer self-use guidance."
     );

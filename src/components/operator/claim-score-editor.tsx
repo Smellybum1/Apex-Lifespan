@@ -7,6 +7,7 @@ import {
   EVIDENCE_LABEL_OPTIONS
 } from "@/lib/score-fields";
 import { buildClaimScoreSuggestion } from "@/lib/score-suggestions";
+import { buildScoreReviewChecklist } from "@/lib/score-update-draft";
 import { compositeScore, scoreBand } from "@/lib/scoring";
 import type { ScoreReadinessState } from "@/lib/score-readiness";
 import type {
@@ -140,6 +141,7 @@ function EditableClaimScoreCard({
     CLAIM_SCORE_FIELD_DEFINITIONS.some(({ key }) => scores[key] !== claim.scores[key]);
   const scoreFieldChanges = scoreDraftFieldChanges(claim.scores, scores);
   const scoreUpdateAllowed = canUpdateScoreFromContext(worklistContext);
+  const reviewChecklist = useMemo(() => buildScoreReviewChecklist(finalLabel), [finalLabel]);
 
   return (
     <details className="rounded-md border border-slate-200 bg-slate-50" key={claim.id}>
@@ -181,6 +183,7 @@ function EditableClaimScoreCard({
               </div>
             </div>
           ) : null}
+          {scoreUpdateAllowed ? <ScoreReviewChecklist checklist={reviewChecklist} /> : null}
           <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-950">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -347,6 +350,19 @@ function scoreDraftFieldChanges(savedScores: ScoreSet, draftScores: ScoreSet) {
             saved: savedScores[key]
           }
         ]
+  );
+}
+
+function ScoreReviewChecklist({ checklist }: { checklist: string[] }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
+      <h4 className="font-semibold text-slate-950">Review checklist</h4>
+      <ul className="mt-2 space-y-1 text-xs leading-5">
+        {checklist.map((item) => (
+          <li key={item}>- {item}</li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

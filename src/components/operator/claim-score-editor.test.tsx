@@ -48,6 +48,10 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).toContain("Directness: 9 -&gt; 8");
     expect(html).toContain("Effect size: 8 -&gt; 6");
     expect(html).toContain("Regulatory risk: 2 -&gt; 4");
+    expect(html).toContain("Review checklist");
+    expect(html).toContain("Verify each cited source supports the scoped claim");
+    expect(html).toContain("Do not mark Human reviewed unless a human explicitly confirms the score");
+    expect(html).toContain("no medical advice");
     expect(html).toContain("Suggested scoring");
     expect(html).toContain("Use suggestion");
     expect(html).toContain("Use current");
@@ -108,6 +112,7 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).not.toContain("Apply score update");
     expect(html).not.toContain("Draft differs from saved score");
     expect(html).not.toContain("Draft changes");
+    expect(html).not.toContain("Review checklist");
     expect(html).toContain("disabled");
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildScoreUpdateDraft } from "@/lib/score-update-draft";
+import { buildScoreReviewChecklist, buildScoreUpdateDraft } from "@/lib/score-update-draft";
 import { buildScoreWorklistReport } from "@/lib/score-worklist";
 import {
   australiaRegulatoryStatuses,
@@ -90,5 +90,15 @@ describe("score update draft", () => {
     );
 
     expect(() => buildScoreUpdateDraft(report.rows[0]!)).toThrow("complete source work");
+  });
+
+  it("adds regulatory framing to regulatory-concern draft checklists", () => {
+    const checklist = buildScoreReviewChecklist("Regulatory Concern");
+
+    expect(checklist).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("regulatory/product-status context")
+      ])
+    );
   });
 });
