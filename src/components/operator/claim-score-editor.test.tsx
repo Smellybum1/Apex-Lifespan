@@ -63,6 +63,9 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).toContain("Directness: 9 -&gt; 8");
     expect(html).toContain("Effect size: 8 -&gt; 6");
     expect(html).toContain("Regulatory risk: 2 -&gt; 4");
+    expect(html).toContain("Composite weight: 22%");
+    expect(html).toContain("Composite weight: 10%; lower raw risk improves the visible score.");
+    expect(html).toContain("Tracked as caveat context; not a direct composite weight.");
     expect(html).toContain("Review checklist");
     expect(html).toContain("Verify each cited source supports the scoped claim");
     expect(html).toContain("Do not mark Human reviewed unless a human explicitly confirms the score");
@@ -76,6 +79,8 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).toContain("Use the complete source packet");
     expect(html).toContain("Source packet");
     expect(html).toContain("Complete");
+    expect(html).toContain("Extraction coverage");
+    expect(html).toContain("1/1 citation(s) extracted");
     expect(html).toContain("Creatine review");
     expect(html).toContain("Extracted study context");
     expect(html).toContain("Meta-analysis 2017 - Creatine meta-analysis");
@@ -123,6 +128,7 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).toContain("Complete source extraction or source linking");
     expect(html).toContain("Apply waits for ready-to-score or score-review work");
     expect(html).toContain("Extraction pending");
+    expect(html).toContain("0/1 citation(s) extracted");
     expect(html).toContain("preview 8.2 Strong");
     expect(html).toContain("No extracted study rows are visible");
     expect(html).not.toContain("Apply score update");

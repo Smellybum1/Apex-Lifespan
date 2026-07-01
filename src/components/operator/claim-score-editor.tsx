@@ -423,27 +423,42 @@ function EditableClaimScoreCard({
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-4">
-            {CLAIM_SCORE_FIELD_DEFINITIONS.map(({ key, label }) => (
-              <label className="block text-sm font-semibold text-slate-700" key={key}>
-                {label}
-                <input
-                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                  max={10}
-                  min={0}
-                  name={key}
-                  onChange={(event) =>
-                    setScores((current) => ({
-                      ...current,
-                      [key]: normalizedScoreValue(event.currentTarget.value)
-                    }))
-                  }
-                  required
-                  step={1}
-                  type="number"
-                  value={scores[key]}
-                />
-              </label>
-            ))}
+            {CLAIM_SCORE_FIELD_DEFINITIONS.map(({ key, label }) => {
+              const helpId = `${claim.id}-${key}-score-help`;
+
+              return (
+                <label
+                  className="block text-sm font-semibold text-slate-700"
+                  key={key}
+                  title={scoreFieldTitle(key)}
+                >
+                  {label}
+                  <input
+                    aria-describedby={helpId}
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    max={10}
+                    min={0}
+                    name={key}
+                    onChange={(event) =>
+                      setScores((current) => ({
+                        ...current,
+                        [key]: normalizedScoreValue(event.currentTarget.value)
+                      }))
+                    }
+                    required
+                    step={1}
+                    type="number"
+                    value={scores[key]}
+                  />
+                  <span
+                    className="mt-1 block text-xs font-normal leading-5 text-slate-500"
+                    id={helpId}
+                  >
+                    {scoreFieldFormulaCue(key)}
+                  </span>
+                </label>
+              );
+            })}
           </div>
           <label className="block text-sm font-semibold text-slate-700">
             Final label
@@ -545,6 +560,52 @@ function ScoreReviewChecklist({ checklist }: { checklist: string[] }) {
   );
 }
 
+const scoreFieldGuideNameByKey: Record<keyof ScoreSet, string> = {
+  effectSize: "Impact",
+  evidenceDirectness: "Directness",
+  evidenceRigor: "Rigor",
+  hypePenalty: "Low hype risk",
+  measurability: "Measurability",
+  productQuality: "Product caveat context",
+  regulatoryRisk: "Low regulatory risk",
+  safety: "Safety"
+};
+
+function scoreFieldGuide(key: keyof ScoreSet) {
+  const guideName = scoreFieldGuideNameByKey[key];
+
+  return SCORE_COMPONENT_GUIDE.find((component) => component.name === guideName);
+}
+
+function scoreFieldWeight(key: keyof ScoreSet) {
+  return COMPOSITE_SCORE_WEIGHTS.find((component) => component.key === key);
+}
+
+function scoreFieldFormulaCue(key: keyof ScoreSet) {
+  const weight = scoreFieldWeight(key);
+
+  if (!weight) {
+    return "Tracked as caveat context; not a direct composite weight.";
+  }
+
+  if ("invert" in weight && weight.invert) {
+    return `Composite weight: ${weight.displayWeight}; lower raw risk improves the visible score.`;
+  }
+
+  return `Composite weight: ${weight.displayWeight}.`;
+}
+
+function scoreFieldTitle(key: keyof ScoreSet) {
+  const guide = scoreFieldGuide(key);
+  const formulaCue = scoreFieldFormulaCue(key);
+
+  if (!guide) {
+    return formulaCue;
+  }
+
+  return `${guide.definition} Raises with: ${guide.increases} Lowers with: ${guide.lowers} ${formulaCue}`;
+}
+
 function WorklistContextSummary({ context }: { context: ClaimScoreWorklistContext }) {
   return (
     <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
@@ -580,6 +641,15 @@ function SourcePacketContext({
   sourcePacket?: NormalizedSourcePacketRow;
   studies: Study[];
 }) {
+  const extractedReferenceIds = new Set(studies.map((study) => study.referenceId));
+  const extractedCitationCount = references.filter((reference) =>
+    extractedReferenceIds.has(reference.id)
+  ).length;
+  const extractionCoverage =
+    references.length > 0
+      ? `${extractedCitationCount}/${references.length} citation(s) extracted`
+      : "No linked citations";
+
   return (
     <aside className="rounded-md border border-slate-200 bg-white p-3 text-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -593,6 +663,13 @@ function SourcePacketContext({
           ? `${sourcePacket.referenceIds.length} linked reference(s), ${sourcePacket.reviewStatus}.`
           : "No normalized source packet is linked to this claim yet."}
       </p>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <SourcePacketMetric
+          label="Packet status"
+          value={sourcePacket ? sourcePacketStatusLabel(sourcePacket.status) : "No packet row"}
+        />
+        <SourcePacketMetric label="Extraction coverage" value={extractionCoverage} />
+      </div>
       <div className="mt-3 space-y-2">
         {references.length > 0 ? (
           references.slice(0, 4).map((reference) => (
@@ -666,6 +743,15 @@ function SourcePacketContext({
         )}
       </div>
     </aside>
+  );
+}
+
+function SourcePacketMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-slate-100 bg-slate-50 p-2">
+      <p className="text-xs font-semibold text-slate-500">{label}</p>
+      <p className="mt-1 font-semibold text-slate-800">{value}</p>
+    </div>
   );
 }
 
