@@ -90,8 +90,9 @@ export function buildClaimSourcePacket({
     .map((referenceId) => referencesById.get(referenceId))
     .filter((reference): reference is Reference => Boolean(reference));
   const studiesForClaim = studies.filter((study) => referenceIdSet.has(study.referenceId));
+  const substantiveStudiesForClaim = studiesForClaim.filter(isSubstantiveStudyExtraction);
   const extractedReferenceIds = new Set(
-    studiesForClaim
+    substantiveStudiesForClaim
       .map((study) => study.referenceId)
       .filter((referenceId) => referencesById.has(referenceId))
   );
@@ -109,7 +110,7 @@ export function buildClaimSourcePacket({
   });
   const evidenceDepth = summarizeEvidenceDepth({
     completeness,
-    studies: studiesForClaim
+    studies: substantiveStudiesForClaim
   });
 
   return {
@@ -324,6 +325,36 @@ function sourceTypeForStudy(study: Study): SourceTypeTaxonomy {
       return "RCT";
   }
 }
+
+function isSubstantiveStudyExtraction(study: Study) {
+  return (
+    hasSubstantiveExtractionText(study.sampleSize) &&
+    hasSubstantiveExtractionText(study.population) &&
+    hasSubstantiveExtractionText(study.intervention) &&
+    study.outcomes.some(hasSubstantiveExtractionText) &&
+    hasSubstantiveExtractionText(study.riskOfBias)
+  );
+}
+
+function hasSubstantiveExtractionText(value: string) {
+  const normalized = value.trim();
+
+  if (normalized.length < 3) {
+    return false;
+  }
+
+  return !PLACEHOLDER_EXTRACTION_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+const PLACEHOLDER_EXTRACTION_PATTERNS = [
+  /^see source record\.?$/i,
+  /^not reviewed yet\.?$/i,
+  /^not extracted\.?$/i,
+  /^human-reviewed .+ required\.?$/i,
+  /^verify .+ linked source record\.?$/i,
+  /^check source record(?: for .*)?\.?$/i,
+  /^review design and heterogeneity in linked source record\.?$/i
+];
 
 export function summarizeClaimSourcePackets({
   claims,

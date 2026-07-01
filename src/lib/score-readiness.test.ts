@@ -80,4 +80,46 @@ describe("score readiness", () => {
       "Default-looking public scores: 1"
     );
   });
+
+  it("keeps placeholder-only source extraction out of the ready-to-score queue", () => {
+    const data = seedDashboardData();
+    const reference = {
+      id: "placeholder-score-ref",
+      source: "PubMed" as const,
+      title: "Placeholder source record",
+      url: "https://pubmed.ncbi.nlm.nih.gov/placeholder/"
+    };
+    const claim = {
+      ...data.claims[0],
+      evidenceGrade: "Insufficient until source packets are reviewed.",
+      id: "placeholder-score-claim",
+      keyReferenceIds: [reference.id]
+    };
+    const rows = buildScoreReadinessRows({
+      ...data,
+      claims: [claim],
+      references: [reference],
+      studies: [
+        {
+          id: "placeholder-score-study",
+          adverseEvents: "Verify tolerability and adverse events in linked source record.",
+          fundingConflicts: "Check source record for funding and conflicts.",
+          intervention: "Example intervention",
+          outcomes: ["See source record"],
+          population: "See source record.",
+          referenceId: reference.id,
+          riskOfBias: "Review design and heterogeneity in linked source record.",
+          sampleSize: "See source record.",
+          source: "PubMed",
+          studyType: "Meta-analysis",
+          title: "Placeholder source record",
+          year: 2026
+        }
+      ]
+    });
+
+    expect(rows[0]?.state).toBe("source_blocked");
+    expect(rows[0]?.reasons).toContain("Extraction pending");
+    expect(scoreReadinessNextAction(rows[0]!)).toContain("Add structured extraction");
+  });
 });

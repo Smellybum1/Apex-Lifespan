@@ -76,10 +76,10 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 
 **Current local scoring status (2026-07-02, read-only worklist):**
 
-- `8/477` public claim cells are scored.
-- `469/477` claim cells still need scoring work.
-- `67` claim cells are ready to score now because their source packets are complete enough for an operator pass.
-- `402` claim cells are source-blocked; most remaining scoring work is source extraction/link repair before score assignment.
+- `6/477` public claim cells are scored with substantive source extraction.
+- `471/477` claim cells still need scoring work.
+- `15` claim cells are ready to score now because their source packets have substantive extraction rather than placeholder rows.
+- `456` claim cells are source-blocked; most remaining scoring work is source extraction/link repair before score assignment.
 - `0` default-looking public scores and `0` score snapshot gaps are currently reported by the local score worklist.
 
 **Goal:** every active local claim should end in one clear public-safe state: scored with traceable source packet and review status, parked/backlog with a reason, source-blocked with next action, or rejected/noise.

@@ -190,6 +190,46 @@ describe("buildClaimSourcePacket", () => {
     ]);
   });
 
+  it("treats placeholder-only study rows as extraction pending", () => {
+    const reference: Reference = {
+      id: "placeholder-ref",
+      title: "Placeholder extracted source",
+      source: "PubMed",
+      url: "https://pubmed.ncbi.nlm.nih.gov/placeholder/"
+    };
+    const placeholderStudy = studyFixture({
+      id: "placeholder-study",
+      referenceId: reference.id,
+      studyType: "Meta-analysis"
+    });
+
+    const packet = buildClaimSourcePacket({
+      claim: { keyReferenceIds: [reference.id] },
+      referencesById: new Map([[reference.id, reference]]),
+      studies: [
+        {
+          ...placeholderStudy,
+          outcomes: ["See source record"],
+          population: "See source record.",
+          riskOfBias: "Review design and heterogeneity in linked source record.",
+          sampleSize: "See source record."
+        }
+      ]
+    });
+
+    expect(packet.studies.map((study) => study.id)).toEqual(["placeholder-study"]);
+    expect(packet.pendingReferences).toEqual([reference]);
+    expect(packet.completeness).toMatchObject({
+      status: "extraction_pending",
+      extractedReferences: 0,
+      pendingReferences: 1
+    });
+    expect(packet.evidenceDepth).toMatchObject({
+      metaAnalyses: 0,
+      totalExtractedStudies: 0
+    });
+  });
+
   it("dedupes claim reference ids and reports missing references", () => {
     const knownReference: Reference = {
       id: "known-ref",
