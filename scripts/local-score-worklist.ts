@@ -57,6 +57,7 @@ async function main() {
     console.log(
       formatScoreWorklistReportLinesWithOptions(report, {
         detail: args.detail,
+        repairIdentityWarningsOnly: args.repairIdentityWarnings,
         repairSummary: args.repairSummary
       }).join("\n")
     );
@@ -71,6 +72,7 @@ interface ScoreWorklistArgs {
   json: boolean;
   limit: number;
   repairReference?: string;
+  repairIdentityWarnings: boolean;
   repairSummary: boolean;
   showHelp?: false;
   state: ScoreWorklistStateFilter;
@@ -106,6 +108,8 @@ Options:
   --include-scored        Include already-scored rows when state is not all.
   --detail                Print claim boundary and extracted study fields for scoring review.
   --repair-summary        Show grouped source repair targets for source-blocked rows.
+  --repair-identity-warnings
+                          Focus repair summary on references whose titles do not visibly match the target intervention.
   --repair-reference <id> Show a read-only extraction brief for one blocked reference id.
   --json                  Print JSON instead of text.
   --help                  Show this help.
@@ -193,6 +197,7 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
     includeScored: false,
     json: false,
     limit: 12,
+    repairIdentityWarnings: false,
     repairSummary: false,
     state: "work"
   };
@@ -215,6 +220,12 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
     }
 
     if (arg === "--repair-summary") {
+      parsed.repairSummary = true;
+      continue;
+    }
+
+    if (arg === "--repair-identity-warnings") {
+      parsed.repairIdentityWarnings = true;
       parsed.repairSummary = true;
       continue;
     }

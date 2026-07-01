@@ -372,6 +372,10 @@ describe("score worklist", () => {
     const lines = formatScoreWorklistReportLinesWithOptions(report, {
       repairSummary: true
     }).join("\n");
+    const focusedLines = formatScoreWorklistReportLinesWithOptions(report, {
+      repairIdentityWarningsOnly: true,
+      repairSummary: true
+    }).join("\n");
     const briefLines = formatScoreWorklistReferenceRepairBriefLines(
       buildScoreWorklistReferenceRepairBrief(
         {
@@ -390,6 +394,11 @@ describe("score worklist", () => {
     expect(report.repairSummary.identityWarningReferenceGroups).toBe(1);
     expect(lines).toContain("Identity warning: Reference title does not visibly mention");
     expect(lines).toContain("identity-warning references: 1");
+    expect(focusedLines).toContain(
+      "Top pending extraction references with identity warnings:"
+    );
+    expect(focusedLines).toContain(mismatchReference.id);
+    expect(focusedLines).not.toContain(matchingReference.id);
     expect(briefLines).toContain("Identity warnings:");
   });
 

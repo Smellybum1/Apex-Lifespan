@@ -470,7 +470,12 @@ export function formatScoreWorklistReportLines(report: ScoreWorklistReport) {
 
 export function formatScoreWorklistReportLinesWithOptions(
   report: ScoreWorklistReport,
-  options: { detail?: boolean; repairSummary?: boolean; repairSummaryLimit?: number } = {}
+  options: {
+    detail?: boolean;
+    repairIdentityWarningsOnly?: boolean;
+    repairSummary?: boolean;
+    repairSummaryLimit?: number;
+  } = {}
 ) {
   const lines = [
     "Read-only local score worklist",
@@ -502,9 +507,12 @@ export function formatScoreWorklistReportLinesWithOptions(
 
 export function formatScoreWorklistRepairSummaryLines(
   summary: ScoreWorklistRepairSummary,
-  options: { repairSummaryLimit?: number } = {}
+  options: { repairIdentityWarningsOnly?: boolean; repairSummaryLimit?: number } = {}
 ) {
   const limit = options.repairSummaryLimit ?? 8;
+  const pendingReferenceGroups = options.repairIdentityWarningsOnly
+    ? summary.pendingReferenceGroups.filter((group) => group.identityWarnings.length > 0)
+    : summary.pendingReferenceGroups;
   const lines = [
     "Source repair summary",
     `Blocked rows: ${summary.sourceBlockedRows}; extraction pending: ${summary.extractionPendingRows}; identity-warning references: ${summary.identityWarningReferenceGroups}; missing source records: ${summary.missingSourceRows}; unlinked claims: ${summary.unlinkedRows}.`
@@ -514,10 +522,18 @@ export function formatScoreWorklistRepairSummaryLines(
     return [...lines, "No source-blocked scoring rows match the current filters."];
   }
 
-  if (summary.pendingReferenceGroups.length > 0) {
-    lines.push("Top pending extraction references:");
+  if (options.repairIdentityWarningsOnly && pendingReferenceGroups.length === 0) {
+    lines.push("No identity-warning pending references match the current filters.");
+  }
+
+  if (pendingReferenceGroups.length > 0) {
     lines.push(
-      ...summary.pendingReferenceGroups
+      options.repairIdentityWarningsOnly
+        ? "Top pending extraction references with identity warnings:"
+        : "Top pending extraction references:"
+    );
+    lines.push(
+      ...pendingReferenceGroups
         .slice(0, limit)
         .flatMap((group, index) => [
           `${index + 1}. ${group.reference.label} - unlocks ${group.claimCount} claim(s) across ${group.interventions.length} intervention(s)`,
@@ -529,6 +545,10 @@ export function formatScoreWorklistRepairSummaryLines(
           `   Claims: ${formatRepairSampleClaims(group.sampleClaims)}`
         ])
     );
+  }
+
+  if (options.repairIdentityWarningsOnly) {
+    return lines;
   }
 
   if (summary.missingReferenceGroups.length > 0) {
