@@ -17,17 +17,23 @@ export const DEFAULT_SCORE_EXTRACTION_CANDIDATE_PREVIEW_LIMIT = 8;
 
 export type ScoreExtractionCandidatePreview = {
   acceptedCandidates: number;
+  blockedCandidates: number;
+  blockerCounts: ScoreExtractionCandidateBlockerCounts;
   referenceLimit: number;
   references: ScoreExtractionCandidateReferencePreview[];
+  readyCandidates: number;
   scannedReferences: number;
   totalPendingReferences: number;
 };
 
 export type ScoreExtractionCandidateReferencePreview = {
+  blockedCandidates: number;
+  blockerCounts: ScoreExtractionCandidateBlockerCounts;
   candidateCount: number;
   candidates: ScoreExtractionCandidatePreviewRow[];
   claimCount: number;
   extractionGaps: string[];
+  readyCandidates: number;
   reference: {
     id: string;
     label: string;
@@ -38,6 +44,7 @@ export type ScoreExtractionCandidateReferencePreview = {
 
 export type ScoreExtractionCandidatePreviewRow = {
   acceptedReferenceId: string | null;
+  blockers: ScoreExtractionCandidateBlocker[];
   claimId: string | null;
   claimLinkReady: boolean;
   curationDraftCommand: string;
@@ -53,6 +60,23 @@ export type ScoreExtractionCandidatePreviewRow = {
   title: string;
   triageScore: number;
 };
+
+export type ScoreExtractionCandidateBlockerKind =
+  | "claim-link-missing"
+  | "claim-missing"
+  | "context-mismatch"
+  | "existing-extraction"
+  | "identity-warning";
+
+export type ScoreExtractionCandidateBlocker = {
+  kind: ScoreExtractionCandidateBlockerKind;
+  label: string;
+};
+
+export type ScoreExtractionCandidateBlockerCounts = Record<
+  ScoreExtractionCandidateBlockerKind,
+  number
+>;
 
 type AcceptedCandidate = {
   acceptedReferenceId: string | null;
@@ -78,8 +102,11 @@ export async function buildScoreExtractionCandidatePreview(
   if (referenceIds.length === 0) {
     return {
       acceptedCandidates: 0,
+      blockedCandidates: 0,
+      blockerCounts: emptyScoreExtractionBlockerCounts(),
       referenceLimit,
       references: [],
+      readyCandidates: 0,
       scannedReferences: 0,
       totalPendingReferences: summary.pendingReferenceGroups.length
     };
@@ -148,11 +175,22 @@ export async function buildScoreExtractionCandidatePreview(
       studyCount: studyCountByReferenceId.get(group.reference.id) ?? 0
     })
   );
+  const readyCandidates = references.reduce(
+    (total, reference) => total + reference.readyCandidates,
+    0
+  );
+  const blockedCandidates = references.reduce(
+    (total, reference) => total + reference.blockedCandidates,
+    0
+  );
 
   return {
     acceptedCandidates: candidates.length,
+    blockedCandidates,
+    blockerCounts: scoreExtractionBlockerCounts(references),
     referenceLimit,
     references,
+    readyCandidates,
     scannedReferences: referenceIds.length,
     totalPendingReferences: summary.pendingReferenceGroups.length
   };
@@ -172,8 +210,9 @@ export function formatScoreExtractionCandidatePreviewLines(
   }
 
   lines.push(
-    `${preview.acceptedCandidates} accepted candidate(s) are attached to the scanned references. Use curation drafts before any extraction write.`
+    `${preview.acceptedCandidates} accepted candidate(s) are attached to the scanned references: ${preview.readyCandidates} ready, ${preview.blockedCandidates} blocked. Use curation drafts before any extraction write.`
   );
+  lines.push(`Blockers: ${formatScoreExtractionBlockerCounts(preview.blockerCounts)}.`);
 
   if (preview.references.length === 0) {
     return [...lines, "No extraction reference rows matched the current repair summary."];
@@ -188,7 +227,7 @@ function formatScoreExtractionCandidateReferenceLines(
   reference: ScoreExtractionCandidateReferencePreview
 ) {
   const lines = [
-    `- ${reference.reference.label}: ${reference.candidateCount} accepted candidate(s), ${reference.claimCount} claim(s), ${reference.studyCount} existing extraction(s).`,
+    `- ${reference.reference.label}: ${reference.candidateCount} accepted candidate(s), ${reference.readyCandidates} ready, ${reference.blockedCandidates} blocked, ${reference.claimCount} claim(s), ${reference.studyCount} existing extraction(s).`,
     `  ${reference.reference.title}`,
     reference.extractionGaps.length > 0
       ? `  Gaps: ${reference.extractionGaps.join("; ")}`
@@ -226,24 +265,30 @@ function extractionCandidateReferencePreview({
   studyCount: number;
 }): ScoreExtractionCandidateReferencePreview {
   const groupContext = scoreExtractionGroupContext(group);
+  const candidateRows = candidates.map((candidate) =>
+    extractionCandidatePreviewRow({
+      candidate,
+      claimLinkReady: Boolean(
+        candidate.acceptedReferenceId &&
+          candidate.claimId &&
+          linkedClaimKeys.has(`${candidate.acceptedReferenceId}\u0000${candidate.claimId}`)
+      ),
+      contextMatchesGroup: scoreExtractionCandidateMatchesGroup(candidate, groupContext),
+      identityWarningBlocked: group.identityWarnings.length > 0,
+      studyCount
+    })
+  );
+  const readyCandidates = candidateRows.filter((candidate) => candidate.extractionReady).length;
+  const blockedCandidates = candidateRows.length - readyCandidates;
 
   return {
+    blockedCandidates,
+    blockerCounts: scoreExtractionBlockerCountsForRows(candidateRows),
     candidateCount: candidates.length,
-    candidates: candidates.slice(0, 3).map((candidate) =>
-      extractionCandidatePreviewRow({
-        candidate,
-        claimLinkReady: Boolean(
-          candidate.acceptedReferenceId &&
-            candidate.claimId &&
-            linkedClaimKeys.has(`${candidate.acceptedReferenceId}\u0000${candidate.claimId}`)
-        ),
-        contextMatchesGroup: scoreExtractionCandidateMatchesGroup(candidate, groupContext),
-        identityWarningBlocked: group.identityWarnings.length > 0,
-        studyCount
-      })
-    ),
+    candidates: candidateRows.slice(0, 3),
     claimCount: group.claimCount,
     extractionGaps: group.extractionGaps.slice(0, 5).map((gap) => gap.gap),
+    readyCandidates,
     reference: {
       id: group.reference.id,
       label: group.reference.label,
@@ -267,15 +312,18 @@ function extractionCandidatePreviewRow({
   studyCount: number;
 }): ScoreExtractionCandidatePreviewRow {
   const hasClaimContext = Boolean(candidate.claimId);
-  const extractionReady =
-    !identityWarningBlocked &&
-    contextMatchesGroup &&
-    hasClaimContext &&
-    claimLinkReady &&
-    studyCount === 0;
+  const blockers = extractionCandidateBlockers({
+    claimLinkReady,
+    contextMatchesGroup,
+    hasClaimContext,
+    identityWarningBlocked,
+    studyCount
+  });
+  const extractionReady = blockers.length === 0;
 
   return {
     acceptedReferenceId: candidate.acceptedReferenceId,
+    blockers,
     claimId: candidate.claimId,
     claimLinkReady,
     curationDraftCommand: `npm run ingest:sources -- --candidate-curation-draft ${safeCandidateKey(candidate.dedupeKey)}`,
@@ -333,6 +381,103 @@ function extractionCandidateNextAction({
   }
 
   return "Ready for operator-reviewed study extraction after source identity is confirmed.";
+}
+
+function extractionCandidateBlockers({
+  claimLinkReady,
+  contextMatchesGroup,
+  hasClaimContext,
+  identityWarningBlocked,
+  studyCount
+}: {
+  claimLinkReady: boolean;
+  contextMatchesGroup: boolean;
+  hasClaimContext: boolean;
+  identityWarningBlocked: boolean;
+  studyCount: number;
+}): ScoreExtractionCandidateBlocker[] {
+  const blockers: ScoreExtractionCandidateBlocker[] = [];
+
+  if (identityWarningBlocked) {
+    blockers.push({
+      kind: "identity-warning",
+      label: "Score repair identity warning"
+    });
+  }
+
+  if (!contextMatchesGroup) {
+    blockers.push({
+      kind: "context-mismatch",
+      label: "Candidate context mismatch"
+    });
+  }
+
+  if (!hasClaimContext) {
+    blockers.push({
+      kind: "claim-missing",
+      label: "Candidate claim missing"
+    });
+  }
+
+  if (hasClaimContext && !claimLinkReady) {
+    blockers.push({
+      kind: "claim-link-missing",
+      label: "Claim link missing"
+    });
+  }
+
+  if (studyCount > 0) {
+    blockers.push({
+      kind: "existing-extraction",
+      label: "Existing extraction needs review"
+    });
+  }
+
+  return blockers;
+}
+
+export function formatScoreExtractionBlockerCounts(
+  counts: ScoreExtractionCandidateBlockerCounts
+) {
+  return [
+    `identity ${counts["identity-warning"]}`,
+    `context ${counts["context-mismatch"]}`,
+    `claim ${counts["claim-missing"]}`,
+    `claim-link ${counts["claim-link-missing"]}`,
+    `existing extraction ${counts["existing-extraction"]}`
+  ].join(", ");
+}
+
+function scoreExtractionBlockerCounts(
+  references: ScoreExtractionCandidateReferencePreview[]
+) {
+  return references.reduce((counts, reference) => {
+    for (const [kind, count] of Object.entries(reference.blockerCounts)) {
+      counts[kind as ScoreExtractionCandidateBlockerKind] += count;
+    }
+
+    return counts;
+  }, emptyScoreExtractionBlockerCounts());
+}
+
+function scoreExtractionBlockerCountsForRows(rows: ScoreExtractionCandidatePreviewRow[]) {
+  return rows.reduce((counts, row) => {
+    for (const blocker of row.blockers) {
+      counts[blocker.kind] += 1;
+    }
+
+    return counts;
+  }, emptyScoreExtractionBlockerCounts());
+}
+
+function emptyScoreExtractionBlockerCounts(): ScoreExtractionCandidateBlockerCounts {
+  return {
+    "claim-link-missing": 0,
+    "claim-missing": 0,
+    "context-mismatch": 0,
+    "existing-extraction": 0,
+    "identity-warning": 0
+  };
 }
 
 function scoreExtractionGroupContext(group: ScoreWorklistPendingReferenceGroup) {

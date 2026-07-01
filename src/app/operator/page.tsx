@@ -52,6 +52,7 @@ import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import {
   buildScoreExtractionCandidatePreview,
+  formatScoreExtractionBlockerCounts,
   type ScoreExtractionCandidatePreview
 } from "@/lib/score-extraction-preview";
 import {
@@ -1747,6 +1748,13 @@ function ScoreExtractionPreviewCard({
         />
         <ScoreReadinessStat label="Scan limit" value={`${preview.referenceLimit}`} />
       </div>
+      <div className="mt-2 grid gap-2 text-xs md:grid-cols-2">
+        <ScoreReadinessStat label="Ready candidates" value={`${preview.readyCandidates}`} />
+        <ScoreReadinessStat label="Blocked candidates" value={`${preview.blockedCandidates}`} />
+      </div>
+      <p className="mt-2 break-words rounded-md border border-amber-100 bg-amber-50/60 px-2 py-1 text-xs leading-5 text-amber-900">
+        Blockers: {formatScoreExtractionBlockerCounts(preview.blockerCounts)}
+      </p>
       {references.length > 0 ? (
         <div className="mt-3 divide-y divide-amber-100">
           {references.map((reference) => (
@@ -1790,6 +1798,11 @@ function ScoreExtractionPreviewCard({
                       <p className="mt-1 break-words text-xs leading-5 text-slate-700">
                         {candidate.nextAction}
                       </p>
+                      {candidate.blockers.length > 0 ? (
+                        <p className="mt-1 break-words text-xs leading-5 text-amber-900">
+                          Blocked by: {candidate.blockers.map((blocker) => blocker.label).join("; ")}
+                        </p>
+                      ) : null}
                       <p className="mt-1 break-words text-xs leading-5 text-slate-600">
                         {candidate.reviewStatus}; {candidate.sourceType};{" "}
                         {candidate.sourceTextStatus}
