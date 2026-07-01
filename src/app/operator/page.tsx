@@ -47,7 +47,7 @@ import {
 } from "@/lib/operator/supplement-onboarding-drafts";
 import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
-import type { Claim, NormalizedSourcePacketRow, Reference } from "@/lib/types";
+import type { Claim, NormalizedSourcePacketRow, Reference, Study } from "@/lib/types";
 import {
   australiaRegulatoryStatuses,
   claims,
@@ -266,6 +266,7 @@ export default async function OperatorPage() {
   const scoreSnapshotClaims = scoreDashboardData?.claims.slice(0, 12) ?? [];
   const scoreSnapshotReferences = scoreDashboardData?.references ?? [];
   const scoreSnapshotSourcePackets = scoreDashboardData?.normalizedSourcePackets ?? [];
+  const scoreSnapshotStudies = scoreDashboardData?.studies ?? [];
 
   return (
     <main className="min-h-screen bg-slate-50 px-6 py-8 text-slate-950">
@@ -360,6 +361,7 @@ export default async function OperatorPage() {
             references={scoreSnapshotReferences}
             recomputeAction={recomputeClaimScoreFromForm}
             sourcePackets={scoreSnapshotSourcePackets}
+            studies={scoreSnapshotStudies}
             updateAction={updateClaimScoreFromForm}
           />
         ) : null}
@@ -1314,6 +1316,7 @@ function ScoreSnapshotPanel({
   references,
   recomputeAction,
   sourcePackets,
+  studies,
   updateAction
 }: {
   claims: Claim[];
@@ -1321,6 +1324,7 @@ function ScoreSnapshotPanel({
   references: Reference[];
   recomputeAction: (formData: FormData) => void | Promise<void>;
   sourcePackets: NormalizedSourcePacketRow[];
+  studies: Study[];
   updateAction: (formData: FormData) => void | Promise<void>;
 }) {
   const claimReferences = buildClaimReferences(claims, references);
@@ -1396,6 +1400,7 @@ function ScoreSnapshotPanel({
             claimReferences={claimReferences}
             claims={claims}
             sourcePackets={sourcePackets}
+            studies={studies}
             updateAction={updateAction}
           />
         ) : null}

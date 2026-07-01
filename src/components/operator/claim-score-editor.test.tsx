@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { OperatorClaimScoreEditor } from "@/components/operator/claim-score-editor";
-import type { Claim, Reference } from "@/lib/types";
+import type { Claim, Reference, Study } from "@/lib/types";
 
 describe("OperatorClaimScoreEditor", () => {
   it("renders score preview and linked source packet context", () => {
@@ -23,6 +23,7 @@ describe("OperatorClaimScoreEditor", () => {
             status: "complete"
           }
         ]}
+        studies={[study]}
         updateAction={vi.fn()}
       />
     );
@@ -30,6 +31,9 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).toContain("Score field editor");
     expect(html).toContain("current 8.2 Strong");
     expect(html).toContain("Preview:");
+    expect(html).toContain("Suggested scoring");
+    expect(html).toContain("Use suggestion");
+    expect(html).toContain("Strongest linked study type: Meta-analysis.");
     expect(html).toContain("Source packet");
     expect(html).toContain("Complete");
     expect(html).toContain("Creatine review");
@@ -76,5 +80,21 @@ const reference: Reference = {
   source: "PubMed",
   title: "Creatine review",
   url: "https://pubmed.ncbi.nlm.nih.gov/28615996/",
+  year: 2017
+};
+
+const study: Study = {
+  adverseEvents: "No serious adverse events reported.",
+  fundingConflicts: "Not extracted.",
+  id: "study-creatine",
+  intervention: "Creatine monohydrate",
+  outcomes: ["Strength"],
+  population: "Adults",
+  referenceId: "ref-creatine",
+  riskOfBias: "Low",
+  sampleSize: "Meta-analysis",
+  source: "PubMed",
+  studyType: "Meta-analysis",
+  title: "Creatine meta-analysis",
   year: 2017
 };
