@@ -2,7 +2,7 @@ import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
 import {
   buildScoreWorklistReport,
-  formatScoreWorklistReportLines,
+  formatScoreWorklistReportLinesWithOptions,
   type ScoreWorklistStateFilter
 } from "@/lib/score-worklist";
 
@@ -30,11 +30,12 @@ async function main() {
       return;
     }
 
-    console.log(formatScoreWorklistReportLines(report).join("\n"));
+    console.log(formatScoreWorklistReportLinesWithOptions(report, { detail: args.detail }).join("\n"));
   });
 }
 
 interface ScoreWorklistArgs {
+  detail: boolean;
   envFile: string;
   includeScored: boolean;
   intervention?: string;
@@ -72,6 +73,7 @@ Options:
   --intervention <query>  Filter by intervention id, slug, or name text.
   --limit <count>         Number of rows to show. Default: 12
   --include-scored        Include already-scored rows when state is not all.
+  --detail                Print claim boundary and extracted study fields for scoring review.
   --json                  Print JSON instead of text.
   --help                  Show this help.
 
@@ -79,6 +81,7 @@ This command does not write scores, review status, source packets, or public evi
 
 function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
   const parsed: ScoreWorklistArgs = {
+    detail: false,
     envFile: ".env.local",
     includeScored: false,
     json: false,
@@ -95,6 +98,11 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
 
     if (arg === "--json") {
       parsed.json = true;
+      continue;
+    }
+
+    if (arg === "--detail") {
+      parsed.detail = true;
       continue;
     }
 

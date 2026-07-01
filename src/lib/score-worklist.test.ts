@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildScoreWorklistReport,
-  formatScoreWorklistReportLines
+  formatScoreWorklistReportLines,
+  formatScoreWorklistReportLinesWithOptions
 } from "@/lib/score-worklist";
 import {
   australiaRegulatoryStatuses,
@@ -60,6 +61,8 @@ describe("score worklist", () => {
     expect(report.rows[0].suggestion.compositeScore).toBeGreaterThan(0);
     expect(report.rows[0].suggestion.limitations.join(" ")).toContain("Operator");
     expect(report.rows[0].references.length).toBeGreaterThan(0);
+    expect(report.rows[0].sourcePacket.studies.length).toBeGreaterThan(0);
+    expect(report.rows[0].claim.claimText).toBe(readyClaim.claimText);
   });
 
   it("formats and filters the local score worklist", () => {
@@ -140,5 +143,29 @@ describe("score worklist", () => {
     expect(formatScoreWorklistReportLines(report).join("\n")).toContain(
       "Order: score-review and ready-to-score rows first"
     );
+  });
+
+  it("formats detailed scoring review context without writing scores", () => {
+    const data = seedDashboardData();
+    const sourceBackedClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0)!;
+    const readyClaim: Claim = {
+      ...sourceBackedClaim,
+      evidenceGrade: "Insufficient until source packets are reviewed.",
+      id: "detailed-score-row"
+    };
+    const report = buildScoreWorklistReport(
+      {
+        ...data,
+        claims: [readyClaim]
+      },
+      { limit: 1 }
+    );
+    const lines = formatScoreWorklistReportLinesWithOptions(report, { detail: true }).join("\n");
+
+    expect(lines).toContain("Claim:");
+    expect(lines).toContain("Boundary:");
+    expect(lines).toContain("Source packet:");
+    expect(lines).toContain("Study 1:");
+    expect(lines).toContain("What would change score:");
   });
 });

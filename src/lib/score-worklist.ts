@@ -29,6 +29,21 @@ export interface BuildScoreWorklistOptions {
 }
 
 export interface ScoreWorklistRow {
+  claim: {
+    applicabilityNotes: string;
+    claimText: string;
+    clinicalRelevance: string;
+    comparator: string;
+    confidenceLevel: string;
+    doseFormStudied: string;
+    durationStudied: string;
+    effectSize: string;
+    evidenceGrade: string;
+    populationStudied: string;
+    reviewStatus: string;
+    safetyNotes: string;
+    whatWouldChangeScore: string;
+  };
   claimId: string;
   currentScore: number | null;
   currentScoreLabel: string;
@@ -47,8 +62,35 @@ export interface ScoreWorklistRow {
   references: Array<{
     id: string;
     label: string;
+    source: string;
     title: string;
+    url: string;
   }>;
+  sourcePacket: {
+    detail: string;
+    evidenceDepthLabels: string[];
+    extractedReferences: number;
+    label: string;
+    missingReferences: number;
+    nextStep: string;
+    pendingReferences: number;
+    studies: Array<{
+      adverseEvents: string;
+      fundingConflicts: string;
+      id: string;
+      intervention: string;
+      outcomes: string[];
+      population: string;
+      referenceId: string;
+      riskOfBias: string;
+      sampleSize: string;
+      source: string;
+      studyType: Study["studyType"];
+      title: string;
+      year: number;
+    }>;
+    totalReferences: number;
+  };
   sourcePacketStatus: string;
   state: ScoreReadinessState;
   stateLabel: string;
@@ -123,6 +165,21 @@ export function buildScoreWorklistReport(
       const suggestedComposite = compositeScore(suggestion.scores);
 
       return {
+        claim: {
+          applicabilityNotes: row.claim.applicabilityNotes,
+          claimText: row.claim.claimText,
+          clinicalRelevance: row.claim.clinicalRelevance,
+          comparator: row.claim.comparator,
+          confidenceLevel: row.claim.confidenceLevel,
+          doseFormStudied: row.claim.doseFormStudied,
+          durationStudied: row.claim.durationStudied,
+          effectSize: row.claim.effectSize,
+          evidenceGrade: row.claim.evidenceGrade,
+          populationStudied: row.claim.populationStudied,
+          reviewStatus: row.claim.reviewStatus,
+          safetyNotes: row.claim.safetyNotes,
+          whatWouldChangeScore: row.claim.whatWouldChangeScore
+        },
         claimId: row.claim.id,
         currentScore: row.currentScore,
         currentScoreLabel:
@@ -147,8 +204,21 @@ export function buildScoreWorklistReport(
         references: references.map((reference) => ({
           id: reference.id,
           label: formatReferenceLabel(reference),
-          title: reference.title
+          source: reference.source,
+          title: reference.title,
+          url: reference.url
         })),
+        sourcePacket: {
+          detail: row.packet.completeness.detail,
+          evidenceDepthLabels: row.packet.evidenceDepth.badges.map((badge) => badge.label),
+          extractedReferences: row.packet.completeness.extractedReferences,
+          label: row.packet.completeness.label,
+          missingReferences: row.packet.completeness.missingReferences,
+          nextStep: row.packet.completeness.nextStep,
+          pendingReferences: row.packet.completeness.pendingReferences,
+          studies: studies.map(scoreWorklistStudyExtraction),
+          totalReferences: row.packet.completeness.totalReferences
+        },
         sourcePacketStatus: row.packet.completeness.status,
         state: row.state,
         stateLabel: scoreReadinessStateLabel(row.state),
@@ -165,6 +235,13 @@ export function buildScoreWorklistReport(
 }
 
 export function formatScoreWorklistReportLines(report: ScoreWorklistReport) {
+  return formatScoreWorklistReportLinesWithOptions(report);
+}
+
+export function formatScoreWorklistReportLinesWithOptions(
+  report: ScoreWorklistReport,
+  options: { detail?: boolean } = {}
+) {
   const lines = [
     "Read-only local score worklist",
     ...formatScoreReadinessSummaryLines(report.summary),
@@ -183,20 +260,57 @@ export function formatScoreWorklistReportLines(report: ScoreWorklistReport) {
   return [
     ...lines,
     "",
-    ...report.rows.flatMap((row, index) => [
-      `${index + 1}. ${row.intervention?.name ?? "Unknown intervention"} / ${row.outcome}`,
-      `   ${row.stateLabel} / ${row.priorityLabel} priority / ${row.currentScoreLabel}`,
-      `   Suggested: ${row.suggestion.compositeScoreLabel}; ${row.suggestion.finalLabel}`,
-      `   Action: ${row.nextAction}`,
-      `   Reasons: ${row.reasons.slice(0, 4).join("; ")}`,
-      `   Citations: ${
-        row.references.length > 0
-          ? row.references.slice(0, 3).map((reference) => reference.label).join("; ")
-          : "none linked"
-      }`,
-      row.suggestion.warning ? `   Warning: ${row.suggestion.warning}` : undefined,
-      `   Operator: ${row.operatorHint}`
-    ].filter((line): line is string => Boolean(line)))
+    ...report.rows.flatMap((row, index) => scoreWorklistRowLines(row, index, options))
+  ];
+}
+
+function scoreWorklistRowLines(
+  row: ScoreWorklistRow,
+  index: number,
+  options: { detail?: boolean }
+) {
+  const lines = [
+    `${index + 1}. ${row.intervention?.name ?? "Unknown intervention"} / ${row.outcome}`,
+    `   ${row.stateLabel} / ${row.priorityLabel} priority / ${row.currentScoreLabel}`,
+    `   Suggested: ${row.suggestion.compositeScoreLabel}; ${row.suggestion.finalLabel}`,
+    `   Action: ${row.nextAction}`,
+    `   Reasons: ${row.reasons.slice(0, 4).join("; ")}`,
+    `   Citations: ${
+      row.references.length > 0
+        ? row.references.slice(0, 3).map((reference) => reference.label).join("; ")
+        : "none linked"
+    }`,
+    row.suggestion.warning ? `   Warning: ${row.suggestion.warning}` : undefined,
+    `   Operator: ${row.operatorHint}`
+  ].filter((line): line is string => Boolean(line));
+
+  if (!options.detail) {
+    return lines;
+  }
+
+  return [
+    ...lines,
+    `   Claim: ${row.claim.claimText}`,
+    `   Boundary: ${row.claim.populationStudied}; ${row.claim.doseFormStudied}; ${row.claim.durationStudied}; comparator ${row.claim.comparator}.`,
+    `   Current evidence text: ${row.claim.effectSize}; ${row.claim.clinicalRelevance}`,
+    `   Safety/applicability: ${row.claim.safetyNotes} ${row.claim.applicabilityNotes}`,
+    `   Source packet: ${row.sourcePacket.label}; ${row.sourcePacket.extractedReferences}/${row.sourcePacket.totalReferences} reference(s) extracted.`,
+    `   Evidence depth: ${
+      row.sourcePacket.evidenceDepthLabels.length > 0
+        ? row.sourcePacket.evidenceDepthLabels.join("; ")
+        : "No substantive extraction depth labels."
+    }`,
+    ...row.sourcePacket.studies.flatMap((study, studyIndex) => [
+      `   Study ${studyIndex + 1}: ${study.studyType} ${study.year} - ${study.title}`,
+      `      Population: ${study.population}`,
+      `      Intervention: ${study.intervention}`,
+      `      Outcomes: ${study.outcomes.join(", ")}`,
+      `      Sample/results context: ${study.sampleSize}`,
+      `      Safety: ${study.adverseEvents}`,
+      `      Funding/conflicts: ${study.fundingConflicts}`,
+      `      Bias/quality: ${study.riskOfBias}`
+    ]),
+    `   What would change score: ${row.claim.whatWouldChangeScore}`
   ];
 }
 
@@ -210,6 +324,24 @@ function groupStudiesByReferenceId(studies: Study[]) {
   }
 
   return grouped;
+}
+
+function scoreWorklistStudyExtraction(study: Study) {
+  return {
+    adverseEvents: study.adverseEvents,
+    fundingConflicts: study.fundingConflicts,
+    id: study.id,
+    intervention: study.intervention,
+    outcomes: study.outcomes,
+    population: study.population,
+    referenceId: study.referenceId,
+    riskOfBias: study.riskOfBias,
+    sampleSize: study.sampleSize,
+    source: study.source,
+    studyType: study.studyType,
+    title: study.title,
+    year: study.year
+  };
 }
 
 function sourcePacketFromReadinessRow(
