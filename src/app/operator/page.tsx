@@ -53,9 +53,9 @@ import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import {
   buildScoreReadinessRows,
   buildScoreReadinessSummary,
-  compareScoreReadinessForScoringPass,
   scoreReadinessNextAction,
   scoreReadinessStateLabel,
+  selectScoreReadinessEditorRows,
   type ScoreReadinessSummary
 } from "@/lib/score-readiness";
 import type { Claim, NormalizedSourcePacketRow, Reference, Study } from "@/lib/types";
@@ -276,16 +276,7 @@ export default async function OperatorPage() {
   const scoreDashboardData = canReviewPromotion ? await getEvidenceDashboardData() : undefined;
   const scoreReadinessRows = scoreDashboardData ? buildScoreReadinessRows(scoreDashboardData) : [];
   const scoreReadinessSummary = buildScoreReadinessSummary(scoreReadinessRows);
-  const scoreWorkRows = scoreReadinessRows
-    .filter((row) => row.state !== "scored")
-    .sort(compareScoreReadinessForScoringPass);
-  const scoredRows = scoreReadinessRows
-    .filter((row) => row.state === "scored")
-    .sort(compareScoreReadinessForScoringPass);
-  const scoreEditorRows = (scoreWorkRows.length > 0 ? scoreWorkRows : scoredRows).slice(
-    0,
-    12
-  );
+  const scoreEditorRows = selectScoreReadinessEditorRows(scoreReadinessRows);
   const scoreSnapshotClaims = scoreEditorRows.map((row) => row.claim);
   const scoreEditorContext = Object.fromEntries(
     scoreEditorRows.map((row) => [

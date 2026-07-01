@@ -4,7 +4,8 @@ import {
   buildScoreReadinessRows,
   buildScoreReadinessSummary,
   formatScoreReadinessSummaryLines,
-  scoreReadinessNextAction
+  scoreReadinessNextAction,
+  selectScoreReadinessEditorRows
 } from "@/lib/score-readiness";
 import {
   australiaRegulatoryStatuses,
@@ -121,5 +122,38 @@ describe("score readiness", () => {
     expect(rows[0]?.state).toBe("source_blocked");
     expect(rows[0]?.reasons).toContain("Extraction pending");
     expect(scoreReadinessNextAction(rows[0]!)).toContain("Add structured extraction");
+  });
+
+  it("loads the full direct scoring batch before source-blocked fallback rows", () => {
+    const data = seedDashboardData();
+    const sourceBackedClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0);
+
+    expect(sourceBackedClaim).toBeDefined();
+
+    const readyClaims = Array.from({ length: 15 }, (_, index) => ({
+      ...sourceBackedClaim!,
+      id: `ready-score-${index + 1}`,
+      evidenceGrade: "Insufficient until source packets are reviewed."
+    }));
+    const sourceBlockedClaim = {
+      ...sourceBackedClaim!,
+      id: "source-blocked-score-test",
+      evidenceGrade: "Insufficient until source packets are reviewed.",
+      keyReferenceIds: []
+    };
+    const rows = buildScoreReadinessRows({
+      ...data,
+      claims: [...readyClaims, sourceBlockedClaim],
+      claimScoreSnapshots: []
+    });
+    const selectedRows = selectScoreReadinessEditorRows(rows);
+    const selectedIds = new Set(selectedRows.map((row) => row.claim.id));
+
+    expect(selectedRows.length).toBe(15);
+    expect(selectedRows.every((row) => row.state === "ready_to_score")).toBe(true);
+    expect(selectedIds.has(sourceBlockedClaim.id)).toBe(false);
+    for (const claim of readyClaims) {
+      expect(selectedIds.has(claim.id)).toBe(true);
+    }
   });
 });

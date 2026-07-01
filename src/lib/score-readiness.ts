@@ -188,6 +188,29 @@ export function compareScoreReadinessForScoringPass(
   return leftName.localeCompare(rightName) || left.claim.outcome.localeCompare(right.claim.outcome);
 }
 
+export function selectScoreReadinessEditorRows(rows: ScoreReadinessRow[]) {
+  const directScoreRows = rows
+    .filter((row) => row.state === "default_score_review" || row.state === "ready_to_score")
+    .sort(compareScoreReadinessForScoringPass);
+
+  if (directScoreRows.length > 0) {
+    return directScoreRows;
+  }
+
+  const workRows = rows
+    .filter((row) => row.state !== "scored")
+    .sort(compareScoreReadinessForScoringPass);
+
+  if (workRows.length > 0) {
+    return workRows.slice(0, 12);
+  }
+
+  return rows
+    .filter((row) => row.state === "scored")
+    .sort(compareScoreReadinessForScoringPass)
+    .slice(0, 12);
+}
+
 export function scoreReadinessScoringPassPhase(state: ScoreReadinessState) {
   const phase: Record<ScoreReadinessState, number> = {
     default_score_review: 0,
