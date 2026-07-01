@@ -265,7 +265,7 @@ describe("score worklist", () => {
     expect(lines).toContain(
       "- Missing structured extraction: 2 claim row(s). Extract study/source fields before assigning dimension scores."
     );
-    expect(lines).toContain("Top pending extraction references");
+    expect(lines).toContain("Top extraction-ready references");
     expect(lines).toContain("unlocks 2 claim(s)");
     expect(lines).toContain(
       "Gaps: source type (2); sample size/results status (2); population fit (2)"
@@ -440,6 +440,9 @@ describe("score worklist", () => {
     expect(lines).toContain(
       "Extraction lanes: 1 reference group(s) / 1 claim-link(s) can move to extraction; 1 reference group(s) / 1 claim-link(s) need identity cleanup first."
     );
+    expect(lines).toContain("Top extraction-ready references:");
+    expect(lines).toContain("Identity cleanup lane:");
+    expect(lines).toContain("Cleanup preview: npx tsx scripts/local-score-worklist.ts");
     expect(focusedLines).toContain(
       "Top pending extraction references with identity warnings:"
     );

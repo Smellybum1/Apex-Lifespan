@@ -499,6 +499,18 @@ export function buildScoreWorklistReferenceRepairBrief(
   };
 }
 
+export function scoreWorklistExtractionReadyReferenceGroups(
+  summary: Pick<ScoreWorklistRepairSummary, "pendingReferenceGroups">
+) {
+  return summary.pendingReferenceGroups.filter((group) => group.identityWarnings.length === 0);
+}
+
+export function scoreWorklistIdentityWarningReferenceGroups(
+  summary: Pick<ScoreWorklistRepairSummary, "pendingReferenceGroups">
+) {
+  return summary.pendingReferenceGroups.filter((group) => group.identityWarnings.length > 0);
+}
+
 export function formatScoreWorklistReportLines(report: ScoreWorklistReport) {
   return formatScoreWorklistReportLinesWithOptions(report);
 }
@@ -545,9 +557,11 @@ export function formatScoreWorklistRepairSummaryLines(
   options: { repairIdentityWarningsOnly?: boolean; repairSummaryLimit?: number } = {}
 ) {
   const limit = options.repairSummaryLimit ?? 8;
+  const extractionReadyGroups = scoreWorklistExtractionReadyReferenceGroups(summary);
+  const identityWarningGroups = scoreWorklistIdentityWarningReferenceGroups(summary);
   const pendingReferenceGroups = options.repairIdentityWarningsOnly
-    ? summary.pendingReferenceGroups.filter((group) => group.identityWarnings.length > 0)
-    : summary.pendingReferenceGroups;
+    ? identityWarningGroups
+    : extractionReadyGroups;
   const lines = [
     "Source repair summary",
     `Blocked rows: ${summary.sourceBlockedRows}; extraction pending: ${summary.extractionPendingRows}; identity-warning references: ${summary.identityWarningReferenceGroups}; missing source records: ${summary.missingSourceRows}; unlinked claims: ${summary.unlinkedRows}.`,
@@ -576,7 +590,7 @@ export function formatScoreWorklistRepairSummaryLines(
     lines.push(
       options.repairIdentityWarningsOnly
         ? "Top pending extraction references with identity warnings:"
-        : "Top pending extraction references:"
+        : "Top extraction-ready references:"
     );
     lines.push(
       ...pendingReferenceGroups
@@ -589,6 +603,21 @@ export function formatScoreWorklistRepairSummaryLines(
           `   Gaps: ${formatRepairExtractionGaps(group.extractionGaps)}`,
           `   Brief: npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
           `   Claims: ${formatRepairSampleClaims(group.sampleClaims)}`
+        ])
+    );
+  }
+
+  if (!options.repairIdentityWarningsOnly && identityWarningGroups.length > 0) {
+    lines.push("Identity cleanup lane:");
+    lines.push(
+      ...identityWarningGroups
+        .slice(0, Math.min(3, limit))
+        .flatMap((group, index) => [
+          `${index + 1}. ${group.reference.label} - blocks ${group.claimCount} claim-link(s) until identity is resolved`,
+          `   Reference id: ${group.reference.id}`,
+          `   ${group.reference.title}`,
+          ...group.identityWarnings.map((warning) => `   Identity warning: ${warning}`),
+          `   Cleanup preview: npx tsx scripts/local-score-worklist.ts --state source_blocked --repair-identity-warnings --repair-identity-action actionable --limit 1`
         ])
     );
   }

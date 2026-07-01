@@ -70,6 +70,8 @@ import {
 } from "@/lib/score-readiness";
 import {
   buildScoreWorklistRepairSummary,
+  scoreWorklistExtractionReadyReferenceGroups,
+  scoreWorklistIdentityWarningReferenceGroups,
   type ScoreWorklistRepairSampleClaim,
   type ScoreWorklistRepairSummary
 } from "@/lib/score-worklist";
@@ -1533,6 +1535,9 @@ function ScoreSourceRepairQueue({
   identityPreview?: ScoreIdentityWarningActionPreview;
   summary: ScoreWorklistRepairSummary;
 }) {
+  const extractionReadyGroups = scoreWorklistExtractionReadyReferenceGroups(summary);
+  const identityWarningGroups = scoreWorklistIdentityWarningReferenceGroups(summary);
+
   return (
     <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1612,10 +1617,10 @@ function ScoreSourceRepairQueue({
           No source-blocked scoring rows are visible in the current local catalog.
         </p>
       ) : (
-        <div className="mt-3 grid gap-3 lg:grid-cols-3">
+        <div className="mt-3 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
           <SourceRepairGroupList
-            emptyText="No pending extraction references."
-            groups={summary.pendingReferenceGroups.slice(0, 3).map((group) => ({
+            emptyText="No clean extraction-ready references."
+            groups={extractionReadyGroups.slice(0, 3).map((group) => ({
               actionLabel: "Read-only brief command",
               actionText: `npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
               detail: `${group.claimCount} claim(s), ${group.interventions.length} intervention(s)`,
@@ -1624,7 +1629,21 @@ function ScoreSourceRepairQueue({
               subtitle: group.reference.title,
               title: group.reference.label
             }))}
-            title="Top pending extraction references"
+            title="Top extraction-ready references"
+          />
+          <SourceRepairGroupList
+            emptyText="No identity-warning references."
+            groups={identityWarningGroups.slice(0, 3).map((group) => ({
+              actionLabel: "Identity cleanup preview",
+              actionText:
+                "npx tsx scripts/local-score-worklist.ts --state source_blocked --repair-identity-warnings --repair-identity-action actionable --limit 1",
+              detail: `${group.claimCount} claim-link(s) blocked`,
+              gapText: group.identityWarnings.join("; "),
+              sampleClaims: group.sampleClaims,
+              subtitle: group.reference.title,
+              title: group.reference.label
+            }))}
+            title="Identity cleanup lane"
           />
           <SourceRepairGroupList
             emptyText="No missing source records."
