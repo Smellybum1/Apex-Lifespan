@@ -141,6 +141,7 @@ export interface ScoreWorklistExtractionGapSummary {
 export interface ScoreWorklistPendingReferenceGroup {
   claimCount: number;
   extractionGaps: ScoreWorklistExtractionGapSummary[];
+  highestPriority: number;
   interventions: Array<{
     claimCount: number;
     id: string;
@@ -162,6 +163,7 @@ export interface ScoreWorklistPendingReferenceGroup {
 
 export interface ScoreWorklistMissingReferenceGroup {
   claimCount: number;
+  highestPriority: number;
   outcomes: string[];
   priority: number;
   referenceId: string;
@@ -170,6 +172,7 @@ export interface ScoreWorklistMissingReferenceGroup {
 
 export interface ScoreWorklistUnlinkedInterventionGroup {
   claimCount: number;
+  highestPriority: number;
   intervention: {
     id: string;
     name: string;
@@ -896,6 +899,7 @@ function pendingReferenceGroups(
       return {
         claimCount: rowsForGroup.length,
         extractionGaps: scoreRepairExtractionGapSummary(rowsForGroup, reference.id),
+        highestPriority: repairHighestPriority(rowsForGroup),
         interventions: repairInterventionGroups(rowsForGroup),
         outcomes: uniqueSorted(rowsForGroup.map((row) => row.claim.outcome)),
         priority: repairPriority(rowsForGroup),
@@ -930,6 +934,7 @@ function missingReferenceGroups(
 
       return {
         claimCount: rowsForGroup.length,
+        highestPriority: repairHighestPriority(rowsForGroup),
         outcomes: uniqueSorted(rowsForGroup.map((row) => row.claim.outcome)),
         priority: repairPriority(rowsForGroup),
         referenceId,
@@ -960,6 +965,7 @@ function unlinkedInterventionGroups(
 
       return {
         claimCount: rowsForGroup.length,
+        highestPriority: repairHighestPriority(rowsForGroup),
         intervention: intervention
           ? {
               id: intervention.id,
@@ -1096,6 +1102,10 @@ function repairPriority(rows: ScoreReadinessRow[]) {
   return rows.reduce((total, row) => total + row.priority, 0);
 }
 
+function repairHighestPriority(rows: ScoreReadinessRow[]) {
+  return Math.max(...rows.map((row) => row.priority), 0);
+}
+
 function compareRepairGroups(
   left:
     | ScoreWorklistPendingReferenceGroup
@@ -1106,7 +1116,11 @@ function compareRepairGroups(
     | ScoreWorklistMissingReferenceGroup
     | ScoreWorklistUnlinkedInterventionGroup
 ) {
-  return right.claimCount - left.claimCount || right.priority - left.priority;
+  return (
+    right.highestPriority - left.highestPriority ||
+    right.priority - left.priority ||
+    right.claimCount - left.claimCount
+  );
 }
 
 function uniqueSorted(values: string[]) {

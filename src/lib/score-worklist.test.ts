@@ -246,6 +246,84 @@ describe("score worklist", () => {
     expect(lines).toContain("blocked-score-second");
   });
 
+  it("prioritizes source repair groups by highest blocked claim before batch size", () => {
+    const data = seedDashboardData();
+    const sourceBackedClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0)!;
+    const highPriorityReference: Reference = {
+      id: "high-priority-pending-score-reference",
+      identifier: "PMID:99990001",
+      source: "PubMed",
+      title: "High-priority source that blocks a public score",
+      url: "https://pubmed.ncbi.nlm.nih.gov/99990001/",
+      year: 2026
+    };
+    const sharedLowPriorityReference: Reference = {
+      id: "shared-low-priority-score-reference",
+      identifier: "PMID:99990002",
+      source: "PubMed",
+      title: "Shared lower-priority source that blocks two rows",
+      url: "https://pubmed.ncbi.nlm.nih.gov/99990002/",
+      year: 2026
+    };
+    const highPriorityClaim: Claim = {
+      ...sourceBackedClaim,
+      finalLabel: "Core Evidence-Based",
+      id: "high-priority-blocked-score",
+      keyReferenceIds: [highPriorityReference.id],
+      scores: {
+        effectSize: 9,
+        evidenceDirectness: 9,
+        evidenceRigor: 9,
+        hypePenalty: 1,
+        measurability: 9,
+        productQuality: 8,
+        regulatoryRisk: 1,
+        safety: 9
+      }
+    };
+    const lowPriorityClaimA: Claim = {
+      ...sourceBackedClaim,
+      finalLabel: "Insufficient Evidence",
+      id: "low-priority-blocked-score-a",
+      keyReferenceIds: [sharedLowPriorityReference.id],
+      scores: {
+        effectSize: 1,
+        evidenceDirectness: 1,
+        evidenceRigor: 1,
+        hypePenalty: 8,
+        measurability: 2,
+        productQuality: 2,
+        regulatoryRisk: 8,
+        safety: 3
+      }
+    };
+    const lowPriorityClaimB: Claim = {
+      ...lowPriorityClaimA,
+      id: "low-priority-blocked-score-b",
+      outcome: "Safety/adverse effects"
+    };
+    const report = buildScoreWorklistReport(
+      {
+        ...data,
+        claims: [lowPriorityClaimA, lowPriorityClaimB, highPriorityClaim],
+        references: [...data.references, highPriorityReference, sharedLowPriorityReference]
+      },
+      {
+        state: "source_blocked"
+      }
+    );
+
+    expect(report.repairSummary.pendingReferenceGroups.map((group) => group.reference.id)).toEqual([
+      highPriorityReference.id,
+      sharedLowPriorityReference.id
+    ]);
+    expect(report.repairSummary.pendingReferenceGroups[0].claimCount).toBe(1);
+    expect(report.repairSummary.pendingReferenceGroups[1].claimCount).toBe(2);
+    expect(report.repairSummary.pendingReferenceGroups[0].highestPriority).toBeGreaterThan(
+      report.repairSummary.pendingReferenceGroups[1].highestPriority
+    );
+  });
+
   it("builds a read-only extraction brief for one source-blocking reference", () => {
     const data = seedDashboardData();
     const sourceBackedClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0)!;
