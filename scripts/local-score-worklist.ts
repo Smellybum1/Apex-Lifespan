@@ -66,7 +66,13 @@ async function main() {
     });
 
     if (data.dataSource === "database" && args.repairSummary && args.repairIdentityWarnings) {
-      lines.push("", ...(await formatIdentityWarningActionPreviewLines(report, args.repairIdentityAction)));
+      lines.push(
+        "",
+        ...(await formatIdentityWarningActionPreviewLines(report, {
+          actionFilter: args.repairIdentityAction,
+          referenceLimit: args.repairIdentityLimit
+        }))
+      );
     }
 
     console.log(lines.join("\n"));
@@ -82,6 +88,7 @@ interface ScoreWorklistArgs {
   limit: number;
   repairReference?: string;
   repairIdentityAction: IdentityActionFilter;
+  repairIdentityLimit: number;
   repairIdentityWarnings: boolean;
   repairSummary: boolean;
   showHelp?: false;
@@ -90,6 +97,20 @@ interface ScoreWorklistArgs {
 
 type IdentityResolutionAction = LocalIdentityResolutionAutomationDecisionReadout["action"];
 type IdentityActionFilter = IdentityResolutionAction | "actionable" | "all" | "unavailable";
+type IdentityPreviewCandidateRow = {
+  action: IdentityResolutionAction | "unavailable";
+  candidate: {
+    acceptedReferenceId: string | null;
+    claimId: string | null;
+    dedupeKey: string;
+    externalId: string;
+    interventionId: string | null;
+    source: string;
+    title: string;
+    triageScore: number;
+  };
+  decision: LocalIdentityResolutionAutomationDecisionReadout | undefined;
+};
 
 type ParsedScoreWorklistArgs =
   | ScoreWorklistArgs
@@ -125,6 +146,8 @@ Options:
                           Focus repair summary on references whose titles do not visibly match the target intervention.
   --repair-identity-action <action>
                           Filter identity preview rows: all | actionable | confirm-target | reassign-intervention | reject-wrong-supplement | hold | unavailable.
+  --repair-identity-limit <count>
+                          Number of identity-warning references to scan for preview actions. Default: 8
   --repair-reference <id> Show a read-only extraction brief for one blocked reference id.
   --json                  Print JSON instead of text.
   --help                  Show this help.
@@ -132,18 +155,26 @@ Options:
 This command does not write scores, review status, source packets, or public evidence.`;
 
 const CANDIDATE_KEY_B64_PREFIX = "candidate-key-b64:";
-const IDENTITY_WARNING_ACTION_PREVIEW_LIMIT = 8;
+const DEFAULT_IDENTITY_WARNING_ACTION_PREVIEW_LIMIT = 8;
 
 async function formatIdentityWarningActionPreviewLines(
   report: ScoreWorklistReport,
-  actionFilter: IdentityActionFilter
+  {
+    actionFilter,
+    referenceLimit
+  }: {
+    actionFilter: IdentityActionFilter;
+    referenceLimit: number;
+  }
 ) {
-  const referenceIds = report.repairSummary.pendingReferenceGroups
+  const warningReferenceIds = report.repairSummary.pendingReferenceGroups
     .filter((group) => group.identityWarnings.length > 0)
-    .slice(0, IDENTITY_WARNING_ACTION_PREVIEW_LIMIT)
     .map((group) => group.reference.id);
+  const referenceIds = warningReferenceIds.slice(0, referenceLimit);
 
-  const lines = ["Identity action preview (source-led, read-only):"];
+  const lines = [
+    `Identity action preview (source-led, read-only; scanned ${referenceIds.length}/${warningReferenceIds.length} warning reference(s)):`
+  ];
 
   if (referenceIds.length === 0) {
     return [...lines, "No identity-warning references are visible in the current repair summary."];
@@ -172,7 +203,7 @@ async function formatIdentityWarningActionPreviewLines(
   if (candidates.length === 0) {
     return [
       ...lines,
-      `${referenceIds.length} identity-warning reference(s) are visible, but none have accepted source candidates attached.`
+      `${referenceIds.length} scanned identity-warning reference(s) have no accepted source candidates attached.`
     ];
   }
 
@@ -180,11 +211,7 @@ async function formatIdentityWarningActionPreviewLines(
     candidates.map((candidate) => candidate.dedupeKey)
   );
   const actionCounts = identityActionCounts(candidates, identityDecisions);
-  const previewRows: Array<{
-    action: IdentityResolutionAction | "unavailable";
-    candidate: (typeof candidates)[number];
-    decision: LocalIdentityResolutionAutomationDecisionReadout | undefined;
-  }> = candidates.map((candidate) => ({
+  const previewRows: IdentityPreviewCandidateRow[] = candidates.map((candidate) => ({
     action: identityDecisions.get(candidate.dedupeKey)?.action ?? "unavailable",
     candidate,
     decision: identityDecisions.get(candidate.dedupeKey)
@@ -192,20 +219,21 @@ async function formatIdentityWarningActionPreviewLines(
   const filteredRows = previewRows.filter((row) =>
     identityActionMatchesFilter(row.action, actionFilter)
   );
+  const displayRows = dedupeIdentityPreviewRows(filteredRows);
 
   lines.push(
     `${candidates.length} accepted candidate(s) across ${referenceIds.length} warning reference(s): ${formatIdentityActionCounts(actionCounts)}.`
   );
   if (actionFilter !== "all") {
     lines.push(
-      `Showing ${filteredRows.length} candidate(s) matching ${formatIdentityActionFilterLabel(actionFilter)}; ${previewRows.length - filteredRows.length} hidden by action filter.`
+      `Showing ${displayRows.length} unique candidate cleanup row(s) matching ${formatIdentityActionFilterLabel(actionFilter)}; ${filteredRows.length} raw match(es), ${previewRows.length - filteredRows.length} hidden by action filter.`
     );
   }
   lines.push(
     "Open a repair brief for candidate-level reasons; use the Candidate Review identity resolver to apply any cleanup."
   );
 
-  if (filteredRows.length === 0) {
+  if (displayRows.length === 0) {
     return [
       ...lines,
       `No accepted candidate rows matched ${formatIdentityActionFilterLabel(actionFilter)} in the visible warning references.`
@@ -214,7 +242,7 @@ async function formatIdentityWarningActionPreviewLines(
 
   lines.push(
     ...referenceIds.flatMap((referenceId) => {
-      const rowsForReference = filteredRows.filter(
+      const rowsForReference = displayRows.filter(
         (row) => row.candidate.acceptedReferenceId === referenceId
       );
 
@@ -240,6 +268,36 @@ async function formatIdentityWarningActionPreviewLines(
   );
 
   return lines;
+}
+
+function dedupeIdentityPreviewRows(rows: IdentityPreviewCandidateRow[]) {
+  const rowsByKey = new Map<string, IdentityPreviewCandidateRow>();
+
+  for (const row of rows) {
+    const key = [
+      row.candidate.acceptedReferenceId,
+      row.candidate.source,
+      row.candidate.externalId,
+      row.candidate.interventionId,
+      row.candidate.claimId,
+      row.action,
+      row.decision?.matchedInterventionId ?? ""
+    ].join("|");
+
+    const existing = rowsByKey.get(key);
+
+    if (!existing || row.candidate.triageScore > existing.candidate.triageScore) {
+      rowsByKey.set(key, row);
+    }
+  }
+
+  return Array.from(rowsByKey.values()).sort(
+    (left, right) =>
+      right.candidate.triageScore - left.candidate.triageScore ||
+      (left.candidate.acceptedReferenceId ?? "").localeCompare(
+        right.candidate.acceptedReferenceId ?? ""
+      )
+  );
 }
 
 function identityActionMatchesFilter(
@@ -450,6 +508,7 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
     json: false,
     limit: 12,
     repairIdentityAction: "all",
+    repairIdentityLimit: DEFAULT_IDENTITY_WARNING_ACTION_PREVIEW_LIMIT,
     repairIdentityWarnings: false,
     repairSummary: false,
     state: "work"
@@ -496,6 +555,27 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
     if (arg.startsWith("--repair-identity-action=")) {
       parsed.repairIdentityAction = identityActionFilterValue(
         requiredInlineValue(arg, "--repair-identity-action")
+      );
+      parsed.repairIdentityWarnings = true;
+      parsed.repairSummary = true;
+      continue;
+    }
+
+    if (arg === "--repair-identity-limit") {
+      parsed.repairIdentityLimit = positiveInteger(
+        requiredNextValue(args, index, "--repair-identity-limit"),
+        "--repair-identity-limit"
+      );
+      parsed.repairIdentityWarnings = true;
+      parsed.repairSummary = true;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--repair-identity-limit=")) {
+      parsed.repairIdentityLimit = positiveInteger(
+        requiredInlineValue(arg, "--repair-identity-limit"),
+        "--repair-identity-limit"
       );
       parsed.repairIdentityWarnings = true;
       parsed.repairSummary = true;
