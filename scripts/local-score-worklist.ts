@@ -23,6 +23,7 @@ import {
   formatScoreWorklistReportLinesWithOptions,
   type ScoreWorklistStateFilter
 } from "@/lib/score-worklist";
+import { formatStudySourceTypeCommandHints } from "@/lib/study-source-type-hints";
 
 async function main() {
   const args = readScoreWorklistArgs(process.argv.slice(2));
@@ -212,9 +213,13 @@ async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
   ];
 
   if (candidates.length > 0) {
+    const studyTypeFlagHint = formatStudySourceTypeCommandHints(
+      candidates.map((candidate) => candidate.sourceType)
+    );
+
     lines.push(`Accepted candidate source types: ${formatCandidateSourceTypeCounts(candidates)}.`);
     lines.push(
-      `Study-type flag hint: ${formatCandidateStudyTypeFlagHints(candidates)}. Verify the source before writing extraction.`
+      `Study-type flag hint: ${studyTypeFlagHint}. Verify the source before writing extraction.`
     );
   }
 
@@ -257,64 +262,6 @@ function formatCandidateSourceTypeCounts(candidates: Array<{ sourceType: string 
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .map(([sourceType, count]) => `${sourceType} (${count})`)
     .join("; ");
-}
-
-function formatCandidateStudyTypeFlagHints(candidates: Array<{ sourceType: string | null }>) {
-  const hints = Array.from(
-    new Set(
-      candidates
-        .map((candidate) => studyTypeFlagHint(candidate.sourceType))
-        .filter((hint): hint is string => Boolean(hint))
-    )
-  ).sort((left, right) => left.localeCompare(right));
-
-  return hints.length > 0 ? hints.join("; ") : "verify-source-type";
-}
-
-function studyTypeFlagHint(sourceType: string | null): string | undefined {
-  const normalized = sourceType?.trim().toLowerCase();
-
-  if (!normalized) {
-    return undefined;
-  }
-
-  if (normalized.includes("meta-analysis")) {
-    return "meta-analysis";
-  }
-
-  if (normalized.includes("systematic")) {
-    return "systematic-review";
-  }
-
-  if (normalized.includes("randomized") || normalized.includes("randomised")) {
-    return "randomized-controlled-trial";
-  }
-
-  if (normalized.includes("clinical trial")) {
-    return "clinical-trial-record";
-  }
-
-  if (normalized.includes("observational") || normalized.includes("cohort")) {
-    return "observational-cohort";
-  }
-
-  if (normalized.includes("case report")) {
-    return "case-report";
-  }
-
-  if (normalized.includes("animal")) {
-    return "animal-study";
-  }
-
-  if (normalized.includes("in vitro")) {
-    return "in-vitro-mechanistic";
-  }
-
-  if (normalized.includes("regulatory")) {
-    return "regulatory-safety-warning";
-  }
-
-  return undefined;
 }
 
 async function sourceLedIdentityDecisionByCandidateKey(dedupeKeys: string[]) {

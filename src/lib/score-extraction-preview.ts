@@ -10,6 +10,7 @@ import type {
   ScoreWorklistPendingReferenceGroup,
   ScoreWorklistRepairSummary
 } from "@/lib/score-worklist";
+import { formatStudySourceTypeCommandHints } from "@/lib/study-source-type-hints";
 
 const CANDIDATE_KEY_B64_PREFIX = "b64:";
 
@@ -57,6 +58,7 @@ export type ScoreExtractionCandidatePreviewRow = {
   sourceLabel: string;
   sourceTextStatus: string;
   sourceType: string;
+  studySourceTypeFlagHint: string;
   title: string;
   triageScore: number;
 };
@@ -247,6 +249,7 @@ function formatScoreExtractionCandidateReferenceLines(
       [
         `  - ${candidate.sourceLabel} ${candidate.externalId} triage ${candidate.triageScore}: ${candidate.extractionReady ? "ready" : "blocked"} - ${candidate.nextAction}`,
         `    ${candidate.reviewStatus}; ${candidate.sourceType}; ${candidate.sourceTextStatus}`,
+        `    Study-type flag hint: ${candidate.studySourceTypeFlagHint}; verify before writing extraction.`,
         `    Draft: ${candidate.curationDraftCommand}`
       ].join("\n")
     )
@@ -342,6 +345,7 @@ function extractionCandidatePreviewRow({
     sourceLabel: sourceKindLabel(candidate.source),
     sourceTextStatus: sourceTextStatus(candidate.metadata),
     sourceType: candidate.sourceType ?? "Source type not captured",
+    studySourceTypeFlagHint: formatStudySourceTypeCommandHints([candidate.sourceType]),
     title: candidate.title,
     triageScore: candidate.triageScore
   };
