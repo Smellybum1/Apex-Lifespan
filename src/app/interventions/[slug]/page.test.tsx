@@ -62,6 +62,8 @@ describe("intervention detail page", () => {
     expect(html).toContain("AU/TGA and product context");
     expect(html).toContain("Score history");
     expect(html).toContain("What would change the score");
+    expect(html).toContain("Source extraction:");
+    expect(html).toContain("1/1 references extracted");
     expect(html).toContain("Component score breakdown");
     expect(html).toContain("Draft composite");
     expect(html).toContain("AI Draft Classification: Core Evidence-Based");
@@ -137,6 +139,12 @@ describe("intervention detail page", () => {
     expect(html).toContain("Source-work classification");
     expect(html).toContain("stored score and component values are hidden here");
     expect(html).toContain("linked references still need extraction or source-packet repair");
+    expect(html).toContain("Source extraction:");
+    expect(html).toContain("0/1 references extracted; 1 pending extraction");
+    expect(html).toContain("Next source step:");
+    expect(html).toContain(
+      "Add structured extraction for the pending references before treating this packet as complete."
+    );
   });
 
   it("renders magnesium sleep coverage with trial registry labels", async () => {

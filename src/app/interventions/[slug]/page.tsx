@@ -888,6 +888,7 @@ function ClaimCard({
           </span>
         ) : null}
       </div>
+      {packet ? <ClaimSourcePacketStatus packet={packet} /> : null}
       <dl className="mt-3 grid gap-2 text-sm md:grid-cols-2">
         <Detail label="Population" value={claim.populationStudied} />
         <Detail label="Dose/form" value={claim.doseFormStudied} />
@@ -902,6 +903,45 @@ function ClaimCard({
       <ReferenceLinks claim={claim} referencesById={referencesById} />
     </article>
   );
+}
+
+function ClaimSourcePacketStatus({ packet }: { packet: ClaimSourcePacket }) {
+  const progress = sourcePacketProgressText(packet);
+  const needsSourceWork = packet.completeness.status !== "complete";
+
+  return (
+    <section className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-700">
+      <p>
+        <span className="font-semibold text-slate-900">Source extraction:</span> {progress}
+      </p>
+      {needsSourceWork ? (
+        <p className="mt-1">
+          <span className="font-semibold text-slate-900">Next source step:</span>{" "}
+          {packet.completeness.nextStep}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function sourcePacketProgressText(packet: ClaimSourcePacket) {
+  const { extractedReferences, missingReferences, pendingReferences, totalReferences } =
+    packet.completeness;
+  const parts = [`${extractedReferences}/${totalReferences} references extracted`];
+
+  if (pendingReferences > 0) {
+    parts.push(`${pendingReferences} pending extraction`);
+  }
+
+  if (missingReferences > 0) {
+    parts.push(`${missingReferences} missing source record${missingReferences === 1 ? "" : "s"}`);
+  }
+
+  if (totalReferences === 0) {
+    parts.push("no curated references linked");
+  }
+
+  return parts.join("; ");
 }
 
 function ScoreReadinessNotice({ scoreState }: { scoreState: ClaimScorePresentation }) {
