@@ -72,7 +72,7 @@ Done when the useful/maybe-useful candidate backlog can be reviewed quickly from
 
 ### 3B. Complete Local Evidence Scoring
 
-Turn accepted sources and draft claim clusters into honest, traceable evidence scores for the local catalog. This is a meaningful body of work because scoring has to separate source readiness, claim confidence, safety/regulatory caveats, public display language, and review status. Do this against the local database first; do not promote scored results to preview/production until the user explicitly asks.
+Turn accepted sources and draft claim clusters into honest, traceable evidence scores for the local catalog. This is a real milestone, not a one-button pass, because scoring has to separate source readiness, claim confidence, safety/regulatory caveats, public display language, and review status. Do this against the local database first; do not promote scored results to preview/production until the user explicitly asks.
 
 **Current local scoring status (2026-07-02, read-only worklist):**
 
@@ -89,7 +89,7 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 1. **Public honesty guardrail:** keep ready-to-score, source-blocked, parked, and review-needed cells from looking like final scored evidence while the backlog is incomplete.
 2. **Scoring contract:** lock the dimensions, composite formula, evidence bands, final labels, safety/regulatory penalties, and public wording before doing a large scoring pass.
 3. **Score editor workflow:** make the operator view show source packet completeness, linked citations, editable dimensions, suggested composite, final public label, caveats, and dry-run preview before saving.
-4. **Ready-to-score batch:** score, park, reject, or return the current `15` ready rows to source-blocked before moving to the larger backlog.
+4. **Ready-to-score batches:** whenever source repair creates ready rows, score, park, reject, or return them to source-blocked before moving to the next backlog batch.
 5. **Source extraction repair:** repair the `456` source-blocked rows in priority batches, starting with high-visibility public cells, safety/regulatory claims, high-quality reviews/trials, and intervention/outcome groups with many related rows.
 6. **Claim disposition loop:** after each repaired packet, choose exactly one state: scored, parked/backlog with a reason, source-blocked with next action, or rejected/noise.
 7. **Catalog accounting:** re-run the local score worklist after each batch until every active claim has an explainable state and no placeholder-looking score is presented as final.
@@ -108,7 +108,7 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 **Recommended execution order:**
 
 1. Keep public pages honest while the backlog is incomplete: cells that are source-blocked, parked, or review-needed should not look like final scored evidence.
-2. Score the `15` ready-to-score claim cells first, because those already have enough source extraction to review dimensions, labels, uncertainty, and caveats.
+2. Score each ready-to-score batch as soon as it appears, because those rows already have enough source extraction to review dimensions, labels, uncertainty, and caveats.
 3. Use the ready batch to calibrate the scoring contract: dimension ranges, final labels, weak/limited/moderate/strong thresholds, safety/regulatory penalties, and public wording.
 4. Repair source packets in priority groups instead of one giant pass: high-visibility public cells, safety/regulatory rows, high-quality review/trial leads, and interventions with many claims.
 5. For each repaired packet, either score it, park it with a reason, reject it as noise/mismatch/unsupported, or leave it source-blocked with the next missing source action.
