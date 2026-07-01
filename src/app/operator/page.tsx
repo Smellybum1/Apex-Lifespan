@@ -47,6 +47,11 @@ import {
 } from "@/lib/operator/supplement-onboarding-drafts";
 import { getCurrentOperatorPrincipal } from "@/lib/operator/session";
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
+import {
+  buildScoreReadinessRows,
+  scoreReadinessNextAction,
+  scoreReadinessStateLabel
+} from "@/lib/score-readiness";
 import type { Claim, NormalizedSourcePacketRow, Reference, Study } from "@/lib/types";
 import {
   australiaRegulatoryStatuses,
@@ -263,7 +268,24 @@ export default async function OperatorPage() {
     ? await getOperatorAuditTrailSnapshot(5)
     : { eventCount: 0, rows: [] };
   const scoreDashboardData = canReviewPromotion ? await getEvidenceDashboardData() : undefined;
-  const scoreSnapshotClaims = scoreDashboardData?.claims.slice(0, 12) ?? [];
+  const scoreReadinessRows = scoreDashboardData ? buildScoreReadinessRows(scoreDashboardData) : [];
+  const scoreWorkRows = scoreReadinessRows.filter((row) => row.state !== "scored");
+  const scoreEditorRows = (scoreWorkRows.length > 0 ? scoreWorkRows : scoreReadinessRows).slice(
+    0,
+    12
+  );
+  const scoreSnapshotClaims = scoreEditorRows.map((row) => row.claim);
+  const scoreEditorContext = Object.fromEntries(
+    scoreEditorRows.map((row) => [
+      row.claim.id,
+      {
+        nextAction: scoreReadinessNextAction(row),
+        priorityLabel: row.priorityLabel,
+        reasons: row.reasons,
+        stateLabel: scoreReadinessStateLabel(row.state)
+      }
+    ])
+  );
   const scoreSnapshotReferences = scoreDashboardData?.references ?? [];
   const scoreSnapshotSourcePackets = scoreDashboardData?.normalizedSourcePackets ?? [];
   const scoreSnapshotStudies = scoreDashboardData?.studies ?? [];
@@ -363,6 +385,7 @@ export default async function OperatorPage() {
             sourcePackets={scoreSnapshotSourcePackets}
             studies={scoreSnapshotStudies}
             updateAction={updateClaimScoreFromForm}
+            worklistContext={scoreEditorContext}
           />
         ) : null}
 
@@ -1317,7 +1340,8 @@ function ScoreSnapshotPanel({
   recomputeAction,
   sourcePackets,
   studies,
-  updateAction
+  updateAction,
+  worklistContext
 }: {
   claims: Claim[];
   promotionControl: OperatorBrowserWriteControlState;
@@ -1326,6 +1350,15 @@ function ScoreSnapshotPanel({
   sourcePackets: NormalizedSourcePacketRow[];
   studies: Study[];
   updateAction: (formData: FormData) => void | Promise<void>;
+  worklistContext: Record<
+    string,
+    {
+      nextAction: string;
+      priorityLabel: string;
+      reasons: string[];
+      stateLabel: string;
+    }
+  >;
 }) {
   const claimReferences = buildClaimReferences(claims, references);
 
@@ -1402,6 +1435,7 @@ function ScoreSnapshotPanel({
             sourcePackets={sourcePackets}
             studies={studies}
             updateAction={updateAction}
+            worklistContext={worklistContext}
           />
         ) : null}
 

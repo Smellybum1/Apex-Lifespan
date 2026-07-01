@@ -24,6 +24,14 @@ interface OperatorClaimScoreEditorProps {
   sourcePackets: NormalizedSourcePacketRow[];
   studies: Study[];
   updateAction: (formData: FormData) => void | Promise<void>;
+  worklistContext?: Record<string, ClaimScoreWorklistContext>;
+}
+
+export interface ClaimScoreWorklistContext {
+  nextAction: string;
+  priorityLabel: string;
+  reasons: string[];
+  stateLabel: string;
 }
 
 export function OperatorClaimScoreEditor({
@@ -32,7 +40,8 @@ export function OperatorClaimScoreEditor({
   claims,
   sourcePackets,
   studies,
-  updateAction
+  updateAction,
+  worklistContext = {}
 }: OperatorClaimScoreEditorProps) {
   const sourcePacketByClaim = useMemo(
     () => new Map(sourcePackets.map((packet) => [packet.claimId, packet])),
@@ -58,6 +67,7 @@ export function OperatorClaimScoreEditor({
           sourcePacket={sourcePacketByClaim.get(claim.id)}
           studies={studies}
           updateAction={updateAction}
+          worklistContext={worklistContext[claim.id]}
         />
       ))}
     </div>
@@ -70,7 +80,8 @@ function EditableClaimScoreCard({
   references,
   sourcePacket,
   studies,
-  updateAction
+  updateAction,
+  worklistContext
 }: {
   applyEnabled: boolean;
   claim: Claim;
@@ -78,6 +89,7 @@ function EditableClaimScoreCard({
   sourcePacket?: NormalizedSourcePacketRow;
   studies: Study[];
   updateAction: (formData: FormData) => void | Promise<void>;
+  worklistContext?: ClaimScoreWorklistContext;
 }) {
   const [scores, setScores] = useState<ScoreSet>(claim.scores);
   const [finalLabel, setFinalLabel] = useState<EvidenceLabel>(claim.finalLabel);
@@ -115,6 +127,7 @@ function EditableClaimScoreCard({
         <form action={updateAction} className="space-y-3">
           <input name="claimId" type="hidden" value={claim.id} />
           <p className="text-sm text-slate-700">{claim.claimText}</p>
+          {worklistContext ? <WorklistContextSummary context={worklistContext} /> : null}
           <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-950">
             <span className="font-semibold">Preview:</span> {previewScore.toFixed(1)} / 10,{" "}
             {scoreBand(previewScore)} band, {finalLabel}
@@ -227,6 +240,32 @@ function EditableClaimScoreCard({
         <SourcePacketContext references={references} sourcePacket={sourcePacket} />
       </div>
     </details>
+  );
+}
+
+function WorklistContextSummary({ context }: { context: ClaimScoreWorklistContext }) {
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-semibold">
+          {context.stateLabel}
+        </span>
+        <span className="rounded-md border border-amber-300 bg-white px-2 py-1 text-xs font-semibold">
+          {context.priorityLabel} priority
+        </span>
+      </div>
+      <p className="mt-2 font-semibold">{context.nextAction}</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {context.reasons.slice(0, 5).map((reason) => (
+          <span
+            className="rounded-md border border-amber-200 bg-white px-2 py-1 text-xs text-amber-900"
+            key={reason}
+          >
+            {reason}
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 

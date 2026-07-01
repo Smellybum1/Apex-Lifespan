@@ -25,6 +25,15 @@ describe("OperatorClaimScoreEditor", () => {
         ]}
         studies={[study]}
         updateAction={vi.fn()}
+        worklistContext={{
+          "creatine-strength": {
+            nextAction:
+              "Use the complete source packet to assign dimension scores, final label, and uncertainty language.",
+            priorityLabel: "High",
+            reasons: ["Ready to score", "source packet complete", "review-level source extracted"],
+            stateLabel: "Ready to score"
+          }
+        }}
       />
     );
 
@@ -34,6 +43,9 @@ describe("OperatorClaimScoreEditor", () => {
     expect(html).toContain("Suggested scoring");
     expect(html).toContain("Use suggestion");
     expect(html).toContain("Strongest linked study type: Meta-analysis.");
+    expect(html).toContain("Ready to score");
+    expect(html).toContain("High priority");
+    expect(html).toContain("Use the complete source packet");
     expect(html).toContain("Source packet");
     expect(html).toContain("Complete");
     expect(html).toContain("Creatine review");
