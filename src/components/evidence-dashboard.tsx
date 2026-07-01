@@ -141,6 +141,7 @@ import {
 import {
   buildScoreReadinessRows,
   buildScoreReadinessSummary,
+  formatScoreReadinessSourceBlockers,
   isScorePlaceholderClaim,
   scoreReadinessNextAction,
   scoreReadinessStateLabel,
@@ -5071,6 +5072,13 @@ function ScoreReadinessWorklist({
         <MiniStat label="Scored public cells" value={summary.scoredPublicClaims.toLocaleString()} />
       </div>
 
+      {summary.sourceBlocked > 0 ? (
+        <p className="mt-2 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+          <span className="font-semibold text-slate-700">Source blockers:</span>{" "}
+          {formatScoreReadinessSourceBlockers(summary.sourceBlockers)}.
+        </p>
+      ) : null}
+
       {visibleRows.length > 0 ? (
         <div className="mt-3 grid gap-2">
           {visibleRows.map((row) => (
@@ -6108,6 +6116,7 @@ type EvidenceMapReadinessSummary = {
   reviewWorkClaims: number;
   scoreReviewClaims: number;
   sourceBlockedScoredClaims: number;
+  sourceBlockers: ScoreReadinessSummary["sourceBlockers"];
   scoredClaims: number;
   sourcePacketScaffoldClaims: number;
   snapshotGapClaims: number;
@@ -6201,6 +6210,7 @@ function buildEvidenceMapReadinessSummary({
   studies: Study[];
 }): EvidenceMapReadinessSummary {
   const packetSummary = summarizeClaimSourcePackets({ claims, referencesById, studies });
+  const scoreSummary = buildScoreReadinessSummary(readinessRows);
   const draftLeadClaims = claims.filter(isDraftLeadClaim).length;
   const sourcePacketScaffoldClaims = claims.filter(isSourcePacketScaffoldClaim).length;
   const sourceBlockedScoredClaims = readinessRows.filter(
@@ -6227,6 +6237,7 @@ function buildEvidenceMapReadinessSummary({
     reviewWorkClaims: draftLeadClaims + sourcePacketScaffoldClaims + scoreReviewClaims,
     scoreReviewClaims,
     sourceBlockedScoredClaims,
+    sourceBlockers: scoreSummary.sourceBlockers,
     scoredClaims: readinessRows.filter((row) => row.state === "scored").length,
     sourcePacketScaffoldClaims,
     snapshotGapClaims,
@@ -6531,6 +6542,13 @@ function EvidenceMapReadinessStrip({
           value={sourceWorkCount.toLocaleString()}
           title={`${summary.sourceBlockedScoredClaims.toLocaleString()} scored-looking cell(s) need source extraction; ${summary.snapshotGapClaims.toLocaleString()} need score snapshots.`}
         />
+        {summary.sourceBlockedScoredClaims > 0 ? (
+          <EvidenceReadinessBadge
+            label="Source blockers"
+            value={formatScoreReadinessSourceBlockers(summary.sourceBlockers)}
+            title="Why source-work cells are blocked before their stored score can be treated as current evidence."
+          />
+        ) : null}
         <EvidenceReadinessBadge
           label="References extracted"
           value={`${summary.extractedReferences.toLocaleString()}/${summary.totalReferences.toLocaleString()}`}

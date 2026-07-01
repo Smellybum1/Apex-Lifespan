@@ -209,6 +209,11 @@ describe("score worklist", () => {
 
     expect(report.repairSummary.sourceBlockedRows).toBe(2);
     expect(report.repairSummary.extractionPendingRows).toBe(2);
+    expect(report.summary.sourceBlockers).toMatchObject({
+      extraction_pending: 2,
+      missing_sources: 0,
+      not_linked: 0
+    });
     expect(report.repairSummary.blockerBreakdown).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -248,6 +253,7 @@ describe("score worklist", () => {
       }
     });
     expect(lines).toContain("Source repair summary");
+    expect(lines).toContain("Source-blocked scoring rows: 2 (extraction pending 2)");
     expect(lines).toContain("Blocker types (rows can appear in more than one type):");
     expect(lines).toContain(
       "- Missing structured extraction: 2 claim row(s). Extract study/source fields before assigning dimension scores."

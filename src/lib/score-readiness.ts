@@ -1,10 +1,27 @@
 import { compositeScore } from "@/lib/scoring";
-import { buildClaimSourcePacket, type ClaimSourcePacket } from "@/lib/source-packet";
+import {
+  buildClaimSourcePacket,
+  type ClaimSourcePacket,
+  type ClaimSourcePacketCompletenessStatus
+} from "@/lib/source-packet";
 import type { Claim, EvidenceDashboardData, EvidenceLabel, Intervention } from "@/lib/types";
 
 const SOURCE_PACKET_REVIEW_EVIDENCE_GRADE = "Insufficient until source packets are reviewed.";
 const DRAFT_LEAD_EVIDENCE_GRADE = "Draft lead";
 const STARTER_LOOKING_COMPOSITE_SCORES = new Set(["2.1", "3.1"]);
+const SCORE_READINESS_SOURCE_BLOCKER_ORDER: ScoreReadinessSourceBlockerStatus[] = [
+  "extraction_pending",
+  "missing_sources",
+  "not_linked"
+];
+const SCORE_READINESS_SOURCE_BLOCKER_LABELS: Record<
+  ScoreReadinessSourceBlockerStatus,
+  string
+> = {
+  extraction_pending: "extraction pending",
+  missing_sources: "missing source records",
+  not_linked: "no curated sources"
+};
 
 export type ScoreReadinessState =
   | "default_score_review"
@@ -14,6 +31,12 @@ export type ScoreReadinessState =
   | "source_blocked";
 
 export type ScoreReadinessPriority = "High" | "Medium" | "Low";
+export type ScoreReadinessSourceBlockerStatus = Exclude<
+  ClaimSourcePacketCompletenessStatus,
+  "complete"
+>;
+
+export type ScoreReadinessSourceBlockers = Record<ScoreReadinessSourceBlockerStatus, number>;
 
 export type ScoreReadinessRow = {
   claim: Claim;
@@ -32,6 +55,7 @@ export type ScoreReadinessSummary = {
   scoredPublicClaims: number;
   snapshotGaps: number;
   sourceBlocked: number;
+  sourceBlockers: ScoreReadinessSourceBlockers;
   totalClaims: number;
   workItems: number;
 };
@@ -98,6 +122,7 @@ export function buildScoreReadinessSummary(
   rows: ScoreReadinessRow[]
 ): ScoreReadinessSummary {
   const workItems = rows.filter((row) => row.state !== "scored").length;
+  const sourceBlockers = buildScoreReadinessSourceBlockers(rows);
 
   return {
     defaultLookingPublicScores: rows.filter((row) => row.state === "default_score_review").length,
@@ -105,6 +130,7 @@ export function buildScoreReadinessSummary(
     scoredPublicClaims: rows.filter((row) => row.state === "scored").length,
     snapshotGaps: rows.filter((row) => row.state === "snapshot_gap").length,
     sourceBlocked: rows.filter((row) => row.state === "source_blocked").length,
+    sourceBlockers,
     totalClaims: rows.length,
     workItems
   };
@@ -115,10 +141,26 @@ export function formatScoreReadinessSummaryLines(summary: ScoreReadinessSummary)
     `Score readiness: ${summary.workItems}/${summary.totalClaims} claim(s) need scoring work`,
     `Ready to score: ${summary.readyToScore}`,
     `Default-looking public scores: ${summary.defaultLookingPublicScores}`,
-    `Source-blocked scoring rows: ${summary.sourceBlocked}`,
+    `Source-blocked scoring rows: ${summary.sourceBlocked} (${formatScoreReadinessSourceBlockers(
+      summary.sourceBlockers
+    )})`,
     `Score snapshot gaps: ${summary.snapshotGaps}`,
     `Scored public cells: ${summary.scoredPublicClaims}`
   ];
+}
+
+export function formatScoreReadinessSourceBlockers(
+  blockers: ScoreReadinessSourceBlockers
+) {
+  const parts = SCORE_READINESS_SOURCE_BLOCKER_ORDER
+    .map((status) => ({
+      count: blockers[status],
+      label: SCORE_READINESS_SOURCE_BLOCKER_LABELS[status]
+    }))
+    .filter((part) => part.count > 0)
+    .map((part) => `${part.label} ${part.count}`);
+
+  return parts.length > 0 ? parts.join("; ") : "none";
 }
 
 export function isScorePlaceholderClaim(claim: Pick<Claim, "evidenceGrade">) {
@@ -253,6 +295,27 @@ function scoreReadinessState({
   }
 
   return "scored";
+}
+
+function buildScoreReadinessSourceBlockers(
+  rows: ScoreReadinessRow[]
+): ScoreReadinessSourceBlockers {
+  return rows.reduce<ScoreReadinessSourceBlockers>((counts, row) => {
+    if (row.state !== "source_blocked" || row.packet.completeness.status === "complete") {
+      return counts;
+    }
+
+    counts[row.packet.completeness.status] += 1;
+    return counts;
+  }, emptyScoreReadinessSourceBlockers());
+}
+
+function emptyScoreReadinessSourceBlockers(): ScoreReadinessSourceBlockers {
+  return {
+    extraction_pending: 0,
+    missing_sources: 0,
+    not_linked: 0
+  };
 }
 
 function scoreReadinessPriorityScore({
