@@ -17,7 +17,7 @@ import {
   studies,
   trialWatchItems
 } from "@/lib/seed-data";
-import type { Claim, EvidenceDashboardData, Reference } from "@/lib/types";
+import type { Claim, EvidenceDashboardData, Reference, Study } from "@/lib/types";
 
 function seedDashboardData(): EvidenceDashboardData {
   return {
@@ -264,16 +264,82 @@ describe("score worklist", () => {
     );
     expect(brief.affectedClaims[0]).toMatchObject({
       claimId: "brief-blocked-score",
+      extractionGaps: expect.arrayContaining([
+        "source type",
+        "sample size/results status",
+        "population fit",
+        "intervention fit",
+        `claim-relevant ${blockedClaim.outcome} outcomes/result direction`,
+        "adverse events/tolerability",
+        "funding/conflicts",
+        "risk of bias/evidence quality"
+      ]),
       sourcePacketLabel: "Extraction pending"
     });
     expect(brief.sourceTypeHint).toContain("meta-analysis");
     expect(lines).toContain("Read-only score source repair brief");
     expect(lines).toContain("Affected claims:");
+    expect(lines).toContain("Extraction gaps: source type; sample size/results status");
     expect(lines).toContain("Existing study rows for this reference: none.");
     expect(lines).toContain("Repair sequence:");
     expect(lines).toContain("local-score-worklist.ts --state ready_to_score");
     expect(lines).toContain("local-score-draft.ts --limit 15");
     expect(lines).toContain("Extraction checklist:");
     expect(lines).toContain("Write guardrails:");
+  });
+
+  it("names placeholder extraction fields when a partial study row still blocks scoring", () => {
+    const data = seedDashboardData();
+    const sourceBackedClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0)!;
+    const pendingReference: Reference = {
+      id: "brief-partial-score-reference",
+      identifier: "PMID:22223333",
+      source: "PubMed",
+      title: "Randomized trial with incomplete extraction",
+      url: "https://pubmed.ncbi.nlm.nih.gov/22223333/",
+      year: 2026
+    };
+    const blockedClaim: Claim = {
+      ...sourceBackedClaim,
+      id: "brief-partial-blocked-score",
+      keyReferenceIds: [pendingReference.id]
+    };
+    const partialStudy: Study = {
+      adverseEvents: "Not extracted yet.",
+      fundingConflicts: "Not extracted.",
+      id: "partial-study-row",
+      intervention: "Intervention matched to the source.",
+      outcomes: ["Strength improved versus comparator."],
+      population: "Adults in a randomized trial.",
+      referenceId: pendingReference.id,
+      riskOfBias: "Not extracted.",
+      sampleSize: "120 participants.",
+      source: "PubMed",
+      studyType: "Randomized controlled trial",
+      title: "Randomized trial with incomplete extraction",
+      year: 2026
+    };
+    const brief = buildScoreWorklistReferenceRepairBrief(
+      {
+        ...data,
+        claims: [blockedClaim],
+        references: [...data.references, pendingReference],
+        studies: [...data.studies, partialStudy]
+      },
+      pendingReference.id
+    );
+    const lines = formatScoreWorklistReferenceRepairBriefLines(brief).join("\n");
+
+    expect(brief.totalAffectedClaims).toBe(1);
+    expect(brief.affectedClaims[0].extractionGaps).toEqual([
+      "adverse events/tolerability",
+      "funding/conflicts",
+      "risk of bias/evidence quality"
+    ]);
+    expect(lines).toContain(
+      "Extraction gaps: adverse events/tolerability; funding/conflicts; risk of bias/evidence quality"
+    );
+    expect(lines).toContain("Existing study rows for this reference:");
+    expect(lines).toContain("Safety: Not extracted yet.");
   });
 });

@@ -348,6 +348,7 @@ function hasSubstantiveExtractionText(value: string) {
 
 const PLACEHOLDER_EXTRACTION_PATTERNS = [
   /^see source record\.?$/i,
+  /^not assessed(?: yet)?\.?$/i,
   /^not reviewed yet\.?$/i,
   /^not extracted\.?$/i,
   /^human-reviewed .+ required\.?$/i,

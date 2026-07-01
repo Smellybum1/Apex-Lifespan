@@ -230,6 +230,39 @@ describe("buildClaimSourcePacket", () => {
     });
   });
 
+  it("treats unassessed risk-of-bias extraction as pending", () => {
+    const reference: Reference = {
+      id: "risk-placeholder-ref",
+      title: "Risk placeholder source",
+      source: "PubMed",
+      url: "https://pubmed.ncbi.nlm.nih.gov/risk-placeholder/"
+    };
+    const study = studyFixture({
+      id: "risk-placeholder-study",
+      referenceId: reference.id,
+      studyType: "Randomized controlled trial"
+    });
+
+    const packet = buildClaimSourcePacket({
+      claim: { keyReferenceIds: [reference.id] },
+      referencesById: new Map([[reference.id, reference]]),
+      studies: [
+        {
+          ...study,
+          riskOfBias: "Not assessed yet."
+        }
+      ]
+    });
+
+    expect(packet.pendingReferences).toEqual([reference]);
+    expect(packet.completeness).toMatchObject({
+      status: "extraction_pending",
+      extractedReferences: 0,
+      pendingReferences: 1
+    });
+    expect(packet.evidenceDepth.totalExtractedStudies).toBe(0);
+  });
+
   it("dedupes claim reference ids and reports missing references", () => {
     const knownReference: Reference = {
       id: "known-ref",

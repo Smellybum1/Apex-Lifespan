@@ -223,6 +223,7 @@ export interface ScoreWorklistReferenceRepairClaim {
   claimId: string;
   claimText: string;
   currentScoreLabel: string;
+  extractionGaps: string[];
   intervention: {
     id: string;
     name: string;
@@ -408,7 +409,7 @@ export function buildScoreWorklistReferenceRepairBrief(
     .sort((left, right) => right.year - left.year || left.title.localeCompare(right.title));
 
   return {
-    affectedClaims: affectedRows.slice(0, limit).map(referenceRepairClaim),
+    affectedClaims: affectedRows.slice(0, limit).map((row) => referenceRepairClaim(row, studies)),
     extractionChecklist: REFERENCE_REPAIR_EXTRACTION_CHECKLIST,
     hiddenClaims: Math.max(affectedRows.length - limit, 0),
     nextActions: referenceRepairNextActions({
@@ -561,6 +562,11 @@ export function formatScoreWorklistReferenceRepairBriefLines(
         `${index + 1}. ${claim.intervention?.name ?? "Unknown intervention"} / ${claim.outcome} (${claim.claimId})`,
         `   ${claim.priorityLabel} priority / ${claim.currentScoreLabel} / ${claim.sourcePacketLabel}`,
         `   Claim: ${claim.claimText}`,
+        `   Extraction gaps: ${
+          claim.extractionGaps.length > 0
+            ? claim.extractionGaps.join("; ")
+            : "no obvious extraction field gaps; review claim fit manually"
+        }`,
         `   Next: ${claim.nextAction}`
       ])
     );
@@ -668,7 +674,10 @@ const REFERENCE_REPAIR_WRITE_GUARDRAILS = [
   "Do not turn peptide or regulatory sources into sourcing, dosing, compounding, injection, cycling, or self-administration guidance."
 ];
 
-function referenceRepairClaim(row: ScoreReadinessRow): ScoreWorklistReferenceRepairClaim {
+function referenceRepairClaim(
+  row: ScoreReadinessRow,
+  studies: Study[]
+): ScoreWorklistReferenceRepairClaim {
   return {
     claimId: row.claim.id,
     claimText: row.claim.claimText,
@@ -676,6 +685,7 @@ function referenceRepairClaim(row: ScoreReadinessRow): ScoreWorklistReferenceRep
       row.currentScore === null
         ? "No final score"
         : `${row.currentScore.toFixed(1)} ${scoreBand(row.currentScore)}`,
+    extractionGaps: referenceRepairExtractionGaps(row, studies),
     intervention: row.intervention
       ? {
           id: row.intervention.id,
@@ -689,6 +699,89 @@ function referenceRepairClaim(row: ScoreReadinessRow): ScoreWorklistReferenceRep
     sourcePacketLabel: row.packet.completeness.label
   };
 }
+
+function referenceRepairExtractionGaps(row: ScoreReadinessRow, studies: Study[]) {
+  switch (row.packet.completeness.status) {
+    case "missing_sources":
+      return ["curated source record"];
+    case "not_linked":
+      return ["curated reference link"];
+    case "complete":
+      return [];
+    case "extraction_pending":
+      break;
+  }
+
+  const outcomeGap = `claim-relevant ${row.claim.outcome} outcomes/result direction`;
+
+  if (studies.length === 0) {
+    return [
+      "source type",
+      "sample size/results status",
+      "population fit",
+      "intervention fit",
+      outcomeGap,
+      "adverse events/tolerability",
+      "funding/conflicts",
+      "risk of bias/evidence quality"
+    ];
+  }
+
+  return [
+    allStudiesNeedField(studies, (study) => study.sampleSize)
+      ? "sample size/results status"
+      : undefined,
+    allStudiesNeedField(studies, (study) => study.population) ? "population fit" : undefined,
+    allStudiesNeedField(studies, (study) => study.intervention) ? "intervention fit" : undefined,
+    allStudiesNeedField(studies, (study) => study.outcomes) ? outcomeGap : undefined,
+    allStudiesNeedField(studies, (study) => study.adverseEvents)
+      ? "adverse events/tolerability"
+      : undefined,
+    allStudiesNeedField(studies, (study) => study.fundingConflicts) ? "funding/conflicts" : undefined,
+    allStudiesNeedField(studies, (study) => study.riskOfBias)
+      ? "risk of bias/evidence quality"
+      : undefined
+  ].filter((gap): gap is string => Boolean(gap));
+}
+
+function allStudiesNeedField(
+  studies: Study[],
+  selectValue: (study: Study) => string | string[]
+) {
+  return studies.every((study) => !hasSubstantiveExtractionValue(selectValue(study)));
+}
+
+function hasSubstantiveExtractionValue(value: string | string[]) {
+  if (Array.isArray(value)) {
+    return value.some(hasSubstantiveExtractionText);
+  }
+
+  return hasSubstantiveExtractionText(value);
+}
+
+function hasSubstantiveExtractionText(value: string) {
+  const normalized = value.trim();
+
+  if (normalized.length < 3) {
+    return false;
+  }
+
+  return !REPAIR_PLACEHOLDER_EXTRACTION_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+const REPAIR_PLACEHOLDER_EXTRACTION_PATTERNS = [
+  /^see source record\.?$/i,
+  /^not assessed(?: yet)?\.?$/i,
+  /^not available\.?$/i,
+  /^not extracted(?: yet)?\.?$/i,
+  /^not reported\.?$/i,
+  /^not reviewed(?: yet)?\.?$/i,
+  /^unknown\.?$/i,
+  /^human-reviewed .+ required\.?$/i,
+  /^verify .+ linked source record\.?$/i,
+  /^check source record(?: for .*)?\.?$/i,
+  /^review design and heterogeneity in linked source record\.?$/i
+];
 
 function referenceRepairNextActions({
   affectedRows,
