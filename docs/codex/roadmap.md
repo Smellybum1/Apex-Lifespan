@@ -84,28 +84,44 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
 
 **Scoring finish line:** every active local claim is either scored from a traceable source packet, parked/backlog with a reason, source-blocked with a concrete next action, or rejected/noise. Completion is proven locally by the score worklist and catalog-quality checks accounting for all claims, plus public-page spot checks showing no placeholder-looking scores as final evidence.
 
-**Scoring execution plan:**
+**Scoring objective:** complete local scoring for the `477` active public claim cells by moving each one into exactly one accountable state: `scored`, `ready-to-score`, `source-blocked`, `parked/backlog`, or `rejected/noise`. The current bottleneck is not the score formula; it is source identity, source extraction, and claim-support repair for the `456` source-blocked cells.
 
-1. **Keep public scores honest while work is incomplete.**
+**Per-claim completion contract:**
+
+- `Scored`: has linked citation IDs, structured extraction, dimension values, final label, rationale, uncertainty/caveat wording, review status, and a score snapshot.
+- `Ready-to-score`: has enough linked, identity-confirmed extraction to score but has not been scored yet.
+- `Source-blocked`: has a blocker kind and next action, such as identity mismatch, missing source, missing extraction, weak claim support, safety/regulatory source gap, or low-value/noise.
+- `Parked/backlog`: may be useful later but is intentionally excluded from current public scoring, with a reason and revisit trigger.
+- `Rejected/noise`: is mismatch, duplicate, unsupported, non-product-relevant, or too low signal to preserve as evidence.
+
+**Scoring completion map:**
+
+1. **Keep public scores honest while scoring is incomplete.**
    - Evidence-map cells and intervention pages must distinguish scored evidence from insufficient evidence, review work, parked research, and source-blocked claims.
    - Placeholder-looking public values such as repeated `2.1` and `3.1` must either gain real scored rationale or be shown as review/source-work states.
    - Low-confidence but real evidence can stay visible as weak or limited evidence; unsupported/noise rows should not masquerade as low-confidence scores.
    - Done when public pages never present review-only or source-blocked values as finished scores.
 
-2. **Lock the scoring contract before broad scoring.**
+2. **Lock the scoring contract and save rules.**
    - Confirm the score dimensions: Directness, Rigor, Impact, Safety, Measurability, Low regulatory risk, Low hype risk, and product caveat context.
-   - Confirm composite weights, evidence bands, final labels, review statuses, score snapshots, and public wording in methodology copy.
+   - Confirm composite weights, evidence bands, final labels, review statuses, score snapshots, public wording, and methodology copy.
    - Keep every score scoped to a specific claim and source packet, not a supplement-wide recommendation.
    - Treat safety, regulatory/product status, overclaim risk, uncertainty, and AU/TGA/product-level caveats as first-class constraints.
    - Done when a score cannot be saved without dimension values, final label, rationale, linked citations, review status, and snapshot/audit trace.
 
-3. **Make the scoring backlog measurable.**
-   - Count every active local claim as scored, ready to score, score-review, source-blocked, parked/backlog, or rejected/noise.
+3. **Make the scoring backlog fully measurable.**
+   - Count every active local claim as scored, ready-to-score, score-review, source-blocked, parked/backlog, or rejected/noise.
    - Split source-blocked work into blocker types: identity mismatch, missing source record, missing structured extraction, weak claim support, safety/regulatory source gap, or low-value/noise.
    - Group work by intervention and outcome with current score, source packet completeness, top citations, review status, identity warnings, and next action visible.
    - Done when `npx tsx scripts/local-score-worklist.ts --limit 20` and `npx tsx scripts/local-catalog-quality.ts` explain the whole backlog without mystery buckets.
 
-4. **Repair source-blocked packets by priority.**
+4. **Repair source identity and claim/source links first.**
+   - Resolve intervention identity warnings before scoring, because a correct score on the wrong intervention is worse than no score.
+   - Link accepted candidates to the correct scoped claim, or reassign/reject them when the title/source supports a different intervention.
+   - Keep source-led automation conservative: it can confirm visible identity, reassign clear source mentions, reject clear mismatches, and park ambiguous literature.
+   - Done when identity-blocked accepted candidates no longer prevent source packets from becoming extraction-ready.
+
+5. **Build structured source packets.**
    - Prioritize high-visibility public cells, safety/regulatory claims, high-quality review/trial leads, and interventions with many public claims.
    - For each source packet, repair PubMed, ClinicalTrials, DOI, NIH/official safety, and regulatory/product references as needed.
    - Capture structured extraction: study design, population, comparator, endpoint, effect direction, practical impact, limitations, adverse-event context, regulatory/product caveats, and exact citation IDs.
@@ -113,27 +129,28 @@ Turn accepted sources and draft claim clusters into honest, traceable evidence s
    - Avoid peptide sourcing, route, reconstitution, injection, cycling, dosing, or self-administration guidance.
    - Done when each repaired claim becomes ready-to-score, remains source-blocked with the next blocker, or is parked/rejected.
 
-5. **Score ready packets in consistent batches.**
+6. **Score ready packets in batches.**
    - Score one intervention/outcome group at a time so similar claims use consistent evidence thresholds.
+   - Start with the highest-yield ready packets: strong review/trial evidence, public high-interest rows, and claims with existing source packets.
    - Use the operator score editor or local score draft dry-run before applying any update.
    - Apply `AI reviewed` only when citation traceability, uncertainty labels, AU/TGA caveats, product-level limits, and no-medical-advice boundaries are preserved.
    - Use `Human reviewed` only after explicit human confirmation.
    - Capture score snapshots so future changes are auditable.
    - Done when each ready batch moves to scored, parked/backlog, or rejected/noise before the next batch starts.
 
-6. **Calibrate the scored catalog.**
+7. **Calibrate the scored catalog.**
    - Compare similar intervention/outcome groups so strong, moderate, limited, weak, safety, and regulatory labels mean the same thing across the map.
    - Spot-check high-impact examples such as creatine/strength, omega-3/lipids, caffeine/endurance, vitamin D/safety, zinc/immune, and peptide/regulatory rows.
    - Reconcile any score whose public label, component values, citations, or caveats feel inconsistent.
    - Done when sampled rows show consistent scoring logic and clear "what would change the score" language.
 
-7. **Close leftover buckets.**
+8. **Close leftover buckets deliberately.**
    - Park weak-but-potentially-useful leads with a clear reason.
-   - Reject clear noise, mismatches, unsupported claims, and non-product-relevant medical literature.
+   - Reject clear noise, mismatches, unsupported claims, duplicates, and non-product-relevant medical literature.
    - Keep only a small spot-check bucket for ambiguous rows that need human judgment rather than automation.
    - Done when the leftover queue is intentionally small and explainable.
 
-8. **Verify completion locally.**
+9. **Verify completion locally.**
    - `npx tsx scripts/local-score-worklist.ts --limit 20` shows no unexplained default-looking public scores and no ready-to-score rows left unprocessed.
    - `npx tsx scripts/local-catalog-quality.ts` accounts for every claim state.
    - Public evidence map and intervention detail pages are spot-checked for strong, moderate, limited, weak, insufficient, safety, regulatory, parked, and source-blocked examples.
