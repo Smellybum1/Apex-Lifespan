@@ -2116,7 +2116,7 @@ function sourceCandidateStudyExtractionUncertaintyNotes(candidate: SourceCandida
     );
   }
 
-  if (candidate.source === "PubMed" && !candidate.abstractAvailable) {
+  if (candidate.source === "PubMed" && !sourceText && !candidate.abstractAvailable) {
     notes.push("PubMed abstract was not available from candidate metadata.");
   }
 

@@ -1566,6 +1566,39 @@ describe("getSourceCandidateCurationDraft", () => {
     });
   });
 
+  it("does not mark PubMed abstract unavailable when captured source text exists", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        acceptedReferenceId: "ref-creatine-position-stand",
+        abstractAvailable: false,
+        decision: "ACCEPTED",
+        metadata: {
+          abstractText:
+            "Creatine supplementation can support strength, power, and lean mass when paired with resistance training."
+        },
+        reviewStatus: "HUMAN_REVIEWED"
+      })
+    );
+
+    const draft = await getSourceCandidateCurationDraft(
+      "pubmed|au|creatine|28615996|creatine|creatine-strength"
+    );
+
+    expect(draft?.studyExtractionDraft?.prefillFields).toContainEqual(
+      expect.objectContaining({
+        field: "abstract",
+        value:
+          "PubMed abstract: Creatine supplementation can support strength, power, and lean mass when paired with resistance training."
+      })
+    );
+    expect(draft?.studyExtractionDraft?.uncertaintyNotes).toContain(
+      "Captured source text is limited to abstract or registry-summary metadata; it is not a full-text review."
+    );
+    expect(draft?.studyExtractionDraft?.uncertaintyNotes).not.toContain(
+      "PubMed abstract was not available from candidate metadata."
+    );
+  });
+
   it("prefills conservative study extraction fields from ClinicalTrials metadata", async () => {
     prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
       dbSourceCandidate({
