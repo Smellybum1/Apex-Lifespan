@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildCodexReviewPacket,
+  buildScoreReadinessRows,
   buildSourcePacketGapRows,
   EvidenceDashboard
 } from "@/components/evidence-dashboard";
@@ -150,6 +151,48 @@ describe("EvidenceDashboard", () => {
     expect(targetRow?.intervention?.slug).toBeTruthy();
   });
 
+  it("separates score-ready claims from starter-looking public scores", () => {
+    const data = seedDashboardData();
+    const sourceBackedClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0);
+
+    expect(sourceBackedClaim).toBeDefined();
+
+    const scoreReadyClaim = {
+      ...sourceBackedClaim!,
+      id: "score-ready-test",
+      evidenceGrade: "Insufficient until source packets are reviewed."
+    };
+    const starterScoreClaim = {
+      ...sourceBackedClaim!,
+      id: "starter-score-test",
+      evidenceGrade: "Starter score review fixture",
+      finalLabel: "Insufficient Evidence" as const,
+      scores: {
+        evidenceDirectness: 3,
+        evidenceRigor: 3,
+        effectSize: 3,
+        safety: 4,
+        regulatoryRisk: 7,
+        productQuality: 4,
+        hypePenalty: 7,
+        measurability: 3
+      }
+    };
+    const rows = buildScoreReadinessRows({
+      ...data,
+      claims: [...data.claims, scoreReadyClaim, starterScoreClaim],
+      claimScoreSnapshots: []
+    });
+    const scoreReadyRow = rows.find((row) => row.claim.id === scoreReadyClaim.id);
+    const starterScoreRow = rows.find((row) => row.claim.id === starterScoreClaim.id);
+
+    expect(scoreReadyRow?.state).toBe("ready_to_score");
+    expect(scoreReadyRow?.reasons).toContain("source packet complete");
+    expect(starterScoreRow?.state).toBe("default_score_review");
+    expect(starterScoreRow?.currentScore).toBe(3.1);
+    expect(starterScoreRow?.reasons.join(" ")).toContain("starter-score pattern");
+  });
+
   it("renders sanitized seed fallback reasons in the public header", () => {
     const html = renderToStaticMarkup(
       <EvidenceDashboard
@@ -189,6 +232,7 @@ describe("EvidenceDashboard", () => {
     expect(packet).toContain(
       `- Source packets: ${sourcePacketSummary.completeClaims}/${sourcePacketSummary.totalClaims} complete`
     );
+    expect(packet).toContain("Priority scoring work:");
     expect(packet).toContain("Priority source-packet work:");
     expect(packet).toContain("Claim boundaries (what this does not prove):");
     expect(packet).toContain("Does not prove direct lifespan extension.");

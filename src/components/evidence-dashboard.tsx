@@ -188,6 +188,7 @@ const HUMAN_REVIEWED_TOOLTIP =
   "Human reviewed means a human reviewer checked the source packet against the scoped claim. It does not mean clinical guideline endorsement.";
 const DRAFT_LEAD_EVIDENCE_GRADE = "Draft lead";
 const SOURCE_PACKET_REVIEW_EVIDENCE_GRADE = "Insufficient until source packets are reviewed.";
+const STARTER_LOOKING_COMPOSITE_SCORES = new Set(["2.1", "3.1"]);
 const compositeScoreFormula =
   "Composite = directness + rigor + impact + safety + measurability - hype/regulatory penalty.";
 const compositeScoreDetail =
@@ -4779,6 +4780,36 @@ type SourcePacketGapSummary = {
   totalGaps: number;
 };
 
+type ScoreReadinessState =
+  | "default_score_review"
+  | "ready_to_score"
+  | "scored"
+  | "snapshot_gap"
+  | "source_blocked";
+
+type ScoreReadinessPriority = "High" | "Medium" | "Low";
+
+type ScoreReadinessRow = {
+  claim: Claim;
+  currentScore: number | null;
+  intervention?: Intervention;
+  packet: ClaimSourcePacket;
+  priority: number;
+  priorityLabel: ScoreReadinessPriority;
+  reasons: string[];
+  state: ScoreReadinessState;
+};
+
+type ScoreReadinessSummary = {
+  defaultLookingPublicScores: number;
+  readyToScore: number;
+  scoredPublicClaims: number;
+  snapshotGaps: number;
+  sourceBlocked: number;
+  totalClaims: number;
+  workItems: number;
+};
+
 export function buildSourcePacketGapRows(data: EvidenceDashboardData): SourcePacketGapRow[] {
   const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
   const interventionsById = new Map(
@@ -4858,6 +4889,241 @@ function buildSourcePacketGapSummary(rows: SourcePacketGapRow[]): SourcePacketGa
     ),
     totalGaps: rows.length
   };
+}
+
+export function buildScoreReadinessRows(data: EvidenceDashboardData): ScoreReadinessRow[] {
+  const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
+  const interventionsById = new Map(
+    data.interventions.map((intervention) => [intervention.id, intervention])
+  );
+  const snapshotsByClaimId = new Map(
+    (data.claimScoreSnapshots ?? []).map((snapshot) => [snapshot.claimId, snapshot])
+  );
+  const hasSnapshotInventory = data.claimScoreSnapshots !== undefined;
+
+  return data.claims
+    .map((claim) => {
+      const packet = buildClaimSourcePacket({
+        claim,
+        referencesById,
+        studies: data.studies
+      });
+      const currentScore = evidenceMapSortableScore(claim);
+      const state = scoreReadinessState({
+        claim,
+        currentScore,
+        hasSnapshotInventory,
+        packet,
+        snapshotExists: snapshotsByClaimId.has(claim.id)
+      });
+      const priority = scoreReadinessPriorityScore({ claim, currentScore, packet, state });
+
+      return {
+        claim,
+        currentScore,
+        intervention: interventionsById.get(claim.interventionId),
+        packet,
+        priority,
+        priorityLabel: scoreReadinessPriorityLabel(priority),
+        reasons: scoreReadinessReasons({
+          claim,
+          currentScore,
+          hasSnapshotInventory,
+          packet,
+          snapshotExists: snapshotsByClaimId.has(claim.id),
+          state
+        }),
+        state
+      };
+    })
+    .sort((left, right) => {
+      const priorityDelta = right.priority - left.priority;
+
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+
+      const leftName = left.intervention?.name ?? "";
+      const rightName = right.intervention?.name ?? "";
+      return leftName.localeCompare(rightName) || left.claim.outcome.localeCompare(right.claim.outcome);
+    });
+}
+
+function buildScoreReadinessSummary(rows: ScoreReadinessRow[]): ScoreReadinessSummary {
+  const workItems = rows.filter((row) => row.state !== "scored").length;
+
+  return {
+    defaultLookingPublicScores: rows.filter((row) => row.state === "default_score_review").length,
+    readyToScore: rows.filter((row) => row.state === "ready_to_score").length,
+    scoredPublicClaims: rows.filter((row) => row.state === "scored").length,
+    snapshotGaps: rows.filter((row) => row.state === "snapshot_gap").length,
+    sourceBlocked: rows.filter((row) => row.state === "source_blocked").length,
+    totalClaims: rows.length,
+    workItems
+  };
+}
+
+function scoreReadinessState({
+  claim,
+  currentScore,
+  hasSnapshotInventory,
+  packet,
+  snapshotExists
+}: {
+  claim: Claim;
+  currentScore: number | null;
+  hasSnapshotInventory: boolean;
+  packet: ClaimSourcePacket;
+  snapshotExists: boolean;
+}): ScoreReadinessState {
+  if (currentScore !== null && isStarterLookingCompositeScore(currentScore)) {
+    return "default_score_review";
+  }
+
+  if (packet.completeness.status !== "complete") {
+    return "source_blocked";
+  }
+
+  if (isEvidenceMapPlaceholderClaim(claim)) {
+    return "ready_to_score";
+  }
+
+  if (hasSnapshotInventory && !snapshotExists) {
+    return "snapshot_gap";
+  }
+
+  return "scored";
+}
+
+function scoreReadinessPriorityScore({
+  claim,
+  currentScore,
+  packet,
+  state
+}: {
+  claim: Claim;
+  currentScore: number | null;
+  packet: ClaimSourcePacket;
+  state: ScoreReadinessState;
+}) {
+  const stateScore: Record<ScoreReadinessState, number> = {
+    default_score_review: 110,
+    ready_to_score: 95,
+    scored: 0,
+    snapshot_gap: 55,
+    source_blocked: 70
+  };
+  const labelWeight = sourcePacketGapLabelWeight(claim.finalLabel);
+  const sourceDepth =
+    packet.evidenceDepth.metaAnalyses * 8 +
+    packet.evidenceDepth.systematicReviews * 6 +
+    packet.evidenceDepth.randomizedControlledTrials * 6 +
+    packet.evidenceDepth.clinicalTrialRecords * 3;
+
+  return Math.round(
+    stateScore[state] +
+      labelWeight +
+      (isHumanReviewed(claim.reviewStatus) ? 18 : 8) +
+      (currentScore === null ? 0 : currentScore * 2) +
+      Math.min(18, sourceDepth) +
+      Math.min(12, packet.completeness.totalReferences * 3)
+  );
+}
+
+function scoreReadinessPriorityLabel(priority: number): ScoreReadinessPriority {
+  if (priority >= 120) {
+    return "High";
+  }
+
+  if (priority >= 85) {
+    return "Medium";
+  }
+
+  return "Low";
+}
+
+function scoreReadinessReasons({
+  claim,
+  currentScore,
+  hasSnapshotInventory,
+  packet,
+  snapshotExists,
+  state
+}: {
+  claim: Claim;
+  currentScore: number | null;
+  hasSnapshotInventory: boolean;
+  packet: ClaimSourcePacket;
+  snapshotExists: boolean;
+  state: ScoreReadinessState;
+}) {
+  const reasons = [scoreReadinessStateLabel(state)];
+
+  if (currentScore !== null && isStarterLookingCompositeScore(currentScore)) {
+    reasons.push(`${currentScore.toFixed(1)} matches starter-score pattern`);
+  }
+
+  if (packet.completeness.status === "complete") {
+    reasons.push("source packet complete");
+  } else {
+    reasons.push(packet.completeness.label);
+  }
+
+  if (isEvidenceMapPlaceholderClaim(claim)) {
+    reasons.push("hidden from final score display");
+  }
+
+  if (hasSnapshotInventory && !snapshotExists) {
+    reasons.push("no score snapshot recorded");
+  }
+
+  if (packet.evidenceDepth.metaAnalyses > 0 || packet.evidenceDepth.systematicReviews > 0) {
+    reasons.push("review-level source extracted");
+  }
+
+  if (packet.evidenceDepth.randomizedControlledTrials > 0) {
+    reasons.push("RCT extraction available");
+  }
+
+  if (!isHumanReviewed(claim.reviewStatus)) {
+    reasons.push("pending human review");
+  }
+
+  return reasons;
+}
+
+function isStarterLookingCompositeScore(score: number) {
+  return STARTER_LOOKING_COMPOSITE_SCORES.has(score.toFixed(1));
+}
+
+function scoreReadinessStateLabel(state: ScoreReadinessState) {
+  switch (state) {
+    case "default_score_review":
+      return "Default-looking score";
+    case "ready_to_score":
+      return "Ready to score";
+    case "scored":
+      return "Scored";
+    case "snapshot_gap":
+      return "Snapshot gap";
+    case "source_blocked":
+      return "Source-blocked";
+  }
+}
+
+function scoreReadinessNextAction(row: ScoreReadinessRow) {
+  switch (row.state) {
+    case "default_score_review":
+      return "Review the linked source packet and replace the starter-looking public score with a claim-specific scoring rationale.";
+    case "ready_to_score":
+      return "Use the complete source packet to assign dimension scores, final label, and uncertainty language.";
+    case "snapshot_gap":
+      return "Capture a score snapshot so future score changes are auditable.";
+    case "source_blocked":
+      return row.packet.completeness.nextStep;
+    case "scored":
+      return "No immediate scoring action is required unless new sources or safety/regulatory context changes.";
+  }
 }
 
 function sourcePacketGapPriorityScore({
@@ -4963,6 +5229,185 @@ function sourcePacketGapReasons({
   return reasons;
 }
 
+function ScoreReadinessWorklist({
+  rows,
+  summary
+}: {
+  rows: ScoreReadinessRow[];
+  summary: ScoreReadinessSummary;
+}) {
+  const workRows = rows.filter((row) => row.state !== "scored");
+  const visibleRows = workRows.slice(0, 12);
+  const hiddenCount = Math.max(workRows.length - visibleRows.length, 0);
+
+  return (
+    <section className="rounded-lg border border-line bg-white p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold text-ink">Score readiness inventory</h3>
+            <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+              {summary.workItems.toLocaleString()} scoring work item(s)
+            </span>
+            {summary.defaultLookingPublicScores > 0 ? (
+              <span className="rounded-md border border-danger/25 bg-red-50 px-2 py-1 text-xs font-semibold text-danger">
+                {summary.defaultLookingPublicScores.toLocaleString()} default-looking public score(s)
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
+            Local-only scoring inventory. It separates claims ready for score review from
+            source-blocked claims and flags starter-looking public scores before they read as final
+            evidence.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <MiniStat label="Ready to score" value={summary.readyToScore.toLocaleString()} />
+        <MiniStat
+          label="Default-looking scores"
+          value={summary.defaultLookingPublicScores.toLocaleString()}
+        />
+        <MiniStat label="Source-blocked" value={summary.sourceBlocked.toLocaleString()} />
+        <MiniStat label="Snapshot gaps" value={summary.snapshotGaps.toLocaleString()} />
+        <MiniStat label="Scored public cells" value={summary.scoredPublicClaims.toLocaleString()} />
+      </div>
+
+      {visibleRows.length > 0 ? (
+        <div className="mt-3 grid gap-2">
+          {visibleRows.map((row) => (
+            <ScoreReadinessCard
+              key={row.claim.id}
+              row={row}
+            />
+          ))}
+          {hiddenCount > 0 ? (
+            <p className="rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+              Showing top {visibleRows.length.toLocaleString()} scoring work item(s);
+              {" "}
+              {hiddenCount.toLocaleString()} lower-priority item(s) remain below this cutoff.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-spruce/30 bg-teal-50 px-3 py-2 text-sm leading-6 text-spruce">
+          No immediate scoring work is visible in the current local catalog.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ScoreReadinessCard({ row }: { row: ScoreReadinessRow }) {
+  const claimUrl = row.intervention
+    ? `/interventions/${row.intervention.slug}#claim-${row.claim.id}`
+    : undefined;
+  const scoreLabel =
+    row.currentScore === null
+      ? "No final score"
+      : `${row.currentScore.toFixed(1)} ${scoreBand(row.currentScore)}`;
+
+  return (
+    <article className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-semibold",
+                scoreReadinessStateTone(row.state)
+              )}
+            >
+              {scoreReadinessStateLabel(row.state)}
+            </span>
+            <span
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-semibold",
+                scoreReadinessPriorityTone(row.priorityLabel)
+              )}
+              title={`Priority ${row.priority}`}
+            >
+              {row.priorityLabel} priority
+            </span>
+            <span
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-semibold",
+                sourcePacketCompletenessTone(row.packet.completeness.status)
+              )}
+            >
+              {row.packet.completeness.label}
+            </span>
+          </div>
+          <h4 className="mt-3 text-sm font-semibold text-ink">
+            {row.intervention?.name ?? "Unknown intervention"} - {shortOutcome(row.claim.outcome)}
+          </h4>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {scoreReadinessNextAction(row)}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {row.reasons.map((reason) => (
+              <span
+                className="rounded-md border border-line bg-white px-2 py-1 text-xs text-slate-600"
+                key={reason}
+              >
+                {reason}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col gap-2 text-xs lg:items-end">
+          <span className="rounded-md border border-line bg-white px-2 py-1 font-semibold text-slate-700">
+            {scoreLabel}
+          </span>
+          <span className={cn("rounded-md border px-2 py-1 font-semibold", labelTone(row.claim.finalLabel))}>
+            {row.claim.finalLabel}
+          </span>
+          <span className="rounded-md border border-line bg-white px-2 py-1 font-semibold text-slate-700">
+            {row.packet.completeness.extractedReferences}/
+            {row.packet.completeness.totalReferences} refs extracted
+          </span>
+          {claimUrl ? (
+            <a
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 font-semibold text-signal hover:border-signal"
+              href={claimUrl}
+            >
+              Open claim
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function scoreReadinessStateTone(state: ScoreReadinessState) {
+  switch (state) {
+    case "default_score_review":
+      return "border-danger/30 bg-red-50 text-danger";
+    case "ready_to_score":
+      return "border-signal/30 bg-blue-50 text-signal";
+    case "scored":
+      return "border-spruce/30 bg-teal-50 text-spruce";
+    case "snapshot_gap":
+      return "border-amberline/30 bg-amber-50 text-amberline";
+    case "source_blocked":
+      return "border-slate-300 bg-slate-50 text-slate-700";
+  }
+}
+
+function scoreReadinessPriorityTone(priority: ScoreReadinessPriority) {
+  if (priority === "High") {
+    return "border-danger/30 bg-red-50 text-danger";
+  }
+
+  if (priority === "Medium") {
+    return "border-amberline/30 bg-amber-50 text-amberline";
+  }
+
+  return "border-slate-300 bg-slate-50 text-slate-700";
+}
+
 function CatalogTrustPanel({
   data,
   summary
@@ -4971,6 +5416,8 @@ function CatalogTrustPanel({
   summary: CatalogTrustSummary;
 }) {
   const hasAttentionItems = summary.previewAttentionItems.length > 0;
+  const scoreReadinessRows = buildScoreReadinessRows(data);
+  const scoreReadinessSummary = buildScoreReadinessSummary(scoreReadinessRows);
   const sourcePacketGapRows = buildSourcePacketGapRows(data);
   const sourcePacketGapSummary = buildSourcePacketGapSummary(sourcePacketGapRows);
 
@@ -5021,6 +5468,11 @@ function CatalogTrustPanel({
             value={`${summary.australia.productExactStatusCount}/${summary.products.total} exact product statuses`}
           />
         </div>
+
+        <ScoreReadinessWorklist
+          rows={scoreReadinessRows}
+          summary={scoreReadinessSummary}
+        />
 
         <SourcePacketGapWorklist
           rows={sourcePacketGapRows}
@@ -5765,8 +6217,19 @@ export function buildCodexReviewPacket(data: EvidenceDashboardData) {
     referencesById,
     studies: data.studies
   });
+  const scoreWorkClaims = buildScoreReadinessRows(data)
+    .filter((row) => row.state !== "scored")
+    .slice(0, 5);
   const sourceWorkClaims = buildSourcePacketGapRows(data).slice(0, 5);
 
+  const scoreWorkLines =
+    scoreWorkClaims.length > 0
+      ? scoreWorkClaims.map(({ claim, currentScore, intervention, packet, state }) => {
+          const scoreLabel =
+            currentScore === null ? "no final score" : `${currentScore.toFixed(1)}/10`;
+          return `- ${claim.id} (${intervention?.name ?? "Unknown intervention"} / ${claim.outcome}): ${scoreReadinessStateLabel(state)}; ${scoreLabel}; ${packet.completeness.label}; ${scoreReadinessNextAction({ claim, currentScore, intervention, packet, priority: 0, priorityLabel: "Low", reasons: [], state })}`;
+        })
+      : ["- No immediate local scoring work items in the current dashboard data."];
   const sourceWorkLines =
     sourceWorkClaims.length > 0
       ? sourceWorkClaims.map(({ claim, intervention, packet, priorityLabel }) => {
@@ -5803,6 +6266,9 @@ export function buildCodexReviewPacket(data: EvidenceDashboardData) {
     "",
     "Claim boundaries (what this does not prove):",
     ...claimBoundaryLines,
+    "",
+    "Priority scoring work:",
+    ...scoreWorkLines,
     "",
     "Priority source-packet work:",
     ...sourceWorkLines,
