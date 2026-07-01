@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildScoreWorklistReferenceRepairBrief,
   buildScoreWorklistReport,
+  formatScoreWorklistReferenceRepairBriefLines,
   formatScoreWorklistReportLines,
   formatScoreWorklistReportLinesWithOptions
 } from "@/lib/score-worklist";
@@ -217,7 +219,50 @@ describe("score worklist", () => {
     expect(lines).toContain("Source repair summary");
     expect(lines).toContain("Top pending extraction references");
     expect(lines).toContain("unlocks 2 claim(s)");
+    expect(lines).toContain(
+      "Brief: npx tsx scripts/local-score-worklist.ts --repair-reference shared-pending-score-reference"
+    );
     expect(lines).toContain("blocked-score-first");
     expect(lines).toContain("blocked-score-second");
+  });
+
+  it("builds a read-only extraction brief for one source-blocking reference", () => {
+    const data = seedDashboardData();
+    const sourceBackedClaim = data.claims.find((claim) => claim.keyReferenceIds.length > 0)!;
+    const sharedPendingReference: Reference = {
+      id: "brief-pending-score-reference",
+      identifier: "PMID:87654321",
+      source: "PubMed",
+      title: "Shared systematic review and meta-analysis that still needs extraction",
+      url: "https://pubmed.ncbi.nlm.nih.gov/87654321/",
+      year: 2026
+    };
+    const blockedClaim: Claim = {
+      ...sourceBackedClaim,
+      id: "brief-blocked-score",
+      keyReferenceIds: [sharedPendingReference.id]
+    };
+    const brief = buildScoreWorklistReferenceRepairBrief(
+      {
+        ...data,
+        claims: [blockedClaim],
+        references: [...data.references, sharedPendingReference]
+      },
+      sharedPendingReference.id
+    );
+    const lines = formatScoreWorklistReferenceRepairBriefLines(brief).join("\n");
+
+    expect(brief.reference?.label).toBe("PubMed PMID:87654321 2026");
+    expect(brief.totalAffectedClaims).toBe(1);
+    expect(brief.affectedClaims[0]).toMatchObject({
+      claimId: "brief-blocked-score",
+      sourcePacketLabel: "Extraction pending"
+    });
+    expect(brief.sourceTypeHint).toContain("meta-analysis");
+    expect(lines).toContain("Read-only score source repair brief");
+    expect(lines).toContain("Affected claims:");
+    expect(lines).toContain("Existing study rows for this reference: none.");
+    expect(lines).toContain("Extraction checklist:");
+    expect(lines).toContain("Write guardrails:");
   });
 });

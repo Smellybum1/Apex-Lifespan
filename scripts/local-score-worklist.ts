@@ -1,7 +1,9 @@
 import { getEvidenceDashboardData } from "@/lib/data/dashboard";
 import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
 import {
+  buildScoreWorklistReferenceRepairBrief,
   buildScoreWorklistReport,
+  formatScoreWorklistReferenceRepairBriefLines,
   formatScoreWorklistReportLinesWithOptions,
   type ScoreWorklistStateFilter
 } from "@/lib/score-worklist";
@@ -18,6 +20,21 @@ async function main() {
 
   await withProcessEnv(env, async () => {
     const data = await getEvidenceDashboardData();
+
+    if (args.repairReference) {
+      const brief = buildScoreWorklistReferenceRepairBrief(data, args.repairReference, {
+        limit: args.limit
+      });
+
+      if (args.json) {
+        console.log(JSON.stringify(brief, null, 2));
+        return;
+      }
+
+      console.log(formatScoreWorklistReferenceRepairBriefLines(brief).join("\n"));
+      return;
+    }
+
     const report = buildScoreWorklistReport(data, {
       includeScored: args.includeScored,
       intervention: args.intervention,
@@ -46,6 +63,7 @@ interface ScoreWorklistArgs {
   intervention?: string;
   json: boolean;
   limit: number;
+  repairReference?: string;
   repairSummary: boolean;
   showHelp?: false;
   state: ScoreWorklistStateFilter;
@@ -81,6 +99,7 @@ Options:
   --include-scored        Include already-scored rows when state is not all.
   --detail                Print claim boundary and extracted study fields for scoring review.
   --repair-summary        Show grouped source repair targets for source-blocked rows.
+  --repair-reference <id> Show a read-only extraction brief for one blocked reference id.
   --json                  Print JSON instead of text.
   --help                  Show this help.
 
@@ -116,6 +135,17 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
 
     if (arg === "--repair-summary") {
       parsed.repairSummary = true;
+      continue;
+    }
+
+    if (arg === "--repair-reference") {
+      parsed.repairReference = requiredNextValue(args, index, "--repair-reference");
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--repair-reference=")) {
+      parsed.repairReference = requiredInlineValue(arg, "--repair-reference");
       continue;
     }
 

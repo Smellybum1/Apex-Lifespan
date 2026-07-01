@@ -172,6 +172,58 @@ export interface ScoreWorklistRepairSampleClaim {
   priorityLabel: string;
 }
 
+export interface ScoreWorklistReferenceRepairBrief {
+  affectedClaims: ScoreWorklistReferenceRepairClaim[];
+  extractionChecklist: string[];
+  hiddenClaims: number;
+  reference: {
+    id: string;
+    label: string;
+    source: string;
+    title: string;
+    url: string;
+    year?: number;
+  } | null;
+  referenceId: string;
+  sourceTypeHint: string;
+  statusCounts: {
+    extractionPending: number;
+    missingSources: number;
+    notLinked: number;
+  };
+  studies: Array<{
+    adverseEvents: string;
+    fundingConflicts: string;
+    id: string;
+    intervention: string;
+    outcomes: string[];
+    population: string;
+    riskOfBias: string;
+    sampleSize: string;
+    source: string;
+    studyType: Study["studyType"];
+    title: string;
+    year: number;
+  }>;
+  totalAffectedClaims: number;
+  writeGuardrails: string[];
+}
+
+export interface ScoreWorklistReferenceRepairClaim {
+  claimId: string;
+  claimText: string;
+  currentScoreLabel: string;
+  intervention: {
+    id: string;
+    name: string;
+    slug: string;
+  } | null;
+  nextAction: string;
+  outcome: string;
+  priorityLabel: string;
+  sourcePacketLabel: string;
+}
+
 const DEFAULT_LIMIT = 12;
 
 export function buildScoreWorklistReport(
@@ -319,6 +371,62 @@ export function buildScoreWorklistRepairSummary(
   };
 }
 
+export function buildScoreWorklistReferenceRepairBrief(
+  data: EvidenceDashboardData,
+  referenceId: string,
+  options: { limit?: number } = {}
+): ScoreWorklistReferenceRepairBrief {
+  const normalizedReferenceId = referenceId.trim();
+
+  if (!normalizedReferenceId) {
+    throw new Error("Reference id is required for source repair brief.");
+  }
+
+  const reference = data.references.find((item) => item.id === normalizedReferenceId) ?? null;
+  const affectedRows = sortRepairRows(
+    buildScoreReadinessRows(data).filter(
+      (row) =>
+        row.state === "source_blocked" &&
+        row.claim.keyReferenceIds.includes(normalizedReferenceId)
+    )
+  );
+  const limit = options.limit ?? DEFAULT_LIMIT;
+  const studies = data.studies
+    .filter((study) => study.referenceId === normalizedReferenceId)
+    .sort((left, right) => right.year - left.year || left.title.localeCompare(right.title));
+
+  return {
+    affectedClaims: affectedRows.slice(0, limit).map(referenceRepairClaim),
+    extractionChecklist: REFERENCE_REPAIR_EXTRACTION_CHECKLIST,
+    hiddenClaims: Math.max(affectedRows.length - limit, 0),
+    reference: reference
+      ? {
+          id: reference.id,
+          label: formatReferenceLabel(reference),
+          source: reference.source,
+          title: reference.title,
+          url: reference.url,
+          year: reference.year
+        }
+      : null,
+    referenceId: normalizedReferenceId,
+    sourceTypeHint: sourceTypeHintFromReference(reference),
+    statusCounts: {
+      extractionPending: affectedRows.filter(
+        (row) => row.packet.completeness.status === "extraction_pending"
+      ).length,
+      missingSources: affectedRows.filter(
+        (row) => row.packet.completeness.status === "missing_sources"
+      ).length,
+      notLinked: affectedRows.filter((row) => row.packet.completeness.status === "not_linked")
+        .length
+    },
+    studies: studies.map(scoreWorklistStudyExtraction),
+    totalAffectedClaims: affectedRows.length,
+    writeGuardrails: REFERENCE_REPAIR_WRITE_GUARDRAILS
+  };
+}
+
 export function formatScoreWorklistReportLines(report: ScoreWorklistReport) {
   return formatScoreWorklistReportLinesWithOptions(report);
 }
@@ -376,7 +484,9 @@ export function formatScoreWorklistRepairSummaryLines(
         .slice(0, limit)
         .flatMap((group, index) => [
           `${index + 1}. ${group.reference.label} - unlocks ${group.claimCount} claim(s) across ${group.interventions.length} intervention(s)`,
+          `   Reference id: ${group.reference.id}`,
           `   ${group.reference.title}`,
+          `   Brief: npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
           `   Claims: ${formatRepairSampleClaims(group.sampleClaims)}`
         ])
     );
@@ -406,6 +516,66 @@ export function formatScoreWorklistRepairSummaryLines(
         ])
     );
   }
+
+  return lines;
+}
+
+export function formatScoreWorklistReferenceRepairBriefLines(
+  brief: ScoreWorklistReferenceRepairBrief
+) {
+  const lines = [
+    "Read-only score source repair brief",
+    `Reference id: ${brief.referenceId}`,
+    brief.reference
+      ? `Reference: ${brief.reference.label} - ${brief.reference.title}`
+      : "Reference: missing from curated source records",
+    brief.reference ? `URL: ${brief.reference.url}` : undefined,
+    `Source type hint: ${brief.sourceTypeHint}`,
+    `Affected source-blocked claim cells: ${brief.totalAffectedClaims}` +
+      (brief.hiddenClaims > 0 ? ` (${brief.hiddenClaims} hidden by limit)` : ""),
+    `Status: extraction pending ${brief.statusCounts.extractionPending}; missing source records ${brief.statusCounts.missingSources}; unlinked ${brief.statusCounts.notLinked}.`
+  ].filter((line): line is string => Boolean(line));
+
+  if (brief.affectedClaims.length > 0) {
+    lines.push("Affected claims:");
+    lines.push(
+      ...brief.affectedClaims.flatMap((claim, index) => [
+        `${index + 1}. ${claim.intervention?.name ?? "Unknown intervention"} / ${claim.outcome} (${claim.claimId})`,
+        `   ${claim.priorityLabel} priority / ${claim.currentScoreLabel} / ${claim.sourcePacketLabel}`,
+        `   Claim: ${claim.claimText}`,
+        `   Next: ${claim.nextAction}`
+      ])
+    );
+  } else {
+    lines.push("No source-blocked scoring rows currently depend on this reference.");
+  }
+
+  if (brief.studies.length > 0) {
+    lines.push("Existing study rows for this reference:");
+    lines.push(
+      ...brief.studies.slice(0, 4).flatMap((study, index) => [
+        `${index + 1}. ${study.studyType} ${study.year} - ${study.title}`,
+        `   Population: ${study.population}`,
+        `   Intervention: ${study.intervention}`,
+        `   Outcomes: ${study.outcomes.join(", ")}`,
+        `   Sample/results: ${study.sampleSize}`,
+        `   Safety: ${study.adverseEvents}`,
+        `   Funding/conflicts: ${study.fundingConflicts}`,
+        `   Bias/quality: ${study.riskOfBias}`
+      ])
+    );
+
+    if (brief.studies.length > 4) {
+      lines.push(`${brief.studies.length - 4} more study row(s) hidden by display limit.`);
+    }
+  } else {
+    lines.push("Existing study rows for this reference: none.");
+  }
+
+  lines.push("Extraction checklist:");
+  lines.push(...brief.extractionChecklist.map((item) => `- ${item}`));
+  lines.push("Write guardrails:");
+  lines.push(...brief.writeGuardrails.map((item) => `- ${item}`));
 
   return lines;
 }
@@ -458,6 +628,80 @@ function scoreWorklistRowLines(
     ]),
     `   What would change score: ${row.claim.whatWouldChangeScore}`
   ];
+}
+
+const REFERENCE_REPAIR_EXTRACTION_CHECKLIST = [
+  "Confirm source type from the source itself, not only the title.",
+  "Extract analyzed sample size or registry enrollment/result status.",
+  "Extract population, inclusion context, and whether it matches the scoped claim.",
+  "Extract intervention form, dose/exposure context, comparator, and duration when available.",
+  "Extract claim-relevant outcomes and main result direction without overclaiming.",
+  "Extract adverse events/tolerability and note when safety is not assessed.",
+  "Extract funding/conflicts and practical risk-of-bias or evidence-quality limits.",
+  "Keep product-level AU/TGA clearance separate from generic intervention evidence."
+];
+
+const REFERENCE_REPAIR_WRITE_GUARDRAILS = [
+  "This brief is read-only and does not write study rows, source packets, scores, or public evidence.",
+  "Write extraction only after reviewing the source packet or accepted candidate details.",
+  "Do not mark Human reviewed unless a human explicitly confirms it.",
+  "Do not turn peptide or regulatory sources into sourcing, dosing, compounding, injection, cycling, or self-administration guidance."
+];
+
+function referenceRepairClaim(row: ScoreReadinessRow): ScoreWorklistReferenceRepairClaim {
+  return {
+    claimId: row.claim.id,
+    claimText: row.claim.claimText,
+    currentScoreLabel:
+      row.currentScore === null
+        ? "No final score"
+        : `${row.currentScore.toFixed(1)} ${scoreBand(row.currentScore)}`,
+    intervention: row.intervention
+      ? {
+          id: row.intervention.id,
+          name: row.intervention.name,
+          slug: row.intervention.slug
+        }
+      : null,
+    nextAction: scoreReadinessNextAction(row),
+    outcome: row.claim.outcome,
+    priorityLabel: row.priorityLabel,
+    sourcePacketLabel: row.packet.completeness.label
+  };
+}
+
+function sourceTypeHintFromReference(reference: Reference | null) {
+  if (!reference) {
+    return "unknown; restore the missing curated source record first";
+  }
+
+  const title = reference.title.toLowerCase();
+
+  if (title.includes("meta-analysis") || title.includes("meta analysis")) {
+    return "meta-analysis or systematic review; verify exact source type";
+  }
+
+  if (title.includes("systematic review")) {
+    return "systematic review; verify whether a meta-analysis is included";
+  }
+
+  if (title.includes("randomized") || title.includes("randomised")) {
+    return "randomized controlled trial; verify trial design and result status";
+  }
+
+  if (reference.source.toLowerCase().includes("clinicaltrials")) {
+    return "clinical trial record; verify whether results are posted";
+  }
+
+  if (title.includes("regulatory") || title.includes("warning") || title.includes("safety")) {
+    return "regulatory or safety source; do not treat as benefit evidence";
+  }
+
+  if (title.includes("review")) {
+    return "review source; verify whether narrative, systematic, guideline, or position stand";
+  }
+
+  return "unknown; verify source type before writing extraction";
 }
 
 function pendingReferenceGroups(
