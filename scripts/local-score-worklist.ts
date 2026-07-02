@@ -217,6 +217,7 @@ async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
       dedupeKey: true,
       externalId: true,
       interventionId: true,
+      query: true,
       reviewNote: true,
       reviewStatus: true,
       source: true,
@@ -270,6 +271,7 @@ async function formatAcceptedCandidateRepairHintLines(referenceId: string) {
         `${index + 1}. ${sourceKindLabel(candidate.source)} ${candidate.externalId} - triage ${candidate.triageScore}` +
           (candidate.sourceType ? ` / ${candidate.sourceType}` : ""),
         `   ${candidate.title}`,
+        `   Query: ${JSON.stringify(candidate.query)}`,
         context ? `   Context: ${context}` : undefined,
         `   Identity preview: ${formatIdentityResolutionPreview(identityDecision)}`,
         ...(identityDecision ? formatIdentityResolutionReasons(identityDecision) : []),
@@ -304,6 +306,7 @@ async function formatAcceptedCandidateBatchHintLines({
       dedupeKey: true,
       externalId: true,
       interventionId: true,
+      query: true,
       reviewStatus: true,
       source: true,
       sourceType: true,
@@ -392,6 +395,7 @@ async function formatAcceptedCandidateBatchHintLines({
           `   ${sourceKindLabel(candidate.source)} ${candidate.externalId} - triage ${candidate.triageScore}` +
             (candidate.sourceType ? ` / ${candidate.sourceType}` : ""),
           `   Title: ${candidate.title}`,
+          `   Query: ${JSON.stringify(candidate.query)}`,
           context ? `   Context: ${context}` : undefined,
           `   Batch fit: ${isBatchClaim ? "candidate claim matches this extraction batch" : "candidate claim is not one of this batch's sample claims"}`,
           `   Study-type flag hint: ${formatStudySourceTypeCommandHints([

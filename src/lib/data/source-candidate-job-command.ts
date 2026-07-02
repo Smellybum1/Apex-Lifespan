@@ -3398,6 +3398,7 @@ function formatSourceCandidateCurationDraft(
     "readOnly=true",
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    `query=${quote(candidate.query)}`,
     ...formatSourceCandidateCurationCommandHints(candidate, "draft"),
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`,
