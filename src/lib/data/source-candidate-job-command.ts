@@ -3574,6 +3574,20 @@ function formatSourceCandidateCurationDraft(
         )
       )}`
     );
+    lines.push("  scoreRepairFollowup:");
+    lines.push(
+      `    referenceBrief=${quote(
+        `npx tsx scripts/local-score-worklist.ts --repair-reference ${draft.studyExtractionDraft.referenceId}`
+      )}`
+    );
+    lines.push(
+      `    readyCheck=${quote(
+        "npx tsx scripts/local-score-worklist.ts --state ready_to_score --limit 20"
+      )}`
+    );
+    lines.push(
+      `    scoreDraft=${quote("npx tsx scripts/local-score-draft.ts --limit 15")}`
+    );
 
     if (draft.studyExtractionDraft.metadataFields.length > 0) {
       lines.push("  metadataFields:");
