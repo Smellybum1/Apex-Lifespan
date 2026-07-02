@@ -3259,6 +3259,7 @@ describe("runSourceCandidateJobCommand", () => {
         '  doi="10.1186/s12970-017-0173-z"',
         "  abstractAvailable=true",
         '  manualFields="sampleSize, population, interventionName, outcomes, adverseEvents, fundingConflicts, riskOfBias"',
+        '  fieldReadiness="command-prefill candidates 2/7; human-required fields 5/7; review-only cues 1; uncertainty notes 1"',
         "  prefillFields:",
         '    sampleSize="120 actual" confidence=candidate-metadata writeFlag=--study-sample-size note="Enrollment/sample-size metadata may describe planned rather than analyzed sample; verify actual analyzed sample before writing."',
         '    riskOfBias="Review-level source; assess search strategy, inclusion criteria, bias appraisal, and funding/conflicts." confidence=derived writeFlag=--study-risk-of-bias note="Risk of bias requires protocol/results/full-text review; this is only a starting note."',

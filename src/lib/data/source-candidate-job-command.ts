@@ -3559,6 +3559,11 @@ function formatSourceCandidateCurationDraft(
     lines.push(
       `  manualFields=${quote(draft.studyExtractionDraft.manualFields.join(", "))}`
     );
+    lines.push(
+      `  fieldReadiness=${quote(
+        formatStudyExtractionFieldReadiness(draft.studyExtractionDraft)
+      )}`
+    );
 
     const prefillFields = draft.studyExtractionDraft.prefillFields ?? [];
     const reviewCues = draft.studyExtractionDraft.reviewCues ?? [];
@@ -3692,6 +3697,36 @@ function sourceCandidateStudyExtractionWriteReadiness(
   }
 
   return { ready: true };
+}
+
+function formatStudyExtractionFieldReadiness(
+  draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>
+) {
+  const manualFields = new Set(draft.manualFields);
+  const reviewCues = draft.reviewCues ?? [];
+  const uncertaintyNotes = draft.uncertaintyNotes ?? [];
+  const commandPrefillFields = draft.prefillFields.filter(
+    (field) =>
+      manualFields.has(field.field) &&
+      field.writeFlag &&
+      field.confidence !== "manual-required"
+  ).length;
+  const humanRequiredFields = Math.max(draft.manualFields.length - commandPrefillFields, 0);
+  const reviewOnlyCues =
+    reviewCues.length +
+    draft.prefillFields.filter(
+      (field) =>
+        !manualFields.has(field.field) ||
+        !field.writeFlag ||
+        field.confidence === "manual-required"
+    ).length;
+
+  return [
+    `command-prefill candidates ${commandPrefillFields}/${draft.manualFields.length}`,
+    `human-required fields ${humanRequiredFields}/${draft.manualFields.length}`,
+    `review-only cues ${reviewOnlyCues}`,
+    `uncertainty notes ${uncertaintyNotes.length}`
+  ].join("; ");
 }
 
 function formatSourceCandidateClaimLinkCommandTemplate(
