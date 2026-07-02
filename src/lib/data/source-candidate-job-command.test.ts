@@ -3174,18 +3174,29 @@ describe("runSourceCandidateJobCommand", () => {
         ]
       })
     );
+    const previewIdentityResolution = vi.fn().mockResolvedValue([
+      sourceCandidateIdentityDecision({
+        action: "confirm-target",
+        dedupeKey: candidateKey,
+        reasons: [
+          "Search query contains the current supplement identity.",
+          "Captured metadata has a loose current-supplement identity match."
+        ]
+      })
+    ]);
     const runNextJob = vi.fn();
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-draft", candidateKey],
         { stdout },
-        { getCurationDraft, listSiblings, runNextJob }
+        { getCurationDraft, listSiblings, previewIdentityResolution, runNextJob }
       )
     ).resolves.toBe(0);
 
     expect(getCurationDraft).toHaveBeenCalledWith(candidateKey);
     expect(listSiblings).toHaveBeenCalledWith(candidateKey, {});
+    expect(previewIdentityResolution).toHaveBeenCalledWith([candidateKey]);
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
@@ -3211,6 +3222,10 @@ describe("runSourceCandidateJobCommand", () => {
         `duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}"`,
         "duplicateIdentityMixedDecision=true",
         'duplicateIdentityNextAction="Review duplicate identity rows together before changing any candidate decision."',
+        'identityPreview="source-led resolver would confirm the current supplement identity."',
+        "identityReasons:",
+        '  - "Search query contains the current supplement identity."',
+        '  - "Captured metadata has a loose current-supplement identity match."',
         "acceptedReference=ref-creatine-position-stand",
         'acceptedReferenceTitle="Creatine position stand"',
         'acceptedReferenceSource="PubMed"',
@@ -3288,14 +3303,18 @@ describe("runSourceCandidateJobCommand", () => {
       }
     });
     const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
+    const previewIdentityResolution = vi.fn().mockResolvedValue([]);
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-draft", "pubmed|au|creatine|28615996"],
         { stdout },
-        { getCurationDraft, listSiblings }
+        { getCurationDraft, listSiblings, previewIdentityResolution }
       )
     ).resolves.toBe(0);
+    expect(previewIdentityResolution).toHaveBeenCalledWith([
+      "pubmed|au|creatine|28615996"
+    ]);
 
     expect(stdout).toHaveBeenCalledWith(
       [
@@ -3316,6 +3335,7 @@ describe("runSourceCandidateJobCommand", () => {
         "publicSourcePacketReady=false",
         "acceptRequiresMatchingCuratedReference=true",
         "reviewDecisionRequiresHumanNote=true",
+        'identityPreview="source-led identity preview unavailable; inspect accepted reference identity before extraction."',
         "claimLinkDraft: unavailable",
         "studyExtractionDraft: unavailable"
       ].join("\n")
@@ -3351,14 +3371,25 @@ describe("runSourceCandidateJobCommand", () => {
       }
     });
     const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
+    const previewIdentityResolution = vi.fn().mockResolvedValue([
+      sourceCandidateIdentityDecision({
+        action: "reject-wrong-supplement",
+        dedupeKey: candidateKey,
+        reasons: [
+          "Captured metadata appears to mention Calcium.",
+          "Target supplement is not visible in captured title/source metadata."
+        ]
+      })
+    ]);
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-draft", candidateKey],
         { stdout },
-        { getCurationDraft, listSiblings }
+        { getCurationDraft, listSiblings, previewIdentityResolution }
       )
     ).resolves.toBe(0);
+    expect(previewIdentityResolution).toHaveBeenCalledWith([candidateKey]);
 
     expect(stdout).toHaveBeenCalledWith(
       [
@@ -3377,6 +3408,10 @@ describe("runSourceCandidateJobCommand", () => {
         'status="Accepted reference missing"',
         'nextAction="Attach or restore the matching curated reference before public packet review."',
         "publicSourcePacketReady=false",
+        'identityPreview="source-led resolver would reject this as the wrong supplement."',
+        "identityReasons:",
+        '  - "Captured metadata appears to mention Calcium."',
+        '  - "Target supplement is not visible in captured title/source metadata."',
         'reviewFlags="broad-safety-query, low-title-query-overlap"',
         'flags="--candidate-review-flags --candidate-review-flags-limit 10"',
         'flagFocus="--candidate-review-flags --candidate-review-flag broad-safety-query --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidate-review-flags-limit 10"',
@@ -5726,6 +5761,22 @@ function sourceCandidate(overrides: Record<string, unknown> = {}) {
     decision: "Pending review",
     reviewStatus: "Unreviewed AI draft",
     metadata: {},
+    ...overrides
+  };
+}
+
+function sourceCandidateIdentityDecision(overrides: Record<string, unknown> = {}) {
+  return {
+    action: "confirm-target",
+    applied: false,
+    dedupeKey: "pubmed|au|creatine|28615996",
+    externalId: "28615996",
+    interventionId: "creatine",
+    interventionName: "Creatine monohydrate",
+    query: "creatine strength",
+    reasons: ["Search query contains the current supplement identity."],
+    source: "PUBMED",
+    title: "Creatine position stand",
     ...overrides
   };
 }

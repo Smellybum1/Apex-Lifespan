@@ -23,6 +23,10 @@ import {
 } from "@/lib/data/source-candidate-jobs";
 import { prisma } from "@/lib/db/prisma";
 import {
+  previewLocalIdentityResolutionActionsForCandidates,
+  type LocalIdentityResolutionAutomationDecisionReadout
+} from "@/lib/data/local-ingestion-control";
+import {
   extractAcceptedSourceCandidateStudy,
   getSourceCandidateCurationDraft,
   getSourceCandidateCurationStatus,
@@ -206,6 +210,9 @@ export interface SourceCandidateJobCommandRunners {
   listReferenceMatches?: (
     dedupeKey: string
   ) => Promise<SourceCandidateAcceptedReferenceMatches | null>;
+  previewIdentityResolution?: (
+    dedupeKeys: string[]
+  ) => Promise<LocalIdentityResolutionAutomationDecisionReadout[]>;
   listSiblings?: (
     dedupeKey: string,
     options: SourceCandidateSiblingOptions
@@ -328,6 +335,8 @@ export async function runSourceCandidateJobCommand(
   const listJobs = runners.listJobs ?? listSourceCandidateIngestionJobs;
   const listReferenceMatches =
     runners.listReferenceMatches ?? listSourceCandidateAcceptedReferenceMatches;
+  const previewIdentityResolution =
+    runners.previewIdentityResolution ?? sourceLedIdentityResolutionPreview;
   const listSiblings = runners.listSiblings ?? listSourceCandidateSiblings;
   const linkCandidateClaim =
     runners.linkCandidateClaim ?? linkAcceptedSourceCandidateClaim;
@@ -408,6 +417,10 @@ export async function runSourceCandidateJobCommand(
           duplicateIdentityInfo: await sourceCandidateDuplicateIdentityInfoForDedupeKey(
             draft.status.candidate.dedupeKey,
             listSiblings
+          ),
+          identityDecision: await sourceCandidateIdentityDecisionForDedupeKey(
+            draft.status.candidate.dedupeKey,
+            previewIdentityResolution
           )
         })
       );
@@ -3336,6 +3349,24 @@ async function sourceCandidateDuplicateIdentityInfoForDedupeKey(
   };
 }
 
+async function sourceCandidateIdentityDecisionForDedupeKey(
+  dedupeKey: string,
+  previewIdentityResolution: NonNullable<
+    SourceCandidateJobCommandRunners["previewIdentityResolution"]
+  >
+) {
+  const decisions = await previewIdentityResolution([dedupeKey]);
+
+  return decisions.find((decision) => decision.dedupeKey === dedupeKey);
+}
+
+async function sourceLedIdentityResolutionPreview(dedupeKeys: string[]) {
+  return previewLocalIdentityResolutionActionsForCandidates({
+    dedupeKeys,
+    strategy: "source-led"
+  });
+}
+
 async function sourceCandidateDuplicateIdentityInfoMap(
   candidates: SourceCandidate[],
   listSiblings: NonNullable<SourceCandidateJobCommandRunners["listSiblings"]>
@@ -3388,7 +3419,10 @@ function formatSourceCandidateDuplicateIdentityFields(
 
 function formatSourceCandidateCurationDraft(
   draft: SourceCandidateCurationDraft,
-  options: { duplicateIdentityInfo?: SourceCandidateDuplicateIdentityInfo } = {}
+  options: {
+    duplicateIdentityInfo?: SourceCandidateDuplicateIdentityInfo;
+    identityDecision?: LocalIdentityResolutionAutomationDecisionReadout;
+  } = {}
 ) {
   const status = draft.status;
   const candidate = status.candidate;
@@ -3431,6 +3465,7 @@ function formatSourceCandidateCurationDraft(
       }
     )
   );
+  lines.push(...formatSourceCandidateIdentityPreviewFields(options.identityDecision));
 
   if (reviewFlagFields.length > 0) {
     lines.push(...reviewFlagFields);
@@ -3603,6 +3638,40 @@ function formatSourceCandidateCurationDraft(
   }
 
   return lines.join("\n");
+}
+
+function formatSourceCandidateIdentityPreviewFields(
+  decision: LocalIdentityResolutionAutomationDecisionReadout | undefined
+) {
+  const lines = [
+    `identityPreview=${quote(formatSourceCandidateIdentityPreview(decision))}`
+  ];
+
+  if (decision && decision.reasons.length > 0) {
+    lines.push("identityReasons:");
+    lines.push(...decision.reasons.slice(0, 3).map((reason) => `  - ${quote(reason)}`));
+  }
+
+  return lines;
+}
+
+function formatSourceCandidateIdentityPreview(
+  decision: LocalIdentityResolutionAutomationDecisionReadout | undefined
+) {
+  if (!decision) {
+    return "source-led identity preview unavailable; inspect accepted reference identity before extraction.";
+  }
+
+  switch (decision.action) {
+    case "confirm-target":
+      return "source-led resolver would confirm the current supplement identity.";
+    case "reassign-intervention":
+      return `source-led resolver would reassign to ${decision.matchedInterventionName ?? decision.matchedInterventionId ?? "the matched intervention"}.`;
+    case "reject-wrong-supplement":
+      return "source-led resolver would reject this as the wrong supplement.";
+    case "hold":
+      return "source-led resolver would hold for manual identity review.";
+  }
 }
 
 function sourceCandidateStudyExtractionWriteReadiness(
