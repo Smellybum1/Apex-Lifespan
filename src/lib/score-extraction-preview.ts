@@ -21,12 +21,14 @@ export type ScoreExtractionCandidatePreview = {
   acceptedCandidates: number;
   blockedCandidates: number;
   blockerCounts: ScoreExtractionCandidateBlockerCounts;
+  cleanReadyCandidates: number;
   identityBlockedClaimLinks: number;
   identityBlockedReferences: number;
   queryWarningCandidates: number;
   referenceLimit: number;
   references: ScoreExtractionCandidateReferencePreview[];
   readyCandidates: number;
+  readyQueryWarningCandidates: number;
   scannedReferences: number;
   totalPendingReferences: number;
 };
@@ -37,6 +39,7 @@ export type ScoreExtractionCandidateReferencePreview = {
   candidateCount: number;
   candidates: ScoreExtractionCandidatePreviewRow[];
   claimCount: number;
+  cleanReadyCandidates: number;
   extractionGaps: string[];
   hiddenCandidates: number;
   primaryCandidate: {
@@ -46,6 +49,7 @@ export type ScoreExtractionCandidateReferencePreview = {
   } | null;
   queryWarningCandidates: number;
   readyCandidates: number;
+  readyQueryWarningCandidates: number;
   repairReferenceCommand: string;
   reference: {
     id: string;
@@ -127,12 +131,14 @@ export async function buildScoreExtractionCandidatePreview(
       acceptedCandidates: 0,
       blockedCandidates: 0,
       blockerCounts: emptyScoreExtractionBlockerCounts(),
+      cleanReadyCandidates: 0,
       identityBlockedClaimLinks: summary.identityWarningReferenceClaimLinks,
       identityBlockedReferences: summary.identityWarningReferenceGroups,
       queryWarningCandidates: 0,
       referenceLimit,
       references: [],
       readyCandidates: 0,
+      readyQueryWarningCandidates: 0,
       scannedReferences: 0,
       totalPendingReferences: extractionReadyGroups.length
     };
@@ -206,6 +212,10 @@ export async function buildScoreExtractionCandidatePreview(
     (total, reference) => total + reference.readyCandidates,
     0
   );
+  const readyQueryWarningCandidates = references.reduce(
+    (total, reference) => total + reference.readyQueryWarningCandidates,
+    0
+  );
   const blockedCandidates = references.reduce(
     (total, reference) => total + reference.blockedCandidates,
     0
@@ -219,12 +229,14 @@ export async function buildScoreExtractionCandidatePreview(
     acceptedCandidates: candidates.length,
     blockedCandidates,
     blockerCounts: scoreExtractionBlockerCounts(references),
+    cleanReadyCandidates: readyCandidates - readyQueryWarningCandidates,
     identityBlockedClaimLinks: summary.identityWarningReferenceClaimLinks,
     identityBlockedReferences: summary.identityWarningReferenceGroups,
     queryWarningCandidates,
     referenceLimit,
     references,
     readyCandidates,
+    readyQueryWarningCandidates,
     scannedReferences: referenceIds.length,
     totalPendingReferences: extractionReadyGroups.length
   };
@@ -249,7 +261,7 @@ export function formatScoreExtractionCandidatePreviewLines(
   }
 
   lines.push(
-    `${preview.acceptedCandidates} accepted candidate(s) are attached to the scanned references: ${preview.readyCandidates} ready, ${preview.blockedCandidates} blocked. Use curation drafts before any extraction write.`
+    `${preview.acceptedCandidates} accepted candidate(s) are attached to the scanned references: ${preview.readyCandidates} ready (${preview.cleanReadyCandidates} clean, ${preview.readyQueryWarningCandidates} with query warning), ${preview.blockedCandidates} blocked. Use curation drafts before any extraction write.`
   );
   if (preview.identityBlockedReferences > 0) {
     lines.push(
@@ -272,7 +284,7 @@ function formatScoreExtractionCandidateReferenceLines(
   reference: ScoreExtractionCandidateReferencePreview
 ) {
   const lines = [
-    `- ${reference.reference.label}: ${reference.candidateCount} accepted candidate(s), ${reference.readyCandidates} ready, ${reference.blockedCandidates} blocked, ${reference.queryWarningCandidates} query warning(s), ${reference.claimCount} claim(s), ${reference.studyCount} existing extraction(s).`,
+    `- ${reference.reference.label}: ${reference.candidateCount} accepted candidate(s), ${reference.readyCandidates} ready (${reference.cleanReadyCandidates} clean, ${reference.readyQueryWarningCandidates} with query warning), ${reference.blockedCandidates} blocked, ${reference.queryWarningCandidates} query warning(s), ${reference.claimCount} claim(s), ${reference.studyCount} existing extraction(s).`,
     `  ${reference.reference.title}`,
     reference.extractionGaps.length > 0
       ? `  Gaps: ${reference.extractionGaps.join("; ")}`
@@ -340,6 +352,9 @@ function extractionCandidateReferencePreview({
   const sortedCandidateRows = [...candidateRows].sort(compareExtractionCandidateRows);
   const primaryCandidate = sortedCandidateRows[0] ?? null;
   const readyCandidates = sortedCandidateRows.filter((candidate) => candidate.extractionReady).length;
+  const readyQueryWarningCandidates = sortedCandidateRows.filter(
+    (candidate) => candidate.extractionReady && candidate.queryOriginWarning
+  ).length;
   const blockedCandidates = sortedCandidateRows.length - readyCandidates;
 
   return {
@@ -348,6 +363,7 @@ function extractionCandidateReferencePreview({
     candidateCount: candidates.length,
     candidates: sortedCandidateRows.slice(0, 1),
     claimCount: group.claimCount,
+    cleanReadyCandidates: readyCandidates - readyQueryWarningCandidates,
     extractionGaps: group.extractionGaps.slice(0, 5).map((gap) => gap.gap),
     hiddenCandidates: Math.max(sortedCandidateRows.length - 1, 0),
     primaryCandidate: primaryCandidate
@@ -360,6 +376,7 @@ function extractionCandidateReferencePreview({
     queryWarningCandidates: sortedCandidateRows.filter((candidate) => candidate.queryOriginWarning)
       .length,
     readyCandidates,
+    readyQueryWarningCandidates,
     repairReferenceCommand: `npx tsx scripts/local-score-worklist.ts --repair-reference ${group.reference.id}`,
     reference: {
       id: group.reference.id,

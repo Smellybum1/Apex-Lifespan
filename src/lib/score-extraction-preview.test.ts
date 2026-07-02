@@ -127,6 +127,10 @@ describe("buildScoreExtractionCandidatePreview", () => {
     });
     expect(preview.references[0]?.candidateCount).toBe(3);
     expect(preview.references[0]?.hiddenCandidates).toBe(2);
+    expect(preview.cleanReadyCandidates).toBe(1);
+    expect(preview.readyQueryWarningCandidates).toBe(1);
+    expect(preview.references[0]?.cleanReadyCandidates).toBe(1);
+    expect(preview.references[0]?.readyQueryWarningCandidates).toBe(1);
     expect(preview.queryWarningCandidates).toBe(1);
     expect(preview.references[0]?.queryWarningCandidates).toBe(1);
     expect(preview.references[0]?.candidates).toHaveLength(1);
@@ -140,6 +144,12 @@ describe("buildScoreExtractionCandidatePreview", () => {
     expect(preview.references[0]?.candidates[0]?.queryOriginWarning).toBeNull();
     expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
       "2 extra same-reference candidate(s) hidden; counts above include them."
+    );
+    expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
+      "3 accepted candidate(s) are attached to the scanned references: 2 ready (1 clean, 1 with query warning), 1 blocked."
+    );
+    expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
+      "3 accepted candidate(s), 2 ready (1 clean, 1 with query warning), 1 blocked"
     );
     expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
       "Warnings: query-origin 1."
@@ -198,6 +208,10 @@ describe("buildScoreExtractionCandidatePreview", () => {
       )}`,
       reason: "ready, source text captured, query warning, Human reviewed; verify before extraction"
     });
+    expect(preview.cleanReadyCandidates).toBe(0);
+    expect(preview.readyQueryWarningCandidates).toBe(1);
+    expect(preview.references[0]?.cleanReadyCandidates).toBe(0);
+    expect(preview.references[0]?.readyQueryWarningCandidates).toBe(1);
     expect(preview.references[0]?.candidates[0]?.queryOriginWarning).toBe(
       "Original query does not visibly mention Creatine monohydrate; verify accepted reference identity before extraction."
     );
@@ -223,10 +237,12 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
         "existing-extraction": 0,
         "identity-warning": 0
       },
+      cleanReadyCandidates: 1,
       identityBlockedClaimLinks: 2,
       identityBlockedReferences: 2,
       queryWarningCandidates: 0,
       readyCandidates: 1,
+      readyQueryWarningCandidates: 0,
       referenceLimit: 1,
       references: [
         {
@@ -278,6 +294,7 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
             }
           ],
           claimCount: 1,
+          cleanReadyCandidates: 1,
           extractionGaps: ["source type"],
           hiddenCandidates: 0,
           primaryCandidate: {
@@ -288,6 +305,7 @@ describe("formatScoreExtractionCandidatePreviewLines", () => {
           },
           queryWarningCandidates: 0,
           readyCandidates: 1,
+          readyQueryWarningCandidates: 0,
           repairReferenceCommand:
             "npx tsx scripts/local-score-worklist.ts --repair-reference ref-creatine-rct",
           reference: {
