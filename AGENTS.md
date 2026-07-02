@@ -12,6 +12,7 @@
 - Ask first only before production deploy, DB/secret/destructive actions, or medical/regulatory boundary changes.
 - Local evidence-map work may use audited `AI reviewed` decisions when citation traceability, uncertainty labels, AU/TGA caveats, product-level boundaries, and no-medical-advice/no-peptide-operational-guidance rules are preserved. Use `Human reviewed` only after explicit human confirmation.
 - The active npm command surface is intentionally tiny. Do not resurrect readiness, queue, promotion, launch, or review-gate scripts unless the user explicitly asks.
+- If an older doc or script mentions an `npm run` alias missing from `package.json`, treat that alias as legacy; inspect the script and use `npx tsx <script>` only when the current task truly needs it.
 - If a task is only readiness, queue, promotion, review packets, launch rehearsal, or roadmap bookkeeping, stop and pick product-facing roadmap work instead.
 - Delete process that slows the project down.
 

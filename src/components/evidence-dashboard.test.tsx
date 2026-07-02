@@ -78,6 +78,39 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("Evidence Map");
     expect(html).toContain("Claim Details");
     expect(html).toContain("Catalog Trust");
+    expect(html).toContain("Start here");
+    expect(html).toContain("Practical guide");
+    expect(html).toContain("What to pay attention to first");
+    expect(html).toContain("what is worth paying attention to");
+    expect(html).toContain("not clinical recommendations");
+    expect(html).toContain("Quick answer for friends");
+    expect(html).toContain("Most worth attention");
+    expect(html).toContain("Context-dependent");
+    expect(html).toContain("Caution first");
+    expect(html).toContain("Longevity reality check");
+    expect(html).toContain("No broad lifespan shortcut");
+    expect(html).toContain("Best practical bets now");
+    expect(html).toContain("Worth considering if relevant");
+    expect(html).toContain("Niche / performance-focused");
+    expect(html).toContain("Popular but not well-backed");
+    expect(html).toContain("Emerging but not settled");
+    expect(html).toContain("Safety / clinician-only / regulatory watchlist");
+    expect(html).toContain("Longevity lens");
+    expect(html).toContain("Direct lifespan evidence");
+    expect(html).toContain("Healthspan evidence");
+    expect(html).toContain("Biomarker evidence");
+    expect(html).toContain("Mechanistic / animal evidence");
+    expect(html).toContain("Speculative hype");
+    expect(html).toContain("Emerging evidence radar");
+    expect(html).toContain("Clinical trials to watch");
+    expect(html).toContain("Ranking-impacting source gaps");
+    expect(html).toContain("kept out of");
+    expect(html).toContain("Newer studies or source leads");
+    expect(html).toContain("Evidence momentum");
+    expect(html).toContain("Direct lifespan evidence is separated from healthspan");
+    expect(html).toContain("Source lead");
+    expect(html).toContain("Not proven");
+    expect(html).toContain("Safety context");
     expect(html).toContain("Prototype / seed dataset");
     expect(html).toContain("Current scores are based on a small");
     expect(html).toContain("curated seed dataset and live source-search previews");
@@ -104,6 +137,7 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("Unassessed cells do not imply absence of evidence.");
     expect(html).toContain("review status Pending human review");
     expect(html).toContain('href="/interventions/creatine-monohydrate"');
+    expect(html).toContain('href="/interventions/creatine-monohydrate#claim-creatine-strength"');
     expect(html).toContain('id="evidence-map-label"');
     expect(html).toContain('id="evidence-map-outcome"');
     expect(html).toContain("All labels");
@@ -151,11 +185,12 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("Source / Work");
     expect(html).toContain("Source work");
     expect(html).toContain("Source-work classification");
-    expect(html).toContain("stored score needs source extraction");
-    expect(html).toContain("Source blockers:");
+    expect(html).toContain("source links or extraction are incomplete; no score shown");
     expect(html).toContain(
-      "stored score, but linked references still need extraction or source-packet repair"
+      "source work pending; no final evidence score is shown until source links or extraction are complete"
     );
+    expect(html).toContain("Source blockers:");
+    expect(html).toContain("Source work:</span> 2 blocked (extraction pending 2)");
   });
 
   it("ranks source-packet gaps by actionable extraction work", () => {
@@ -233,7 +268,8 @@ describe("EvidenceDashboard", () => {
     expect(html).toContain("Ready-to-score classification");
     expect(html).toContain("Complete source packet awaiting score assignment");
     expect(html).toContain("The stored placeholder score is hidden until a claim-specific score");
-    expect(html).toContain("Ready to score");
+    expect(html).toContain("Ready</span><span class=\"max-w-full truncate\">Score");
+    expect(html).toContain("Score work:</span> 1 ready, 0 score review, 0 audit");
     expect(html).not.toContain("Draft composite 8.4");
 
     const starterHtml = renderToStaticMarkup(

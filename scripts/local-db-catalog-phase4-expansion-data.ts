@@ -16,10 +16,14 @@ export type StudySpec = {
   year: number;
   source: string;
   sourceType: DbStudyType;
+  abstract?: string;
   sampleSize: string;
   population: string;
   interventionName: string;
+  dose?: string;
+  duration?: string;
   outcomes: string[];
+  mainResults?: string;
   adverseEvents: string;
   fundingConflicts: string;
   riskOfBias: string;
@@ -218,14 +222,29 @@ export const EXPANSION_REFERENCES: ReferenceSpec[] = [
     2020
   ),
   pubmed(
-    "28482226",
+    "29690549",
     "Astaxanthin in Skin Health, Repair, and Disease: A Comprehensive Review",
-    2017
+    2018
   ),
   pubmed(
-    "35866336",
-    "Astaxanthin supplementation and eye health: a systematic review",
-    2022
+    "31788888",
+    "Astaxanthin: How much is too much? A safety review",
+    2019
+  ),
+  pubmed(
+    "32755613",
+    "The effects of astaxanthin supplementation on obesity, blood pressure, CRP, glycemic biomarkers, and lipid profile: A meta-analysis of randomized controlled trials",
+    2020
+  ),
+  pubmed(
+    "34578794",
+    "Systematic Review and Meta-Analysis on the Effects of Astaxanthin on Human Skin Ageing",
+    2021
+  ),
+  pubmed(
+    "40014233",
+    "Astaxanthin (AstaReal) Improved Acute and Chronic Digital Eye Strain in Children: A Randomized Double-Blind Placebo-Controlled Trial",
+    2025
   ),
   pubmed(
     "15213021",
@@ -499,8 +518,78 @@ export const EXPANSION_STUDIES: StudySpec[] = [
   pubmedStudy("study-green-tea-lipids", "ref-pubmed-24643507", "24643507", "Green tea extract", DbStudyType.META_ANALYSIS, ["Blood pressure", "Lipids"]),
   pubmedStudy("study-green-tea-glucose", "ref-pubmed-28513193", "28513193", "Green tea extract", DbStudyType.META_ANALYSIS, ["Glycemic control"]),
   pubmedStudy("study-green-tea-cognition", "ref-pubmed-32827073", "32827073", "Green tea extract", DbStudyType.SYSTEMATIC_REVIEW, ["Cognition", "Mood"]),
-  pubmedStudy("study-astaxanthin-review", "ref-pubmed-28482226", "28482226", "Astaxanthin", DbStudyType.SYSTEMATIC_REVIEW, ["Skin health", "Inflammation"], 2017),
-  pubmedStudy("study-astaxanthin-eye", "ref-pubmed-35866336", "35866336", "Astaxanthin", DbStudyType.SYSTEMATIC_REVIEW, ["Eye health"], 2022),
+  pubmedStudy("study-astaxanthin-skin-review", "ref-pubmed-29690549", "29690549", "Astaxanthin", DbStudyType.SYSTEMATIC_REVIEW, ["Skin health", "Repair"], 2018),
+  {
+    ...pubmedStudy("study-astaxanthin-safety", "ref-pubmed-31788888", "31788888", "Astaxanthin", DbStudyType.SYSTEMATIC_REVIEW, ["Safety review", "Tolerability"], 2019),
+    adverseEvents:
+      "The review reported no safety concerns in 87 human studies of natural astaxanthin supplementation, including 35 studies at doses of at least 12 mg/day; synthetic astaxanthin evidence was limited and should be assessed separately.",
+    dose:
+      "Review-level source; recommended or approved daily amounts varied by country from 2 to 24 mg and should not be read as a product-level dose recommendation.",
+    duration: "Review-level source covering heterogeneous human and toxicology evidence.",
+    fundingConflicts:
+      "Check full source record for funding and conflicts before promotion; publisher preview lists author affiliations but local extraction has not adjudicated conflicts.",
+    mainResults:
+      "Safety review found no safety concerns in reviewed human natural astaxanthin studies and argued that natural and synthetic astaxanthin should not share one acceptable-daily-intake evidence base.",
+    population:
+      "Humans using natural astaxanthin supplements, with separate regulatory/toxicology discussion for synthetic astaxanthin.",
+    riskOfBias:
+      "Narrative safety and regulatory review, not a randomized trial; dose limits depend on source form, jurisdiction, and product-level context.",
+    sampleSize:
+      "87 human studies of natural astaxanthin supplementation plus regulatory and toxicology material."
+  },
+  {
+    ...pubmedStudy("study-astaxanthin-inflammation", "ref-pubmed-32755613", "32755613", "Astaxanthin", DbStudyType.META_ANALYSIS, ["CRP", "Metabolic biomarkers"], 2020),
+    adverseEvents:
+      "Not a safety-focused review; adverse-event detail was not extracted in this local pass.",
+    dose:
+      "Dose varied by trial; CRP subgroup signals were reported for higher-dose contexts above 12 mg/day.",
+    duration:
+      "Trial durations varied; CRP subgroup signals were reported for study durations of at least 12 weeks.",
+    fundingConflicts:
+      "Check full source record for funding and conflicts before promotion.",
+    mainResults:
+      "Meta-analysis of randomized trials reported no significant association for fasting blood sugar, HbA1c, total cholesterol, LDL-C, triglycerides, BMI, body weight, diastolic blood pressure, or systolic blood pressure. It reported a small HDL-C increase and lower CRP only in longer-duration or higher-dose subgroup analyses.",
+    population:
+      "Adults in heterogeneous randomized astaxanthin supplementation trials with metabolic, inflammatory, lipid, blood-pressure, or anthropometric outcomes.",
+    riskOfBias:
+      "Meta-analysis of heterogeneous RCTs; CRP analyses showed substantial heterogeneity, so inflammation conclusions should stay cautious and source-linked.",
+    sampleSize:
+      "14 eligible randomized-trial articles in the final quantitative analysis; outcome-specific participant counts varied."
+  },
+  {
+    ...pubmedStudy("study-astaxanthin-skin-aging", "ref-pubmed-34578794", "34578794", "Astaxanthin", DbStudyType.META_ANALYSIS, ["Skin aging", "Moisture", "Elasticity"], 2021),
+    adverseEvents:
+      "Adverse-event details were not the main local extraction focus; keep product/form and topical-vs-oral boundaries visible.",
+    dose:
+      "Oral, topical, and oral-topical astaxanthin applications were included; dose and form varied across studies.",
+    duration: "Study durations varied across the included human skin-ageing trials.",
+    fundingConflicts:
+      "Check full source record for funding and conflicts before promotion.",
+    mainResults:
+      "Systematic review/meta-analysis found oral astaxanthin improved moisture content and elasticity versus placebo, while wrinkle-depth reduction was not statistically significant. Open-label topical or combined-use studies suggested weaker protective signals.",
+    population:
+      "Human participants in skin-ageing studies using oral, topical, or combined astaxanthin applications.",
+    riskOfBias:
+      "Review used Cochrane risk-of-bias assessment; heterogeneity was moderate for moisture and high for elasticity, and open-label studies provide weaker evidence than RCTs.",
+    sampleSize:
+      "11 human studies: nine randomized controlled studies and two open-label prospective studies; eight oral RCTs were pooled for meta-analysis."
+  },
+  {
+    ...pubmedStudy("study-astaxanthin-eye", "ref-pubmed-40014233", "40014233", "Astaxanthin", DbStudyType.RANDOMIZED_CONTROLLED_TRIAL, ["Digital eye strain", "Visual performance"], 2025),
+    adverseEvents:
+      "The source reported no significant treatment-group difference in safety variables, but pediatric/product-specific safety should remain scoped to the studied formulation and trial context.",
+    dose: "4 mg/day AstaReal astaxanthin soft capsule.",
+    duration: "84 days.",
+    fundingConflicts:
+      "Product-specific AstaReal trial; check full source record for sponsor, author, and conflict disclosures before promotion.",
+    mainResults:
+      "Randomized double-blind placebo-controlled trial reported larger reductions in chronic and acute digital eye-strain symptom scores with astaxanthin than placebo and improvements in objective visual-performance measures. Schirmer tear-test change was not significantly different between groups.",
+    population:
+      "School-aged children aged 10 to 14 years with at least 4 hours/day of recreational screen time and baseline digital eye-strain symptoms.",
+    riskOfBias:
+      "Single randomized double-blind placebo-controlled pediatric trial using a proprietary formulation; useful as a source lead, but not broad eye-health proof.",
+    sampleSize: "64 children randomized to astaxanthin or placebo."
+  },
   pubmedStudy("study-tmg-betaine", "ref-pubmed-15213021", "15213021", "Trimethylglycine (TMG)", DbStudyType.SYSTEMATIC_REVIEW, ["Homocysteine", "Metabolic context"], 2004),
   pubmedStudy("study-tmg-review", "ref-pubmed-28267779", "28267779", "Trimethylglycine (TMG)", DbStudyType.SYSTEMATIC_REVIEW, ["Lipids", "Inflammation markers"], 2017),
   pubmedStudy("study-collagen-oa", "ref-pubmed-32671838", "32671838", "Collagen", DbStudyType.META_ANALYSIS, ["Joint symptoms", "Osteoarthritis"]),
@@ -618,12 +707,12 @@ export const EXPANSION_BUNDLES: Record<(typeof EXPANSION_INTERVENTION_IDS)[numbe
   },
   astaxanthin: {
     interventionName: "Astaxanthin",
-    safetyRefs: ["ref-pubmed-28482226"],
-    defaultRefs: ["ref-pubmed-28482226"],
+    safetyRefs: ["ref-pubmed-31788888"],
+    defaultRefs: ["ref-pubmed-29690549"],
     outcomes: {
-      EYE_HEALTH: ["ref-pubmed-35866336"],
-      INFLAMMATION: ["ref-pubmed-28482226"],
-      JOINT_TENDON_SKIN: ["ref-pubmed-28482226"]
+      EYE_HEALTH: ["ref-pubmed-40014233"],
+      INFLAMMATION: ["ref-pubmed-32755613"],
+      JOINT_TENDON_SKIN: ["ref-pubmed-34578794"]
     }
   },
   "trimethylglycine-tmg": {

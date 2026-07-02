@@ -23,7 +23,7 @@ async function main() {
 
   if (!args.supplement && !args.claimId) {
     throw new Error(
-      "Usage: npm run onboarding:review-packet -- (--supplement <intervention-id-or-slug> | --claim-id <claim-id>) [--env-file <path>] [--summary]"
+      "Usage: npx tsx scripts/onboarding-review-packet.ts (--supplement <intervention-id-or-slug> | --claim-id <claim-id>) [--env-file <path>] [--summary]"
     );
   }
 

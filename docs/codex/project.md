@@ -28,6 +28,19 @@ Compact, stable Codex state. Ordinary startup is only `AGENTS.md` plus this file
 - Vercel build database setup skips remote writes unless `APEX_VERCEL_DATABASE_SETUP_APPROVED=1` is deliberately set for that deploy.
 - Evidence/source intake stays simple: use `npx tsx scripts/local-evidence-intake.ts --intervention <slug-or-id>` to prep search terms and capture fields, and use `npm run ingest:sources -- --help` only when you are actually ingesting sources.
 - Do not recreate readiness, queue, promotion, launch, or review-gate command chains.
+- Trust `package.json` for active `npm run` aliases. If legacy docs or script help mention a missing alias, inspect the script and run it directly with `npx tsx` only when the task truly needs that workflow.
+
+## Routine Command Chooser
+
+- First local state check: `npx tsx scripts/codex-context-index.ts --changed`, then only the task-relevant `git diff -- <path>`.
+- Large code files: `npx tsx scripts/module-outline.ts <path>` before opening the whole file.
+- Generated artifacts: `npx tsx scripts/output-index.ts --top 20` before opening anything under `output/`.
+- Catalog status: `npx tsx scripts/db-inventory.ts` plus `npx tsx scripts/local-catalog-quality.ts`.
+- Scoring/source repair: `npx tsx scripts/local-score-worklist.ts --limit 20`, then `--repair-summary` or `--repair-batch <key>` only when fixing source-blocked rows.
+- Candidate/source ingestion: use the dashboard first; CLI fallback starts with `npm run ingest:sources -- --help`.
+- Docs-only validation: `git diff --check -- <changed-docs>`.
+- UI/shared TypeScript validation: targeted Vitest files for the changed surface, then `npm run typecheck:tsc -- --pretty false`; use full `npm run typecheck` when Prisma generation or Next typegen behavior matters.
+- Local DB writes are normal for development but still need targeted sanity output showing what changed. Preview/production DB writes still require explicit approval.
 
 ## Hard Stops
 
@@ -51,4 +64,5 @@ Compact, stable Codex state. Ordinary startup is only `AGENTS.md` plus this file
 - Read `docs/codex/workflow.md` only when a task actually needs process detail.
 - Keep `docs/codex/handoff.md` short and current.
 - Read `docs/codex/roadmap.md` only for roadmap, next-work planning, prioritization, or product direction.
-- Generated `output/`, `.ai/delegation/`, completed plans, historical handoffs, legacy process docs, and archive docs are not startup context.
+- Top-level legacy workflow docs are now lightweight stubs; their full historical text lives under `docs/codex/archive/legacy-workflows/`.
+- Generated `output/`, `.ai/delegation/`, completed plans, historical handoffs, legacy process docs, archived legacy workflows, and archive docs are not startup context.

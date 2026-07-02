@@ -165,10 +165,14 @@ export async function syncSourcePacketForClaim(claimId: string) {
   });
 
   const mappedStudies: Study[] = studies.map((study) => ({
+    abstract: study.abstract ?? undefined,
     adverseEvents: study.adverseEvents,
+    dose: study.dose ?? undefined,
+    duration: study.duration ?? undefined,
     fundingConflicts: study.fundingConflicts,
     id: study.id,
     intervention: study.interventionName,
+    mainResults: study.mainResults ?? undefined,
     outcomes: study.outcomes,
     population: study.population,
     referenceId: study.referenceId ?? "",
@@ -220,9 +224,12 @@ export async function syncSourcePacketForClaim(claimId: string) {
 
   const referenceIds = new Set(packet.referenceIds);
   const existingReferenceIds = new Set(sourcePacket.references.map((row) => row.referenceId));
+  const pendingReferenceIds = new Set(packet.pendingReferences.map((reference) => reference.id));
+  const missingReferenceIds = new Set(packet.missingReferenceIds);
 
   for (const referenceId of referenceIds) {
-    const extracted = packet.studies.some((study) => study.referenceId === referenceId);
+    const extracted =
+      !pendingReferenceIds.has(referenceId) && !missingReferenceIds.has(referenceId);
     await prisma.sourcePacketReference.upsert({
       create: {
         citationStatus: extracted ? "linked" : "pending",

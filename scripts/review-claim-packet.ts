@@ -73,7 +73,7 @@ type ParsedReviewClaimPacketCliArgs =
       showHelp: true;
     };
 
-const HELP_TEXT = `Usage: npm run coverage:mark-reviewed -- [options]
+const HELP_TEXT = `Usage: npx tsx scripts/review-claim-packet.ts [options]
 
 Options:
   --env-file <path>       Load an approved local env file before the operator write.

@@ -5,11 +5,11 @@ Date: 2026-06-13
 Decision: Approved for fixture-only implementation review.
 
 Source inventory evidence:
-- Command: `npm run onboarding:fulltext-sources -- --inventory-file docs/codex/onboarding/examples/fulltext-source-inventory.reviewed-fixture.example.json --progress --summary`
+- Command: `npx tsx scripts/full-text-source-readiness.ts --inventory-file docs/codex/onboarding/examples/fulltext-source-inventory.reviewed-fixture.example.json --progress --summary`
 - Result: `ready-for-connector-review`, `liveCaptureReady=true`, `noLiveFetch=true`, `readOnly=true`.
 
 Connector approval packet evidence:
-- Command: `npm run onboarding:fulltext-sources -- --inventory-file docs/codex/onboarding/examples/fulltext-source-inventory.reviewed-fixture.example.json --connector-approval-packet --summary`
+- Command: `npx tsx scripts/full-text-source-readiness.ts --inventory-file docs/codex/onboarding/examples/fulltext-source-inventory.reviewed-fixture.example.json --connector-approval-packet --summary`
 - Result: one source was `ready-for-approval` with all eight checklist items complete.
 
 Approved scope:

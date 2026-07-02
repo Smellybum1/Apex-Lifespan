@@ -189,6 +189,86 @@ type ClaimTableRow = {
   updated: string;
 };
 
+type PracticalPriorityBucketId =
+  | "best"
+  | "context"
+  | "performance"
+  | "overhyped"
+  | "emerging"
+  | "watchlist";
+
+type PracticalGuideItem = {
+  bucketId: PracticalPriorityBucketId;
+  caveat: string;
+  claim: Claim;
+  confidenceLabel: string;
+  evidenceMaturity: string;
+  href: string;
+  intervention: Intervention;
+  priorityScore: number;
+  readinessLabel: string;
+  reason: string;
+  score: number | null;
+  scoreLabel: string;
+  sourceBasis: string;
+  sourcePacketLabel: string;
+  sourcePacketStatus: ClaimSourcePacket["completeness"]["status"];
+  summary: string;
+};
+
+type PracticalPriorityBucket = {
+  description: string;
+  empty: string;
+  id: PracticalPriorityBucketId;
+  items: PracticalGuideItem[];
+  label: string;
+  tone: string;
+};
+
+type PracticalLongevityLensCard = {
+  id: "direct" | "healthspan" | "biomarker" | "mechanistic" | "speculative";
+  items: PracticalGuideItem[];
+  label: string;
+  summary: string;
+};
+
+type PracticalRadarTrialLead = {
+  evidenceImpact: string;
+  href: string;
+  id: string;
+  interventionName: string;
+  status: string;
+  title: string;
+};
+
+type PracticalRadar = {
+  momentumBadges: string[];
+  rankingImpactLeads: PracticalRadarRankingLead[];
+  sourceLeads: PracticalGuideItem[];
+  trialLeads: PracticalRadarTrialLead[];
+};
+
+type PracticalRadarRankingLead = {
+  item: PracticalGuideItem;
+  reason: string;
+};
+
+type PracticalGuideModel = {
+  buckets: PracticalPriorityBucket[];
+  claimCount: number;
+  longevityLens: PracticalLongevityLensCard[];
+  quickTakes: PracticalQuickTake[];
+  radar: PracticalRadar;
+};
+
+type PracticalQuickTake = {
+  detail: string;
+  href?: string;
+  label: string;
+  title: string;
+  tone: string;
+};
+
 type LivePreviewStatus = "idle" | "loading" | "ready" | "error";
 type SourceSearchSubmission = {
   term: string;
@@ -205,6 +285,83 @@ const compositeScoreFormula =
   "Composite = directness + rigor + impact + safety + measurability - hype/regulatory penalty.";
 const compositeScoreDetail =
   "Weighted 0-10 review aid: directness 22%, rigor 22%, impact 18%, safety 14%, low regulatory risk 10%, low hype 8%, and measurability 6%. The formula is partly heuristic and is not medical advice.";
+
+const PRACTICAL_GUIDE_ITEM_LIMIT = 3;
+
+const PRACTICAL_PRIORITY_BUCKET_CONFIG: Array<
+  Omit<PracticalPriorityBucket, "items">
+> = [
+  {
+    description: "Stronger human-use signals with cleaner source packets and fewer immediate caveats.",
+    empty: "No current-filter items meet the stronger practical-priority threshold.",
+    id: "best",
+    label: "Best practical bets now",
+    tone: "border-spruce/30 bg-teal-50 text-spruce"
+  },
+  {
+    description: "Useful only when the person, biomarker, product form, or goal matches the evidence.",
+    empty: "No context-dependent items match the current filters.",
+    id: "context",
+    label: "Worth considering if relevant",
+    tone: "border-signal/25 bg-blue-50 text-signal"
+  },
+  {
+    description: "Mostly performance, training, or narrow-use outcomes rather than broad health advice.",
+    empty: "No performance-focused items match the current filters.",
+    id: "performance",
+    label: "Niche / performance-focused",
+    tone: "border-indigo-200 bg-indigo-50 text-indigo-700"
+  },
+  {
+    description: "Common claims where the current evidence does not support broad conclusions.",
+    empty: "No overhyped or unsupported items match the current filters.",
+    id: "overhyped",
+    label: "Popular but not well-backed",
+    tone: "border-slate-300 bg-slate-50 text-slate-700"
+  },
+  {
+    description: "Signals, trials, or source work that may matter later but is not settled evidence.",
+    empty: "No emerging-evidence items match the current filters.",
+    id: "emerging",
+    label: "Emerging but not settled",
+    tone: "border-amberline/30 bg-amber-50 text-amberline"
+  },
+  {
+    description: "Safety, clinician-only, peptide, or regulatory items that should not be treated as routine supplements.",
+    empty: "No safety or regulatory watchlist items match the current filters.",
+    id: "watchlist",
+    label: "Safety / clinician-only / regulatory watchlist",
+    tone: "border-danger/30 bg-red-50 text-danger"
+  }
+];
+
+const HEALTHSPAN_OUTCOMES = new Set<OutcomeArea>([
+  "Cardiovascular events",
+  "Blood pressure",
+  "Cognition",
+  "Eye health",
+  "Glucose/insulin/HbA1c",
+  "Immune/respiratory",
+  "Inflammation",
+  "Joint/tendon/skin",
+  "Mood/stress",
+  "Muscle/strength",
+  "Sleep",
+  "VO2 max/endurance"
+]);
+
+const BIOMARKER_OUTCOMES = new Set<OutcomeArea>([
+  "Blood pressure",
+  "Biological aging clocks",
+  "Glucose/insulin/HbA1c",
+  "Inflammation",
+  "LDL/ApoB/lipids"
+]);
+
+const PERFORMANCE_OUTCOMES = new Set<OutcomeArea>([
+  "Muscle/strength",
+  "VO2 max/endurance"
+]);
 
 type ScoreExplanationKind =
   | "claimRisk"
@@ -789,6 +946,27 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
       }),
     [evidenceMapReadinessByClaimId, filteredClaims, interventionsById, referencesById, studies]
   );
+  const practicalGuide = useMemo(
+    () =>
+      buildPracticalGuide({
+        claims: filteredClaims,
+        interventionsById,
+        readinessByClaimId: evidenceMapReadinessByClaimId,
+        referencesById,
+        safetyAlerts,
+        studies,
+        trialWatchItems
+      }),
+    [
+      evidenceMapReadinessByClaimId,
+      filteredClaims,
+      interventionsById,
+      referencesById,
+      safetyAlerts,
+      studies,
+      trialWatchItems
+    ]
+  );
 
   return (
     <main className="min-h-screen overflow-x-hidden px-4 py-4 sm:px-6 lg:px-8">
@@ -801,14 +979,15 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
         />
 
         {mainTab === "evidence-map" ? (
-          <section className="min-w-0">
+          <section className="min-w-0 space-y-4">
+            <PracticalGuideSection guide={practicalGuide} />
             <div className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
                   <h2 className="text-base font-semibold text-ink">Evidence Map</h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    Reviewed cells show composite evidence confidence. Draft leads and source-packet scaffolds stay
-                    marked as review work until scores are assigned from the evidence.
+                    Reviewed cells show composite evidence confidence. Source-work and score-work
+                    cells stay marked until source packets and scoring are complete.
                   </p>
                   <p className="mt-1 text-xs text-slate-600">
                     {formatEvidenceMapFilterSummary({
@@ -903,7 +1082,6 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
             readinessByClaimId={evidenceMapReadinessByClaimId}
             interventions={evidenceMapInterventions}
             activeClaimId={activeClaimIdForDisplay}
-            onSelectClaim={handleSelectClaim}
           />
             </div>
           </section>
@@ -954,6 +1132,1173 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
         ) : null}
       </div>
     </main>
+  );
+}
+
+function buildPracticalGuide({
+  claims,
+  interventionsById,
+  readinessByClaimId,
+  referencesById,
+  safetyAlerts,
+  studies,
+  trialWatchItems
+}: {
+  claims: Claim[];
+  interventionsById: Map<string, Intervention>;
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
+  referencesById: Map<string, Reference>;
+  safetyAlerts: SafetyAlert[];
+  studies: Study[];
+  trialWatchItems: TrialWatchItem[];
+}): PracticalGuideModel {
+  const safetyAlertsByInterventionId = new Map<string, SafetyAlert[]>();
+
+  safetyAlerts.forEach((alert) => {
+    const alerts = safetyAlertsByInterventionId.get(alert.interventionId) ?? [];
+    alerts.push(alert);
+    safetyAlertsByInterventionId.set(alert.interventionId, alerts);
+  });
+
+  const items = claims
+    .map((claim) => {
+      const intervention = interventionsById.get(claim.interventionId);
+
+      if (!intervention) {
+        return null;
+      }
+
+      return buildPracticalGuideItem({
+        claim,
+        intervention,
+        readinessRow: readinessByClaimId.get(claim.id),
+        referencesById,
+        safetyAlerts: safetyAlertsByInterventionId.get(claim.interventionId) ?? [],
+        studies
+      });
+    })
+    .filter((item): item is PracticalGuideItem => Boolean(item))
+    .sort(sortPracticalGuideItems);
+
+  const bucketItems = new Map<PracticalPriorityBucketId, PracticalGuideItem[]>(
+    PRACTICAL_PRIORITY_BUCKET_CONFIG.map((bucket) => [bucket.id, []])
+  );
+  const bucketInterventionIds = new Map<PracticalPriorityBucketId, Set<string>>(
+    PRACTICAL_PRIORITY_BUCKET_CONFIG.map((bucket) => [bucket.id, new Set<string>()])
+  );
+
+  items.forEach((item) => {
+    const currentItems = bucketItems.get(item.bucketId);
+    const currentInterventionIds = bucketInterventionIds.get(item.bucketId);
+
+    if (
+      currentItems &&
+      currentInterventionIds &&
+      currentItems.length < PRACTICAL_GUIDE_ITEM_LIMIT &&
+      !currentInterventionIds.has(item.intervention.id)
+    ) {
+      currentItems.push(item);
+      currentInterventionIds.add(item.intervention.id);
+    }
+  });
+
+  return {
+    buckets: PRACTICAL_PRIORITY_BUCKET_CONFIG.map((bucket) => ({
+      ...bucket,
+      items: bucketItems.get(bucket.id) ?? []
+    })),
+    claimCount: claims.length,
+    longevityLens: buildPracticalLongevityLens(items),
+    quickTakes: buildPracticalQuickTakes(bucketItems, items),
+    radar: buildPracticalRadar({
+      items,
+      interventionsById,
+      trialWatchItems
+    })
+  };
+}
+
+function buildPracticalGuideItem({
+  claim,
+  intervention,
+  readinessRow,
+  referencesById,
+  safetyAlerts,
+  studies
+}: {
+  claim: Claim;
+  intervention: Intervention;
+  readinessRow?: ScoreReadinessRow;
+  referencesById: Map<string, Reference>;
+  safetyAlerts: SafetyAlert[];
+  studies: Study[];
+}): PracticalGuideItem {
+  const sourcePacket = buildClaimSourcePacket({ claim, referencesById, studies });
+  const score = evidenceMapSortableScore(claim, readinessRow);
+  const bucketId = classifyPracticalPriorityBucket({
+    claim,
+    intervention,
+    readinessRow,
+    safetyAlerts,
+    score
+  });
+  const scoreLabel = practicalScoreLabel({
+    bucketId,
+    claim,
+    readinessRow,
+    score,
+    sourcePacket
+  });
+  const summary = practicalClaimSummary({
+    bucketId,
+    claim,
+    intervention,
+    sourcePacket
+  });
+
+  return {
+    bucketId,
+    caveat: practicalClaimCaveat(claim, safetyAlerts),
+    claim,
+    confidenceLabel: `${claim.confidenceLevel} confidence`,
+    evidenceMaturity: practicalEvidenceMaturity(claim, sourcePacket),
+    href: `/interventions/${intervention.slug}#claim-${claim.id}`,
+    intervention,
+    priorityScore: practicalPriorityScore({
+      bucketId,
+      claim,
+      readinessRow,
+      safetyAlerts,
+      score,
+      sourcePacket
+    }),
+    readinessLabel: readinessRow
+      ? scoreReadinessStateLabel(readinessRow.state)
+      : sourcePacket.completeness.label,
+    reason: practicalBucketReason(bucketId, claim, sourcePacket),
+    score,
+    scoreLabel,
+    sourceBasis: practicalSourceBasis(sourcePacket),
+    sourcePacketLabel: sourcePacket.completeness.label,
+    sourcePacketStatus: sourcePacket.completeness.status,
+    summary
+  };
+}
+
+function practicalScoreLabel({
+  bucketId,
+  claim,
+  readinessRow,
+  score,
+  sourcePacket
+}: {
+  bucketId: PracticalPriorityBucketId;
+  claim: Claim;
+  readinessRow?: ScoreReadinessRow;
+  score: number | null;
+  sourcePacket: ClaimSourcePacket;
+}) {
+  if (bucketId === "watchlist") {
+    return claim.outcome === "Safety/adverse effects" ? "Safety context" : "Watchlist";
+  }
+
+  if (sourcePacket.completeness.status !== "complete") {
+    return "Source work";
+  }
+
+  if (bucketId === "emerging" && !isModerateOrHighConfidence(claim)) {
+    return "Source lead";
+  }
+
+  if (bucketId === "overhyped" && claim.outcome === "Mortality/lifespan") {
+    return "Not proven";
+  }
+
+  return score === null
+    ? evidenceMapScoreStatusLabel(claim, readinessRow)
+    : `${score.toFixed(1)} ${scoreBand(score)}`;
+}
+
+function buildPracticalQuickTakes(
+  bucketItems: Map<PracticalPriorityBucketId, PracticalGuideItem[]>,
+  items: PracticalGuideItem[]
+): PracticalQuickTake[] {
+  const best = bucketItems.get("best")?.[0];
+  const context = bucketItems.get("context")?.[0];
+  const performance = bucketItems.get("performance")?.[0];
+  const overhyped = bucketItems.get("overhyped")?.[0];
+  const watchlist = bucketItems.get("watchlist")?.[0];
+  const directLifespanItems = items.filter((item) => item.claim.outcome === "Mortality/lifespan");
+  const strongDirectLifespanItems = directLifespanItems.filter(
+    (item) =>
+      item.claim.finalLabel === "Core Evidence-Based" &&
+      item.claim.confidenceLevel === "High" &&
+      item.score !== null &&
+      item.score >= 8
+  );
+  const quickTakes: PracticalQuickTake[] = [];
+
+  quickTakes.push(
+    best
+      ? {
+          detail: `${best.intervention.name} currently stands out most for ${shortOutcome(
+            best.claim.outcome
+          ).toLowerCase()} (${best.scoreLabel}).`,
+          href: best.href,
+          label: "Most worth attention",
+          title: best.intervention.name,
+          tone: "border-spruce/30 bg-teal-50 text-spruce"
+        }
+      : {
+          detail: "No current-filter supplement reaches the strongest practical-priority threshold.",
+          label: "Most worth attention",
+          title: "No clear top item",
+          tone: "border-slate-300 bg-slate-50 text-slate-700"
+        }
+  );
+
+  quickTakes.push(
+    context
+      ? {
+          detail: `${context.intervention.name} may be relevant only when the person, baseline status, product form, or goal matches the evidence.`,
+          href: context.href,
+          label: "Context-dependent",
+          title: context.intervention.name,
+          tone: "border-signal/25 bg-blue-50 text-signal"
+        }
+      : {
+          detail: "No context-dependent item is prominent in the current filters.",
+          label: "Context-dependent",
+          title: "None prominent",
+          tone: "border-slate-300 bg-slate-50 text-slate-700"
+        }
+  );
+
+  quickTakes.push(
+    performance
+      ? {
+          detail: `${performance.intervention.name} is mainly a narrow performance or training-context signal, not broad health advice.`,
+          href: performance.href,
+          label: "Niche use",
+          title: performance.intervention.name,
+          tone: "border-indigo-200 bg-indigo-50 text-indigo-700"
+        }
+      : {
+          detail: "No moderate-or-better confidence performance item is prominent in the current filters.",
+          label: "Niche use",
+          title: "None prominent",
+          tone: "border-slate-300 bg-slate-50 text-slate-700"
+        }
+  );
+
+  quickTakes.push(
+    overhyped
+      ? {
+          detail: `${overhyped.intervention.name} ${shortOutcome(
+            overhyped.claim.outcome
+          ).toLowerCase()} should not be read as proven from the current evidence.`,
+          href: overhyped.href,
+          label: "Overhyped claim",
+          title: overhyped.intervention.name,
+          tone: "border-slate-300 bg-slate-50 text-slate-700"
+        }
+      : {
+          detail: "No overhyped claim is prominent in the current filters.",
+          label: "Overhyped claim",
+          title: "None prominent",
+          tone: "border-slate-300 bg-slate-50 text-slate-700"
+        }
+  );
+
+  quickTakes.push(
+    watchlist
+      ? {
+          detail: `${watchlist.intervention.name} should be read caution-first because safety, clinician-review, or regulatory context dominates.`,
+          href: watchlist.href,
+          label: "Caution first",
+          title: watchlist.intervention.name,
+          tone: "border-danger/30 bg-red-50 text-danger"
+        }
+      : {
+          detail: "No caution-first item is prominent in the current filters.",
+          label: "Caution first",
+          title: "None prominent",
+          tone: "border-slate-300 bg-slate-50 text-slate-700"
+        }
+  );
+
+  quickTakes.push({
+    detail:
+      strongDirectLifespanItems.length > 0
+        ? `${strongDirectLifespanItems.length} direct lifespan claim(s) meet the strict high-confidence/core threshold.`
+        : "Most current signals are healthspan, biomarker, performance, or source-radar signals rather than direct lifespan proof.",
+    label: "Longevity reality check",
+    title: "No broad lifespan shortcut",
+    tone: "border-amberline/30 bg-amber-50 text-amberline"
+  });
+
+  return quickTakes;
+}
+
+function classifyPracticalPriorityBucket({
+  claim,
+  intervention,
+  readinessRow,
+  safetyAlerts,
+  score
+}: {
+  claim: Claim;
+  intervention: Intervention;
+  readinessRow?: ScoreReadinessRow;
+  safetyAlerts: SafetyAlert[];
+  score: number | null;
+}): PracticalPriorityBucketId {
+  if (claim.outcome === "Safety/adverse effects") {
+    return "watchlist";
+  }
+
+  if (isPracticalWatchlistItem({ claim, intervention, safetyAlerts })) {
+    return "watchlist";
+  }
+
+  if (isUnsupportedLongevityOrAgingClaim(claim)) {
+    return "overhyped";
+  }
+
+  if (isPracticalEmergingItem(claim, readinessRow)) {
+    return "emerging";
+  }
+
+  if (claim.finalLabel === "Insufficient Evidence") {
+    return "overhyped";
+  }
+
+  if (
+    claim.finalLabel === "Core Evidence-Based" &&
+    score !== null &&
+    score >= 7.5 &&
+    isModerateOrHighConfidence(claim)
+  ) {
+    return "best";
+  }
+
+  if (
+    isPerformanceClaim(claim, intervention) &&
+    score !== null &&
+    score >= 6 &&
+    isModerateOrHighConfidence(claim) &&
+    claim.finalLabel !== "Conditional / Biomarker-Gated"
+  ) {
+    return "performance";
+  }
+
+  if (
+    (claim.finalLabel === "Conditional / Biomarker-Gated" ||
+      claim.finalLabel === "Useful for Specific Use Case" ||
+      claim.finalLabel === "Reasonable N-of-1 Experiment") &&
+    isModerateOrHighConfidence(claim)
+  ) {
+    return "context";
+  }
+
+  if (score !== null && score >= 7 && isModerateOrHighConfidence(claim)) {
+    return "context";
+  }
+
+  return "emerging";
+}
+
+function practicalPriorityScore({
+  bucketId,
+  claim,
+  readinessRow,
+  safetyAlerts,
+  score,
+  sourcePacket
+}: {
+  bucketId: PracticalPriorityBucketId;
+  claim: Claim;
+  readinessRow?: ScoreReadinessRow;
+  safetyAlerts: SafetyAlert[];
+  score: number | null;
+  sourcePacket: ClaimSourcePacket;
+}) {
+  const labelWeights: Record<PracticalPriorityBucketId, number> = {
+    best: 30,
+    context: 20,
+    performance: 16,
+    overhyped: 12,
+    emerging: 14,
+    watchlist: 22
+  };
+  const confidenceWeights: Record<Claim["confidenceLevel"], number> = {
+    High: 5,
+    Moderate: 3,
+    Low: 1,
+    "Very low": 0
+  };
+  const sourcePacketWeight =
+    sourcePacket.completeness.status === "complete"
+      ? 4
+      : sourcePacket.completeness.status === "extraction_pending"
+        ? 2
+        : 0;
+  const readinessWeight =
+    readinessRow?.state === "scored"
+      ? 3
+      : readinessRow?.state === "ready_to_score"
+        ? 1
+        : 0;
+  const safetyAlertWeight = safetyAlerts.some((alert) =>
+    ["Avoid", "Clinician review recommended", "High"].includes(alert.severity)
+  )
+    ? 5
+    : safetyAlerts.length > 0
+      ? 2
+      : 0;
+  const momentumWeight =
+    claim.momentum === "Increasing"
+      ? 2
+      : claim.momentum === "Conflicting"
+        ? 1
+        : claim.momentum === "Safety concern emerging"
+          ? 4
+          : 0;
+
+  return (
+    labelWeights[bucketId] +
+    (score ?? 0) +
+    confidenceWeights[claim.confidenceLevel] +
+    sourcePacketWeight +
+    readinessWeight +
+    safetyAlertWeight +
+    momentumWeight +
+    claim.scores.hypePenalty * (bucketId === "overhyped" ? 0.7 : 0.15) +
+    claim.scores.regulatoryRisk * (bucketId === "watchlist" ? 0.8 : 0.1)
+  );
+}
+
+function sortPracticalGuideItems(left: PracticalGuideItem, right: PracticalGuideItem) {
+  if (right.priorityScore !== left.priorityScore) {
+    return right.priorityScore - left.priorityScore;
+  }
+
+  return `${left.intervention.name}-${left.claim.outcome}`.localeCompare(
+    `${right.intervention.name}-${right.claim.outcome}`
+  );
+}
+
+function isPracticalWatchlistItem({
+  claim,
+  intervention,
+  safetyAlerts
+}: {
+  claim: Claim;
+  intervention: Intervention;
+  safetyAlerts: SafetyAlert[];
+}) {
+  return (
+    intervention.category === "Peptide/biologic" ||
+    intervention.category === "Drug/geroprotector watchlist" ||
+    claim.finalLabel === "Safety Concern" ||
+    claim.finalLabel === "Avoid / Not Recommended" ||
+    claim.finalLabel === "Requires Clinician Oversight" ||
+    claim.finalLabel === "Regulatory Concern" ||
+    claim.momentum === "Safety concern emerging" ||
+    safetyAlerts.some((alert) =>
+      ["Avoid", "Clinician review recommended", "High"].includes(alert.severity)
+    )
+  );
+}
+
+function isUnsupportedLongevityOrAgingClaim(claim: Claim) {
+  return (
+    claim.finalLabel === "Insufficient Evidence" &&
+    (claim.outcome === "Mortality/lifespan" ||
+      claim.outcome === "Biological aging clocks" ||
+      claim.scores.hypePenalty >= 7)
+  );
+}
+
+function isPracticalEmergingItem(claim: Claim, readinessRow?: ScoreReadinessRow) {
+  return (
+    claim.finalLabel === "Speculative Watchlist" ||
+    claim.momentum === "Increasing" ||
+    isDraftLeadClaim(claim) ||
+    isEvidenceMapReviewWorkRow(readinessRow) ||
+    isEvidenceMapSourceWorkRow(readinessRow)
+  );
+}
+
+function isModerateOrHighConfidence(claim: Claim) {
+  return claim.confidenceLevel === "High" || claim.confidenceLevel === "Moderate";
+}
+
+function isPerformanceClaim(claim: Claim, intervention: Intervention) {
+  return (
+    intervention.category === "Ergogenic/performance supplement" ||
+    PERFORMANCE_OUTCOMES.has(claim.outcome)
+  );
+}
+
+function practicalBucketReason(
+  bucketId: PracticalPriorityBucketId,
+  claim: Claim,
+  sourcePacket: ClaimSourcePacket
+) {
+  if (sourcePacket.completeness.status !== "complete" && bucketId !== "watchlist") {
+    return `${shortOutcome(claim.outcome)} needs source links or extraction before it should influence practical rankings.`;
+  }
+
+  if (bucketId === "best") {
+    return `${shortOutcome(claim.outcome)} is one of the stronger practical signals in the current catalog.`;
+  }
+
+  if (bucketId === "context") {
+    return `${shortOutcome(claim.outcome)} depends on the right person, baseline status, product form, or goal.`;
+  }
+
+  if (bucketId === "performance") {
+    return `${shortOutcome(claim.outcome)} is mainly a training or narrow-use signal, not broad health advice.`;
+  }
+
+  if (bucketId === "overhyped") {
+    return `${shortOutcome(claim.outcome)} should not be treated as proven from the current evidence.`;
+  }
+
+  if (bucketId === "watchlist") {
+    return `${shortOutcome(claim.outcome)} is dominated by safety, clinician-review, or regulatory caveats.`;
+  }
+
+  return `${shortOutcome(claim.outcome)} has movement or source leads, but conclusions are not settled.`;
+}
+
+function practicalClaimSummary({
+  bucketId,
+  claim,
+  intervention,
+  sourcePacket
+}: {
+  bucketId: PracticalPriorityBucketId;
+  claim: Claim;
+  intervention: Intervention;
+  sourcePacket: ClaimSourcePacket;
+}) {
+  if (sourcePacket.completeness.status !== "complete") {
+    if (sourcePacket.completeness.totalReferences === 0) {
+      return `${intervention.name} has this public claim in the catalog, but no curated local source packet is linked yet. Treat it as a sourcing task, not an evidence-backed conclusion.`;
+    }
+
+    return `${intervention.name} has linked source material for this claim, but extraction is not complete enough for a practical conclusion yet.`;
+  }
+
+  if (claim.outcome === "Safety/adverse effects") {
+    if (
+      intervention.category === "Peptide/biologic" ||
+      intervention.category === "Drug/geroprotector watchlist"
+    ) {
+      return `${intervention.name} is shown here as regulatory and safety tracking, not as routine supplement evidence or self-use guidance.`;
+    }
+
+    return `${intervention.name} has safety and tolerability context attached to this outcome; read it as caution and product-context review, not as a benefit claim.`;
+  }
+
+  if (
+    bucketId === "watchlist" &&
+    (intervention.category === "Peptide/biologic" ||
+      intervention.category === "Drug/geroprotector watchlist")
+  ) {
+    return `${intervention.name} is a regulatory or clinician-review watchlist item; the local record tracks evidence and risk boundaries rather than routine supplement use.`;
+  }
+
+  return normaliseSentence(claim.summary ?? claim.claimText);
+}
+
+function practicalClaimCaveat(claim: Claim, safetyAlerts: SafetyAlert[]) {
+  if (safetyAlerts.length > 0) {
+    return normaliseSentence(safetyAlerts[0].summary);
+  }
+
+  if (claim.uncertainty) {
+    return normaliseSentence(claim.uncertainty);
+  }
+
+  const nonProof = claim.doesNotProve?.find((statement) => statement.trim().length > 0);
+
+  if (nonProof) {
+    return normaliseSentence(nonProof);
+  }
+
+  return normaliseSentence(claim.applicabilityNotes || claim.safetyNotes);
+}
+
+function practicalSourceBasis(sourcePacket: ClaimSourcePacket) {
+  const { completeness } = sourcePacket;
+
+  if (completeness.totalReferences === 0) {
+    return "No source packet linked yet";
+  }
+
+  return `${completeness.extractedReferences}/${completeness.totalReferences} source refs extracted`;
+}
+
+function practicalEvidenceMaturity(claim: Claim, sourcePacket: ClaimSourcePacket) {
+  const depth = sourcePacket.evidenceDepth;
+
+  if (depth.randomizedControlledTrials > 0 || depth.metaAnalyses > 0) {
+    return "Human trial or synthesis evidence";
+  }
+
+  if (depth.systematicReviews > 0 || depth.reviewPositionStandSources > 0) {
+    return "Review or position-stand evidence";
+  }
+
+  if (depth.regulatorySafetyWarnings > 0) {
+    return "Safety/regulatory evidence";
+  }
+
+  if (depth.animalMechanisticStudies > 0) {
+    return "Mechanistic or animal evidence";
+  }
+
+  if (sourcePacket.completeness.status !== "complete") {
+    return sourcePacket.completeness.label;
+  }
+
+  return `${claim.confidenceLevel} confidence source packet`;
+}
+
+function buildPracticalLongevityLens(
+  items: PracticalGuideItem[]
+): PracticalLongevityLensCard[] {
+  const directItems = items.filter((item) => item.claim.outcome === "Mortality/lifespan");
+  const strongDirectItems = directItems.filter(
+    (item) =>
+      item.score !== null &&
+      item.score >= 7 &&
+      item.claim.finalLabel !== "Insufficient Evidence" &&
+      isModerateOrHighConfidence(item.claim)
+  );
+  const healthspanItems = items.filter(
+    (item) =>
+      HEALTHSPAN_OUTCOMES.has(item.claim.outcome) &&
+      ["best", "context", "performance"].includes(item.bucketId)
+  );
+  const biomarkerItems = items.filter(
+    (item) => BIOMARKER_OUTCOMES.has(item.claim.outcome) && item.bucketId !== "watchlist"
+  );
+  const mechanisticItems = items.filter(
+    (item) =>
+      item.claim.outcome === "Biological aging clocks" ||
+      item.evidenceMaturity === "Mechanistic or animal evidence" ||
+      /mechanistic|animal/i.test(item.claim.evidenceGrade)
+  );
+  const speculativeItems = items.filter(
+    (item) =>
+      item.claim.finalLabel === "Speculative Watchlist" ||
+      isUnsupportedLongevityOrAgingClaim(item.claim) ||
+      item.claim.scores.hypePenalty >= 7
+  );
+
+  return [
+    {
+      id: "direct",
+      items: directItems.slice(0, 2),
+      label: "Direct lifespan evidence",
+      summary:
+        strongDirectItems.length > 0
+          ? `${strongDirectItems.length} direct lifespan claim(s) have moderate-or-better support in the current filters.`
+          : directItems.length > 0
+            ? `${directItems.length} direct lifespan claim(s) are tracked, but none are presented as strong direct lifespan proof.`
+            : "No direct lifespan claims match the current filters."
+    },
+    {
+      id: "healthspan",
+      items: healthspanItems.slice(0, 3),
+      label: "Healthspan evidence",
+      summary:
+        healthspanItems.length > 0
+          ? `${healthspanItems.length} practical item(s) map to function, sleep, mood, cognition, cardiovascular, immune, or musculoskeletal outcomes.`
+          : "No current-filter items stand out on healthspan outcomes."
+    },
+    {
+      id: "biomarker",
+      items: biomarkerItems.slice(0, 3),
+      label: "Biomarker evidence",
+      summary:
+        biomarkerItems.length > 0
+          ? `${biomarkerItems.length} item(s) are best read as biomarkers or measured-risk signals, not broad health promises.`
+          : "No biomarker-led items match the current filters."
+    },
+    {
+      id: "mechanistic",
+      items: mechanisticItems.slice(0, 2),
+      label: "Mechanistic / animal evidence",
+      summary:
+        mechanisticItems.length > 0
+          ? `${mechanisticItems.length} item(s) rely on mechanistic, animal, or aging-clock-adjacent signals.`
+          : "No mechanistic-only longevity signals match the current filters."
+    },
+    {
+      id: "speculative",
+      items: speculativeItems.slice(0, 3),
+      label: "Speculative hype",
+      summary:
+        speculativeItems.length > 0
+          ? `${speculativeItems.length} item(s) need extra caution because the claim is speculative, unsupported, or hype-sensitive.`
+          : "No hype-sensitive longevity items match the current filters."
+    }
+  ];
+}
+
+function buildPracticalRadar({
+  items,
+  interventionsById,
+  trialWatchItems
+}: {
+  items: PracticalGuideItem[];
+  interventionsById: Map<string, Intervention>;
+  trialWatchItems: TrialWatchItem[];
+}): PracticalRadar {
+  const visibleInterventionIds = new Set(items.map((item) => item.claim.interventionId));
+  const trialLeads = trialWatchItems
+    .filter(
+      (trial) => visibleInterventionIds.size === 0 || visibleInterventionIds.has(trial.interventionId)
+    )
+    .map((trial) => ({
+      evidenceImpact: trial.evidenceImpact,
+      href: trial.url,
+      id: trial.id,
+      interventionName: interventionsById.get(trial.interventionId)?.name ?? "Unknown",
+      status: [trial.status, trial.phase].filter(Boolean).join(" - "),
+      title: trial.title
+    }))
+    .slice(0, 3);
+  const sourceLeads = items
+    .filter(
+      (item) =>
+        item.sourcePacketStatus !== "complete" ||
+        item.bucketId === "emerging" ||
+        item.readinessLabel !== "Scored"
+    )
+    .sort(sortPracticalRadarSourceLeads)
+    .slice(0, 3);
+  const rankingImpactLeads = buildRankingImpactLeads(items);
+  const momentumBadges = buildPracticalMomentumBadges(items);
+
+  return {
+    momentumBadges,
+    rankingImpactLeads,
+    sourceLeads,
+    trialLeads
+  };
+}
+
+function buildRankingImpactLeads(items: PracticalGuideItem[]) {
+  return items
+    .map((item): PracticalRadarRankingLead | null => {
+      const storedScore = compositeScore(item.claim.scores);
+      const lowConfidence =
+        item.claim.confidenceLevel === "Low" || item.claim.confidenceLevel === "Very low";
+      const scoreLooksHigh = storedScore >= 7;
+
+      if (item.sourcePacketStatus !== "complete") {
+        return {
+          item,
+          reason: "Source packet is incomplete, so this row is kept out of strong practical picks until source links and extraction are complete."
+        };
+      }
+
+      if (item.readinessLabel !== "Scored") {
+        return {
+          item,
+          reason: `${item.readinessLabel} status means the stored score is not treated as settled ranking evidence.`
+        };
+      }
+
+      if (item.bucketId === "emerging" && scoreLooksHigh && lowConfidence) {
+        return {
+          item,
+          reason:
+            "The stored score looks high, but confidence is low or very low, so this stays in source-lead territory instead of a top practical bucket."
+        };
+      }
+
+      if (item.bucketId === "watchlist" && scoreLooksHigh) {
+        return {
+          item,
+          reason:
+            "The numeric score is not promoted because safety, clinician-review, or regulatory context dominates the practical interpretation."
+        };
+      }
+
+      return null;
+    })
+    .filter((row): row is PracticalRadarRankingLead => Boolean(row))
+    .sort((left, right) => {
+      const priorityDelta =
+        rankingImpactLeadPriority(right.item) - rankingImpactLeadPriority(left.item);
+
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+
+      const leftScore = compositeScore(left.item.claim.scores);
+      const rightScore = compositeScore(right.item.claim.scores);
+
+      return rightScore - leftScore || left.item.intervention.name.localeCompare(right.item.intervention.name);
+    })
+    .slice(0, 4);
+}
+
+function sortPracticalRadarSourceLeads(left: PracticalGuideItem, right: PracticalGuideItem) {
+  const priorityDelta = sourceLeadPriority(right) - sourceLeadPriority(left);
+
+  if (priorityDelta !== 0) {
+    return priorityDelta;
+  }
+
+  return sortPracticalGuideItems(left, right);
+}
+
+function sourceLeadPriority(item: PracticalGuideItem) {
+  if (item.sourcePacketStatus !== "complete") {
+    return 4;
+  }
+
+  if (item.readinessLabel !== "Scored") {
+    return 3;
+  }
+
+  if (item.bucketId === "emerging") {
+    return 2;
+  }
+
+  return 1;
+}
+
+function rankingImpactLeadPriority(item: PracticalGuideItem) {
+  if (item.sourcePacketStatus !== "complete") {
+    return 4;
+  }
+
+  if (item.readinessLabel !== "Scored") {
+    return 3;
+  }
+
+  if (item.bucketId === "watchlist") {
+    return 2;
+  }
+
+  return 1;
+}
+
+function buildPracticalMomentumBadges(items: PracticalGuideItem[]) {
+  const increasing = items.filter((item) => item.claim.momentum === "Increasing").length;
+  const conflicting = items.filter((item) => item.claim.momentum === "Conflicting").length;
+  const weakening = items.filter((item) => item.claim.momentum === "Weakening").length;
+  const safety = items.filter((item) => item.claim.momentum === "Safety concern emerging").length;
+
+  return [
+    increasing > 0 ? `${increasing} improving` : "0 improving",
+    conflicting > 0 ? `${conflicting} mixed` : "0 mixed",
+    weakening > 0 ? `${weakening} weakening` : "0 weakening",
+    safety > 0 ? `${safety} safety concern emerging` : "0 safety concern emerging"
+  ];
+}
+
+function PracticalGuideSection({ guide }: { guide: PracticalGuideModel }) {
+  return (
+    <section
+      aria-label="Start here practical supplement guide"
+      className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel"
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-4xl">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Start here
+          </p>
+          <h2 className="mt-1 text-base font-semibold text-ink">
+            What to pay attention to first
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            Practical guide: a derived readout of what is worth paying attention to, why it
+            stands out, and where the evidence is still conditional, speculative, or
+            safety-limited. These are not clinical recommendations or personal medical advice.
+          </p>
+        </div>
+        <div className="grid min-w-[13rem] grid-cols-2 gap-2 text-xs text-slate-600">
+          <MiniStat label="Claims scanned" value={guide.claimCount.toLocaleString()} />
+          <MiniStat
+            label="Priority buckets"
+            value={`${guide.buckets.filter((bucket) => bucket.items.length > 0).length}/${guide.buckets.length} active`}
+          />
+        </div>
+      </div>
+
+      <PracticalQuickTakeStrip quickTakes={guide.quickTakes} />
+
+      <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-3">
+        {guide.buckets.map((bucket) => (
+          <PracticalPriorityBucketPanel bucket={bucket} key={bucket.id} />
+        ))}
+      </div>
+
+      <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-[1.25fr_0.75fr]">
+        <PracticalLongevityLens cards={guide.longevityLens} />
+        <PracticalEvidenceRadar radar={guide.radar} />
+      </div>
+    </section>
+  );
+}
+
+function PracticalQuickTakeStrip({ quickTakes }: { quickTakes: PracticalQuickTake[] }) {
+  return (
+    <section className="mt-4 rounded-md border border-line bg-mist p-3">
+      <h3 className="text-sm font-semibold text-ink">Quick answer for friends</h3>
+      <p className="mt-1 text-xs leading-5 text-slate-600">
+        A plain-language first pass before the heatmap: attention, context, caution, and
+        longevity reality check without turning scores into recommendations.
+      </p>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {quickTakes.map((item) => {
+          const body = (
+            <>
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                {item.label}
+              </span>
+              <span className="mt-1 block text-sm font-semibold text-ink">{item.title}</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-700">{item.detail}</span>
+            </>
+          );
+
+          return item.href ? (
+            <a
+              className={cn(
+                "block rounded-md border p-3 transition hover:border-signal hover:bg-white focus:outline-none focus:ring-4 focus:ring-signal/20",
+                item.tone
+              )}
+              href={item.href}
+              key={`${item.label}-${item.title}`}
+            >
+              {body}
+            </a>
+          ) : (
+            <div
+              className={cn("rounded-md border p-3", item.tone)}
+              key={`${item.label}-${item.title}`}
+            >
+              {body}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PracticalPriorityBucketPanel({ bucket }: { bucket: PracticalPriorityBucket }) {
+  return (
+    <section className="min-w-0 rounded-md border border-line bg-white p-3">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-ink">{bucket.label}</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">{bucket.description}</p>
+        </div>
+        <span className={cn("shrink-0 rounded-md border px-2 py-1 text-xs font-semibold", bucket.tone)}>
+          {bucket.items.length}
+        </span>
+      </div>
+
+      <div className="mt-3 space-y-2">
+        {bucket.items.length > 0 ? (
+          bucket.items.map((item) => <PracticalGuideItemCard item={item} key={item.claim.id} />)
+        ) : (
+          <p className="rounded-md border border-dashed border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+            {bucket.empty}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function PracticalGuideItemCard({ item }: { item: PracticalGuideItem }) {
+  return (
+    <a
+      className="block min-w-0 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20"
+      href={item.href}
+    >
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-ink">{item.intervention.name}</p>
+          <p className="text-slate-600">{shortOutcome(item.claim.outcome)}</p>
+        </div>
+        <span className={cn("shrink-0 rounded-md border px-2 py-1 font-semibold", labelTone(item.claim.finalLabel))}>
+          {item.scoreLabel}
+        </span>
+      </div>
+      <p className="mt-2 font-medium text-slate-700">{item.reason}</p>
+      <p className="mt-1 text-slate-600">{item.summary}</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <span className="rounded-md border border-line bg-white px-2 py-0.5 text-slate-600">
+          {item.confidenceLabel}
+        </span>
+        <span className={cn("rounded-md border px-2 py-0.5", sourcePacketCompletenessTone(item.sourcePacketStatus))}>
+          {item.sourceBasis}
+        </span>
+        <span className="rounded-md border border-line bg-white px-2 py-0.5 text-slate-600">
+          {item.evidenceMaturity}
+        </span>
+      </div>
+      <p className="mt-2 text-slate-600">
+        <span className="font-semibold text-ink">Caveat:</span> {item.caveat}
+      </p>
+    </a>
+  );
+}
+
+function PracticalLongevityLens({ cards }: { cards: PracticalLongevityLensCard[] }) {
+  return (
+    <section className="min-w-0 rounded-md border border-line bg-white p-3">
+      <div>
+        <h3 className="text-sm font-semibold text-ink">Longevity lens</h3>
+        <p className="mt-1 text-xs leading-5 text-slate-600">
+          Direct lifespan evidence is separated from healthspan, biomarker, mechanistic,
+          and speculative signals so longevity claims stay conservative.
+        </p>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+        {cards.map((card) => (
+          <section className="min-w-0 rounded-md border border-line bg-mist p-2" key={card.id}>
+            <h4 className="text-xs font-semibold text-ink">{card.label}</h4>
+            <p className="mt-1 text-xs leading-5 text-slate-600">{card.summary}</p>
+            {card.items.length > 0 ? (
+              <ul className="mt-2 space-y-1">
+                {card.items.map((item) => (
+                  <li key={`${card.id}-${item.claim.id}`}>
+                    <a
+                      className="block truncate text-xs font-medium text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+                      href={item.href}
+                    >
+                      {item.intervention.name} - {shortOutcome(item.claim.outcome)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PracticalEvidenceRadar({ radar }: { radar: PracticalRadar }) {
+  return (
+    <section className="min-w-0 rounded-md border border-line bg-white p-3">
+      <h3 className="text-sm font-semibold text-ink">Emerging evidence radar</h3>
+      <p className="mt-1 text-xs leading-5 text-slate-600">
+        Trial and source leads are shown separately from settled evidence so new signals do
+        not become recommendations by accident.
+      </p>
+
+      <div className="mt-3 space-y-3">
+        <div>
+          <h4 className="text-xs font-semibold text-ink">Clinical trials to watch</h4>
+          {radar.trialLeads.length > 0 ? (
+            <ul className="mt-2 space-y-2">
+              {radar.trialLeads.map((trial) => (
+                <li className="rounded-md border border-line bg-mist px-3 py-2 text-xs" key={trial.id}>
+                  <a
+                    className="font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+                    href={trial.href}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {trial.interventionName}
+                  </a>
+                  <p className="mt-1 text-slate-700">{trial.title}</p>
+                  <p className="mt-1 text-slate-600">
+                    {trial.status} - momentum {trial.evidenceImpact}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 rounded-md border border-dashed border-line bg-mist px-3 py-2 text-xs text-slate-600">
+              No trial leads match the current filters.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <h4 className="text-xs font-semibold text-ink">Ranking-impacting source gaps</h4>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            High-looking, low-confidence, source-work, or caution-first rows are kept out of
+            top practical picks until the evidence trail can support that interpretation.
+          </p>
+          {radar.rankingImpactLeads.length > 0 ? (
+            <ul className="mt-2 space-y-2">
+              {radar.rankingImpactLeads.map(({ item, reason }) => (
+                <li className="rounded-md border border-line bg-mist px-3 py-2 text-xs" key={`ranking-impact-${item.claim.id}`}>
+                  <a
+                    className="font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+                    href={item.href}
+                  >
+                    {item.intervention.name} - {shortOutcome(item.claim.outcome)}
+                  </a>
+                  <p className="mt-1 text-slate-700">{reason}</p>
+                  <p className="mt-1 text-slate-600">
+                    {item.confidenceLabel} - {item.sourceBasis} - {item.readinessLabel}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 rounded-md border border-dashed border-line bg-mist px-3 py-2 text-xs text-slate-600">
+              No ranking-impacting source gaps match the current filters.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <h4 className="text-xs font-semibold text-ink">Newer studies or source leads</h4>
+          {radar.sourceLeads.length > 0 ? (
+            <ul className="mt-2 space-y-1.5">
+              {radar.sourceLeads.map((item) => (
+                <li key={`source-lead-${item.claim.id}`}>
+                  <a
+                    className="block truncate text-xs font-medium text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+                    href={item.href}
+                  >
+                    {item.intervention.name} - {shortOutcome(item.claim.outcome)} - {item.sourcePacketLabel}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 rounded-md border border-dashed border-line bg-mist px-3 py-2 text-xs text-slate-600">
+              No source-work leads match the current filters.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <h4 className="text-xs font-semibold text-ink">Evidence momentum</h4>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {radar.momentumBadges.map((badge) => (
+              <span
+                className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-medium text-slate-600"
+                key={badge}
+              >
+                {badge}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -5566,16 +6911,12 @@ function reviewStatusLabel(status: Claim["reviewStatus"]) {
 }
 
 function classificationLabel(claim: Claim, readinessRow?: ScoreReadinessRow) {
-  if (isDraftLeadClaim(claim)) {
-    return "Review-needed classification";
-  }
-
   if (readinessRow?.state === "ready_to_score") {
     return "Ready-to-score classification";
   }
 
-  if (isEvidenceMapPlaceholderClaim(claim)) {
-    return "Review-needed classification";
+  if (readinessRow?.state === "snapshot_gap") {
+    return "Score-audit classification";
   }
 
   if (readinessRow?.state === "source_blocked") {
@@ -5584,6 +6925,10 @@ function classificationLabel(claim: Claim, readinessRow?: ScoreReadinessRow) {
 
   if (readinessRow?.state === "default_score_review") {
     return "Scoring-review classification";
+  }
+
+  if (isDraftLeadClaim(claim) || isEvidenceMapPlaceholderClaim(claim)) {
+    return "Review-needed classification";
   }
 
   return isHumanReviewed(claim.reviewStatus)
@@ -6113,7 +7458,8 @@ type EvidenceMapReadinessSummary = {
   incompleteSourcePackets: number;
   pendingReferences: number;
   readyToScoreClaims: number;
-  reviewWorkClaims: number;
+  scoreWorkClaims: number;
+  sourceBlockedClaims: number;
   scoreReviewClaims: number;
   sourceBlockedScoredClaims: number;
   sourceBlockers: ScoreReadinessSummary["sourceBlockers"];
@@ -6141,13 +7487,13 @@ const EVIDENCE_MAP_STATUS_FILTERS: Array<{
   },
   {
     id: "review-work",
-    label: "Review work",
-    title: "Show draft leads, source-packet scaffolds, and starter-looking scores that still need evidence scoring."
+    label: "Score work",
+    title: "Show complete source packets that still need scoring, score review, or score-audit cleanup."
   },
   {
     id: "source-work",
     label: "Source work",
-    title: "Show scored-looking cells that still need source extraction or score snapshot repair."
+    title: "Show cells blocked by missing source links, missing source records, or extraction gaps."
   }
 ];
 
@@ -6180,22 +7526,26 @@ function claimMatchesEvidenceMapStatusFilter(
   }
 
   if (statusFilter === "review-work") {
-    return isEvidenceMapPlaceholderClaim(claim) || isEvidenceMapReviewWorkRow(readinessRow);
+    return isEvidenceMapReviewWorkRow(readinessRow);
   }
 
   if (statusFilter === "source-work") {
-    return !isEvidenceMapPlaceholderClaim(claim) && isEvidenceMapSourceWorkRow(readinessRow);
+    return isEvidenceMapSourceWorkRow(readinessRow);
   }
 
   return true;
 }
 
 function isEvidenceMapReviewWorkRow(row: ScoreReadinessRow | undefined) {
-  return row?.state === "default_score_review" || row?.state === "ready_to_score";
+  return (
+    row?.state === "default_score_review" ||
+    row?.state === "ready_to_score" ||
+    row?.state === "snapshot_gap"
+  );
 }
 
 function isEvidenceMapSourceWorkRow(row: ScoreReadinessRow | undefined) {
-  return row?.state === "source_blocked" || row?.state === "snapshot_gap";
+  return row?.state === "source_blocked";
 }
 
 function buildEvidenceMapReadinessSummary({
@@ -6221,6 +7571,8 @@ function buildEvidenceMapReadinessSummary({
     (row) => row.state === "default_score_review"
   ).length;
   const snapshotGapClaims = readinessRows.filter((row) => row.state === "snapshot_gap").length;
+  const sourceBlockedClaims = readinessRows.filter((row) => row.state === "source_blocked").length;
+  const scoreWorkClaims = readyToScoreClaims + scoreReviewClaims + snapshotGapClaims;
 
   return {
     completeSourcePackets: packetSummary.completeClaims,
@@ -6234,8 +7586,9 @@ function buildEvidenceMapReadinessSummary({
       packetSummary.unlinkedClaims,
     pendingReferences: packetSummary.pendingReferences + packetSummary.missingReferences,
     readyToScoreClaims,
-    reviewWorkClaims: draftLeadClaims + sourcePacketScaffoldClaims + scoreReviewClaims,
+    scoreWorkClaims,
     scoreReviewClaims,
+    sourceBlockedClaims,
     sourceBlockedScoredClaims,
     sourceBlockers: scoreSummary.sourceBlockers,
     scoredClaims: readinessRows.filter((row) => row.state === "scored").length,
@@ -6297,6 +7650,18 @@ function evidenceMapCellPresentation(
   score: number,
   readinessRow?: ScoreReadinessRow
 ) {
+  if (readinessRow?.state === "source_blocked") {
+    return {
+      ariaSummary:
+        "source work pending; no final evidence score is shown until source links or extraction are complete",
+      primary: "Source",
+      secondary: "Work",
+      title: `${readinessRow.packet.completeness.label}. ${scoreReadinessNextAction(readinessRow)}`,
+      tone:
+        "border-dashed border-amberline/35 bg-amber-50 text-amberline hover:border-amberline hover:bg-amber-50"
+    };
+  }
+
   if (isDraftLeadClaim(claim)) {
     return {
       ariaSummary:
@@ -6346,19 +7711,6 @@ function evidenceMapCellPresentation(
         "Source-packet scaffold awaiting evidence review. The stored placeholder score is hidden because it is not a final evidence score.",
       tone:
         "border-dashed border-slate-300 bg-slate-50 text-slate-600 hover:border-signal hover:bg-blue-50"
-    };
-  }
-
-  if (readinessRow?.state === "source_blocked") {
-    return {
-      ariaSummary:
-        "scored draft has linked sources awaiting extraction before the score should be treated as current",
-      primary: "Source",
-      secondary: "Work",
-      title:
-        "This claim has a stored score, but linked references still need extraction or source-packet repair before the cell should be treated as current scored evidence.",
-      tone:
-        "border-dashed border-amberline/35 bg-amber-50 text-amberline hover:border-amberline hover:bg-amber-50"
     };
   }
 
@@ -6476,11 +7828,16 @@ function EvidenceMapReadinessStrip({
   const scoredLabel = `${summary.scoredClaims.toLocaleString()}/${totalClaimsLabel}`;
   const humanReviewedLabel = `${summary.humanReviewedClaims.toLocaleString()}/${totalClaimsLabel}`;
   const sourcePacketLabel = `${summary.completeSourcePackets.toLocaleString()}/${totalClaimsLabel}`;
-  const sourceWorkCount = summary.sourceBlockedScoredClaims + summary.snapshotGapClaims;
-  const reviewWorkDetail =
-    summary.reviewWorkClaims === 0
-      ? "No draft leads, scaffolds, or score-review cells in the current filters"
-      : `${summary.draftLeadClaims.toLocaleString()} lead, ${summary.sourcePacketScaffoldClaims.toLocaleString()} scaffold, ${summary.readyToScoreClaims.toLocaleString()} ready, ${summary.scoreReviewClaims.toLocaleString()} score review`;
+  const scoreWorkDetail =
+    summary.scoreWorkClaims === 0
+      ? "No ready-to-score, score-review, or score-audit cells in the current filters"
+      : `${summary.readyToScoreClaims.toLocaleString()} ready, ${summary.scoreReviewClaims.toLocaleString()} score review, ${summary.snapshotGapClaims.toLocaleString()} audit`;
+  const sourceWorkDetail =
+    summary.sourceBlockedClaims === 0
+      ? "No source-link or extraction blockers in the current filters"
+      : `${summary.sourceBlockedClaims.toLocaleString()} blocked (${formatScoreReadinessSourceBlockers(
+          summary.sourceBlockers
+        )})`;
 
   return (
     <section aria-label="Evidence map readiness" className="mt-4 border-t border-line pt-3">
@@ -6492,12 +7849,16 @@ function EvidenceMapReadinessStrip({
               {summary.scoredClaims.toLocaleString()} scored
             </span>
             <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
-              {summary.reviewWorkClaims.toLocaleString()} review work
+              {summary.sourceBlockedClaims.toLocaleString()} need sources
+            </span>
+            <span className="rounded-md border border-signal/25 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
+              {summary.scoreWorkClaims.toLocaleString()} score work
             </span>
           </div>
           <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-600">
-            Scored cells are review aids, not treatment advice. Review-work and source-work cells keep
-            draft/source gaps visible without showing starter or stale scores as final evidence.
+            Scored cells are local AI-draft review aids from complete source packets, not treatment
+            advice. Score-work cells need score review; source-work cells need curated references or
+            extraction before a number can be shown.
           </p>
         </div>
         <div
@@ -6525,28 +7886,26 @@ function EvidenceMapReadinessStrip({
       </div>
       <div className="mt-3 flex flex-wrap gap-2 text-xs">
         <EvidenceReadinessBadge label="Scored cells" value={scoredLabel} />
-        <EvidenceReadinessBadge label="Human reviewed" value={humanReviewedLabel} />
         <EvidenceReadinessBadge
-          label="Source packets complete"
+          label="Source-backed cells"
           value={sourcePacketLabel}
           title={`${summary.incompleteSourcePackets.toLocaleString()} claim(s) still need source-packet linking or extraction.`}
         />
-        <EvidenceReadinessBadge label="Review-work mix" value={reviewWorkDetail} />
         <EvidenceReadinessBadge
-          label="Ready to score"
-          value={summary.readyToScoreClaims.toLocaleString()}
-          title="Complete source packets that still need claim-specific score assignment."
+          label="Score work"
+          value={scoreWorkDetail}
+          title="Complete source packets that still need claim-specific scoring, starter-score review, or snapshot repair."
         />
         <EvidenceReadinessBadge
           label="Source work"
-          value={sourceWorkCount.toLocaleString()}
-          title={`${summary.sourceBlockedScoredClaims.toLocaleString()} scored-looking cell(s) need source extraction; ${summary.snapshotGapClaims.toLocaleString()} need score snapshots.`}
+          value={sourceWorkDetail}
+          title="Claims blocked by missing curated source links, missing source records, or extraction gaps."
         />
-        {summary.sourceBlockedScoredClaims > 0 ? (
+        {summary.sourceBlockedClaims > 0 ? (
           <EvidenceReadinessBadge
             label="Source blockers"
             value={formatScoreReadinessSourceBlockers(summary.sourceBlockers)}
-            title="Why source-work cells are blocked before their stored score can be treated as current evidence."
+            title="Why source-work cells are blocked before a score can be treated as current evidence."
           />
         ) : null}
         <EvidenceReadinessBadge
@@ -6554,6 +7913,7 @@ function EvidenceMapReadinessStrip({
           value={`${summary.extractedReferences.toLocaleString()}/${summary.totalReferences.toLocaleString()}`}
           title={`${summary.pendingReferences.toLocaleString()} linked reference(s) still need extraction or repair.`}
         />
+        <EvidenceReadinessBadge label="Human reviewed" value={humanReviewedLabel} />
         <EvidenceReadinessBadge
           label="Pending human review"
           value={summary.draftClaims.toLocaleString()}
@@ -6587,14 +7947,12 @@ function EvidenceMap({
   claims: visibleClaims,
   interventions: visibleInterventions,
   readinessByClaimId,
-  activeClaimId,
-  onSelectClaim
+  activeClaimId
 }: {
   claims: Claim[];
   interventions: Intervention[];
   readinessByClaimId: Map<string, ScoreReadinessRow>;
   activeClaimId: string;
-  onSelectClaim: SelectClaimHandler;
 }) {
   const [sort, setSort] = useState<EvidenceMapSort>(null);
   const outcomes = useMemo(
@@ -6715,7 +8073,6 @@ function EvidenceMap({
                 claims={visibleClaims}
                 readinessByClaimId={readinessByClaimId}
                 activeClaimId={activeClaimId}
-                onSelectClaim={onSelectClaim}
               />
             ))}
           </tbody>
@@ -6752,7 +8109,7 @@ function EvidenceMapLegend() {
         <strong>Score / Review</strong> = starter-looking score hidden until reviewed
       </span>
       <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-amberline">
-        <strong>Source / Work</strong> = stored score needs source extraction before display as current
+        <strong>Source / Work</strong> = source links or extraction are incomplete; no score shown
       </span>
       <span className="rounded-md border border-signal/25 bg-blue-50 px-2 py-1 text-signal">
         <strong>Score / Audit</strong> = scored cell needs a score snapshot
@@ -6795,7 +8152,7 @@ function OutcomeColumnTooltip({ outcome }: { outcome: OutcomeArea }) {
         <span className="block font-semibold text-ink">{outcome}</span>
         <span className="mt-2 block">{detail}</span>
         <span className="mt-2 block text-slate-600">
-          Reviewed/source-scored cells show a composite score. Draft leads and scaffolds show review
+          Source-backed scored cells show a composite score. Source-work and score-work cells show
           status instead of placeholder numbers.
         </span>
       </span>
@@ -6869,15 +8226,13 @@ function EvidenceMapRow({
   outcomes,
   claims: visibleClaims,
   readinessByClaimId,
-  activeClaimId,
-  onSelectClaim
+  activeClaimId
 }: {
   intervention: Intervention;
   outcomes: OutcomeArea[];
   claims: Claim[];
   readinessByClaimId: Map<string, ScoreReadinessRow>;
   activeClaimId: string;
-  onSelectClaim: SelectClaimHandler;
 }) {
   return (
     <tr>
@@ -6926,9 +8281,8 @@ function EvidenceMapRow({
 
         return (
           <td key={claim.id} className="h-14 w-[4.25rem] min-w-[4.25rem] max-w-[4.75rem] p-0 align-middle">
-            <button
-              type="button"
-              onClick={() => onSelectClaim(claim.id, { scrollToDetail: true })}
+            <a
+              href={`/interventions/${intervention.slug}#claim-${claim.id}`}
               className={cn(
                 "flex h-14 w-full flex-col items-center justify-center rounded-md border px-1 text-center text-[11px] leading-tight transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20",
                 cell.tone,
@@ -6942,7 +8296,7 @@ function EvidenceMapRow({
             >
               <span className="font-semibold">{cell.primary}</span>
               <span className="max-w-full truncate">{cell.secondary}</span>
-            </button>
+            </a>
           </td>
         );
       })}

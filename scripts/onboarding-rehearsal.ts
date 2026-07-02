@@ -363,7 +363,7 @@ function hasProductInput(product: SupplementOnboardingProductInput) {
 
 function helpText() {
   return [
-    "Usage: npm run onboarding:rehearsal -- --name <supplement> [--category <category>] [--template <id>] [--claim \"Outcome|Claim text\"] [--summary|--markdown]",
+    "Usage: npx tsx scripts/onboarding-rehearsal.ts --name <supplement> [--category <category>] [--template <id>] [--claim \"Outcome|Claim text\"] [--summary|--markdown]",
     "",
     `Categories: ${SUPPLEMENT_ONBOARDING_CATEGORIES.join(", ")}`,
     `Templates: ${SUPPLEMENT_ONBOARDING_CLAIM_TEMPLATES.map((template) => template.id).join(", ")}`

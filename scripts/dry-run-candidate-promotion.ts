@@ -10,9 +10,9 @@ async function main() {
 
     if (!dedupeKey) {
       console.error(
-        "Usage: npm run promotion:dry-run -- <source-candidate-dedupe-key>\n" +
-          "   or: npm run promotion:dry-run -- --pmid <pubmed-id>\n" +
-          "   or: npm run promotion:dry-run -- --env-file <env-file> --pmid <pubmed-id>"
+        "Usage: npx tsx scripts/dry-run-candidate-promotion.ts <source-candidate-dedupe-key>\n" +
+          "   or: npx tsx scripts/dry-run-candidate-promotion.ts --pmid <pubmed-id>\n" +
+          "   or: npx tsx scripts/dry-run-candidate-promotion.ts --env-file <env-file> --pmid <pubmed-id>"
       );
       process.exitCode = 1;
       return;

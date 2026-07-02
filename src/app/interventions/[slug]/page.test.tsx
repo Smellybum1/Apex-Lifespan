@@ -54,8 +54,36 @@ describe("intervention detail page", () => {
     expect(html).toContain("Scored claims are review aids");
     expect(html).toContain("Strongest current claims");
     expect(html).toContain("Main evidence checks still visible");
+    expect(html).toContain("What the Studies Found");
+    expect(html).toContain("Overall evidence summary");
+    expect(html).toContain("Practical readout");
+    expect(html).toContain("Who might care");
+    expect(html).toContain("What it may help with");
+    expect(html).toContain("What it does not prove");
+    expect(html).toContain("Main cautions");
+    expect(html).toContain("Confidence / evidence maturity");
+    expect(html).toContain("Why it stands out or does not stand out");
+    expect(html).toContain("Longevity / healthspan read");
+    expect(html).toContain("Common claims: what the evidence says");
+    expect(html).toContain("Common claim");
+    expect(html).toContain("Evidence read:");
+    expect(html).toContain("Source basis:");
+    expect(html).toContain("Backed for scoped use");
+    expect(html).toContain("Not backed yet");
+    expect(html).toContain("Study findings and conclusions");
+    expect(html).toContain("The honest read");
+    expect(html).toContain("What it found or concluded");
+    expect(html).toContain("Study context");
+    expect(html).toContain("What the evidence supports");
+    expect(html).toContain("Where the evidence is limited");
+    expect(html).toContain("Source base and article links");
+    expect(html).toContain("Creatine monohydrate&#x27;s most mature displayed local scores are for strength");
+    expect(html).toContain("Other high-looking rows such as lifespan");
+    expect(html).toContain("These links are the source trail for");
     expect(html).toContain("Evidence scores by outcome");
     expect(html).toContain("Claim cards");
+    expect(html).toContain('id="claim-score-creatine-strength"');
+    expect(html).toContain('id="claim-creatine-strength"');
     expect(html).toContain("Source packets");
     expect(html).toContain("Safety alerts");
     expect(html).toContain("Trial watcher");
@@ -145,6 +173,39 @@ describe("intervention detail page", () => {
     expect(html).toContain(
       "Add structured extraction for the pending references before treating this packet as complete."
     );
+  });
+
+  it("explains no-source detail rows as sourcing work instead of evidence-backed conclusions", async () => {
+    const data = seedDashboardData();
+    const creatine = data.interventions.find((item) => item.slug === "creatine-monohydrate");
+    const targetClaim = data.claims.find(
+      (claim) => claim.interventionId === creatine?.id && claim.keyReferenceIds.length > 0
+    );
+
+    expect(targetClaim).toBeDefined();
+
+    getEvidenceDashboardDataMock.mockResolvedValue({
+      ...data,
+      claims: data.claims.map((claim) =>
+        claim.id === targetClaim?.id
+          ? {
+              ...claim,
+              evidenceGrade: "Draft lead",
+              keyReferenceIds: []
+            }
+          : claim
+      )
+    });
+
+    const html = renderToStaticMarkup(
+      await InterventionDetailPage({ params: Promise.resolve({ slug: "creatine-monohydrate" }) })
+    );
+
+    expect(html).toContain("Evidence gaps to treat as sourcing work");
+    expect(html).toContain("No curated sources");
+    expect(html).toContain("No curated source packet is linked yet");
+    expect(html).toContain("Treat this as a sourcing task, not an evidence-backed conclusion.");
+    expect(html).toContain("Add curated reference links before treating this claim as source-backed.");
   });
 
   it("marks complete source packets as ready to score without showing placeholder components", async () => {

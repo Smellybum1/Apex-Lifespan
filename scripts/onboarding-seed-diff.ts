@@ -542,9 +542,9 @@ function hasProductInput(product: SupplementOnboardingProductInput) {
 function helpText() {
   return [
     "Usage:",
-    "  npm run onboarding:seed-diff -- --name <supplement> [--category <category>] [--template <id>] [--claim \"Outcome|Claim text\"] [--summary|--json]",
-    "  npm run onboarding:seed-diff -- --import-assistant --name <supplement> [--summary|--json]",
-    "  npm run onboarding:seed-diff -- --batch-file <path> [--summary|--json]",
+    "  npx tsx scripts/onboarding-seed-diff.ts --name <supplement> [--category <category>] [--template <id>] [--claim \"Outcome|Claim text\"] [--summary|--json]",
+    "  npx tsx scripts/onboarding-seed-diff.ts --import-assistant --name <supplement> [--summary|--json]",
+    "  npx tsx scripts/onboarding-seed-diff.ts --batch-file <path> [--summary|--json]",
     "",
     "The seed diff helper is read-only. It prints copy-review snippets, import-assistant plans, and validation commands; it never edits seed data, writes database rows, queues sources, reviews packets, or promotes evidence."
   ].join("\n");

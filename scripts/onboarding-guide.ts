@@ -539,10 +539,10 @@ function readTemplate(value: string): SupplementOnboardingClaimTemplateId {
 function helpText() {
   return [
     "Usage:",
-    "  npm run onboarding:guide -- --name <supplement-name> [--category <category>] [--template <id>] [--summary|--json]",
-    "  npm run onboarding:guide -- --batch-file <path> [--summary|--json]",
-    "  npm run onboarding:guide -- --supplement <intervention-id-or-slug> [--env-file <path>] [--fulltext-inventory-file <path>] [--summary|--json]",
-    "  npm run onboarding:guide -- --supplements <id-or-slug,id-or-slug> [--env-file <path>] [--fulltext-inventory-file <path>] [--summary|--json]",
+    "  npx tsx scripts/onboarding-guide.ts --name <supplement-name> [--category <category>] [--template <id>] [--summary|--json]",
+    "  npx tsx scripts/onboarding-guide.ts --batch-file <path> [--summary|--json]",
+    "  npx tsx scripts/onboarding-guide.ts --supplement <intervention-id-or-slug> [--env-file <path>] [--fulltext-inventory-file <path>] [--summary|--json]",
+    "  npx tsx scripts/onboarding-guide.ts --supplements <id-or-slug,id-or-slug> [--env-file <path>] [--fulltext-inventory-file <path>] [--summary|--json]",
     "",
     "The guide is read-only. It summarizes the packet, recommends one safe next command, and keeps writes explicit. Batch modes keep each supplement isolated."
   ].join("\n");

@@ -129,6 +129,8 @@ export interface Claim {
   confidenceLevel: ConfidenceLevel;
   safetyNotes: string;
   applicabilityNotes: string;
+  summary?: string;
+  uncertainty?: string;
   doesNotProve?: string[];
   keyReferenceIds: string[];
   scores: ScoreSet;
@@ -155,6 +157,10 @@ export interface Study {
     | "Clinical trial record"
     | "Regulatory safety warning";
   sourceTypeTaxonomy?: SourceTypeTaxonomy;
+  abstract?: string;
+  dose?: string;
+  duration?: string;
+  mainResults?: string;
   sampleSize: string;
   population: string;
   intervention: string;

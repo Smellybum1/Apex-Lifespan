@@ -297,9 +297,9 @@ function summarize(report: {
 function usage() {
   return [
     "Usage:",
-    "  npm run launch:evidence -- --env-file <ignored-env-file> --evidence admin-flow-smoke --url <operator-url> --note <manual-smoke-note> [--write]",
-    "  npm run launch:evidence -- --env-file <ignored-env-file> --evidence post-launch-review --review-window <window> --note <schedule-note> [--write]",
-    "  npm run launch:evidence -- --env-file <ignored-env-file> --evidence launch-approval --approved-by <name> --note <approval-note> [--write]",
+    "  npx tsx scripts/record-launch-evidence.ts --env-file <ignored-env-file> --evidence admin-flow-smoke --url <operator-url> --note <manual-smoke-note> [--write]",
+    "  npx tsx scripts/record-launch-evidence.ts --env-file <ignored-env-file> --evidence post-launch-review --review-window <window> --note <schedule-note> [--write]",
+    "  npx tsx scripts/record-launch-evidence.ts --env-file <ignored-env-file> --evidence launch-approval --approved-by <name> --note <approval-note> [--write]",
     "",
     "Evidence types: admin-flow-smoke, post-launch-review, launch-approval.",
     "Default is dry-run; add --write only after the matching human-owned evidence exists.",

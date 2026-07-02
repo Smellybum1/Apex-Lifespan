@@ -74,7 +74,9 @@ Done when the useful/maybe-useful candidate backlog can be reviewed quickly from
 
 Turn accepted sources and draft claim clusters into honest, traceable evidence scores for the local catalog. This is a substantial milestone: the remaining work is mostly source identity, source extraction, claim-support repair, score application, and cross-catalog calibration, not just changing the visible scoring formula. Do this against the local database first; do not promote scored results to preview/production until the user explicitly asks.
 
-**Current local scoring status (2026-07-02, read-only worklist):**
+**Last local scoring snapshot (2026-07-02, read-only worklist):**
+
+Refresh before acting with `npx tsx scripts/local-score-worklist.ts --limit 20` and `npx tsx scripts/local-catalog-quality.ts`; the counts below are a dated snapshot, not live startup context.
 
 - `21/477` public claim cells are scored with substantive source extraction.
 - `456/477` claim cells still need scoring work.

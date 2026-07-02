@@ -21,7 +21,7 @@ async function main() {
 
   if (!args.supplement) {
     throw new Error(
-      "Usage: npm run onboarding:readiness -- --supplement <intervention-id-or-slug> [--env-file <path>] [--summary]"
+      "Usage: npx tsx scripts/onboarding-readiness.ts --supplement <intervention-id-or-slug> [--env-file <path>] [--summary]"
     );
   }
 

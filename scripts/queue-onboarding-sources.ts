@@ -16,7 +16,7 @@ async function main() {
 
   if (!args.supplement) {
     throw new Error(
-      "Usage: npm run onboarding:queue-sources -- --supplement <intervention-id-or-slug> [--env-file <path>] [--region AU] [--apply]"
+      "Usage: npx tsx scripts/queue-onboarding-sources.ts --supplement <intervention-id-or-slug> [--env-file <path>] [--region AU] [--apply]"
     );
   }
 

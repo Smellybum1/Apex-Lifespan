@@ -67,7 +67,7 @@ async function main() {
 
   if (!rawBaseUrl) {
     throw new Error(
-      "Usage: npm run operator:smoke -- <public-or-local-base-url> [--expect-auth-required|--expect-auth-unavailable]"
+      "Usage: npx tsx scripts/operator-smoke.ts <public-or-local-base-url> [--expect-auth-required|--expect-auth-unavailable]"
     );
   }
 

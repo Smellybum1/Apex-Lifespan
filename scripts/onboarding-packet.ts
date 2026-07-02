@@ -681,10 +681,10 @@ function hasProductInput(product: SupplementOnboardingProductInput) {
 function helpText() {
   return [
     "Usage:",
-    "  npm run onboarding:packet -- --name <supplement-name> [--category <category>] [--template <id>] [--summary|--json]",
-    "  npm run onboarding:packet -- --batch-file <path> [--summary|--json]",
-    "  npm run onboarding:packet -- --supplement <intervention-id-or-slug> [--env-file <path>] [--fulltext-inventory-file <path>] [--summary|--json]",
-    "  npm run onboarding:packet -- --supplements <id-or-slug,id-or-slug> [--env-file <path>] [--fulltext-inventory-file <path>] [--summary|--json]",
+    "  npx tsx scripts/onboarding-packet.ts --name <supplement-name> [--category <category>] [--template <id>] [--summary|--json]",
+    "  npx tsx scripts/onboarding-packet.ts --batch-file <path> [--summary|--json]",
+    "  npx tsx scripts/onboarding-packet.ts --supplement <intervention-id-or-slug> [--env-file <path>] [--fulltext-inventory-file <path>] [--summary|--json]",
+    "  npx tsx scripts/onboarding-packet.ts --supplements <id-or-slug,id-or-slug> [--env-file <path>] [--fulltext-inventory-file <path>] [--summary|--json]",
     "",
     "Builds a one-command onboarding packet. Batch modes keep each supplement isolated. The command is read-only: it does not edit seed data, write database rows, queue sources, accept/reject candidates, extract studies, mark claims reviewed, approve connectors, fetch full text, or promote evidence.",
     "",

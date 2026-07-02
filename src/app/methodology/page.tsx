@@ -161,7 +161,10 @@ export default function MethodologyPage() {
               <h3 className="text-base font-semibold text-ink">Scoring readiness states</h3>
               <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-amber-950">
                 <li>Ready to score: complete source packet, but no final score yet.</li>
-                <li>Source work: linked sources still need extraction, repair, or curation.</li>
+                <li>
+                  Source work (Source-blocked): linked sources still need extraction, repair, or
+                  curation.
+                </li>
                 <li>Default-looking score: a starter-like public score needs scoring review.</li>
                 <li>Snapshot gap: a stored score needs an audit snapshot before future changes are traceable.</li>
                 <li>Scored: a final public score is visible, still subject to future updates.</li>

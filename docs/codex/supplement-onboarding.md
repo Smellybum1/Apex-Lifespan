@@ -14,7 +14,7 @@ The active product path is local database work plus the dashboard-assisted inges
 
 ## Script Fallback
 
-The historical onboarding helpers still exist as scripts, but their old `npm run onboarding:*` aliases are not part of the current package command surface. If you need them, inspect the script and run it directly with `npx tsx`:
+The historical onboarding helpers still exist as scripts, but their old package aliases are not part of the current command surface. If you need them, inspect the script and run it directly with `npx tsx`:
 
 ```bash
 npx tsx scripts/onboarding-guide.ts --help

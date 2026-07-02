@@ -46,7 +46,7 @@ async function main() {
         JSON.stringify(
           {
             nextAction:
-              "Edit the local fixture template with a short reviewed excerpt and derived targets, then rerun onboarding:fulltext-fixture with --fixture-file.",
+              "Edit the local fixture template with a short reviewed excerpt and derived targets, then rerun npx tsx scripts/full-text-fixture.ts with --fixture-file.",
             path: args.writeTemplatePath,
             sourceId: template.sourceId,
             status: "written"

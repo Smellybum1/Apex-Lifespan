@@ -274,6 +274,104 @@ describe("sprint2 normalized evidence writes", () => {
     expect(result.sourcePacketId).toBe("packet-1");
     expect(result.status).toBe(SourcePacketStatus.COMPLETE);
     expect(prismaMocks.sourcePacketReference.upsert).toHaveBeenCalled();
+    expect(prismaMocks.sourcePacketReference.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          citationStatus: "linked",
+          extractionStatus: "complete"
+        }),
+        update: expect.objectContaining({
+          citationStatus: "linked",
+          extractionStatus: "complete"
+        })
+      })
+    );
+  });
+
+  it("keeps source packet reference extraction pending for placeholder-only study rows", async () => {
+    prismaMocks.claim.findUnique.mockImplementation(async (args) => {
+      if ("select" in args && args.select?.references) {
+        return {
+          references: [
+            {
+              reference: {
+                studies: [
+                  {
+                    id: "study-placeholder",
+                    sourceType: StudyType.SYSTEMATIC_REVIEW
+                  }
+                ]
+              }
+            }
+          ]
+        };
+      }
+
+      return {
+        id: "creatine-strength",
+        interventionId: "creatine",
+        references: [
+          {
+            reference: {
+              id: "ref-creatine",
+              identifier: "PMID:123",
+              source: "PUBMED",
+              title: "Creatine review",
+              url: "https://example.test/creatine",
+              year: 2026
+            },
+            referenceId: "ref-creatine"
+          }
+        ],
+        reviewStatus: ReviewStatus.UNREVIEWED_AI_DRAFT
+      };
+    });
+    prismaMocks.study.findMany.mockResolvedValue([
+      {
+        adverseEvents: "Verify tolerability and adverse events in linked source record.",
+        fundingConflicts: "Check source record for funding and conflicts.",
+        id: "study-placeholder",
+        interventionName: "Creatine",
+        outcomes: ["See source record"],
+        population: "See source record.",
+        referenceId: "ref-creatine",
+        riskOfBias: "Review design and heterogeneity in linked source record.",
+        sampleSize: "See source record.",
+        source: "PubMed",
+        sourceType: StudyType.SYSTEMATIC_REVIEW,
+        title: "Placeholder extraction",
+        year: 2026
+      }
+    ]);
+    prismaMocks.sourcePacket.findFirst.mockResolvedValue(null);
+    prismaMocks.sourcePacket.create.mockResolvedValue({
+      claimId: "creatine-strength",
+      current: true,
+      id: "packet-1",
+      interventionId: "creatine",
+      references: [],
+      reviewStatus: ReviewStatus.UNREVIEWED_AI_DRAFT,
+      status: SourcePacketStatus.EXTRACTION_PENDING
+    });
+    prismaMocks.sourcePacketReference.upsert.mockResolvedValue({});
+    prismaMocks.claimStudy.findUnique.mockResolvedValue(null);
+    prismaMocks.claimStudy.create.mockResolvedValue({});
+
+    const result = await syncSourcePacketForClaim("creatine-strength");
+
+    expect(result.status).toBe(SourcePacketStatus.EXTRACTION_PENDING);
+    expect(prismaMocks.sourcePacketReference.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          citationStatus: "pending",
+          extractionStatus: "pending"
+        }),
+        update: expect.objectContaining({
+          citationStatus: "pending",
+          extractionStatus: "pending"
+        })
+      })
+    );
   });
 
   it("reports dry-run backfill counts without writing", async () => {

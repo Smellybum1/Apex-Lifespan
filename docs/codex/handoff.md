@@ -7,7 +7,7 @@ Resume-only snapshot. Do not load during ordinary startup.
 - Repo: Apex Lifespan checkout
 - Branch: `codex/queue-claim-sources`
 - Source of truth for development: local PostgreSQL with `APEX_DATA_SOURCE=database`
-- Current worktree is intentionally dirty from the local ingestion/candidate-review/benefit-discovery slice plus workflow doc cleanup. Do not clean, revert, stage, commit, push, or delete unrelated work unless the user explicitly asks.
+- Current worktree is intentionally dirty from task-owned Astaxanthin/source-packet repair plus workflow doc cleanup. Do not clean, revert, stage, commit, push, or delete unrelated work unless the user explicitly asks.
 - Verify live catalog counts from the local dashboard or `npx tsx scripts/db-inventory.ts`; do not trust old handoff metrics.
 
 ## Active Product Slice
@@ -18,6 +18,7 @@ Resume-only snapshot. Do not load during ordinary startup.
 - Benefit Discovery auto-build/preview for conservative local draft claims.
 - Identity Resolver for wrong/ambiguous supplement matches.
 - Context-efficiency docs now point ordinary startup at `AGENTS.md` + `docs/codex/project.md` only.
+- Legacy launch/operations/promotion docs are lightweight stubs at their old paths; full text moved under `docs/codex/archive/legacy-workflows/`.
 
 ## Hard Stops
 
