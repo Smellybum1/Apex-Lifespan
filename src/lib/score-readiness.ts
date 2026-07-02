@@ -51,6 +51,10 @@ export type ScoreReadinessRow = {
 
 export type ScoreReadinessSummary = {
   defaultLookingPublicScores: number;
+  goalAccountedClaims: number;
+  goalUnaccountedClaims: number;
+  sourceBlockedWithoutNextAction: number;
+  sourceBlockedWithNextAction: number;
   readyToScore: number;
   scoredPublicClaims: number;
   snapshotGaps: number;
@@ -123,13 +127,24 @@ export function buildScoreReadinessSummary(
 ): ScoreReadinessSummary {
   const workItems = rows.filter((row) => row.state !== "scored").length;
   const sourceBlockers = buildScoreReadinessSourceBlockers(rows);
+  const scoredPublicClaims = rows.filter((row) => row.state === "scored").length;
+  const sourceBlockedWithNextAction = rows.filter(
+    (row) => row.state === "source_blocked" && scoreReadinessNextAction(row).trim()
+  ).length;
+  const sourceBlockedWithoutNextAction =
+    rows.filter((row) => row.state === "source_blocked").length - sourceBlockedWithNextAction;
+  const goalAccountedClaims = scoredPublicClaims + sourceBlockedWithNextAction;
 
   return {
     defaultLookingPublicScores: rows.filter((row) => row.state === "default_score_review").length,
+    goalAccountedClaims,
+    goalUnaccountedClaims: rows.length - goalAccountedClaims,
     readyToScore: rows.filter((row) => row.state === "ready_to_score").length,
-    scoredPublicClaims: rows.filter((row) => row.state === "scored").length,
+    scoredPublicClaims,
     snapshotGaps: rows.filter((row) => row.state === "snapshot_gap").length,
     sourceBlocked: rows.filter((row) => row.state === "source_blocked").length,
+    sourceBlockedWithoutNextAction,
+    sourceBlockedWithNextAction,
     sourceBlockers,
     totalClaims: rows.length,
     workItems
@@ -139,6 +154,8 @@ export function buildScoreReadinessSummary(
 export function formatScoreReadinessSummaryLines(summary: ScoreReadinessSummary) {
   return [
     `Score readiness: ${summary.workItems}/${summary.totalClaims} claim(s) need scoring work`,
+    `3B closure states: ${summary.goalAccountedClaims}/${summary.totalClaims} claim(s) scored or source-blocked with next action`,
+    `Open scoring queues outside closure states: ready-to-score ${summary.readyToScore}; default-score review ${summary.defaultLookingPublicScores}; snapshot gaps ${summary.snapshotGaps}; source-blocked without next action ${summary.sourceBlockedWithoutNextAction}`,
     `Ready to score: ${summary.readyToScore}`,
     `Default-looking public scores: ${summary.defaultLookingPublicScores}`,
     `Source-blocked scoring rows: ${summary.sourceBlocked} (${formatScoreReadinessSourceBlockers(

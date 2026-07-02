@@ -77,8 +77,14 @@ describe("score readiness", () => {
     expect(starterScoreRow?.currentScore).toBe(3.1);
     expect(summary.readyToScore).toBeGreaterThan(0);
     expect(summary.defaultLookingPublicScores).toBe(1);
+    expect(summary.goalUnaccountedClaims).toBe(
+      summary.readyToScore + summary.defaultLookingPublicScores + summary.snapshotGaps
+    );
     expect(formatScoreReadinessSummaryLines(summary).join("\n")).toContain(
       "Default-looking public scores: 1"
+    );
+    expect(formatScoreReadinessSummaryLines(summary).join("\n")).toContain(
+      "Open scoring queues outside closure states:"
     );
   });
 
@@ -122,6 +128,12 @@ describe("score readiness", () => {
     expect(rows[0]?.state).toBe("source_blocked");
     expect(rows[0]?.reasons).toContain("Extraction pending");
     expect(scoreReadinessNextAction(rows[0]!)).toContain("Add structured extraction");
+    expect(buildScoreReadinessSummary(rows)).toMatchObject({
+      goalAccountedClaims: 1,
+      goalUnaccountedClaims: 0,
+      sourceBlockedWithNextAction: 1,
+      sourceBlockedWithoutNextAction: 0
+    });
   });
 
   it("loads the full direct scoring batch before source-blocked fallback rows", () => {
