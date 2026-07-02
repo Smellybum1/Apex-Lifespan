@@ -3280,6 +3280,8 @@ describe("runSourceCandidateJobCommand", () => {
             '--study-risk-of-bias "Review-level source; assess search strategy, inclusion criteria, bias appraisal, and funding/conflicts."'
           ].join(" ")
         )}`,
+        "  commandTemplateRequiresHumanEdits=true",
+        '  humanRequiredCommandFields="population, interventionName, outcomes, adverseEvents, fundingConflicts"',
         "  scoreRepairFollowup:",
         '    referenceBrief="npx tsx scripts/local-score-worklist.ts --repair-reference ref-creatine-position-stand"',
         '    readyCheck="npx tsx scripts/local-score-worklist.ts --state ready_to_score --limit 20"',

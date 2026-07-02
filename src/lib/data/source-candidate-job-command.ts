@@ -3615,6 +3615,13 @@ function formatSourceCandidateCurationDraft(
         )
       )}`
     );
+    const humanRequiredCommandFields = studyExtractionHumanRequiredCommandFields(
+      draft.studyExtractionDraft
+    );
+    lines.push(`  commandTemplateRequiresHumanEdits=${humanRequiredCommandFields.length > 0}`);
+    if (humanRequiredCommandFields.length > 0) {
+      lines.push(`  humanRequiredCommandFields=${quote(humanRequiredCommandFields.join(", "))}`);
+    }
     lines.push("  scoreRepairFollowup:");
     lines.push(
       `    referenceBrief=${quote(
@@ -3727,6 +3734,16 @@ function formatStudyExtractionFieldReadiness(
     `review-only cues ${reviewOnlyCues}`,
     `uncertainty notes ${uncertaintyNotes.length}`
   ].join("; ");
+}
+
+function studyExtractionHumanRequiredCommandFields(
+  draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>
+) {
+  return draft.manualFields.filter((field) => {
+    const prefill = draft.prefillFields.find((candidate) => candidate.field === field);
+
+    return !prefill || prefill.confidence === "manual-required";
+  });
 }
 
 function formatSourceCandidateClaimLinkCommandTemplate(
