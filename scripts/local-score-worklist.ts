@@ -402,6 +402,7 @@ async function formatAcceptedCandidateBatchHintLines({
             candidate.sourceType
           ])}. Verify before writing extraction.`,
           `   Identity preview: ${formatIdentityResolutionPreview(identityDecision)}`,
+          ...(identityDecision ? formatIdentityResolutionReasons(identityDecision) : []),
           `   Draft: npm run ingest:sources -- --candidate-curation-draft ${safeCandidateKey(
             candidate.dedupeKey
           )}`
