@@ -349,6 +349,16 @@ async function formatAcceptedCandidateBatchHintLines({
       : `${candidates.length} accepted candidate(s) match the shown batch references. Use draft commands to inspect captured metadata before writing extraction.`
   ];
 
+  if (candidates.length > 0) {
+    lines.push(`Accepted candidate source types: ${formatCandidateSourceTypeCounts(candidates)}.`);
+    lines.push(
+      `Identity preview actions: ${formatIdentityResolutionActionCounts(
+        candidates,
+        identityDecisions
+      )}.`
+    );
+  }
+
   for (const referenceId of uniqueReferenceIds) {
     const referenceCandidates = candidatesByReferenceId.get(referenceId) ?? [];
 
@@ -426,6 +436,51 @@ function formatCandidateSourceTypeCounts(candidates: Array<{ sourceType: string 
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .map(([sourceType, count]) => `${sourceType} (${count})`)
     .join("; ");
+}
+
+function formatIdentityResolutionActionCounts(
+  candidates: Array<{ dedupeKey: string }>,
+  identityDecisions: Map<string, LocalIdentityResolutionAutomationDecisionReadout>
+) {
+  const labelOrder = [
+    "confirm target",
+    "reassign intervention",
+    "reject wrong supplement",
+    "hold",
+    "unavailable"
+  ];
+  const counts = new Map<string, number>();
+
+  for (const candidate of candidates) {
+    const label = identityDecisionActionLabel(identityDecisions.get(candidate.dedupeKey));
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+
+  return Array.from(counts.entries())
+    .sort(
+      (left, right) =>
+        labelOrder.indexOf(left[0]) - labelOrder.indexOf(right[0]) ||
+        left[0].localeCompare(right[0])
+    )
+    .map(([label, count]) => `${label} ${count}`)
+    .join("; ");
+}
+
+function identityDecisionActionLabel(
+  decision: LocalIdentityResolutionAutomationDecisionReadout | undefined
+) {
+  switch (decision?.action) {
+    case "confirm-target":
+      return "confirm target";
+    case "reassign-intervention":
+      return "reassign intervention";
+    case "reject-wrong-supplement":
+      return "reject wrong supplement";
+    case "hold":
+      return "hold";
+    default:
+      return "unavailable";
+  }
 }
 
 async function sourceLedIdentityDecisionByCandidateKey(dedupeKeys: string[]) {
