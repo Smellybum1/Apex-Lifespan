@@ -376,6 +376,7 @@ function compareExtractionCandidateRows(
 ) {
   return (
     Number(right.extractionReady) - Number(left.extractionReady) ||
+    Number(Boolean(left.queryOriginWarning)) - Number(Boolean(right.queryOriginWarning)) ||
     sourceTextPriority(right.sourceTextStatus) - sourceTextPriority(left.sourceTextStatus) ||
     reviewStatusPriority(right.reviewStatus) - reviewStatusPriority(left.reviewStatus) ||
     right.triageScore - left.triageScore ||
@@ -387,8 +388,9 @@ function primaryCandidateReason(candidate: ScoreExtractionCandidatePreviewRow) {
   const parts = [
     candidate.extractionReady ? "ready" : "blocked",
     sourceTextPriority(candidate.sourceTextStatus) > 0 ? "source text captured" : "no source text",
+    candidate.queryOriginWarning ? "query warning" : null,
     candidate.reviewStatus
-  ];
+  ].filter((part): part is string => Boolean(part));
 
   return `${parts.join(", ")}; verify before extraction`;
 }

@@ -61,6 +61,22 @@ describe("buildScoreExtractionCandidatePreview", () => {
       {
         acceptedReferenceId: "ready-reference",
         claimId: "creatine-strength",
+        dedupeKey: "clean-ready-candidate",
+        externalId: "34610730",
+        interventionId: "creatine",
+        metadata: {
+          abstractText: "Creatine abstract."
+        },
+        query: "creatine randomized trial",
+        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        source: DbSourceKind.PUBMED,
+        sourceType: "Journal Article, Randomized Controlled Trial",
+        title: "Clean ready creatine candidate",
+        triageScore: 70
+      },
+      {
+        acceptedReferenceId: "ready-reference",
+        claimId: "creatine-strength",
         dedupeKey: "ready-candidate",
         externalId: "34610729",
         interventionId: "creatine",
@@ -104,32 +120,93 @@ describe("buildScoreExtractionCandidatePreview", () => {
     );
     expect(preview.references[0]?.primaryCandidate).toMatchObject({
       curationDraftCommand: `npm run ingest:sources -- --candidate-curation-draft ${safeCandidateKey(
-        "ready-candidate"
+        "clean-ready-candidate"
       )}`,
-      label: "PubMed 34610729",
+      label: "PubMed 34610730",
       reason: "ready, source text captured, Human reviewed; verify before extraction"
     });
-    expect(preview.references[0]?.candidateCount).toBe(2);
-    expect(preview.references[0]?.hiddenCandidates).toBe(1);
+    expect(preview.references[0]?.candidateCount).toBe(3);
+    expect(preview.references[0]?.hiddenCandidates).toBe(2);
     expect(preview.queryWarningCandidates).toBe(1);
     expect(preview.references[0]?.queryWarningCandidates).toBe(1);
     expect(preview.references[0]?.candidates).toHaveLength(1);
-    expect(preview.references[0]?.candidates[0]?.dedupeKey).toBe(safeCandidateKey("ready-candidate"));
+    expect(preview.references[0]?.candidates[0]?.dedupeKey).toBe(
+      safeCandidateKey("clean-ready-candidate")
+    );
     expect(preview.references[0]?.candidates[0]?.extractionDraftCoverage).toMatchObject({
       prefillCues: ["source type", "source text"],
       summary: expect.stringContaining("manual verify: sample size, population, intervention")
     });
-    expect(preview.references[0]?.candidates[0]?.queryOriginWarning).toBe(
-      "Original query does not visibly mention Creatine monohydrate; verify accepted reference identity before extraction."
-    );
+    expect(preview.references[0]?.candidates[0]?.queryOriginWarning).toBeNull();
     expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
-      "1 extra same-reference candidate(s) hidden; counts above include them."
-    );
-    expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
-      "Query warning: Original query does not visibly mention Creatine monohydrate; verify accepted reference identity before extraction."
+      "2 extra same-reference candidate(s) hidden; counts above include them."
     );
     expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
       "Warnings: query-origin 1."
+    );
+  });
+
+  it("surfaces query-origin warning in the start-draft reason when no clean ready candidate exists", async () => {
+    const summary = scoreRepairSummary([pendingReferenceGroup("ready-reference", [])]);
+    prismaMocks.sourceCandidateFindManyMock.mockResolvedValue([
+      {
+        acceptedReferenceId: "ready-reference",
+        claimId: "wrong-claim",
+        dedupeKey: "blocked-candidate",
+        externalId: "99999999",
+        interventionId: "creatine",
+        metadata: {},
+        query: "creatine randomized trial",
+        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        source: DbSourceKind.PUBMED,
+        sourceType: "Journal Article, Randomized Controlled Trial",
+        title: "Higher triage but blocked candidate",
+        triageScore: 99
+      },
+      {
+        acceptedReferenceId: "ready-reference",
+        claimId: "creatine-strength",
+        dedupeKey: "ready-candidate",
+        externalId: "34610729",
+        interventionId: "creatine",
+        metadata: {
+          abstractText: "Creatine abstract."
+        },
+        query: "calcium randomized trial",
+        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        source: DbSourceKind.PUBMED,
+        sourceType: "Journal Article, Randomized Controlled Trial",
+        title: "Ready creatine candidate",
+        triageScore: 75
+      }
+    ]);
+    prismaMocks.claimReferenceFindManyMock.mockResolvedValue([
+      {
+        claimId: "creatine-strength",
+        referenceId: "ready-reference"
+      }
+    ]);
+
+    const preview = await buildScoreExtractionCandidatePreview(summary, {
+      referenceLimit: 5
+    });
+    const lines = formatScoreExtractionCandidatePreviewLines(preview).join("\n");
+
+    expect(preview.references[0]?.primaryCandidate).toMatchObject({
+      curationDraftCommand: `npm run ingest:sources -- --candidate-curation-draft ${safeCandidateKey(
+        "ready-candidate"
+      )}`,
+      reason: "ready, source text captured, query warning, Human reviewed; verify before extraction"
+    });
+    expect(preview.references[0]?.candidates[0]?.queryOriginWarning).toBe(
+      "Original query does not visibly mention Creatine monohydrate; verify accepted reference identity before extraction."
+    );
+    expect(lines).toContain(
+      "Start draft: npm run ingest:sources -- --candidate-curation-draft"
+    );
+    expect(lines).toContain("query warning, Human reviewed; verify before extraction");
+    expect(lines).toContain(
+      "Query warning: Original query does not visibly mention Creatine monohydrate; verify accepted reference identity before extraction."
     );
   });
 });
