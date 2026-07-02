@@ -343,6 +343,23 @@ describe("parseSourceCandidateJobCommandArgs", () => {
     );
   });
 
+  it("rejects unchanged source-candidate study extraction placeholders", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(
+        studyCommandArgs([
+          "--study-sample-size",
+          "Human-entered sample size.",
+          "--study-population",
+          "Human-reviewed population.",
+          "--study-outcome",
+          "Human-reviewed outcome."
+        ])
+      )
+    ).toThrow(
+      "Study extraction fields require human edits before saving: --study-sample-size, --study-population, --study-outcome. Replace draft placeholder text from --candidate-curation-draft."
+    );
+  });
+
   it("does not combine source-candidate study extraction with other command modes", () => {
     expect(() =>
       parseSourceCandidateJobCommandArgs(
@@ -4316,6 +4333,29 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       `[STUDY_EXTRACTED] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} reference=ref-creatine-position-stand study=study-creatine-issn created=true status="Public source packet ready" publicSourcePacketReady=true nextAction="Review for public source packet inclusion." nextWrite="none" writeReady=false title="Creatine position stand extraction" candidateClaim=creatine-strength year=2017`
+    );
+  });
+
+  it("does not write source-candidate study extraction placeholders", async () => {
+    const stderr = vi.fn();
+    const extractCandidateStudy = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        studyCommandArgs([
+          "--study-intervention-name",
+          "Human-reviewed intervention.",
+          "--study-risk-of-bias",
+          "Human-reviewed risk-of-bias assessment."
+        ]),
+        { stderr },
+        { extractCandidateStudy }
+      )
+    ).resolves.toBe(1);
+
+    expect(extractCandidateStudy).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(
+      "Study extraction fields require human edits before saving: --study-intervention-name, --study-risk-of-bias. Replace draft placeholder text from --candidate-curation-draft."
     );
   });
 

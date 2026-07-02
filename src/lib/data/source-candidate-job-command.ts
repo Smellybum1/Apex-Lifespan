@@ -1590,6 +1590,15 @@ export function parseSourceCandidateJobCommandArgs(
     if (!options.studyRiskOfBias?.trim()) {
       throw new Error("Study extraction requires --study-risk-of-bias.");
     }
+
+    const placeholderFields = studyExtractionPlaceholderFields(options);
+    if (placeholderFields.length) {
+      throw new Error(
+        `Study extraction fields require human edits before saving: ${placeholderFields.join(
+          ", "
+        )}. Replace draft placeholder text from --candidate-curation-draft.`
+      );
+    }
   }
 
   if (options.candidateCurationHandoff && options.candidateDetailDedupeKey) {
@@ -5973,6 +5982,53 @@ function hasStudyExtractionOptions(options: SourceCandidateJobCommandOptions) {
       options.studyUpdateExisting
   );
 }
+
+function studyExtractionPlaceholderFields(options: SourceCandidateJobCommandOptions) {
+  const fields: string[] = [];
+  const checkValue = (field: string, value?: string) => {
+    if (isStudyExtractionPlaceholder(value)) {
+      fields.push(field);
+    }
+  };
+
+  checkValue("--study-sample-size", options.studySampleSize);
+  checkValue("--study-population", options.studyPopulation);
+  checkValue("--study-intervention-name", options.studyInterventionName);
+  (options.studyOutcomes ?? []).forEach((outcome) =>
+    checkValue("--study-outcome", outcome)
+  );
+  checkValue("--study-adverse-events", options.studyAdverseEvents);
+  checkValue("--study-funding-conflicts", options.studyFundingConflicts);
+  checkValue("--study-risk-of-bias", options.studyRiskOfBias);
+  checkValue("--study-duration", options.studyDuration);
+  checkValue("--study-main-results", options.studyMainResults);
+  checkValue("--study-abstract", options.studyAbstract);
+  checkValue("--study-dose", options.studyDose);
+
+  return [...new Set(fields)];
+}
+
+function isStudyExtractionPlaceholder(value?: string) {
+  const normalized = value?.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    STUDY_EXTRACTION_PLACEHOLDERS.has(normalized) ||
+    /^human-(entered|reviewed) .+ required\.$/.test(normalized)
+  );
+}
+
+const STUDY_EXTRACTION_PLACEHOLDERS = new Set([
+  "human-entered sample size.",
+  "human-reviewed population.",
+  "human-reviewed intervention.",
+  "human-reviewed outcome.",
+  "human-reviewed adverse event summary.",
+  "human-reviewed funding/conflict note.",
+  "human-reviewed risk-of-bias assessment."
+]);
 
 function setQueueOption(
   options: SourceCandidateJobCommandOptions,
