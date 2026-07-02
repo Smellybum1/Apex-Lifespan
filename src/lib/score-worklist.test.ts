@@ -327,8 +327,12 @@ describe("score worklist", () => {
     expect(briefLines).toContain("Read-only score extraction batch brief");
     expect(briefLines).toContain(`Batch key: ${batch!.key}`);
     expect(briefLines).toContain("References to extract:");
+    expect(briefLines).toContain(`URL: ${sharedPendingReference.url}`);
     expect(briefLines).toContain("Batch repair sequence:");
     expect(briefLines).toContain("Dry-run score suggestions before applying any score update");
+    expect(briefLines).toContain(
+      "Replace all curation-draft placeholder text before running --extract-candidate-study; the command rejects unchanged scaffold fields."
+    );
   });
 
   it("prioritizes source repair groups by highest blocked claim before batch size", () => {

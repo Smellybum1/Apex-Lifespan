@@ -926,14 +926,17 @@ export function formatScoreWorklistExtractionBatchBriefLines(
   if (brief.references.length > 0) {
     lines.push("References to extract:");
     lines.push(
-      ...brief.references.flatMap((item, index) => [
-        `${index + 1}. ${item.reference.label} - ${item.reference.title}`,
-        `   Reference id: ${item.reference.id}`,
-        `   Brief: ${item.repairCommand}`,
-        `   Source type hint: ${item.sourceTypeHint}`,
-        `   Gaps: ${formatRepairExtractionGaps(item.extractionGaps)}`,
-        `   Claims: ${formatRepairSampleClaims(item.sampleClaims)}`
-      ])
+      ...brief.references.flatMap((item, index) =>
+        [
+          `${index + 1}. ${item.reference.label} - ${item.reference.title}`,
+          `   Reference id: ${item.reference.id}`,
+          item.reference.url ? `   URL: ${item.reference.url}` : undefined,
+          `   Brief: ${item.repairCommand}`,
+          `   Source type hint: ${item.sourceTypeHint}`,
+          `   Gaps: ${formatRepairExtractionGaps(item.extractionGaps)}`,
+          `   Claims: ${formatRepairSampleClaims(item.sampleClaims)}`
+        ].filter((line): line is string => Boolean(line))
+      )
     );
   } else {
     lines.push("No clean references are visible for this batch.");
@@ -1011,6 +1014,7 @@ const REFERENCE_REPAIR_EXTRACTION_CHECKLIST = [
 const REFERENCE_REPAIR_WRITE_GUARDRAILS = [
   "This brief is read-only and does not write study rows, source packets, scores, or public evidence.",
   "Write extraction only after reviewing the source packet or accepted candidate details.",
+  "Replace all curation-draft placeholder text before running --extract-candidate-study; the command rejects unchanged scaffold fields.",
   "Do not mark Human reviewed unless a human explicitly confirms it.",
   "Do not turn peptide or regulatory sources into sourcing, dosing, compounding, injection, cycling, or self-administration guidance."
 ];
