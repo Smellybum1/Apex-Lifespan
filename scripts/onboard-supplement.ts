@@ -40,7 +40,13 @@ interface SupplementOnboardingCliArgs {
 }
 
 async function main() {
-  const args = readArgs(process.argv.slice(2));
+  const cliArgs = process.argv.slice(2);
+  if (cliArgs.includes("--help") || cliArgs.includes("-h")) {
+    console.log(helpText());
+    return;
+  }
+
+  const args = readArgs(cliArgs);
 
   if (args.batchFilePath) {
     const batch = buildSupplementOnboardingBatchPlan({
@@ -783,7 +789,7 @@ function readListValue(value: string) {
 
 function helpText() {
   return [
-    "Usage: npm run onboard:supplement -- --name <supplement-name> [options]",
+    "Usage: npx tsx scripts/onboard-supplement.ts --name <supplement-name> [options]",
     "",
     "Creates a dry-run onboarding packet for a new supplement. It does not mutate seed data, queue jobs, review claims, or publish evidence.",
     "",

@@ -26,6 +26,14 @@ import {
   type ScoreWorklistStateFilter
 } from "@/lib/score-worklist";
 import { formatStudySourceTypeCommandHints } from "@/lib/study-source-type-hints";
+import {
+  buildMultiSupplementSourceReview,
+  formatMultiSupplementSourceReviewLines
+} from "@/lib/source-identity-review";
+import {
+  buildDuplicateScaffoldReview,
+  formatDuplicateScaffoldReviewLines
+} from "@/lib/duplicate-scaffold-review";
 
 async function main() {
   const args = readScoreWorklistArgs(process.argv.slice(2));
@@ -65,6 +73,30 @@ async function main() {
       }
 
       console.log(lines.join("\n"));
+      return;
+    }
+
+    if (args.multiSupplementReview) {
+      const reviews = buildMultiSupplementSourceReview(data, { limit: args.limit });
+
+      if (args.json) {
+        console.log(JSON.stringify(reviews, null, 2));
+        return;
+      }
+
+      console.log(formatMultiSupplementSourceReviewLines(reviews).join("\n"));
+      return;
+    }
+
+    if (args.duplicateScaffoldReview) {
+      const reviews = buildDuplicateScaffoldReview(data, { limit: args.limit });
+
+      if (args.json) {
+        console.log(JSON.stringify(reviews, null, 2));
+        return;
+      }
+
+      console.log(formatDuplicateScaffoldReviewLines(reviews).join("\n"));
       return;
     }
 
@@ -148,6 +180,8 @@ interface ScoreWorklistArgs {
   intervention?: string;
   json: boolean;
   limit: number;
+  duplicateScaffoldReview: boolean;
+  multiSupplementReview: boolean;
   repairBatch?: string;
   repairReference?: string;
   repairExtractionCandidates: boolean;
@@ -202,6 +236,12 @@ Options:
                           Number of pending extraction references to scan for accepted candidates. Default: 8
   --repair-batch <key>    Show a read-only extraction batch brief. Use a key from --repair-summary.
   --repair-reference <id> Show a read-only extraction brief for one blocked reference id.
+  --multi-supplement-review
+                          Show, for each shared paper linked to 2+ supplements with an identity warning,
+                          which linked supplement its title actually names (likely subject vs manual check).
+  --duplicate-scaffold-review
+                          Show "Draft lead" scaffold claims that duplicate an authored claim for the same
+                          intervention/outcome, with reference overlap (retire vs merge-then-retire).
   --json                  Print JSON instead of text.
   --help                  Show this help.
 
@@ -540,9 +580,11 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
   const parsed: ScoreWorklistArgs = {
     detail: false,
     envFile: ".env.local",
+    duplicateScaffoldReview: false,
     includeScored: false,
     json: false,
     limit: 12,
+    multiSupplementReview: false,
     repairExtractionCandidates: false,
     repairExtractionLimit: DEFAULT_SCORE_EXTRACTION_CANDIDATE_PREVIEW_LIMIT,
     repairIdentityAction: "all",
@@ -571,6 +613,16 @@ function readScoreWorklistArgs(args: string[]): ParsedScoreWorklistArgs {
 
     if (arg === "--repair-summary") {
       parsed.repairSummary = true;
+      continue;
+    }
+
+    if (arg === "--multi-supplement-review") {
+      parsed.multiSupplementReview = true;
+      continue;
+    }
+
+    if (arg === "--duplicate-scaffold-review") {
+      parsed.duplicateScaffoldReview = true;
       continue;
     }
 

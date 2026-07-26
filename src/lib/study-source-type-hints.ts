@@ -48,12 +48,20 @@ export function studySourceTypeCommandHintFromText(
     return "clinical-trial-record";
   }
 
+  // Randomization has to be stated. A bare "clinical trial" covers
+  // non-randomized designs too, so it resolves to the registry-record hint
+  // below rather than telling a curator the source is an RCT.
   if (
     normalized.includes("randomized") ||
     normalized.includes("randomised") ||
-    normalized.includes("clinical trial")
+    normalized.includes("placebo-controlled") ||
+    /\brct\b/.test(normalized)
   ) {
     return "randomized-controlled-trial";
+  }
+
+  if (normalized.includes("clinical trial")) {
+    return "clinical-trial-record";
   }
 
   if (normalized.includes("observational") || normalized.includes("cohort")) {

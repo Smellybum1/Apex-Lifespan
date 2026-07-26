@@ -41,7 +41,7 @@ const pageSmokes: PageSmoke[] = [
       "TGA",
       "Source packet",
       "Evidence readiness",
-      "Scores and packets are review aids",
+      "Evidence briefs are the main product",
       "Source work",
       'href="/privacy"',
       'href="/terms"'

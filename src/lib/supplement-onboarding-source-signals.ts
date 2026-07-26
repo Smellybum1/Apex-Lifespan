@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { reviewStatusFromDbString } from "@/lib/review-status";
 import { assessSourceCandidateConviction } from "@/lib/source-conviction";
 import type {
   SupplementOnboardingSourceSignals
@@ -173,5 +174,5 @@ function decisionFromDb(decision: string): SourceCandidateDecision {
 }
 
 function reviewStatusFromDb(reviewStatus: string): ReviewStatus {
-  return reviewStatus === "HUMAN_REVIEWED" ? "Human reviewed" : "Unreviewed AI draft";
+  return reviewStatusFromDbString(reviewStatus);
 }

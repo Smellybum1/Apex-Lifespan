@@ -233,7 +233,8 @@ async function trackFullTriage() {
         await recordSourceCandidateDecision({
           dedupeKey: candidate.dedupeKey,
           decision: "Rejected",
-          reviewNote: "Rejected in local catalog phase-2 triage: weak or mismatched match."
+          reviewNote: "Rejected in local catalog phase-2 triage: weak or mismatched match.",
+          reviewedBy: "automation"
         });
         result.rejected.push(candidate.dedupeKey);
       } catch (error) {
@@ -255,7 +256,8 @@ async function trackFullTriage() {
         acceptedReferenceId: referenceId,
         dedupeKey: candidate.dedupeKey,
         decision: "Accepted",
-        reviewNote: REVIEW_NOTE
+        reviewNote: REVIEW_NOTE,
+        reviewedBy: "automation"
       });
       await linkAcceptedSourceCandidateClaim({
         dedupeKey: candidate.dedupeKey,

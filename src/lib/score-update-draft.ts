@@ -33,6 +33,10 @@ const SCORE_DRAFTABLE_STATES = new Set<ScoreWorklistRow["state"]>([
 ]);
 
 export function buildScoreUpdateDraft(row: ScoreWorklistRow): ScoreUpdateDraft {
+  if (row.suggestion.blockedReason) {
+    throw new Error(`Claim ${row.claimId} cannot be scored. ${row.suggestion.blockedReason}`);
+  }
+
   if (!SCORE_DRAFTABLE_STATES.has(row.state)) {
     throw new Error(
       `Claim ${row.claimId} is ${row.stateLabel}; complete source work before drafting a score update.`

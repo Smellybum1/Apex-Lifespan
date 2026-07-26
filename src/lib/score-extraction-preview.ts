@@ -11,6 +11,7 @@ import {
   type ScoreWorklistPendingReferenceGroup,
   type ScoreWorklistRepairSummary
 } from "@/lib/score-worklist";
+import { reviewStatusFromDb } from "@/lib/review-status";
 import { formatStudySourceTypeCommandHints } from "@/lib/study-source-type-hints";
 
 const CANDIDATE_KEY_B64_PREFIX = "b64:";
@@ -786,12 +787,7 @@ function safeCandidateKey(dedupeKey: string) {
 }
 
 function reviewStatusLabel(status: DbReviewStatus) {
-  switch (status) {
-    case DbReviewStatus.HUMAN_REVIEWED:
-      return "Human reviewed";
-    case DbReviewStatus.UNREVIEWED_AI_DRAFT:
-      return "Unreviewed AI draft";
-  }
+  return reviewStatusFromDb(status);
 }
 
 function sourceKindLabel(source: DbSourceKind) {

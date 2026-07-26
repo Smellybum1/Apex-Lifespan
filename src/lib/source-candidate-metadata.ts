@@ -53,10 +53,12 @@ export interface LocalAcceptedCandidateProcessingMetadataInput {
   needsClaim: boolean;
   nextAction: string;
   novelOutcomes: LocalAcceptedCandidateProcessingOutcomeMetadata[];
+  novelTopics?: LocalAcceptedCandidateProcessingOutcomeMetadata[];
   outcomeSuggestions: LocalAcceptedCandidateProcessingOutcomeMetadata[];
   processedAt: string;
   referenceId?: string | null;
   sourceTypeSuggestion: string;
+  topicSuggestions?: LocalAcceptedCandidateProcessingOutcomeMetadata[];
 }
 
 export interface LocalAcceptedCandidateProcessingMetadata {
@@ -65,13 +67,18 @@ export interface LocalAcceptedCandidateProcessingMetadata {
   nextAction?: string;
   novelOutcomeLabels: string[];
   novelOutcomes: LocalAcceptedCandidateProcessingOutcomeMetadata[];
+  novelTopicLabels: string[];
+  novelTopics: LocalAcceptedCandidateProcessingOutcomeMetadata[];
   outcomeLabels: string[];
   outcomeSuggestions: LocalAcceptedCandidateProcessingOutcomeMetadata[];
   processedAt?: string;
   sourceTypeSuggestion?: string;
+  topicLabels: string[];
+  topicSuggestions: LocalAcceptedCandidateProcessingOutcomeMetadata[];
 }
 
 export interface LocalAcceptedCandidateProcessingOutcomeMetadata {
+  key?: string;
   label?: string;
   outcome?: string;
   score?: number;
@@ -205,7 +212,9 @@ export function readLocalAcceptedCandidateProcessingMetadata(metadata: unknown) 
   }
 
   const novelOutcomes = localProcessingOutcomeMetadata(record.novelOutcomes);
+  const novelTopics = localProcessingOutcomeMetadata(record.novelTopics);
   const outcomeSuggestions = localProcessingOutcomeMetadata(record.outcomeSuggestions);
+  const topicSuggestions = localProcessingOutcomeMetadata(record.topicSuggestions);
 
   return {
     linkedClaim: record.linkedClaim === true,
@@ -213,10 +222,14 @@ export function readLocalAcceptedCandidateProcessingMetadata(metadata: unknown) 
     nextAction: sourceCandidateMetadataString(record, "nextAction"),
     novelOutcomeLabels: localProcessingOutcomeLabels(record.novelOutcomes),
     novelOutcomes,
+    novelTopicLabels: localProcessingOutcomeLabels(record.novelTopics),
+    novelTopics,
     outcomeLabels: localProcessingOutcomeLabels(record.outcomeSuggestions),
     outcomeSuggestions,
     processedAt: sourceCandidateMetadataString(record, "processedAt"),
-    sourceTypeSuggestion: sourceCandidateMetadataString(record, "sourceTypeSuggestion")
+    sourceTypeSuggestion: sourceCandidateMetadataString(record, "sourceTypeSuggestion"),
+    topicLabels: localProcessingOutcomeLabels(record.topicSuggestions),
+    topicSuggestions
   } satisfies LocalAcceptedCandidateProcessingMetadata;
 }
 
@@ -232,10 +245,12 @@ export function writeLocalAcceptedCandidateProcessingMetadata(
       needsClaim: input.needsClaim,
       nextAction: input.nextAction,
       novelOutcomes: input.novelOutcomes,
+      novelTopics: input.novelTopics,
       outcomeSuggestions: input.outcomeSuggestions,
       processedAt: input.processedAt,
       referenceId: input.referenceId,
       sourceTypeSuggestion: input.sourceTypeSuggestion,
+      topicSuggestions: input.topicSuggestions,
       version: LOCAL_ACCEPTED_PROCESSING_METADATA_VERSION
     }
   });
@@ -417,15 +432,20 @@ function localProcessingOutcomeMetadata(
       }
 
       const record = item as Record<string, unknown>;
+      const key = sourceCandidateMetadataString(record, "key");
       const label = sourceCandidateMetadataString(record, "label");
       const outcome = sourceCandidateMetadataString(record, "outcome");
       const score = typeof record.score === "number" ? record.score : undefined;
 
-      if (!label && !outcome && score === undefined) {
+      if (!key && !label && !outcome && score === undefined) {
         return undefined;
       }
 
       const next: LocalAcceptedCandidateProcessingOutcomeMetadata = {};
+
+      if (key) {
+        next.key = key;
+      }
 
       if (label) {
         next.label = label;

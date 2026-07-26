@@ -343,6 +343,14 @@ const PRIORITY_CLAIM_SUMMARIES: ClaimSummarySpec[] = [
       "Trial tolerability does not prove product-level safety, pregnancy safety, liver safety, interaction safety, or TGA clearance; adverse-event surveillance and product quality remain important."
   },
   {
+    interventionId: "astaxanthin",
+    outcome: DbOutcomeArea.JOINT_TENDON_SKIN,
+    summary:
+      "One linked 2021 systematic review/meta-analysis (PMID 34578794) included 11 human skin-ageing studies: nine randomized trials and two open-label studies. In the pooled oral trials, astaxanthin improved skin moisture and elasticity versus placebo, but wrinkle depth did not improve significantly. This supports only a low-certainty skin readout; the source does not establish joint or tendon benefit.",
+    uncertainty:
+      "Studies varied in dose, duration, and oral, topical, or combined use; pooled results had moderate heterogeneity for moisture and high heterogeneity for elasticity, while open-label evidence was weaker. Safety reporting and funding/conflict details are not fully extracted locally. The findings do not establish broad anti-ageing benefit, effectiveness or safety for a specific product, or product-level AUST/ARTG status; this row remains an unreviewed AI draft."
+  },
+  {
     interventionId: "creatine",
     outcome: DbOutcomeArea.MUSCLE_STRENGTH,
     summary:
@@ -1248,6 +1256,8 @@ function studyTypeLabel(type: DbStudyType) {
       return "regulatory safety warning";
     case DbStudyType.SYSTEMATIC_REVIEW:
       return "systematic review";
+    case DbStudyType.UNCLASSIFIED:
+      return "study of unclear design";
   }
 }
 
@@ -1271,6 +1281,8 @@ function pluralStudyTypeLabel(label: string) {
       return "regulatory safety warnings";
     case "RCT":
       return "RCTs";
+    case "study of unclear design":
+      return "studies of unclear design";
     default:
       return `${label}s`;
   }
@@ -1295,6 +1307,10 @@ function studyTypePriority(type: DbStudyType) {
     case DbStudyType.ANIMAL_STUDY:
     case DbStudyType.IN_VITRO_MECHANISTIC:
       return 0.5;
+    // Below every established design: if we could not determine what this
+    // source is, it must not win the "best finding" pick for a claim.
+    case DbStudyType.UNCLASSIFIED:
+      return 0;
   }
 }
 

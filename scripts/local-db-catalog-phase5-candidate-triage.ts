@@ -215,7 +215,8 @@ async function triageExpansionCandidates(scope: "expansion" | "all") {
         await recordSourceCandidateDecision({
           dedupeKey: candidate.dedupeKey,
           decision: "Rejected",
-          reviewNote: "Rejected in local catalog phase-5 triage: weak or mismatched PubMed match."
+          reviewNote: "Rejected in local catalog phase-5 triage: weak or mismatched PubMed match.",
+          reviewedBy: "automation"
         });
         result.rejected.push(candidate.dedupeKey);
       } catch (error) {
@@ -237,7 +238,8 @@ async function triageExpansionCandidates(scope: "expansion" | "all") {
         acceptedReferenceId: referenceId,
         dedupeKey: candidate.dedupeKey,
         decision: "Accepted",
-        reviewNote: REVIEW_NOTE
+        reviewNote: REVIEW_NOTE,
+        reviewedBy: "automation"
       });
       await linkAcceptedSourceCandidateClaim({
         dedupeKey: candidate.dedupeKey,

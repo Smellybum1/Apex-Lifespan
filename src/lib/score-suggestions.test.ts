@@ -238,6 +238,151 @@ describe("buildClaimScoreSuggestion", () => {
     expect(suggestion.finalLabel).toBe("Safety Concern");
     expect(suggestion.scores.safety).toBe(4);
   });
+
+  it("does not flag Safety Concern when mortality is an efficacy endpoint", () => {
+    const suggestion = buildClaimScoreSuggestion({
+      claim: {
+        ...claim,
+        claimText: "Omega-3 EPA/DHA and blood lipid markers.",
+        finalLabel: "Insufficient Evidence",
+        outcome: "LDL/ApoB/lipids",
+        safetyNotes: "Generally well tolerated."
+      },
+      references: [reference],
+      sourcePacket: {
+        claimId: claim.id,
+        current: true,
+        referenceIds: [reference.id],
+        reviewStatus: "Unreviewed AI draft",
+        sourcePacketId: "packet-1",
+        status: "complete"
+      },
+      studies: [
+        {
+          ...metaAnalysis,
+          title:
+            "Omega-3 polyunsaturated fatty acids reduce cardiac death and myocardial infarction in secondary prevention."
+        }
+      ]
+    });
+
+    expect(suggestion.finalLabel).not.toBe("Safety Concern");
+    expect(suggestion.scores.safety).toBeGreaterThan(4);
+  });
+
+  it("still flags Safety Concern when the intervention increases mortality/harm", () => {
+    const suggestion = buildClaimScoreSuggestion({
+      claim: {
+        ...claim,
+        finalLabel: "Insufficient Evidence",
+        safetyNotes: "Higher doses increased risk of death in the trial."
+      },
+      references: [reference],
+      sourcePacket: {
+        claimId: claim.id,
+        current: true,
+        referenceIds: [reference.id],
+        reviewStatus: "Unreviewed AI draft",
+        sourcePacketId: "packet-1",
+        status: "complete"
+      },
+      studies: [
+        {
+          ...metaAnalysis,
+          title: "Supplement associated with increased mortality."
+        }
+      ]
+    });
+
+    expect(suggestion.finalLabel).toBe("Safety Concern");
+    expect(suggestion.scores.safety).toBe(4);
+  });
+
+  it("does not flag neutral 'serious adverse events' reporting boilerplate", () => {
+    const suggestion = buildClaimScoreSuggestion({
+      claim: {
+        ...claim,
+        claimText: "Omega-3 EPA/DHA and blood lipid markers.",
+        finalLabel: "Insufficient Evidence",
+        outcome: "LDL/ApoB/lipids",
+        safetyNotes: "Generally well tolerated."
+      },
+      references: [reference],
+      sourcePacket: {
+        claimId: claim.id,
+        current: true,
+        referenceIds: [reference.id],
+        reviewStatus: "Unreviewed AI draft",
+        sourcePacketId: "packet-1",
+        status: "complete"
+      },
+      studies: [
+        {
+          ...metaAnalysis,
+          adverseEvents:
+            "Serious adverse events were considered, but exact adverse-event details were not captured in local metadata.",
+          title: "Omega-3 fatty acids for the prevention of cardiovascular disease."
+        }
+      ]
+    });
+
+    expect(suggestion.finalLabel).not.toBe("Safety Concern");
+    expect(suggestion.scores.safety).toBeGreaterThan(4);
+  });
+
+  it("still flags serious adverse events when they are more frequent with the intervention", () => {
+    const suggestion = buildClaimScoreSuggestion({
+      claim: {
+        ...claim,
+        finalLabel: "Insufficient Evidence"
+      },
+      references: [reference],
+      sourcePacket: {
+        claimId: claim.id,
+        current: true,
+        referenceIds: [reference.id],
+        reviewStatus: "Unreviewed AI draft",
+        sourcePacketId: "packet-1",
+        status: "complete"
+      },
+      studies: [
+        {
+          ...metaAnalysis,
+          adverseEvents: "Serious adverse events were more frequent in the supplement group."
+        }
+      ]
+    });
+
+    expect(suggestion.finalLabel).toBe("Safety Concern");
+    expect(suggestion.scores.safety).toBe(4);
+  });
+
+  it("does not flag a bare cardiac-event term with no harm direction", () => {
+    const suggestion = buildClaimScoreSuggestion({
+      claim: {
+        ...claim,
+        finalLabel: "Insufficient Evidence",
+        safetyNotes: "Generally well tolerated."
+      },
+      references: [reference],
+      sourcePacket: {
+        claimId: claim.id,
+        current: true,
+        referenceIds: [reference.id],
+        reviewStatus: "Unreviewed AI draft",
+        sourcePacketId: "packet-1",
+        status: "complete"
+      },
+      studies: [
+        {
+          ...metaAnalysis,
+          title: "Arrhythmia monitoring methods in cardiology research."
+        }
+      ]
+    });
+
+    expect(suggestion.finalLabel).not.toBe("Safety Concern");
+  });
 });
 
 const claim: Claim = {

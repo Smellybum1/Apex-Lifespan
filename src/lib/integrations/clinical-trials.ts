@@ -1,3 +1,8 @@
+import {
+  fetchLiveSource,
+  LIVE_SOURCE_JSON_FETCH_INIT
+} from "@/lib/live-source-fetch";
+
 export interface ClinicalTrialSearchItem {
   nctId: string;
   title: string;
@@ -43,13 +48,6 @@ export interface ClinicalTrialSearchResult {
   studies: ClinicalTrialSearchItem[];
   source: string;
 }
-
-const LIVE_SOURCE_FETCH_INIT = {
-  headers: {
-    accept: "application/json"
-  },
-  cache: "no-store"
-} satisfies RequestInit;
 
 interface ClinicalTrialsApiStudy {
   protocolSection?: {
@@ -119,7 +117,11 @@ export async function searchClinicalTrials(
   url.searchParams.set("query.term", term);
   url.searchParams.set("pageSize", String(safePageSize));
 
-  const response = await fetch(url, LIVE_SOURCE_FETCH_INIT);
+  const response = await fetchLiveSource(
+    "ClinicalTrials.gov",
+    url,
+    LIVE_SOURCE_JSON_FETCH_INIT
+  );
 
   if (!response.ok) {
     throw new Error(`ClinicalTrials.gov search failed with ${response.status}`);

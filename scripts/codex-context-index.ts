@@ -38,12 +38,13 @@ function main() {
   const branch = git(["status", "-sb"]).stdout.trim().split(/\r?\n/)[0] ?? "unknown branch";
   const entries = parseStatus(git(["status", "--porcelain=v1"]).stdout).map(buildStatusEntry);
   const entriesByArea = groupBy(entries, (entry) => entry.area);
-  const largestChangedPaths = [...entries]
-    .sort((left, right) => (right.bytes ?? -1) - (left.bytes ?? -1))
-    .slice(0, options.top);
+  const prioritizedEntries = [...entries].sort(
+    (left, right) => (right.bytes ?? -1) - (left.bytes ?? -1)
+  );
+  const largestChangedPaths = prioritizedEntries.slice(0, options.top);
   const recommendedChecks = buildRecommendedChecks(entries);
   const hardStopFlags = buildHardStopFlags(entries);
-  const drilldownCommands = buildDrilldownCommands(entries);
+  const drilldownCommands = buildDrilldownCommands(prioritizedEntries);
 
   const summary = {
     branch,

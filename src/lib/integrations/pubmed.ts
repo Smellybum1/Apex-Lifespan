@@ -1,3 +1,8 @@
+import {
+  fetchLiveSource,
+  LIVE_SOURCE_JSON_FETCH_INIT
+} from "@/lib/live-source-fetch";
+
 export interface PubMedArticleSummary {
   abstractText?: string;
   pmid: string;
@@ -32,12 +37,6 @@ type PubMedSummaryRecord = Record<string, unknown>;
 
 const PUBMED_EUTILS_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 const PUBMED_SOURCE = "NCBI E-utilities";
-const LIVE_SOURCE_FETCH_INIT = {
-  headers: {
-    accept: "application/json"
-  },
-  cache: "no-store"
-} satisfies RequestInit;
 
 export async function searchPubMed(
   term: string,
@@ -53,7 +52,7 @@ export async function searchPubMed(
   url.searchParams.set("retstart", String(safeRetstart));
   url.searchParams.set("term", term);
 
-  const response = await fetch(url, LIVE_SOURCE_FETCH_INIT);
+  const response = await fetchLiveSource("PubMed", url, LIVE_SOURCE_JSON_FETCH_INIT);
 
   if (!response.ok) {
     throw new Error(`PubMed search failed with ${response.status}`);
@@ -102,7 +101,7 @@ async function fetchPubMedSummaries(
   url.searchParams.set("id", ids.join(","));
 
   try {
-    const response = await fetch(url, LIVE_SOURCE_FETCH_INIT);
+    const response = await fetchLiveSource("PubMed", url, LIVE_SOURCE_JSON_FETCH_INIT);
 
     if (!response.ok) {
       return new Map();
@@ -139,8 +138,8 @@ async function fetchPubMedAbstractTexts(ids: string[]): Promise<Map<string, stri
   url.searchParams.set("id", ids.join(","));
 
   try {
-    const response = await fetch(url, {
-      ...LIVE_SOURCE_FETCH_INIT,
+    const response = await fetchLiveSource("PubMed", url, {
+      ...LIVE_SOURCE_JSON_FETCH_INIT,
       headers: {
         accept: "application/xml"
       }

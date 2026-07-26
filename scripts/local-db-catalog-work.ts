@@ -412,7 +412,8 @@ async function trackC() {
           dedupeKey: candidate.dedupeKey,
           decision: "Rejected",
           reviewNote:
-            "Rejected in local catalog triage: query/title mismatch for vitamin D safety claim."
+            "Rejected in local catalog triage: query/title mismatch for vitamin D safety claim.",
+          reviewedBy: "automation"
         });
         (result.pendingRejected as string[]).push(candidate.dedupeKey);
       } catch (error) {
@@ -433,7 +434,8 @@ async function trackC() {
         acceptedReferenceId: referenceId,
         dedupeKey: candidate.dedupeKey,
         decision: "Accepted",
-        reviewNote: REVIEW_NOTE
+        reviewNote: REVIEW_NOTE,
+        reviewedBy: "automation"
       });
       await linkAcceptedSourceCandidateClaim({
         dedupeKey: candidate.dedupeKey,

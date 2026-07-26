@@ -1,3 +1,4 @@
+import { classifyClaim } from "@/lib/evidence-brief";
 import { compositeScore } from "@/lib/scoring";
 import type {
   Claim,
@@ -14,6 +15,13 @@ export interface ClaimScoreSuggestion {
   rationale: string[];
   scores: ScoreSet;
   warning?: string;
+  /**
+   * Set when the claim has no reviewable content of its own. The dimension
+   * scores below are derived from the design of the linked papers, so a
+   * placeholder row linked to twenty meta-analyses would otherwise score as
+   * high as a curated conclusion. Callers that write scores must refuse.
+   */
+  blockedReason?: string;
 }
 
 interface BuildClaimScoreSuggestionInput {
@@ -32,7 +40,11 @@ const studyRigorScores: Record<Study["studyType"], number> = {
   "Observational cohort": 4,
   "Randomized controlled trial": 8,
   "Regulatory safety warning": 7,
-  "Systematic review": 8
+  "Systematic review": 8,
+  // Rigor 0, below every real design: a source whose design we could not
+  // establish must never lift a claim's evidence rigor. Deliberately the only
+  // zero in the table so `strongestLinkedStudy` sorts it last.
+  Unclassified: 0
 };
 
 const directHumanStudyTypes = new Set<Study["studyType"]>([
@@ -104,6 +116,7 @@ export function buildClaimScoreSuggestion({
   ];
 
   return {
+    blockedReason: unscorableClaimReason(claim),
     finalLabel: suggestedFinalLabel(scores, sourcePacket, safetyConcern, regulatoryConcern),
     limitations,
     rationale,
@@ -113,6 +126,25 @@ export function buildClaimScoreSuggestion({
         ? "Source packet is not complete; use this only as a triage aid."
         : undefined
   };
+}
+
+/**
+ * A claim can only be scored once it states something. Scoring is derived from
+ * the linked papers, which says nothing about whether a conclusion was ever
+ * written — so pipeline scaffolding has to be refused explicitly.
+ */
+export function unscorableClaimReason(claim: Claim) {
+  const kind = classifyClaim(claim);
+
+  if (kind === "pipeline") {
+    return "This row is a source-collection placeholder, not a conclusion. Scoring it would turn the quality of the linked papers into a score for a claim nobody has written.";
+  }
+
+  if (kind === "watchlist") {
+    return "This row tracks a regulated intervention for monitoring only and carries no scoped conclusion to score.";
+  }
+
+  return undefined;
 }
 
 function strongestLinkedStudy(studies: Study[]) {
@@ -219,9 +251,47 @@ function safetyConcernDetected(claim: Claim, studies: Study[], references: Refer
     .replace(/\bgenerally\s+well\s+tolerated\b/gi, " ")
     .replace(/\bno\s+major\s+safety\s+signals?\b/gi, " ");
 
-  return /\b(toxicity|toxic|black\s+box|boxed\s+warning|safety\s+warning|contraindicat|serious\s+adverse|severe\s+adverse|increased\s+(?:risk|adverse)|adverse\s+event\s+risk|death|hospitali[sz]ation|liver\s+injury|kidney\s+injury|arrhythmia|seizure)\b/i.test(
-    text
-  );
+  return unambiguousSafetyConcernPattern.test(text) || hasHarmDirectedEvent(text);
+}
+
+// Terms that signal a genuine safety problem regardless of direction. These are
+// rarely used to describe an efficacy endpoint or a neutral reporting category.
+const unambiguousSafetyConcernPattern =
+  /\b(toxicity|toxic|hepatotox\w*|nephrotox\w*|black\s+box|boxed\s+warning|safety\s+warning|contraindicat\w*|increased\s+(?:risk|adverse)|adverse\s+event\s+risk|liver\s+injury|kidney\s+injury|renal\s+injury|seizure|overdose|fatal)\b/i;
+
+// These words are frequently *efficacy* endpoints in cardiovascular/longevity
+// literature (e.g. "reduced cardiac death") or neutral RCT reporting categories
+// (e.g. "serious adverse events were monitored"). Treat them as a safety signal
+// only when a nearby cue points at harm and no benefit-direction cue is closer.
+const ambiguousEventPattern =
+  /\b(deaths?|mortality|hospitali[sz]ations?|arrhythmias?|myocardial\s+infarctions?|strokes?|cardiac\s+events?|cardiovascular\s+events?|serious\s+adverse(?:\s+events?)?|severe\s+adverse(?:\s+events?)?)\b/gi;
+const harmDirectionPattern =
+  /\b(increased?|elevated|higher|greater|raised|more\s+(?:frequent|common|prevalent|likely)|caus(?:es|ed|ing)|induces?|induced|led\s+to|triggers?|triggered|worsen\w*|risk\s+of)\b/i;
+const benefitDirectionPattern =
+  /\b(reduced?|reduces?|lower(?:ed|s|ing)?|decreased?|prevent\w*|protect\w*|fewer|improv\w*|benefit\w*|less)\b/i;
+
+function hasHarmDirectedEvent(text: string) {
+  ambiguousEventPattern.lastIndex = 0;
+
+  let match: RegExpExecArray | null;
+
+  while ((match = ambiguousEventPattern.exec(text)) !== null) {
+    // Harm cues can lead ("increased mortality") or trail ("adverse events
+    // were more frequent"), so scan a window on both sides of the term.
+    const windowStart = Math.max(0, match.index - 48);
+    const windowEnd = match.index + match[0].length + 48;
+    const window = text.slice(windowStart, windowEnd);
+
+    if (benefitDirectionPattern.test(window)) {
+      continue;
+    }
+
+    if (harmDirectionPattern.test(window)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function regulatoryConcernDetected(claim: Claim, studies: Study[], references: Reference[]) {

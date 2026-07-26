@@ -64,7 +64,7 @@ type ParsedRecomputeClaimScoreCliArgs =
       showHelp: true;
     };
 
-const HELP_TEXT = `Usage: npm run score:recompute -- [options]
+const HELP_TEXT = `Usage: npx tsx scripts/recompute-claim-score.ts [options]
 
 Options:
   --env-file <path>       Load an approved local env file before the operator write.

@@ -1,6 +1,7 @@
 import { compositeScore } from "@/lib/scoring";
 import {
   buildClaimSourcePacket,
+  buildClaimSourcePacketFromSnapshot,
   type ClaimSourcePacket,
   type ClaimSourcePacketCompletenessStatus
 } from "@/lib/source-packet";
@@ -66,6 +67,9 @@ export type ScoreReadinessSummary = {
 
 export function buildScoreReadinessRows(data: EvidenceDashboardData): ScoreReadinessRow[] {
   const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
+  const sourcePacketSnapshotsByClaimId = new Map(
+    (data.normalizedSourcePackets ?? []).map((packet) => [packet.claimId, packet])
+  );
   const interventionsById = new Map(
     data.interventions.map((intervention) => [intervention.id, intervention])
   );
@@ -73,14 +77,24 @@ export function buildScoreReadinessRows(data: EvidenceDashboardData): ScoreReadi
     (data.claimScoreSnapshots ?? []).map((snapshot) => [snapshot.claimId, snapshot])
   );
   const hasSnapshotInventory = data.claimScoreSnapshots !== undefined;
+  const useSourcePacketSnapshots =
+    data.references.length === 0 &&
+    data.studies.length === 0 &&
+    sourcePacketSnapshotsByClaimId.size > 0;
 
   return data.claims
     .map((claim) => {
-      const packet = buildClaimSourcePacket({
-        claim,
-        referencesById,
-        studies: data.studies
-      });
+      const packet = useSourcePacketSnapshots
+        ? buildClaimSourcePacketFromSnapshot({
+            claim,
+            packet: sourcePacketSnapshotsByClaimId.get(claim.id),
+            referencesById
+          })
+        : buildClaimSourcePacket({
+            claim,
+            referencesById,
+            studies: data.studies
+          });
       const currentScore = scoreReadinessCurrentScore(claim);
       const state = scoreReadinessState({
         claim,
