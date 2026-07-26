@@ -1,37 +1,6 @@
+import { findInterventionIdentityMatch } from "@/lib/intervention-identity";
 import { buildScoreWorklistReport } from "@/lib/score-worklist";
 import type { EvidenceDashboardData, Intervention } from "@/lib/types";
-
-const MIN_MATCH_TERM_LENGTH = 3;
-// Generic words that appear in many supplement names/synonyms and would produce
-// misleading title matches on their own. Includes chemical/nutrient class terms
-// (e.g. "polyphenols") that span multiple interventions, so matching on them
-// would wrongly name one supplement as the paper's subject.
-const GENERIC_MATCH_STOPWORDS = new Set([
-  "acid",
-  "acids",
-  "antioxidant",
-  "antioxidants",
-  "blend",
-  "catechin",
-  "catechins",
-  "complex",
-  "extract",
-  "flavonoid",
-  "flavonoids",
-  "micronutrient",
-  "micronutrients",
-  "mineral",
-  "minerals",
-  "nutraceutical",
-  "nutraceuticals",
-  "oil",
-  "phytochemical",
-  "phytochemicals",
-  "polyphenol",
-  "polyphenols",
-  "supplement",
-  "vitamin"
-]);
 
 export type SupplementSourceDisposition = "likely-subject" | "needs-manual-check";
 
@@ -154,62 +123,14 @@ function titleMatchForIntervention(title: string, intervention?: Intervention) {
     return undefined;
   }
 
-  const haystack = normaliseForMatch(title);
-
-  if (!haystack) {
-    return undefined;
-  }
-
-  const terms = [intervention.name, ...intervention.synonyms]
-    .flatMap((term) => matchTermsFromName(term))
-    .filter((term, index, all) => all.indexOf(term) === index);
-
-  for (const term of terms) {
-    if (containsTerm(haystack, term)) {
-      return term;
-    }
-  }
-
-  return undefined;
-}
-
-function matchTermsFromName(name: string) {
-  const normalised = normaliseForMatch(name);
-
-  if (!normalised) {
-    return [];
-  }
-
-  const whole = normalised.replace(/\s+/g, " ").trim();
-  const tokens = whole
-    .split(" ")
-    .filter(
-      (token) =>
-        token.length >= MIN_MATCH_TERM_LENGTH && !GENERIC_MATCH_STOPWORDS.has(token)
-    );
-
-  // Prefer the whole normalised name plus its meaningful tokens.
-  return [whole, ...tokens].filter(
-    (term) => term.length >= MIN_MATCH_TERM_LENGTH && !GENERIC_MATCH_STOPWORDS.has(term)
-  );
-}
-
-function containsTerm(haystack: string, term: string) {
-  const pattern = new RegExp(`(?:^|[^a-z0-9])${escapeRegExp(term)}(?:$|[^a-z0-9])`, "i");
-
-  return pattern.test(haystack);
-}
-
-function normaliseForMatch(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Broad breadth: this review exists to put a signal in front of a person, so
+  // an over-eager match costs one glance. The relevance gate, which acts on the
+  // answer unattended, uses the strict term set from the same module.
+  return findInterventionIdentityMatch({
+    breadth: "broad",
+    intervention,
+    title
+  })?.matchedTerm;
 }
 
 function buildReviewSummary(

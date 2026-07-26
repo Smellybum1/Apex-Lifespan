@@ -100,12 +100,54 @@ Build a gate that runs before the score:
 
 Anything the gate cannot decide goes to the LLM relevance check rather than to a human.
 
+#### Landed — identity (2026-07-27)
+
+`src/lib/intervention-identity.ts`. Measured against all 12,000 accepted candidates:
+
+| | seeded synonyms | + curated expansion |
+| --- | --- | --- |
+| intervention named in title | 8,045 (67.0%) | 9,117 (76.0%) |
+| named in title or abstract | 11,506 (95.9%) | 11,810 (98.4%) |
+| **named nowhere** | **494 (4.1%)** | **190 (1.6%)** |
+
+Three of those gains were normalisation bugs, not missing synonyms, and each was invisible until
+measured:
+
+- `vitamin B12`, `vitamin B-12` and `vitamin B(12)` normalised to different strings. Separating
+  letter runs from digit runs collapses them, and does the same for `omega-3`/`omega 3`/`GLP-1`.
+- Terms were stored singular and papers write plural, so `GLP-1 receptor agonist` missed every
+  review of `GLP-1 receptor agonists`. A trailing `s`/`es` is now optional; the boundary either side
+  is still required, so the substring hole stays shut.
+- Greek letters were stripped as punctuation, turning `β-Alanine` into `alanine` — the intervention
+  vanished from its own paper. They are transliterated now. Beta-alanine's miss rate halved.
+
+The gate's term set is deliberately **stricter** than the triage reviewer's. Both call the same
+module, at `strict` and `broad` breadth respectively, so they cannot drift — but a name is only
+split where the separator means "either substance" (`Lutein and Zeaxanthin`,
+`Glucosamine/chondroitin`, `Trimethylglycine (TMG)`). It is never split on whitespace, because
+`Whey protein` would yield `protein` and match most of the nutrition literature.
+
+The 190 remaining failures are mostly **correct** rejections, not gaps: whey protein is linked to
+tart cherry powder and inhaled nintedanib trials, astaxanthin to tomato sauce and generic carotenoid
+reviews. The search queries matched `powder` and `carotenoid`. This is the contamination the gate
+exists to stop, and it is the same pattern as creatinine/creatine.
+
+Class terms are kept out on purpose: a GLP-1 receptor agonist meta-analysis is not semaglutide
+evidence, and `classic psychedelic` covers LSD and DMT as much as psilocybin.
+
+Word-boundary matching alone does **not** solve creatine. It rejects `phosphocreatine` and
+`creatinine`, but `creatine kinase` is separated by a space and still matches. That one needs the
+trap-term table, which has no creatine entry.
+
 ### 4. LLM extraction and synthesis
 
 The actual bottleneck: 5,876 references have no `Study` row, and no automated path exists from a
 placeholder claim to a written conclusion — nothing in `src/` writes `Claim.claimText` after creation.
 
-- **Extraction.** Input is the stored abstract (`SourceCandidate.metadata.sourceText`). Output is a
+- **Extraction.** Input is the stored abstract. **There is no `sourceText` key on any row** — this
+  plan named the wrong field. PubMed candidates store the abstract as `metadata.abstractText`
+  (11,592 of 12,000 accepted, 11,591 of them 200+ characters); ClinicalTrials.gov records store
+  `metadata.briefSummary` instead (368 of 377). Only 40 accepted candidates carry neither. Output is a
   structured `Study`: sampleSize, population, dose, duration, mainResults, outcomes, riskOfBias.
   Use strict tool use or `output_config.format` with a JSON schema so the shape is guaranteed.
   Replaces the regex fallbacks in `local-source-work-repair.ts` that currently write prose like
