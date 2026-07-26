@@ -137,7 +137,51 @@ evidence, and `classic psychedelic` covers LSD and DMT as much as psilocybin.
 
 Word-boundary matching alone does **not** solve creatine. It rejects `phosphocreatine` and
 `creatinine`, but `creatine kinase` is separated by a space and still matches. That one needs the
-trap-term table, which has no creatine entry.
+trap-term table.
+
+#### Landed — the gate (2026-07-27)
+
+`src/lib/relevance-gate.ts`. Four checks in order — identity, trap terms, design, outcome —
+returning `accept`, `reject` or `undecided`. `undecided` is the point of the design: it routes to
+the LLM relevance check rather than being silently accepted or quietly dropped.
+
+Validated against every candidate a reviewer had already decided on. **The gold standard here is
+weak** — most of those "reviewer" decisions were the automation stamping itself `HUMAN_REVIEWED`, so
+this measures agreement with the old triage, not correctness:
+
+| | reviewer ACCEPTED (12,000) | reviewer REJECTED (26,946) |
+| --- | --- | --- |
+| gate accept | 6,520 (54.3%) | **1,127 (4.2%)** |
+| gate undecided | 5,021 (41.8%) | 14,249 (52.9%) |
+| gate reject | 459 (3.8%) | 11,570 (42.9%) |
+
+The bottom-left cell is the one that matters, and measuring it changed the design. A first pass put
+it at 3,090 (11.5%), and the errors had one shape: a tirzepatide trial filed under semaglutide, an
+ashwagandha review filed under ginseng, a polyphenol review filed under quercetin. Every one matched
+on the **abstract**. An abstract names comparators, background and the other arm; a title is a claim
+of subject. Requiring the title for an unattended accept — abstract-only goes `undecided` — more than
+halved wrong accepts.
+
+Sampling the 1,127 that remain, many look like papers the old triage rejected wrongly (`ashwagen
+(standardized withania somnifera extract)` under ashwagandha, `Two Triglyceride Forms of Fish Oil`
+under omega-3). That is a sample, not a measurement, and it is not evidence the gate is right.
+
+**Deviation from the plan.** The plan said "RCT / SR / MA / registered trial only". Observational
+cohorts are `undecided` rather than `reject`, because rejecting them outright discards most of the
+mortality and lifespan literature, which is overwhelmingly observational. The plan's intent — never
+auto-accept a cohort — is preserved.
+
+**Cost to be aware of:** 41.8% of the accepted pool lands `undecided`, so the LLM relevance check in
+section 4 carries roughly 5,000 candidates, not a trickle. The largest buckets are no tracked
+outcome named (2,542) and abstract-only identity (1,633).
+
+**Not yet wired into the pipeline.** The gate is a pure function with tests; nothing calls it. The
+scheduled 03:00 run still uses the ungated triage.
+
+`INTERVENTION_TRAP_RULES` is keyed by slug and covers creatine, which the existing
+`LOCAL_BENEFIT_DISCOVERY_CONTEXT_RULES` never did. That older table is keyed by intervention id,
+which only resolves for seeded rows; the two should fold together, and until they do a term added to
+one does not protect the other.
 
 ### 4. LLM extraction and synthesis
 
