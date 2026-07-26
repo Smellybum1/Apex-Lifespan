@@ -238,11 +238,21 @@ const ACCEPTABLE_DESIGNS = new Set<StudySourceTypeCommandHint>([
 /**
  * Designs that cannot support a human claim regardless of quality. A mouse study
  * is not weak human evidence, it is not human evidence.
+ *
+ * `case-report` is deliberately NOT here. It was, and sweeping the parked
+ * backlog is what exposed the mistake: the rows it discarded were
+ * "Tongkat Ali-Induced Liver Injury", "Acute kidney injury following creatine
+ * loading in a 17-year-old", "Caffeine Intoxication", "Recurrent hepatitis due
+ * to Turmeric Supplementation", "chronic ashwagandha use and HPA axis
+ * suppression". Case reports are weak efficacy evidence but they are the channel
+ * through which supplement harms get published at all, which is why the catalog
+ * tracks a Safety/adverse effects outcome. Dropping them would have stripped the
+ * harm signal out of the evidence base while leaving the benefit signal intact —
+ * the worst direction to be wrong in. They fall through to `undecided` instead.
  */
 const REJECTED_DESIGNS = new Set<StudySourceTypeCommandHint>([
   "animal-study",
-  "in-vitro-mechanistic",
-  "case-report"
+  "in-vitro-mechanistic"
 ]);
 
 /**

@@ -128,6 +128,23 @@ describe("evaluateRelevance", () => {
     expect(result.reasons.join(" ")).toContain("measured rather than mistaken");
   });
 
+  it("does not discard a case report, because that is how harms get published", () => {
+    // Regression: case reports were rejected outright, which threw away
+    // "Tongkat Ali-Induced Liver Injury" and "Acute kidney injury following
+    // creatine loading". Stripping the harm signal while keeping the benefit
+    // signal is the worst direction to be wrong in.
+    const result = evaluateRelevance({
+      abstract: "A 17-year-old presented with acute kidney injury after creatine loading.",
+      intervention: creatine,
+      publicationTypes: ["Case Reports"],
+      source: "PUBMED",
+      title: "Acute kidney injury with cast nephropathy following creatine loading"
+    });
+
+    expect(result.verdict).toBe("undecided");
+    expect(result.design).toBe("case-report");
+  });
+
   it("rejects a design that cannot support a claim about people", () => {
     const result = evaluateRelevance({
       abstract: "Mice received creatine for six weeks.",
