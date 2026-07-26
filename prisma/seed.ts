@@ -113,7 +113,8 @@ const studyTypeMap: Record<Study["studyType"], PrismaStudyType> = {
   "Animal study": PrismaStudyType.ANIMAL_STUDY,
   "In vitro/mechanistic": PrismaStudyType.IN_VITRO_MECHANISTIC,
   "Clinical trial record": PrismaStudyType.CLINICAL_TRIAL_RECORD,
-  "Regulatory safety warning": PrismaStudyType.REGULATORY_SAFETY_WARNING
+  "Regulatory safety warning": PrismaStudyType.REGULATORY_SAFETY_WARNING,
+  Unclassified: PrismaStudyType.UNCLASSIFIED
 };
 
 const alertTypeMap: Record<SafetyAlert["alertType"], PrismaSafetyAlertType> = {

@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "StudyType" ADD VALUE 'UNCLASSIFIED';
