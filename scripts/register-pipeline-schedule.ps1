@@ -56,7 +56,15 @@ if (-not (Test-Path $logDirectory)) {
 $logPath = Join-Path $logDirectory "pipeline-run.log"
 $command = "`"$($npm.Source)`" run pipeline:run -- --max-jobs $MaxJobs --quiet >> `"$logPath`" 2>&1"
 
-$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c $command" -WorkingDirectory $projectRoot
+# The whole command is wrapped in one more pair of quotes on purpose. Given
+# `/c "prog" args > "file"`, cmd.exe strips the FIRST and LAST quote it sees
+# rather than treating them as a pair around the program name — which leaves an
+# unbalanced string, and cmd exits 1 with "The filename, directory name, or
+# volume label syntax is incorrect" before creating the log. The failure is
+# silent from Task Scheduler's side: the task reports a plain non-zero result
+# and there is no log to explain it, because writing the log is what failed.
+# The extra wrapper is the pair cmd consumes, leaving the inner quoting intact.
+$action = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c `"$command`"" -WorkingDirectory $projectRoot
 $trigger = New-ScheduledTaskTrigger -Daily -At $At
 $settings = New-ScheduledTaskSettingsSet `
   -StartWhenAvailable `
