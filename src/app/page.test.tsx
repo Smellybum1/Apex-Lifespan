@@ -10,14 +10,14 @@ vi.mock("@/components/evidence-dashboard", () => ({
 }));
 
 vi.mock("@/lib/data/dashboard", () => ({
-  getEvidenceDashboardData: vi.fn()
+  getEvidenceDashboardOverviewData: vi.fn()
 }));
 
 import { DashboardDataUnavailable } from "@/app/dashboard-data-unavailable";
 import Home from "@/app/page";
-import { getEvidenceDashboardData } from "@/lib/data/dashboard";
+import { getEvidenceDashboardOverviewData } from "@/lib/data/dashboard";
 
-const getEvidenceDashboardDataMock = vi.mocked(getEvidenceDashboardData);
+const getEvidenceDashboardOverviewDataMock = vi.mocked(getEvidenceDashboardOverviewData);
 
 function minimalDashboardData(): EvidenceDashboardData {
   return {
@@ -35,11 +35,11 @@ function minimalDashboardData(): EvidenceDashboardData {
 
 describe("Home page data boundary", () => {
   beforeEach(() => {
-    getEvidenceDashboardDataMock.mockReset();
+    getEvidenceDashboardOverviewDataMock.mockReset();
   });
 
   it("renders the dashboard when evidence data loads", async () => {
-    getEvidenceDashboardDataMock.mockResolvedValue(minimalDashboardData());
+    getEvidenceDashboardOverviewDataMock.mockResolvedValue(minimalDashboardData());
 
     const html = renderToStaticMarkup(await Home());
 
@@ -47,7 +47,7 @@ describe("Home page data boundary", () => {
   });
 
   it("renders a sanitized unavailable state when strict database reads fail", async () => {
-    getEvidenceDashboardDataMock.mockRejectedValue(
+    getEvidenceDashboardOverviewDataMock.mockRejectedValue(
       new Error("postgresql://user:secret@db.example.invalid/apex query failed")
     );
 

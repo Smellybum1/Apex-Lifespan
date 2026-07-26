@@ -13,6 +13,7 @@ import type {
   ClaimSourcePacketCompletenessStatus,
   EvidenceDepthSummary
 } from "@/lib/source-packet";
+import { reviewStatusFromDb, reviewStatusToDb } from "@/lib/review-status";
 import type { EvidenceLabel, ReviewStatus, ScoreSet } from "@/lib/types";
 
 export const evidenceLabelFromDb: Record<DbEvidenceLabel, EvidenceLabel> = {
@@ -42,13 +43,11 @@ export const evidenceLabelToDb: Record<EvidenceLabel, DbEvidenceLabel> = {
 };
 
 export function mapReviewStatusFromDb(status: DbReviewStatus): ReviewStatus {
-  return status === DbReviewStatus.HUMAN_REVIEWED ? "Human reviewed" : "Unreviewed AI draft";
+  return reviewStatusFromDb(status);
 }
 
 export function mapReviewStatusToDb(status: ReviewStatus): DbReviewStatus {
-  return status === "Human reviewed"
-    ? DbReviewStatus.HUMAN_REVIEWED
-    : DbReviewStatus.UNREVIEWED_AI_DRAFT;
+  return reviewStatusToDb(status);
 }
 
 export function scoreSetFromClaimFields(claim: {

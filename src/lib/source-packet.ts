@@ -1,4 +1,10 @@
-import type { Claim, Reference, SourceTypeTaxonomy, Study } from "@/lib/types";
+import type {
+  Claim,
+  NormalizedSourcePacketRow,
+  Reference,
+  SourceTypeTaxonomy,
+  Study
+} from "@/lib/types";
 
 export interface ClaimSourcePacket {
   referenceIds: string[];
@@ -121,6 +127,49 @@ export function buildClaimSourcePacket({
     missingReferenceIds,
     completeness,
     evidenceDepth
+  };
+}
+
+export function buildClaimSourcePacketFromSnapshot({
+  claim,
+  packet,
+  referencesById = new Map()
+}: {
+  claim: Pick<Claim, "keyReferenceIds">;
+  packet?: NormalizedSourcePacketRow;
+  referencesById?: Map<string, Reference>;
+}): ClaimSourcePacket {
+  const referenceIds = Array.from(new Set(packet?.referenceIds ?? claim.keyReferenceIds));
+  const references = referenceIds
+    .map((referenceId) => referencesById.get(referenceId))
+    .filter((reference): reference is Reference => Boolean(reference));
+  const status = packet?.status ?? (referenceIds.length > 0 ? "extraction_pending" : "not_linked");
+  const totalReferences = Math.max(referenceIds.length, packet?.referenceIds.length ?? 0);
+  const extractedReferences =
+    packet?.extractedReferenceCount ?? (status === "complete" ? totalReferences : 0);
+  const pendingReferences =
+    packet?.pendingReferenceCount ??
+    (status === "extraction_pending"
+      ? Math.max(totalReferences - extractedReferences, 0)
+      : 0);
+  const missingReferences =
+    packet?.missingReferenceCount ?? (status === "missing_sources" ? 1 : 0);
+  const completeness = claimSourcePacketCompletenessFromSnapshot({
+    extractedReferences,
+    missingReferences,
+    pendingReferences,
+    status,
+    totalReferences
+  });
+
+  return {
+    referenceIds,
+    references,
+    studies: [],
+    pendingReferences: [],
+    missingReferenceIds: [],
+    completeness,
+    evidenceDepth: summarizeEvidenceDepth({ completeness, studies: [] })
   };
 }
 
@@ -299,6 +348,70 @@ export function summarizeEvidenceDepth({
   };
 }
 
+function claimSourcePacketCompletenessFromSnapshot({
+  extractedReferences,
+  missingReferences,
+  pendingReferences,
+  status,
+  totalReferences
+}: {
+  extractedReferences: number;
+  missingReferences: number;
+  pendingReferences: number;
+  status: ClaimSourcePacketCompletenessStatus;
+  totalReferences: number;
+}): ClaimSourcePacketCompleteness {
+  switch (status) {
+    case "complete":
+      return {
+        status,
+        label: "Extraction complete",
+        detail: "The current source-packet snapshot marks linked references as extracted.",
+        nextStep: "Keep source links reviewed as new evidence or regulatory updates appear.",
+        totalReferences,
+        extractedReferences: Math.max(extractedReferences, totalReferences),
+        pendingReferences: 0,
+        missingReferences: 0
+      };
+    case "missing_sources":
+      return {
+        status,
+        label: "Source records missing",
+        detail: "The current source-packet snapshot reports one or more missing source records.",
+        nextStep: "Restore the missing curated source records before relying on this packet.",
+        totalReferences,
+        extractedReferences,
+        pendingReferences,
+        missingReferences: Math.max(missingReferences, 1)
+      };
+    case "extraction_pending":
+      return {
+        status,
+        label: "Extraction pending",
+        detail: "The current source-packet snapshot reports linked references awaiting extraction.",
+        nextStep: "Add structured extraction for the pending references before treating this packet as complete.",
+        totalReferences,
+        extractedReferences,
+        pendingReferences: Math.max(
+          pendingReferences,
+          Math.max(totalReferences - extractedReferences, 0)
+        ),
+        missingReferences
+      };
+    case "not_linked":
+      return {
+        status,
+        label: "No curated sources",
+        detail: "This claim does not have curated reference links yet.",
+        nextStep: "Add curated reference links before treating this claim as source-backed.",
+        totalReferences: 0,
+        extractedReferences: 0,
+        pendingReferences: 0,
+        missingReferences: 0
+      };
+  }
+}
+
 function sourceTypeForStudy(study: Study): SourceTypeTaxonomy {
   if (study.sourceTypeTaxonomy) {
     return study.sourceTypeTaxonomy;
@@ -323,6 +436,8 @@ function sourceTypeForStudy(study: Study): SourceTypeTaxonomy {
       return "regulatory warning";
     case "Clinical trial record":
       return "RCT";
+    case "Unclassified":
+      return "unclassified";
   }
 }
 

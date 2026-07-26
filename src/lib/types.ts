@@ -49,7 +49,15 @@ export type EvidenceMomentum =
   | "Weakening"
   | "Safety concern emerging";
 
-export type ReviewStatus = "Unreviewed AI draft" | "Human reviewed";
+/**
+ * Three-way, and the middle value is the point: automation may write evidence,
+ * but it may never claim a human confirmed it. "AI reviewed" is what every
+ * automated pipeline stamps; "Human reviewed" requires explicit human sign-off.
+ * Any check asking "has anyone looked at this" must treat the first value as
+ * the only unreviewed one — see `hasBeenReviewed` / `isHumanConfirmed` in
+ * `@/lib/review-status`.
+ */
+export type ReviewStatus = "Unreviewed AI draft" | "AI reviewed" | "Human reviewed";
 
 export type ConfidenceLevel = "High" | "Moderate" | "Low" | "Very low";
 
@@ -68,7 +76,8 @@ export type SourceTypeTaxonomy =
   | "case report"
   | "animal study"
   | "in vitro/mechanistic"
-  | "regulatory warning";
+  | "regulatory warning"
+  | "unclassified";
 
 export type AustraliaRegulatoryKind =
   | "AUST L"
@@ -155,7 +164,9 @@ export interface Study {
     | "Animal study"
     | "In vitro/mechanistic"
     | "Clinical trial record"
-    | "Regulatory safety warning";
+    | "Regulatory safety warning"
+    /** No design could be established from the source metadata. Carries rigor 0. */
+    | "Unclassified";
   sourceTypeTaxonomy?: SourceTypeTaxonomy;
   abstract?: string;
   dose?: string;
@@ -271,6 +282,9 @@ export interface AustraliaRegulatoryStatus {
 export interface NormalizedSourcePacketRow {
   claimId: string;
   current: boolean;
+  extractedReferenceCount?: number;
+  missingReferenceCount?: number;
+  pendingReferenceCount?: number;
   referenceIds: string[];
   reviewStatus: ReviewStatus;
   sourcePacketId: string;

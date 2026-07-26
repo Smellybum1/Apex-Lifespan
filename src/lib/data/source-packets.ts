@@ -23,7 +23,8 @@ const studyTypeMap: Record<DbStudyType, Study["studyType"]> = {
   OBSERVATIONAL_COHORT: "Observational cohort",
   RANDOMIZED_CONTROLLED_TRIAL: "Randomized controlled trial",
   REGULATORY_SAFETY_WARNING: "Regulatory safety warning",
-  SYSTEMATIC_REVIEW: "Systematic review"
+  SYSTEMATIC_REVIEW: "Systematic review",
+  UNCLASSIFIED: "Unclassified"
 };
 
 type DbSourcePacketWithReferences = SourcePacket & {
@@ -31,13 +32,22 @@ type DbSourcePacketWithReferences = SourcePacket & {
 };
 
 export function mapNormalizedSourcePacketRow(packet: DbSourcePacketWithReferences): NormalizedSourcePacketRow {
+  const extractedReferenceCount = packet.references.filter(
+    (reference) => reference.extractionStatus === "complete"
+  ).length;
+  const pendingReferenceCount = packet.references.length - extractedReferenceCount;
+  const status = sourcePacketCompletenessFromDb(packet.status);
+
   return {
     claimId: packet.claimId,
     current: packet.current,
+    extractedReferenceCount,
+    missingReferenceCount: status === "missing_sources" ? 1 : 0,
+    pendingReferenceCount,
     referenceIds: packet.references.map((reference) => reference.referenceId).sort(),
     reviewStatus: mapReviewStatusFromDb(packet.reviewStatus),
     sourcePacketId: packet.id,
-    status: sourcePacketCompletenessFromDb(packet.status)
+    status
   };
 }
 

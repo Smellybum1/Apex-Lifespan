@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+
+import { PublicSiteNav } from "@/components/public-site-nav";
 
 import {
   COMPOSITE_SCORE_WEIGHTS,
@@ -48,6 +49,7 @@ const evidenceHierarchy = [
   "Case reports",
   "Animal studies",
   "In vitro/mechanistic evidence",
+  "Studies of unclear design (design could not be established from the source record)",
   "Marketing/influencer claims"
 ] as const;
 
@@ -55,6 +57,10 @@ const reviewStatuses = [
   [
     "Unreviewed AI draft",
     "A local draft or structured extraction exists, but a human has not checked the source packet against the scoped claim."
+  ],
+  [
+    "AI reviewed",
+    "An automated pipeline extracted or synthesised this row and applied our checks. No human has confirmed it. Treat it as a starting point, not a verdict."
   ],
   [
     "Human reviewed",
@@ -95,12 +101,7 @@ export default function MethodologyPage() {
   return (
     <main className="min-h-screen px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-5xl">
-        <Link
-          href="/"
-          className="inline-flex rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-signal hover:text-signal"
-        >
-          Back to dashboard
-        </Link>
+        <PublicSiteNav activeSection="methodology" />
 
         <header className="mt-4 border-b border-line pb-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">

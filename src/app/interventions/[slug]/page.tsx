@@ -6,7 +6,14 @@ import { ChevronDown } from "lucide-react";
 
 import { DashboardDataUnavailable } from "@/app/dashboard-data-unavailable";
 import { InterventionTrialList } from "@/components/intervention-trial-list";
-import { getEvidenceDashboardData } from "@/lib/data/dashboard";
+import { PublicSiteNav } from "@/components/public-site-nav";
+import { SupplementBriefView } from "@/components/supplement-brief";
+import {
+  claimEvidenceDirectionLabel,
+  isAdverseDirectionClaim
+} from "@/lib/claim-direction";
+import { getInterventionEvidenceDashboardData } from "@/lib/data/dashboard";
+import { buildSupplementBrief } from "@/lib/evidence-brief";
 import { australiaRegulatoryKindDescription, australiaRegulatoryTone } from "@/lib/regulatory";
 import { summarizeReviewStatus } from "@/lib/review-summary";
 import {
@@ -37,13 +44,15 @@ import type {
   SafetyAlert,
   Study
 } from "@/lib/types";
+import { hasBeenReviewed, isHumanConfirmed } from "@/lib/review-status";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Intervention Detail | Apex Lifespan",
-  description: "Claim-specific evidence, source packets, safety context, and score history."
+  description:
+    "What the research actually shows for one supplement, what it will not do, and the sources behind it."
 };
 
 const DRAFT_LEAD_EVIDENCE_GRADE = "Draft lead";
@@ -51,14 +60,37 @@ const SOURCE_PACKET_REVIEW_EVIDENCE_GRADE = "Insufficient until source packets a
 
 type InterventionDetailPageProps = {
   params: Promise<{ slug: string }>;
+  searchParams?: Promise<{ tab?: string | string[] }>;
 };
 
-export default async function InterventionDetailPage({ params }: InterventionDetailPageProps) {
+type InterventionDetailTab = "brief" | "overview" | "claims" | "sources" | "safety" | "audit";
+
+type InterventionDetailTabItem = {
+  badge?: string;
+  id: InterventionDetailTab;
+  label: string;
+};
+
+const INTERVENTION_DETAIL_TABS: InterventionDetailTabItem[] = [
+  { id: "brief", label: "Summary" },
+  { id: "overview", label: "Full detail" },
+  { id: "claims", label: "Claims" },
+  { id: "sources", label: "Sources" },
+  { id: "safety", label: "Safety & trials" },
+  { id: "audit", label: "Audit" }
+];
+
+export default async function InterventionDetailPage({
+  params,
+  searchParams
+}: InterventionDetailPageProps) {
   const { slug } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const activeTab = interventionDetailTabFromSearchParam(resolvedSearchParams?.tab);
   let data: EvidenceDashboardData;
 
   try {
-    data = await getEvidenceDashboardData();
+    data = await getInterventionEvidenceDashboardData(slug);
   } catch {
     return <DashboardDataUnavailable />;
   }
@@ -85,6 +117,9 @@ export default async function InterventionDetailPage({ params }: InterventionDet
         studies: data.studies
       })
   }));
+  const sourcePacketsByClaimId = new Map(
+    sourcePackets.map((item) => [item.claim.id, item.packet])
+  );
   const readiness = buildInterventionReadinessSummary({
     claims,
     referencesById,
@@ -101,6 +136,10 @@ export default async function InterventionDetailPage({ params }: InterventionDet
     (status) => status.interventionId === intervention.id
   );
   const productSignals = productSignalsForIntervention(data.productSignals, intervention);
+  const productSignalIds = new Set(productSignals.map((product) => product.id));
+  const productAustraliaStatuses = data.australiaRegulatoryStatuses.filter(
+    (status) => status.productId && productSignalIds.has(status.productId)
+  );
   const claimIds = new Set(claims.map((claim) => claim.id));
   const snapshotsByClaimId = new Map(
     (data.claimScoreSnapshots ?? [])
@@ -110,6 +149,36 @@ export default async function InterventionDetailPage({ params }: InterventionDet
   const scoreHistory = (data.claimScoreHistory ?? [])
     .filter((entry) => claimIds.has(entry.claimId))
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const detailTabs = interventionDetailTabsWithBadges({
+    australiaStatuses,
+    claims,
+    productSignals,
+    safetyAlerts,
+    scoreHistory,
+    sourcePackets,
+    trialWatchItems
+  });
+
+  if (activeTab === "brief") {
+    const brief = buildSupplementBrief({
+      claims,
+      intervention,
+      packets: sourcePacketsByClaimId,
+      safetyAlerts
+    });
+
+    return (
+      <main className="min-h-screen">
+        <div className="mx-auto w-full max-w-4xl px-4 pt-4 sm:px-6">
+          <PublicSiteNav activeSection="supplements" showBrand={false} />
+        </div>
+        <SupplementBriefView
+          brief={brief}
+          detailHref={interventionDetailTabHref(intervention.slug, "overview")}
+        />
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
@@ -124,13 +193,15 @@ export default async function InterventionDetailPage({ params }: InterventionDet
                 Back to dashboard
               </Link>
               <p className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Intervention detail
+                Plain-language evidence brief
               </p>
               <h1 className="mt-2 text-3xl font-semibold tracking-normal text-ink">
                 {intervention.name}
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-700">
-                {intervention.evidenceSummary}
+                A reader-first summary of possible benefits, important limitations, safety, and
+                the strength of the linked evidence. Detailed scores and source notes remain
+                available below for anyone who wants the audit trail.
               </p>
             </div>
             <div className="flex flex-wrap gap-2 text-xs font-semibold">
@@ -155,157 +226,205 @@ export default async function InterventionDetailPage({ params }: InterventionDet
           ) : null}
         </header>
 
-        <CollapsibleSection defaultOpen title="What the Studies Found">
-          <DetailedEvidenceSummary
-            australiaStatuses={australiaStatuses}
-            intervention={intervention}
-            productSignals={productSignals}
-            readinessByClaimId={readinessByClaimId}
-            safetyAlerts={safetyAlerts}
-            sourcePackets={sourcePackets}
-          />
-        </CollapsibleSection>
-
-        <InterventionReadinessPanel
-          australiaStatuses={australiaStatuses}
-          productSignals={productSignals}
-          readiness={readiness}
-          safetyAlerts={safetyAlerts}
+        <InterventionDetailTabs
+          activeTab={activeTab}
+          slug={intervention.slug}
+          tabs={detailTabs}
         />
 
-        <CollapsibleSection defaultOpen title="Intervention Summary">
-          <div className="grid gap-3 md:grid-cols-2">
-            <InfoCard label="Common forms" value={intervention.commonForms.join(", ")} />
-            <InfoCard label="Regulatory status" value={intervention.regulatoryStatus} />
-            <InfoCard label="Safety summary" value={intervention.safetySummary} />
-            <InfoCard label="Interaction summary" value={intervention.interactionSummary} />
-          </div>
-        </CollapsibleSection>
+        {activeTab === "overview" ? (
+          <>
+            <DetailedEvidenceSummary
+              australiaStatuses={australiaStatuses}
+              compact
+              intervention={intervention}
+              productAustraliaStatuses={productAustraliaStatuses}
+              productSignals={productSignals}
+              readinessByClaimId={readinessByClaimId}
+              safetyAlerts={safetyAlerts}
+              sourcePackets={sourcePackets}
+            />
 
-        <CollapsibleSection
-          badge={`${claims.length} outcomes`}
-          defaultOpen
-          title="Evidence scores by outcome"
-        >
-          {claims.length > 0 ? (
-            <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-              {claims.map((claim) => {
-                const scoreState = claimScorePresentation(
-                  claim,
-                  readinessByClaimId.get(claim.id)
-                );
+            <CollapsibleSection defaultOpen title="Evidence quality and review status">
+              <InterventionReadinessPanel
+                australiaStatuses={australiaStatuses}
+                productAustraliaStatuses={productAustraliaStatuses}
+                productSignals={productSignals}
+                readiness={readiness}
+                safetyAlerts={safetyAlerts}
+              />
+            </CollapsibleSection>
 
-                return (
-                  <article
-                    className={cn("rounded-lg border p-3", scoreState.tone)}
-                    id={`claim-score-${claim.id}`}
-                    key={claim.id}
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-wide">
-                      {shortOutcome(claim.outcome)}
-                    </p>
-                    <p className="mt-2 text-xs font-semibold">{scoreState.compositeLabel}</p>
-                    {scoreState.score === null ? (
-                      <>
-                        <p className="mt-2 text-lg font-semibold">{scoreState.primary}</p>
-                        <p className="mt-1 text-xs font-semibold">{scoreState.secondary}</p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="mt-2 text-2xl font-semibold">
-                          {scoreState.score.toFixed(1)}
+            <CollapsibleSection defaultOpen title="Supplement context">
+              <div className="grid gap-3 md:grid-cols-2">
+                <InfoCard label="Common forms" value={intervention.commonForms.join(", ")} />
+                <InfoCard label="Regulatory status" value={intervention.regulatoryStatus} />
+                <InfoCard label="Safety summary" value={intervention.safetySummary} />
+                <InfoCard label="Interaction summary" value={intervention.interactionSummary} />
+              </div>
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              badge={`${claims.length} outcomes`}
+              title="Score index by outcome (secondary)"
+            >
+              <p className="mb-3 text-sm leading-6 text-slate-600">
+                Use this grid as a navigation and audit index. The evidence brief above is the main
+                interpretation; a number alone should not be read as a recommendation to take a
+                supplement.
+              </p>
+              {claims.length > 0 ? (
+                <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                  {claims.map((claim) => {
+                    const scoreState = claimScorePresentation(
+                      claim,
+                      readinessByClaimId.get(claim.id)
+                    );
+
+                    return (
+                      <article
+                        className={cn("rounded-lg border p-3", scoreState.tone)}
+                        id={`claim-score-${claim.id}`}
+                        key={claim.id}
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-wide">
+                          {shortOutcome(claim.outcome)}
                         </p>
-                        <p className="mt-1 text-xs font-semibold">{scoreState.secondary}</p>
-                      </>
-                    )}
-                    <p className="mt-2 text-xs leading-5">
-                      {classificationLabel(claim, readinessByClaimId.get(claim.id))}:{" "}
-                      {claim.finalLabel}
-                    </p>
-                    <p className="mt-1 text-xs leading-5">{reviewStatusLabel(claim.reviewStatus)}</p>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState>No scored claim rows are attached to this intervention yet.</EmptyState>
-          )}
-        </CollapsibleSection>
+                        <p className="mt-2 text-xs font-semibold">{scoreState.compositeLabel}</p>
+                        {scoreState.score === null ? (
+                          <>
+                            <p className="mt-2 text-lg font-semibold">{scoreState.primary}</p>
+                            <p className="mt-1 text-xs font-semibold">{scoreState.secondary}</p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="mt-2 text-2xl font-semibold">
+                              {scoreState.score.toFixed(1)}
+                            </p>
+                            <p className="mt-1 text-xs font-semibold">{scoreState.secondary}</p>
+                          </>
+                        )}
+                        <p className="mt-2 text-xs leading-5">
+                          {classificationLabel(claim, readinessByClaimId.get(claim.id))}:{" "}
+                          {claim.finalLabel}
+                        </p>
+                        <p className="mt-1 text-xs leading-5">
+                          {reviewStatusLabel(claim.reviewStatus)}
+                        </p>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState>No scored claim rows are attached to this intervention yet.</EmptyState>
+              )}
+            </CollapsibleSection>
+          </>
+        ) : null}
 
-        <CollapsibleSection badge={`${claims.length}`} defaultOpen title="Claim cards">
-          <div className="grid gap-3">
-            {claims.map((claim) => (
-              <ClaimCard
-                claim={claim}
-                key={claim.id}
-                packet={sourcePackets.find((item) => item.claim.id === claim.id)?.packet}
-                readinessRow={readinessByClaimId.get(claim.id)}
-                referencesById={referencesById}
-              />
-            ))}
-          </div>
-        </CollapsibleSection>
-
-        <CollapsibleSection badge={`${claims.length}`} title="Source packets">
-          <div className="grid gap-3">
-            {sourcePackets.map(({ claim, packet }) => (
-              <SourcePacketCard
-                claim={claim}
-                key={claim.id}
-                packet={packet}
-                referencesById={referencesById}
-              />
-            ))}
-          </div>
-        </CollapsibleSection>
-
-        <CollapsibleSection badge={safetyAlerts.length > 0 ? String(safetyAlerts.length) : undefined} title="Safety alerts">
-          {safetyAlerts.length > 0 ? (
+        {activeTab === "claims" ? (
+          <CollapsibleSection
+            badge={`${claims.length}`}
+            defaultOpen
+            title="Claim-by-claim evidence notes"
+          >
             <div className="grid gap-3">
-              {safetyAlerts.map((alert) => (
-                <SafetyAlertCard alert={alert} key={alert.id} />
+              {claims.map((claim) => (
+                <ClaimCard
+                  claim={claim}
+                  key={claim.id}
+                  packet={sourcePacketsByClaimId.get(claim.id)}
+                  readinessRow={readinessByClaimId.get(claim.id)}
+                  referencesById={referencesById}
+                />
               ))}
             </div>
-          ) : (
-            <EmptyState>
-              No local safety alerts are attached to this intervention. This does not imply
-              safety, efficacy, or regulatory clearance.
-            </EmptyState>
-          )}
-        </CollapsibleSection>
+          </CollapsibleSection>
+        ) : null}
 
-        <CollapsibleSection
-          badge={trialWatchItems.length > 0 ? String(trialWatchItems.length) : undefined}
-          title="Trial watcher"
-        >
-          <InterventionTrialList intervention={intervention} trials={trialWatchItems} />
-        </CollapsibleSection>
+        {activeTab === "sources" ? (
+          <CollapsibleSection badge={`${claims.length}`} title="Source trail">
+            <div className="grid gap-3">
+              {sourcePackets.map(({ claim, packet }) => (
+                <SourcePacketCard
+                  claim={claim}
+                  key={claim.id}
+                  packet={packet}
+                  referencesById={referencesById}
+                />
+              ))}
+            </div>
+          </CollapsibleSection>
+        ) : null}
 
-        <CollapsibleSection title="AU/TGA and product context">
-          <div className="grid gap-3">
-            {australiaStatuses.length > 0 ? (
-              australiaStatuses.map((status) => (
-                <AustraliaStatusCard key={status.id} status={status} />
-              ))
-            ) : (
-              <EmptyState>
-                No intervention-level AU/TGA status row is captured yet. Product-level confidence
-                needs product-level evidence.
-              </EmptyState>
-            )}
-            {productSignals.length > 0 ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                {productSignals.map((product) => (
-                  <ProductContextCard key={product.id} product={product} />
-                ))}
+        {activeTab === "safety" ? (
+          <>
+            <CollapsibleSection
+              badge={safetyAlerts.length > 0 ? String(safetyAlerts.length) : undefined}
+              title="Safety alerts"
+            >
+              {safetyAlerts.length > 0 ? (
+                <div className="grid gap-3">
+                  {safetyAlerts.map((alert) => (
+                    <SafetyAlertCard alert={alert} key={alert.id} />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState>
+                  No local safety alerts are attached to this intervention. This does not imply
+                  safety, efficacy, or regulatory clearance.
+                </EmptyState>
+              )}
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              badge={trialWatchItems.length > 0 ? String(trialWatchItems.length) : undefined}
+              title="Trial watcher"
+            >
+              <InterventionTrialList intervention={intervention} trials={trialWatchItems} />
+            </CollapsibleSection>
+
+            <CollapsibleSection title="AU/TGA and product context">
+              <div className="grid gap-3">
+                {australiaStatuses.length > 0 ? (
+                  australiaStatuses.map((status) => (
+                    <AustraliaStatusCard key={status.id} status={status} />
+                  ))
+                ) : (
+                  <EmptyState>
+                    No intervention-level AU/TGA status row is captured yet. Product-level
+                    confidence needs product-level evidence.
+                  </EmptyState>
+                )}
+                {productSignals.length > 0 ? (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {productSignals.map((product) => {
+                      const productStatuses = productAustraliaStatuses.filter(
+                        (status) => status.productId === product.id
+                      );
+
+                      return (
+                        <ProductContextCard
+                          key={product.id}
+                          product={product}
+                          statuses={productStatuses}
+                        />
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <EmptyState>
+                    No matching local product-signal row is attached to this intervention.
+                  </EmptyState>
+                )}
               </div>
-            ) : (
-              <EmptyState>No matching local product-signal row is attached to this intervention.</EmptyState>
-            )}
-          </div>
-        </CollapsibleSection>
+            </CollapsibleSection>
+          </>
+        ) : null}
 
-        <CollapsibleSection title="Score history">
+        {activeTab === "audit" ? (
+          <>
+        <CollapsibleSection title="Score/audit history">
           {claims.length > 0 ? (
             <div className="grid gap-4">
               <div className="overflow-x-auto">
@@ -423,8 +542,108 @@ export default async function InterventionDetailPage({ params }: InterventionDet
             <EmptyState>No score-change criteria are attached to this intervention yet.</EmptyState>
           )}
         </CollapsibleSection>
+          </>
+        ) : null}
       </div>
     </main>
+  );
+}
+
+function interventionDetailTabFromSearchParam(value?: string | string[]): InterventionDetailTab {
+  const tab = Array.isArray(value) ? value[0] : value;
+
+  return INTERVENTION_DETAIL_TABS.some((item) => item.id === tab)
+    ? (tab as InterventionDetailTab)
+    : "brief";
+}
+
+function interventionDetailTabHref(slug: string, tab: InterventionDetailTab) {
+  return tab === "brief" ? `/interventions/${slug}` : `/interventions/${slug}?tab=${tab}`;
+}
+
+function interventionDetailTabsWithBadges({
+  australiaStatuses,
+  claims,
+  productSignals,
+  safetyAlerts,
+  scoreHistory,
+  sourcePackets,
+  trialWatchItems
+}: {
+  australiaStatuses: AustraliaRegulatoryStatus[];
+  claims: Claim[];
+  productSignals: ProductSignal[];
+  safetyAlerts: SafetyAlert[];
+  scoreHistory: NonNullable<EvidenceDashboardData["claimScoreHistory"]>;
+  sourcePackets: ClaimPacketPair[];
+  trialWatchItems: EvidenceDashboardData["trialWatchItems"];
+}): InterventionDetailTabItem[] {
+  const safetyRows =
+    safetyAlerts.length + trialWatchItems.length + australiaStatuses.length + productSignals.length;
+
+  return INTERVENTION_DETAIL_TABS.map((tab) => {
+    switch (tab.id) {
+      case "claims":
+        return { ...tab, badge: String(claims.length) };
+      case "sources":
+        return { ...tab, badge: String(sourcePackets.length) };
+      case "safety":
+        return { ...tab, badge: safetyRows > 0 ? String(safetyRows) : undefined };
+      case "audit":
+        return { ...tab, badge: String(claims.length + scoreHistory.length) };
+      case "brief":
+      case "overview":
+        return tab;
+    }
+  });
+}
+
+function InterventionDetailTabs({
+  activeTab,
+  slug,
+  tabs
+}: {
+  activeTab: InterventionDetailTab;
+  slug: string;
+  tabs: InterventionDetailTabItem[];
+}) {
+  return (
+    <nav
+      aria-label="Intervention detail sections"
+      className="rounded-lg border border-line bg-white p-2 shadow-panel"
+    >
+      <div className="flex gap-2 overflow-x-auto">
+        {tabs.map((tab) => {
+          const isActive = tab.id === activeTab;
+
+          return (
+            <Link
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold transition",
+                isActive
+                  ? "border-signal bg-blue-50 text-signal"
+                  : "border-transparent bg-white text-slate-700 hover:border-signal/40 hover:bg-mist"
+              )}
+              href={interventionDetailTabHref(slug, tab.id)}
+              key={tab.id}
+            >
+              {tab.label}
+              {tab.badge ? (
+                <span
+                  className={cn(
+                    "rounded-full px-2 py-0.5 text-[11px]",
+                    isActive ? "bg-white text-signal" : "bg-mist text-slate-600"
+                  )}
+                >
+                  {tab.badge}
+                </span>
+              ) : null}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 }
 
@@ -487,16 +706,798 @@ type SupplementPracticalReadout = {
   whyItStandsOut: string[];
 };
 
-function DetailedEvidenceSummary({
+type ReaderOutcomeRow = ClaimPacketPair & {
+  scoreState: ClaimScorePresentation;
+};
+
+type ReaderOutcomeVerdict = {
+  kind: "caution" | "insufficient" | "possible" | "risk" | "unclear";
+  label: string;
+  tone: string;
+};
+
+function buildReaderOutcomeRows(
+  sourcePackets: ClaimPacketPair[],
+  readinessByClaimId: Map<string, ScoreReadinessRow>
+): ReaderOutcomeRow[] {
+  return sourcePackets
+    .map((row) => ({
+      ...row,
+      scoreState: claimScorePresentation(row.claim, readinessByClaimId.get(row.claim.id))
+    }))
+    .sort((left, right) => readerOutcomePriority(right) - readerOutcomePriority(left));
+}
+
+function readerOutcomePriority({ claim, packet, scoreState }: ReaderOutcomeRow) {
+  const matureBenefit =
+    isPracticalBenefitClaim(claim) &&
+    isPracticalSummaryMatureClaim(claim) &&
+    packet.completeness.status === "complete";
+  const readableEvidence = packet.completeness.status === "complete" ? 10 : 0;
+  const maturity = matureBenefit ? 40 : 0;
+  const riskPriority = isAdverseDirectionClaim(claim) ? 60 : 0;
+  const labelPenalty = [
+    "Avoid / Not Recommended",
+    "Regulatory Concern",
+    "Requires Clinician Oversight",
+    "Safety Concern"
+  ].includes(claim.finalLabel)
+    ? 15
+    : 0;
+
+  return riskPriority + maturity + readableEvidence + (scoreState.score ?? 0) - labelPenalty;
+}
+
+function readerOutcomeVerdict(row: ReaderOutcomeRow): ReaderOutcomeVerdict {
+  const { claim, packet, scoreState } = row;
+
+  if (isAdverseDirectionClaim(claim)) {
+    return {
+      kind: "risk",
+      label: "Possible risk",
+      tone: "border-danger/30 bg-red-50 text-danger"
+    };
+  }
+
+  if (
+    claim.finalLabel === "Avoid / Not Recommended" ||
+    claim.finalLabel === "Regulatory Concern" ||
+    claim.finalLabel === "Requires Clinician Oversight" ||
+    claim.finalLabel === "Safety Concern"
+  ) {
+    return {
+      kind: "caution",
+      label: "Caution / unclear",
+      tone: "border-amberline/30 bg-amber-50 text-amberline"
+    };
+  }
+
+  if (scoreState.score === null || packet.completeness.status !== "complete") {
+    return {
+      kind: "unclear",
+      label: "Not enough data",
+      tone: "border-slate-300 bg-slate-50 text-slate-700"
+    };
+  }
+
+  if (claim.finalLabel === "Insufficient Evidence") {
+    return {
+      kind: "insufficient",
+      label: "No clear benefit",
+      tone: "border-slate-300 bg-slate-50 text-slate-700"
+    };
+  }
+
+  if (claim.confidenceLevel === "Low" || claim.confidenceLevel === "Very low") {
+    return {
+      kind: "unclear",
+      label: "Evidence unclear",
+      tone: "border-amberline/30 bg-amber-50 text-amberline"
+    };
+  }
+
+  return {
+    kind: "possible",
+    label: "May help in studied settings",
+    tone: "border-spruce/30 bg-teal-50 text-spruce"
+  };
+}
+
+function readerOutcomeFinding(intervention: Intervention, row: ReaderOutcomeRow) {
+  const verdict = readerOutcomeVerdict(row);
+  const curatedSummary = cleanStudyText(row.claim.summary ?? "");
+
+  if (verdict.kind === "risk" && curatedSummary) {
+    return firstSentence(curatedSummary);
+  }
+
+  if (verdict.kind === "caution") {
+    return "This outcome is tracked mainly as a caution or unresolved signal, not as a demonstrated benefit.";
+  }
+
+  if (verdict.kind === "insufficient") {
+    return "The current local evidence does not show a clear benefit for this outcome.";
+  }
+
+  if (verdict.kind === "unclear") {
+    return `Research is linked to this outcome, but the evidence is too uncertain to say whether ${intervention.name} helps.`;
+  }
+
+  return curatedSummary
+    ? firstSentence(curatedSummary)
+    : "The linked evidence suggests a possible benefit in the studied setting, but the result should not be generalized beyond that context.";
+}
+
+function readerOutcomeCaveat({ claim, packet }: ReaderOutcomeRow) {
+  if (packet.completeness.status !== "complete") {
+    return "Some linked evidence has not been fully extracted or checked yet.";
+  }
+
+  if (claim.confidenceLevel === "Very low") {
+    return "Very low confidence. Source relevance and outcome matching still need review.";
+  }
+
+  if (claim.confidenceLevel === "Low") {
+    return "Low confidence. The conclusion may change as the source set is reviewed.";
+  }
+
+  const curatedUncertainty = cleanStudyText(claim.uncertainty ?? "");
+  return curatedUncertainty
+    ? firstSentence(curatedUncertainty.replace(/^Uncertainty(?: remains because|:)\s*/i, ""))
+    : "The result still depends on the studied population, product form, duration, and outcome.";
+}
+
+function readerBottomLine(intervention: Intervention, rows: ReaderOutcomeRow[]) {
+  const matureBenefits = rows.filter(
+    ({ claim, packet }) =>
+      isPracticalBenefitClaim(claim) &&
+      isPracticalSummaryMatureClaim(claim) &&
+      packet.completeness.status === "complete"
+  );
+
+  if (matureBenefits.length > 0) {
+    const outcomes = matureBenefits.map(({ claim }) => shortOutcome(claim.outcome));
+    return `The clearest current evidence for ${intervention.name} relates to ${naturalJoin(outcomes)}. Even these findings are limited to the studied populations, forms, durations, and outcomes; they are not a recommendation or proof for every product or person.`;
+  }
+
+  if (rows.length > 0) {
+    const outcomes = rows.slice(0, 3).map(({ claim }) => shortOutcome(claim.outcome));
+    return `The local evidence does not yet support a clear, settled health benefit for ${intervention.name}. Research is linked across ${naturalJoin(outcomes)}${rows.length > 3 ? " and other outcomes" : ""}, but the leading claims are still low-confidence or unreviewed.`;
+  }
+
+  return `There is not enough reviewed local evidence to summarize a clear health benefit for ${intervention.name} yet.`;
+}
+
+function readerOverallConfidence(rows: ReaderOutcomeRow[]) {
+  // Human confirmation, not merely "someone looked at it". This drives the
+  // site's strongest reader-facing confidence badge, so AI review must not be
+  // able to raise it — that is the laundering `AI reviewed` exists to prevent.
+  const reviewedHighConfidence = rows.some(
+    ({ claim, packet }) =>
+      claim.confidenceLevel === "High" &&
+      isHumanConfirmed(claim.reviewStatus) &&
+      packet.completeness.status === "complete" &&
+      isPracticalBenefitClaim(claim)
+  );
+  const matureEvidence = rows.some(
+    ({ claim, packet }) =>
+      (claim.confidenceLevel === "High" || claim.confidenceLevel === "Moderate") &&
+      packet.completeness.status === "complete" &&
+      isPracticalBenefitClaim(claim)
+  );
+
+  if (reviewedHighConfidence) {
+    return {
+      label: "Overall confidence: higher",
+      tone: "border-spruce/30 bg-teal-50 text-spruce"
+    };
+  }
+
+  if (matureEvidence) {
+    return {
+      label: "Overall confidence: moderate",
+      tone: "border-signal/25 bg-blue-50 text-signal"
+    };
+  }
+
+  return {
+    label: "Overall confidence: low",
+    tone: "border-amberline/30 bg-amber-50 text-amberline"
+  };
+}
+
+function readerReviewLabel(sourcePackets: ClaimPacketPair[]) {
+  const claims = sourcePackets.map(({ claim }) => claim);
+  const humanReviewed = claims.filter(({ reviewStatus }) => reviewStatus === "Human reviewed").length;
+
+  if (claims.length > 0 && humanReviewed === claims.length) {
+    return "Review status: Human reviewed";
+  }
+
+  if (humanReviewed > 0) {
+    return "Review status: mixed";
+  }
+
+  return "Review status: AI-assisted draft";
+}
+
+function ReaderEvidenceOverview({
   australiaStatuses,
   intervention,
+  practicalReadout,
+  productAustraliaStatuses,
+  productSignals,
+  safetyAlerts,
+  sourcePackets,
+  outcomeRows
+}: {
+  australiaStatuses: AustraliaRegulatoryStatus[];
+  intervention: Intervention;
+  practicalReadout: SupplementPracticalReadout;
+  productAustraliaStatuses: AustraliaRegulatoryStatus[];
+  productSignals: ProductSignal[];
+  safetyAlerts: SafetyAlert[];
+  sourcePackets: ClaimPacketPair[];
+  outcomeRows: ReaderOutcomeRow[];
+}) {
+  const confidence = readerOverallConfidence(outcomeRows);
+  const references = uniqueReferences(sourcePackets.flatMap(({ packet }) => packet.references));
+  const studies = uniqueStudies(sourcePackets.flatMap(({ packet }) => packet.studies));
+  const humanReviewed = sourcePackets.filter(({ claim }) => isHumanReviewed(claim.reviewStatus)).length;
+  const unreviewed = sourcePackets.length - humanReviewed;
+  const safetyRows = outcomeRows.filter(({ claim }) => claim.outcome === "Safety/adverse effects");
+  const safetyStudies = uniqueStudies(safetyRows.flatMap(({ packet }) => packet.studies));
+  const unknowns = [
+    unreviewed > 0
+      ? `${unreviewed} of ${sourcePackets.length} outcome summaries have not been human reviewed.`
+      : "All visible outcome summaries have a recorded human review.",
+    ...practicalReadout.doesNotProve.slice(0, 2)
+  ];
+
+  return (
+    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-signal">Evidence brief</p>
+          <h2 className="mt-1 text-xl font-semibold text-ink">What the evidence says</h2>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs font-semibold">
+          <span className={cn("rounded-md border px-2 py-1", confidence.tone)}>
+            {confidence.label}
+          </span>
+          <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-slate-700">
+            {readerReviewLabel(sourcePackets)}
+          </span>
+        </div>
+      </div>
+
+      <section className="mt-4 rounded-md border border-signal/20 bg-blue-50 p-4">
+        <h3 className="text-sm font-semibold text-ink">Bottom line</h3>
+        <p className="mt-2 max-w-4xl text-base leading-7 text-slate-800">
+          {readerBottomLine(intervention, outcomeRows)}
+        </p>
+      </section>
+
+      <CrossStudyEvidenceSummary
+        intervention={intervention}
+        outcomeRows={outcomeRows}
+        productAustraliaStatuses={productAustraliaStatuses}
+        productSignals={productSignals}
+        safetyAlerts={safetyAlerts}
+        sourcePackets={sourcePackets}
+      />
+
+      <div className="mt-5 grid gap-3 lg:grid-cols-2">
+        <section className="rounded-md border border-amberline/30 bg-amber-50 p-4 text-amber-950">
+          <h3 className="text-base font-semibold">Safety and interactions</h3>
+          <p className="mt-2 text-sm leading-6">{intervention.safetySummary}</p>
+          <p className="mt-2 text-sm leading-6">{intervention.interactionSummary}</p>
+          <p className="mt-3 rounded-md border border-amberline/20 bg-white px-3 py-2 text-xs leading-5">
+            The local record contains {safetyRows.length} scoped safety claim
+            {safetyRows.length === 1 ? "" : "s"} and {safetyStudies.length} linked safety-related
+            study record{safetyStudies.length === 1 ? "" : "s"}. These records provide context;
+            they do not prove product-level safety.
+          </p>
+          {safetyAlerts.length > 0 ? (
+            <ul className="mt-3 list-disc space-y-1.5 pl-4 text-sm leading-6">
+              {safetyAlerts.slice(0, 2).map((alert) => (
+                <li key={alert.id}>{firstSentence(alert.summary)}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm font-semibold leading-6">
+              No local safety alerts were found. This does not mean the supplement is safe.
+            </p>
+          )}
+          <a
+            className="mt-3 inline-flex text-sm font-semibold text-amber-950 underline"
+            href={`/interventions/${intervention.slug}?tab=safety`}
+          >
+            Read safety and trial details
+          </a>
+        </section>
+
+        <section className="rounded-md border border-line bg-mist p-4">
+          <h3 className="text-base font-semibold text-ink">What we still do not know</h3>
+          <ul className="mt-3 list-disc space-y-2 pl-4 text-sm leading-6 text-slate-700">
+            {unknowns.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      </div>
+
+      <section className="mt-3 rounded-md border border-amberline/25 bg-white p-3">
+        <h3 className="text-sm font-semibold text-ink">Australian product status</h3>
+        <p className="mt-1 text-sm leading-6 text-slate-700">
+          Ingredient-level evidence does not confirm the safety, quality, effectiveness, or
+          AUST/ARTG status of a particular product.
+          {productAustraliaStatuses.length > 0
+            ? ` ${productAustraliaStatuses.length} product-level AU/TGA record${productAustraliaStatuses.length === 1 ? " is" : "s are"} attached, but exact status remains product-specific.`
+            : " No product-level AU/TGA record is attached here."}
+        </p>
+        <p className="mt-2 text-xs leading-5 text-slate-600">
+          Local context attached: {australiaStatuses.length} intervention-level AU/TGA record
+          {australiaStatuses.length === 1 ? "" : "s"}, {productSignals.length} matching product
+          signal{productSignals.length === 1 ? "" : "s"}, and {productAustraliaStatuses.length}{" "}
+          product-level AU/TGA record{productAustraliaStatuses.length === 1 ? "" : "s"}.
+        </p>
+      </section>
+
+      <section className="mt-3 rounded-md border border-line bg-mist p-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">Evidence trail</h3>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              {references.length} linked source{references.length === 1 ? "" : "s"} · {studies.length}{" "}
+              extracted study record{studies.length === 1 ? "" : "s"} · {humanReviewed}/
+              {sourcePackets.length} outcome summaries human reviewed
+            </p>
+          </div>
+          <a
+            className="w-fit rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-signal hover:border-signal"
+            href={`/interventions/${intervention.slug}?tab=sources`}
+          >
+            View all sources
+          </a>
+        </div>
+      </section>
+
+      <section className="mt-6 border-t border-line pt-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-ink">
+              Supporting detail: evidence by health outcome
+            </h3>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+              Use this section when you want to inspect a particular claim. Every scoped outcome
+              remains available with its score, confidence, source coverage, and limitations, but
+              these buckets are supporting detail rather than the overall conclusion.
+            </p>
+          </div>
+          <span className="w-fit rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-700">
+            {outcomeRows.length} outcome{outcomeRows.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        {outcomeRows.length > 0 ? (
+          <div className="mt-4 grid gap-4">
+            {outcomeRows.map((row) => (
+              <ReaderOutcomeEvidenceCard
+                intervention={intervention}
+                key={row.claim.id}
+                row={row}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState>No scoped outcome rows are attached to this supplement yet.</EmptyState>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function CrossStudyEvidenceSummary({
+  intervention,
+  outcomeRows,
+  productAustraliaStatuses,
+  productSignals,
+  safetyAlerts,
+  sourcePackets
+}: {
+  intervention: Intervention;
+  outcomeRows: ReaderOutcomeRow[];
+  productAustraliaStatuses: AustraliaRegulatoryStatus[];
+  productSignals: ProductSignal[];
+  safetyAlerts: SafetyAlert[];
+  sourcePackets: ClaimPacketPair[];
+}) {
+  const references = uniqueReferences(sourcePackets.flatMap(({ packet }) => packet.references));
+  const studies = uniqueStudies(sourcePackets.flatMap(({ packet }) => packet.studies));
+  const studyTypes = summarizeStudyTypes(studies);
+  const humanReviewed = outcomeRows.filter(({ claim }) =>
+    isHumanReviewed(claim.reviewStatus)
+  ).length;
+  const lowConfidence = outcomeRows.filter(
+    ({ claim }) => claim.confidenceLevel === "Low" || claim.confidenceLevel === "Very low"
+  ).length;
+  const incomplete = outcomeRows.filter(
+    ({ packet, scoreState }) =>
+      packet.completeness.status !== "complete" || scoreState.score === null
+  ).length;
+  const matureSignals = outcomeRows.filter(
+    ({ claim, packet }) =>
+      claim.outcome !== "Safety/adverse effects" &&
+      isPracticalBenefitClaim(claim) &&
+      isPracticalSummaryMatureClaim(claim) &&
+      isHumanReviewed(claim.reviewStatus) &&
+      packet.completeness.status === "complete"
+  );
+  const cautionSignals = outcomeRows.filter(
+    ({ claim }) =>
+      isAdverseDirectionClaim(claim) ||
+      [
+        "Avoid / Not Recommended",
+        "Regulatory Concern",
+        "Requires Clinician Oversight",
+        "Safety Concern"
+      ].includes(claim.finalLabel)
+  ).length;
+  const safetyRows = outcomeRows.filter(({ claim }) => claim.outcome === "Safety/adverse effects");
+  const safetyStudies = uniqueStudies(safetyRows.flatMap(({ packet }) => packet.studies));
+  const matureOutcomes = matureSignals
+    .slice(0, 3)
+    .map(({ claim }) => shortOutcome(claim.outcome));
+  const overallPattern =
+    matureSignals.length > 0
+      ? `Taken together, the local record has its clearest supportive evidence in ${naturalJoin(
+          matureOutcomes
+        )}. That pattern is limited to the populations, forms, durations, comparators, and endpoints actually studied; the remaining evidence does not establish a broad all-purpose benefit for ${intervention.name}.`
+      : outcomeRows.length === 0
+        ? `The local catalog does not yet contain enough scoped, extracted evidence to form an overall conclusion for ${intervention.name}.`
+        : `Taken together, the linked research does not yet add up to a dependable overall health-benefit conclusion for ${intervention.name}. The studies examine different populations, forms, durations, and outcomes, while confidence, review maturity, or source completeness remains limited. This is a map of research leads, not one universal effect.`;
+
+  return (
+    <section
+      className="mt-5 rounded-lg border border-spruce/25 bg-teal-50 p-4"
+      id="whole-evidence-summary"
+    >
+      <p className="text-xs font-semibold uppercase tracking-wide text-spruce">
+        Cross-study summary
+      </p>
+      <h3 className="mt-1 text-lg font-semibold text-ink">The evidence as a whole</h3>
+      <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
+        This view summarizes the full local study set across all linked outcomes. The outcome cards
+        remain below as the source-traceable supporting detail.
+      </p>
+
+      <section className="mt-4 rounded-md border border-spruce/20 bg-white p-4">
+        <h4 className="text-sm font-semibold text-ink">Overall pattern</h4>
+        <p className="mt-2 text-base leading-7 text-slate-800">{overallPattern}</p>
+      </section>
+
+      <div className="mt-3 grid gap-3 lg:grid-cols-3">
+        <section className="rounded-md border border-line bg-white p-3">
+          <h4 className="text-sm font-semibold text-ink">What researchers studied</h4>
+          <p className="mt-2 text-sm leading-6 text-slate-700">
+            The local evidence map links {references.length} article
+            {references.length === 1 ? "" : "s"} and contains {studies.length} extracted study
+            record{studies.length === 1 ? "" : "s"}.
+          </p>
+          <p className="mt-2 text-xs leading-5 text-slate-600">
+            Study mix: {studyTypes || "study designs have not been classified yet"}.
+          </p>
+        </section>
+
+        <section className="rounded-md border border-line bg-white p-3">
+          <h4 className="text-sm font-semibold text-ink">How dependable is the overall picture?</h4>
+          <p className="mt-2 text-sm leading-6 text-slate-700">
+            {lowConfidence} of {outcomeRows.length} scoped conclusions are low or very-low
+            confidence, {incomplete} still have incomplete source or score work, and {humanReviewed}
+            {" "}have recorded human review.
+          </p>
+          <p className="mt-2 text-xs leading-5 text-slate-600">
+            A large number of studies does not by itself make the conclusion reliable; relevance,
+            consistency, study quality, and review status still matter.
+          </p>
+        </section>
+
+        <section className="rounded-md border border-line bg-white p-3">
+          <h4 className="text-sm font-semibold text-ink">Safety and product context</h4>
+          <p className="mt-2 text-sm leading-6 text-slate-700">
+            The local record includes {safetyRows.length} scoped safety claim
+            {safetyRows.length === 1 ? "" : "s"}, {safetyStudies.length} study record
+            {safetyStudies.length === 1 ? "" : "s"} linked to those claims, and{" "}
+            {safetyAlerts.length} local alert{safetyAlerts.length === 1 ? "" : "s"}.
+          </p>
+          <p className="mt-2 text-xs leading-5 text-slate-600">
+            {cautionSignals} caution or adverse signal{cautionSignals === 1 ? " is" : "s are"}{" "}
+            tracked. {productSignals.length} product signal{productSignals.length === 1 ? "" : "s"}{" "}
+            and {productAustraliaStatuses.length} product-level AU/TGA record
+            {productAustraliaStatuses.length === 1 ? " is" : "s are"} attached.
+            {safetyAlerts.length === 0
+              ? " No local alert was found; this does not establish safety."
+              : " Local alerts should be read as scoped safety signals, not complete product risk profiles."}{" "}
+            This does not
+            establish product-level safety, effectiveness, quality, or AUST/ARTG status.
+          </p>
+        </section>
+      </div>
+
+      <section className="mt-3 rounded-md border border-spruce/20 bg-white p-3">
+        <h4 className="text-sm font-semibold text-ink">What this means for an average reader</h4>
+        <p className="mt-2 text-sm leading-6 text-slate-700">
+          Read the overall pattern first. Use the individual outcomes only to understand where a
+          signal came from and what its limits are—not as a menu of proven benefits or a
+          recommendation to use a particular supplement product.
+        </p>
+      </section>
+    </section>
+  );
+}
+
+function ReaderOutcomeEvidenceCard({
+  intervention,
+  row
+}: {
+  intervention: Intervention;
+  row: ReaderOutcomeRow;
+}) {
+  const { claim, packet, scoreState } = row;
+  const verdict = readerOutcomeVerdict(row);
+  const references = uniqueReferences(packet.references);
+  const studies = uniqueStudies(packet.studies);
+  const studyTypes = summarizeStudyTypes(studies);
+  const storedSummary = cleanStudyText(claim.summary ?? "");
+  const representativeFinding = topStudyFindingSummaries(studies, 1)[0] ?? "";
+  const direction = claimEvidenceDirectionLabel(claim);
+
+  return (
+    <article className="rounded-lg border border-line bg-mist p-4" id={`overview-claim-${claim.id}`}>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Health outcome
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-ink">{shortOutcome(claim.outcome)}</h4>
+          {direction ? (
+            <p className="mt-1 text-xs font-semibold text-slate-600">
+              Evidence direction: {direction}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
+          <span className={cn("rounded-md border px-2 py-1", verdict.tone)}>
+            {verdict.label}
+          </span>
+          <span className={cn("rounded-md border px-2 py-1", scoreState.tone)}>
+            {scoreState.score === null
+              ? scoreState.compositeLabel
+              : `Score ${scoreState.score.toFixed(1)} · ${scoreState.tableBand}`}
+          </span>
+          <span className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700">
+            {claim.confidenceLevel} confidence
+          </span>
+          <span className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700">
+            {reviewStatusLabel(claim.reviewStatus)}
+          </span>
+          <span
+            className={cn(
+              "rounded-md border px-2 py-1",
+              sourcePacketCompletenessTone(packet.completeness.status)
+            )}
+          >
+            {packet.completeness.label}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <section className="rounded-md border border-line bg-white p-3">
+          <h5 className="text-sm font-semibold text-ink">What the evidence currently says</h5>
+          <p className="mt-2 text-sm leading-6 text-slate-700">
+            {readerOutcomeFinding(intervention, row)}
+          </p>
+          {storedSummary ? (
+            <div className="mt-3 rounded-md border border-amberline/20 bg-amber-50 px-3 py-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                {isHumanReviewed(claim.reviewStatus)
+                  ? "Reviewed catalog summary"
+                  : "Unreviewed catalog summary"}
+              </p>
+              <p className="mt-1 text-sm leading-6 text-slate-700">
+                {firstSentence(storedSummary)}
+              </p>
+            </div>
+          ) : null}
+        </section>
+        <section className="rounded-md border border-line bg-white p-3">
+          <h5 className="text-sm font-semibold text-ink">Evidence base</h5>
+          <p className="mt-2 text-sm leading-6 text-slate-700">
+            {references.length} linked article{references.length === 1 ? "" : "s"} and{" "}
+            {studies.length} extracted study record{studies.length === 1 ? "" : "s"}
+            {studyTypes ? ` (${studyTypes}).` : "."}
+          </p>
+          <p className="mt-2 text-xs leading-5 text-slate-600">{packet.completeness.detail}</p>
+        </section>
+        <section className="rounded-md border border-line bg-white p-3">
+          <h5 className="text-sm font-semibold text-ink">Why confidence is limited</h5>
+          <p className="mt-2 text-sm leading-6 text-slate-700">{readerOutcomeCaveat(row)}</p>
+          <p className="mt-2 text-xs leading-5 text-slate-600">
+            Population, dose or form, duration, comparator, product quality, and AU/TGA product
+            status remain claim-specific boundaries.
+          </p>
+        </section>
+        <section className="rounded-md border border-line bg-white p-3">
+          <h5 className="text-sm font-semibold text-ink">What would make this clearer</h5>
+          <p className="mt-2 text-sm leading-6 text-slate-700">{claim.whatWouldChangeScore}</p>
+        </section>
+      </div>
+
+      {storedSummary || representativeFinding ? (
+        <details className="group/outcome mt-3 rounded-md border border-line bg-white [&_summary::-webkit-details-marker]:hidden">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-semibold text-ink outline-none hover:bg-mist focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-signal/20">
+            <span>Stored claim wording and representative study text</span>
+            <ChevronDown
+              aria-hidden="true"
+              className="h-4 w-4 shrink-0 text-slate-600 transition group-open/outcome:rotate-180"
+            />
+          </summary>
+          <div className="grid gap-3 border-t border-line p-3 text-sm leading-6 text-slate-700">
+            <Detail label="Claim being assessed" value={claim.claimText} />
+            {storedSummary ? (
+              <Detail
+                label="Stored claim summary (draft wording)"
+                value={storedSummary}
+              />
+            ) : null}
+            {representativeFinding ? (
+              <Detail
+                label="Representative source extract — outcome match may still need review"
+                value={representativeFinding}
+              />
+            ) : null}
+            {claim.uncertainty ? (
+              <Detail label="Stored uncertainty note" value={claim.uncertainty} />
+            ) : null}
+          </div>
+        </details>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap gap-3 text-sm font-semibold">
+        <a
+          className="text-signal hover:underline"
+          href={`/interventions/${intervention.slug}?tab=claims#claim-${claim.id}`}
+        >
+          Read the full claim record
+        </a>
+        <a
+          className="text-signal hover:underline"
+          href={`/interventions/${intervention.slug}?tab=sources`}
+        >
+          Open its source trail
+        </a>
+      </div>
+    </article>
+  );
+}
+
+function ReaderSourceWorkOverview({
+  intervention,
+  scoredRows,
+  sourceGapRows,
+  sourcePackets
+}: {
+  intervention: Intervention;
+  scoredRows: Array<ClaimPacketPair & { scoreState: ClaimScorePresentation }>;
+  sourceGapRows: ClaimPacketPair[];
+  sourcePackets: ClaimPacketPair[];
+}) {
+  const completePackets = sourcePackets.filter(
+    ({ packet }) => packet.completeness.status === "complete"
+  ).length;
+  const extractedReferences = sourceGapRows.reduce(
+    (total, { packet }) => total + packet.completeness.extractedReferences,
+    0
+  );
+  const totalReferences = sourceGapRows.reduce(
+    (total, { packet }) => total + packet.completeness.totalReferences,
+    0
+  );
+
+  return (
+    <section className="rounded-lg border border-amberline/30 bg-amber-50 p-4 text-amber-950 shadow-panel">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+            Evidence still being checked
+          </p>
+          <h3 className="mt-1 text-base font-semibold">Where the evidence record is incomplete</h3>
+          <p className="mt-2 max-w-4xl text-sm leading-6">
+            These outcomes have missing extraction or source-review work. Their stored scores and
+            summaries should not be treated as settled conclusions until the gaps below are fixed.
+          </p>
+        </div>
+        <span className="rounded-md border border-amberline/30 bg-white px-2 py-1 text-xs font-semibold">
+          {sourceGapRows.length} incomplete outcome{sourceGapRows.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <SourceWorkDrilldownStat
+          label="Outcomes with a displayed score"
+          value={`${scoredRows.length}/${sourcePackets.length}`}
+        />
+        <SourceWorkDrilldownStat
+          label="Complete evidence packets"
+          value={`${completePackets}/${sourcePackets.length}`}
+        />
+        <SourceWorkDrilldownStat
+          label="Outcomes still blocked"
+          value={sourceGapRows.length.toLocaleString()}
+        />
+        <SourceWorkDrilldownStat
+          label="Linked references extracted"
+          value={`${extractedReferences.toLocaleString()}/${totalReferences.toLocaleString()}`}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {sourceGapRows.map(({ claim, packet }) => (
+          <article className="rounded-md border border-amberline/20 bg-white p-3" key={claim.id}>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <a
+                className="text-sm font-semibold text-ink underline"
+                href={`/interventions/${intervention.slug}?tab=claims#claim-${claim.id}`}
+              >
+                {shortOutcome(claim.outcome)}
+              </a>
+              <span
+                className={cn(
+                  "rounded-md border px-2 py-1 text-xs font-semibold",
+                  sourcePacketCompletenessTone(packet.completeness.status)
+                )}
+              >
+                {sourceGapBlockerLabel(packet)}
+              </span>
+            </div>
+            <p className="mt-2 text-xs leading-5">
+              <span className="font-semibold text-ink">What is missing:</span>{" "}
+              {sourceGapSummary(claim, packet)}
+            </p>
+            <p className="mt-2 text-xs leading-5">
+              <span className="font-semibold text-ink">Why it matters:</span>{" "}
+              {sourceGapBlockedReason(packet)}
+            </p>
+            <p className="mt-2 text-xs leading-5">
+              <span className="font-semibold text-ink">What needs to happen next:</span>{" "}
+              {packet.completeness.nextStep}
+            </p>
+            <p className="mt-2 text-xs font-semibold text-slate-600">
+              Audit status: {packet.completeness.label} · {packet.completeness.extractedReferences}/
+              {packet.completeness.totalReferences} linked references extracted
+            </p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DetailedEvidenceSummary({
+  australiaStatuses,
+  compact = false,
+  intervention,
+  productAustraliaStatuses,
   productSignals,
   readinessByClaimId,
   safetyAlerts,
   sourcePackets
 }: {
   australiaStatuses: AustraliaRegulatoryStatus[];
+  compact?: boolean;
   intervention: Intervention;
+  productAustraliaStatuses: AustraliaRegulatoryStatus[];
   productSignals: ProductSignal[];
   readinessByClaimId: Map<string, ScoreReadinessRow>;
   safetyAlerts: SafetyAlert[];
@@ -518,6 +1519,7 @@ function DetailedEvidenceSummary({
   const sourceGapRows = sourcePackets
     .filter((row) => row.packet.completeness.status !== "complete")
     .sort(sourceGapRowSort);
+  const displayedSourceGapRows = sourceGapRows;
   const references = uniqueReferences(sourcePackets.flatMap((row) => row.packet.references));
   const studies = uniqueStudies(sourcePackets.flatMap((row) => row.packet.studies));
   const studyTypeSummary = summarizeStudyTypes(studies);
@@ -527,6 +1529,7 @@ function DetailedEvidenceSummary({
     australiaStatuses,
     incompleteRows,
     intervention,
+    productAustraliaStatuses,
     productSignals,
     safetyAlerts,
     scoredRows,
@@ -537,6 +1540,7 @@ function DetailedEvidenceSummary({
     australiaStatuses,
     incompleteRows,
     intervention,
+    productAustraliaStatuses,
     productSignals,
     references,
     safetyAlerts,
@@ -544,11 +1548,71 @@ function DetailedEvidenceSummary({
     sourcePackets,
     studies
   });
+  const readerOutcomeRows = buildReaderOutcomeRows(sourcePackets, readinessByClaimId);
 
   return (
     <div className="grid gap-4">
+      {compact ? (
+        <ReaderEvidenceOverview
+          australiaStatuses={australiaStatuses}
+          intervention={intervention}
+          outcomeRows={readerOutcomeRows}
+          practicalReadout={practicalReadout}
+          productAustraliaStatuses={productAustraliaStatuses}
+          productSignals={productSignals}
+          safetyAlerts={safetyAlerts}
+          sourcePackets={sourcePackets}
+        />
+      ) : null}
+
+      {compact ? (
+        <>
+          <SupplementPracticalReadoutPanel readout={practicalReadout} />
+          {sourceGapRows.length > 0 ? (
+            <ReaderSourceWorkOverview
+              intervention={intervention}
+              scoredRows={scoredRows}
+              sourceGapRows={sourceGapRows}
+              sourcePackets={sourcePackets}
+            />
+          ) : null}
+        </>
+      ) : null}
+
+      <details
+        className="group/technical rounded-lg border border-line bg-white shadow-panel [&_summary::-webkit-details-marker]:hidden"
+        open={!compact}
+      >
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 outline-none transition hover:bg-mist focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-signal/20">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">
+              Study details, original synthesis, and audit notes
+            </h3>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Study extracts, source counts, uncertainty notes, and audit scores for readers who
+              want the technical detail.
+            </p>
+          </div>
+          <ChevronDown
+            aria-hidden="true"
+            className="h-4 w-4 shrink-0 text-slate-600 transition group-open/technical:rotate-180"
+          />
+        </summary>
+        <div className="grid gap-4 border-t border-line p-4">
+      <section className="rounded-md border border-line bg-mist p-3">
+        <h3 className="text-sm font-semibold text-ink">How to read this brief</h3>
+        <p className="mt-2 text-sm leading-6 text-slate-700">
+          This page is an AI-assisted translation of the local evidence trail: linked articles,
+          extracted study rows, trial leads, safety notes, and AU/TGA context. It tries to explain
+          what the evidence appears to say in ordinary language while keeping uncertainty, study
+          limits, and citation links visible.
+        </p>
+      </section>
+
       <section className="rounded-md border border-signal/20 bg-blue-50 p-3">
-        <h3 className="text-sm font-semibold text-ink">Overall evidence summary</h3>
+        <h3 className="text-sm font-semibold text-ink">
+          Overall plain-language evidence summary
+        </h3>
         <div className="mt-2 grid gap-2 text-sm leading-6 text-slate-700">
           {overallSummary.map((paragraph) => (
             <p key={paragraph}>{paragraph}</p>
@@ -556,12 +1620,25 @@ function DetailedEvidenceSummary({
         </div>
       </section>
 
-      <SupplementPracticalReadoutPanel readout={practicalReadout} />
+      {compact ? null : <EvidenceBriefAtAGlance
+        productAustraliaStatuses={productAustraliaStatuses}
+        productSignals={productSignals}
+        safetyAlerts={safetyAlerts}
+        scoredRows={scoredRows}
+        sourceGapRows={sourceGapRows}
+      />}
 
-      {sourceGapRows.length > 0 ? (
+      {compact ? null : <SupplementPracticalReadoutPanel readout={practicalReadout} />}
+
+      {!compact && sourceGapRows.length > 0 ? (
         <section className="rounded-md border border-amberline/30 bg-amber-50 p-3 text-amber-950">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">Evidence gaps to treat as sourcing work</h3>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                Evidence gaps to treat as sourcing work
+              </p>
+              <h3 className="mt-1 text-sm font-semibold">Source Work drilldown</h3>
+            </div>
             <span className="rounded-md border border-amberline/30 bg-white px-2 py-1 text-xs font-semibold">
               {sourceGapRows.length} source {sourceGapRows.length === 1 ? "gap" : "gaps"}
             </span>
@@ -571,24 +1648,60 @@ function DetailedEvidenceSummary({
             conclusions yet; they need linked articles and structured extraction before they should
             influence practical rankings.
           </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <SourceWorkDrilldownStat
+              label="Displayed scores"
+              value={`${scoredRows.length}/${sourcePackets.length}`}
+            />
+            <SourceWorkDrilldownStat
+              label="Complete packets"
+              value={`${
+                sourcePackets.filter((row) => row.packet.completeness.status === "complete").length
+              }/${sourcePackets.length}`}
+            />
+            <SourceWorkDrilldownStat
+              label="Blocked claims"
+              value={sourceGapRows.length.toLocaleString()}
+            />
+            <SourceWorkDrilldownStat
+              label="Linked refs extracted"
+              value={`${sourceGapRows
+                .reduce((total, row) => total + row.packet.completeness.extractedReferences, 0)
+                .toLocaleString()}/${sourceGapRows
+                .reduce((total, row) => total + row.packet.completeness.totalReferences, 0)
+                .toLocaleString()}`}
+            />
+          </div>
           <div className="mt-3 grid gap-2">
-            {sourceGapRows.map(({ claim, packet }) => (
+            {displayedSourceGapRows.map(({ claim, packet }) => (
               <article className="rounded-md border border-amberline/20 bg-white p-3" key={claim.id}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <a className="text-sm font-semibold text-ink underline" href={`#claim-${claim.id}`}>
+                  <a
+                    className="text-sm font-semibold text-ink underline"
+                    href={`/interventions/${intervention.slug}?tab=claims#claim-${claim.id}`}
+                  >
                     {shortOutcome(claim.outcome)}
                   </a>
-                  <span
-                    className={cn(
-                      "rounded-md border px-2 py-1 text-xs font-semibold",
-                      sourcePacketCompletenessTone(packet.completeness.status)
-                    )}
-                  >
-                    {packet.completeness.label}
-                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    <span
+                      className={cn(
+                        "rounded-md border px-2 py-1 text-xs font-semibold",
+                        sourcePacketCompletenessTone(packet.completeness.status)
+                      )}
+                    >
+                      {sourceGapBlockerLabel(packet)}
+                    </span>
+                    <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-600">
+                      {packet.completeness.extractedReferences}/{packet.completeness.totalReferences} refs
+                    </span>
+                  </div>
                 </div>
                 <p className="mt-2 text-xs leading-5 text-slate-700">
                   {sourceGapSummary(claim, packet)}
+                </p>
+                <p className="mt-2 text-xs leading-5 text-slate-700">
+                  <span className="font-semibold text-ink">Why it is Source Work:</span>{" "}
+                  {sourceGapBlockedReason(packet)}
                 </p>
                 <p className="mt-2 text-xs leading-5 text-slate-700">
                   <span className="font-semibold text-ink">Next source step:</span>{" "}
@@ -597,131 +1710,144 @@ function DetailedEvidenceSummary({
               </article>
             ))}
           </div>
+          {compact && sourceGapRows.length > displayedSourceGapRows.length ? (
+            <p className="mt-3 rounded-md border border-amberline/20 bg-white px-3 py-2 text-xs leading-5 text-amber-950">
+              Showing {displayedSourceGapRows.length.toLocaleString()} of{" "}
+              {sourceGapRows.length.toLocaleString()} source-work rows on the overview. Open the
+              claim or source tabs for the complete trace.
+            </p>
+          ) : null}
         </section>
       ) : null}
 
-      <section className="rounded-md border border-line bg-mist p-3">
-        <h3 className="text-sm font-semibold text-ink">Common claims: what the evidence says</h3>
-        {popularClaimRows.length > 0 ? (
-          <div className="mt-3 grid gap-2">
-            {popularClaimRows.map(({ claim, packet, popularClaim, scoreState, verdict }) => (
-              <PopularClaimVerdictRow
-                claim={claim}
-                key={claim.id}
-                packet={packet}
-                popularClaim={popularClaim}
-                scoreState={scoreState}
-                verdict={verdict}
-              />
-            ))}
+      <>
+          <section className="rounded-md border border-line bg-mist p-3">
+            <h3 className="text-sm font-semibold text-ink">Common claims: what the evidence says</h3>
+            {popularClaimRows.length > 0 ? (
+              <div className="mt-3 grid gap-2">
+                {popularClaimRows.map(({ claim, packet, popularClaim, scoreState, verdict }) => (
+                  <PopularClaimVerdictRow
+                    claim={claim}
+                    key={claim.id}
+                    packet={packet}
+                    popularClaim={popularClaim}
+                    scoreState={scoreState}
+                    verdict={verdict}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState>No local claim rows are attached to this supplement yet.</EmptyState>
+            )}
+          </section>
+
+          <section className="rounded-md border border-signal/20 bg-blue-50 p-3">
+            <h3 className="text-sm font-semibold text-ink">Study findings and conclusions</h3>
+            {studyFindingRows.length > 0 ? (
+              <div className="mt-3 grid gap-3">
+                {studyFindingRows.map(({ claim, packet, studies: claimStudies }) => (
+                  <StudyFindingGroup
+                    claim={claim}
+                    key={claim.id}
+                    packet={packet}
+                    studies={claimStudies}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState>
+                No extracted study findings are attached to this supplement yet. Article-level
+                conclusions need to be captured before a detailed evidence synthesis can be shown.
+              </EmptyState>
+            )}
+          </section>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <section className="rounded-md border border-line bg-mist p-3">
+              <h3 className="text-sm font-semibold text-ink">What the evidence supports</h3>
+              {scoredRows.length > 0 ? (
+                <div className="mt-3 grid gap-2">
+                  {scoredRows.map(({ claim, packet, scoreState }) => (
+                    <ClaimEvidenceSummaryRow
+                      claim={claim}
+                      key={claim.id}
+                      packet={packet}
+                      scoreState={scoreState}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <EmptyState>
+                  No claim has a final displayed evidence score yet. Use the claim cards and source
+                  packets below to see what is still being reviewed.
+                </EmptyState>
+              )}
+            </section>
+
+            <section className="rounded-md border border-line bg-mist p-3">
+              <h3 className="text-sm font-semibold text-ink">Where the evidence is limited</h3>
+              {incompleteRows.length > 0 ? (
+                <div className="mt-3 grid gap-2">
+                  {incompleteRows.map(({ claim, packet }) => {
+                    const readinessRow = readinessByClaimId.get(claim.id);
+                    const scoreState = claimScorePresentation(claim, readinessRow);
+                    const limitationSummary =
+                      scoreState.noticeBody ??
+                      (readinessRow
+                        ? scoreReadinessNextAction(readinessRow)
+                        : packet.completeness.nextStep);
+
+                    return (
+                      <article className="rounded-md border border-line bg-white p-3" key={claim.id}>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-ink">
+                            {shortOutcome(claim.outcome)}
+                          </p>
+                          <span
+                            className={cn(
+                              "rounded-md border px-2 py-1 text-xs font-semibold",
+                              sourcePacketCompletenessTone(packet.completeness.status)
+                            )}
+                          >
+                            {packet.completeness.label}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-slate-700">{claim.claimText}</p>
+                        <p className="mt-2 text-xs leading-5 text-slate-600">
+                          {limitationSummary}
+                        </p>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <EmptyState>
+                  All scoped claims currently have complete source packets and displayed scores.
+                </EmptyState>
+              )}
+            </section>
           </div>
-        ) : (
-          <EmptyState>No local claim rows are attached to this supplement yet.</EmptyState>
-        )}
-      </section>
 
-      <section className="rounded-md border border-signal/20 bg-blue-50 p-3">
-        <h3 className="text-sm font-semibold text-ink">Study findings and conclusions</h3>
-        {studyFindingRows.length > 0 ? (
-          <div className="mt-3 grid gap-3">
-            {studyFindingRows.map(({ claim, packet, studies: claimStudies }) => (
-              <StudyFindingGroup
-                claim={claim}
-                key={claim.id}
-                packet={packet}
-                studies={claimStudies}
-              />
-            ))}
-          </div>
-        ) : (
-          <EmptyState>
-            No extracted study findings are attached to this supplement yet. Article-level
-            conclusions need to be captured before a detailed evidence synthesis can be shown.
-          </EmptyState>
-        )}
-      </section>
-
-      <div className="grid gap-3 lg:grid-cols-2">
-        <section className="rounded-md border border-line bg-mist p-3">
-          <h3 className="text-sm font-semibold text-ink">What the evidence supports</h3>
-          {scoredRows.length > 0 ? (
-            <div className="mt-3 grid gap-2">
-              {scoredRows.map(({ claim, packet, scoreState }) => (
-                <ClaimEvidenceSummaryRow
-                  claim={claim}
-                  key={claim.id}
-                  packet={packet}
-                  scoreState={scoreState}
-                />
-              ))}
-            </div>
-          ) : (
-            <EmptyState>
-              No claim has a final displayed evidence score yet. Use the claim cards and source
-              packets below to see what is still being reviewed.
-            </EmptyState>
-          )}
-        </section>
-
-        <section className="rounded-md border border-line bg-mist p-3">
-          <h3 className="text-sm font-semibold text-ink">Where the evidence is limited</h3>
-          {incompleteRows.length > 0 ? (
-            <div className="mt-3 grid gap-2">
-              {incompleteRows.map(({ claim, packet }) => {
-                const readinessRow = readinessByClaimId.get(claim.id);
-                const scoreState = claimScorePresentation(claim, readinessRow);
-                const limitationSummary =
-                  scoreState.noticeBody ??
-                  (readinessRow ? scoreReadinessNextAction(readinessRow) : packet.completeness.nextStep);
-
-                return (
-                  <article className="rounded-md border border-line bg-white p-3" key={claim.id}>
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-ink">{shortOutcome(claim.outcome)}</p>
-                      <span
-                        className={cn(
-                          "rounded-md border px-2 py-1 text-xs font-semibold",
-                          sourcePacketCompletenessTone(packet.completeness.status)
-                        )}
-                      >
-                        {packet.completeness.label}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-xs leading-5 text-slate-700">{claim.claimText}</p>
-                    <p className="mt-2 text-xs leading-5 text-slate-600">
-                      {limitationSummary}
-                    </p>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <EmptyState>
-              All scoped claims currently have complete source packets and displayed scores.
-            </EmptyState>
-          )}
-        </section>
-      </div>
-
-      <section className="rounded-md border border-line bg-mist p-3">
-        <h3 className="text-sm font-semibold text-ink">Source base and article links</h3>
-        <p className="mt-2 text-sm leading-6 text-slate-700">
-          This page currently links {references.length.toLocaleString()} curated article
-          {references.length === 1 ? "" : "s"} and {studies.length.toLocaleString()} extracted
-          study record{studies.length === 1 ? "" : "s"}
-          {studyTypeSummary ? ` (${studyTypeSummary}).` : "."} These links are the source trail for
-          the summaries above.
-        </p>
-        {references.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {references.map((reference) => (
-              <SourceLink key={reference.id} reference={reference} />
-            ))}
-          </div>
-        ) : (
-          <EmptyState>No curated article links are attached to this supplement yet.</EmptyState>
-        )}
-      </section>
+          <section className="rounded-md border border-line bg-mist p-3">
+            <h3 className="text-sm font-semibold text-ink">Source base and article links</h3>
+            <p className="mt-2 text-sm leading-6 text-slate-700">
+              This page currently links {references.length.toLocaleString()} curated article
+              {references.length === 1 ? "" : "s"} and {studies.length.toLocaleString()} extracted
+              study record{studies.length === 1 ? "" : "s"}
+              {studyTypeSummary ? ` (${studyTypeSummary}).` : "."} These links are the source trail
+              for the summaries above.
+            </p>
+            {references.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {references.map((reference) => (
+                  <SourceLink key={reference.id} reference={reference} />
+                ))}
+              </div>
+            ) : (
+              <EmptyState>No curated article links are attached to this supplement yet.</EmptyState>
+            )}
+          </section>
+        </>
 
       <section className="rounded-md border border-amberline/30 bg-amber-50 p-3 text-amber-950">
         <h3 className="text-sm font-semibold">Safety, regulatory, and product context</h3>
@@ -729,12 +1855,15 @@ function DetailedEvidenceSummary({
           {buildSafetyRegulatorySummary({
             australiaStatuses,
             intervention,
+            productAustraliaStatuses,
             productSignals,
             safetyAlerts,
             sourcePackets
           })}
         </p>
       </section>
+        </div>
+      </details>
     </div>
   );
 }
@@ -743,6 +1872,7 @@ function buildSupplementPracticalReadout({
   australiaStatuses,
   incompleteRows,
   intervention,
+  productAustraliaStatuses,
   productSignals,
   safetyAlerts,
   scoredRows,
@@ -752,6 +1882,7 @@ function buildSupplementPracticalReadout({
   australiaStatuses: AustraliaRegulatoryStatus[];
   incompleteRows: ClaimPacketPair[];
   intervention: Intervention;
+  productAustraliaStatuses: AustraliaRegulatoryStatus[];
   productSignals: ProductSignal[];
   safetyAlerts: SafetyAlert[];
   scoredRows: Array<ClaimPacketPair & { scoreState: ClaimScorePresentation }>;
@@ -808,6 +1939,7 @@ function buildSupplementPracticalReadout({
     mainCautions: buildSupplementCautionRows({
       australiaStatuses,
       intervention,
+      productAustraliaStatuses,
       productSignals,
       safetyAlerts,
       sourcePackets
@@ -876,6 +2008,76 @@ function SupplementPracticalReadoutPanel({
   );
 }
 
+function EvidenceBriefAtAGlance({
+  productAustraliaStatuses,
+  productSignals,
+  safetyAlerts,
+  scoredRows,
+  sourceGapRows
+}: {
+  productAustraliaStatuses: AustraliaRegulatoryStatus[];
+  productSignals: ProductSignal[];
+  safetyAlerts: SafetyAlert[];
+  scoredRows: Array<ClaimPacketPair & { scoreState: ClaimScorePresentation }>;
+  sourceGapRows: ClaimPacketPair[];
+}) {
+  const topScoredRow = scoredRows[0];
+  const sourceBlockerSummary = summarizeSourceGapMix(sourceGapRows);
+  const productUnknownCount = productAustraliaStatuses.filter(
+    (status) => status.kind === "Unknown"
+  ).length;
+  const productStatusText =
+    productSignals.length === 0
+      ? "No matching product profile is attached; do not infer product-level AU/TGA status from ingredient evidence."
+      : productAustraliaStatuses.length === 0
+        ? `${productSignals.length} matching product profile(s) are present, but no product-level AU/TGA row is attached.`
+        : `${productAustraliaStatuses.length} product AU/TGA row(s) are attached; ${productUnknownCount} remain exact-status unknown.`;
+
+  return (
+    <section className="rounded-md border border-line bg-white p-3">
+      <h3 className="text-sm font-semibold text-ink">Evidence brief at a glance</h3>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-4">
+        <BriefGlanceCard
+          label="Best current read"
+          value={
+            topScoredRow && topScoredRow.scoreState.score !== null
+              ? isAdverseDirectionClaim(topScoredRow.claim)
+                ? `${shortOutcome(topScoredRow.claim.outcome)} is the strongest displayed local signal (${topScoredRow.scoreState.score.toFixed(1)} ${topScoredRow.scoreState.tableBand}), but it is a caution/adverse signal, not a benefit read.`
+                : `${shortOutcome(topScoredRow.claim.outcome)} is the strongest displayed local signal (${topScoredRow.scoreState.score.toFixed(1)} ${topScoredRow.scoreState.tableBand}).`
+              : "No scoped claim has a displayed final evidence score yet."
+          }
+        />
+        <BriefGlanceCard
+          label="Still unfinished"
+          value={
+            sourceGapRows.length > 0
+              ? `${sourceGapRows.length} claim(s) remain Source Work: ${sourceBlockerSummary}.`
+              : "No Source Work rows are visible for this intervention."
+          }
+        />
+        <BriefGlanceCard
+          label="Safety context"
+          value={
+            safetyAlerts.length > 0
+              ? `${safetyAlerts.length} local safety alert(s) are attached; read these before benefit rows.`
+              : "No local safety alerts are attached; this does not imply safety."
+          }
+        />
+        <BriefGlanceCard label="Product AU/TGA" value={productStatusText} />
+      </div>
+    </section>
+  );
+}
+
+function BriefGlanceCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{label}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-700">{value}</p>
+    </div>
+  );
+}
+
 function PracticalReadoutCard({ items, label }: { items: string[]; label: string }) {
   return (
     <section className="rounded-md border border-line bg-white p-3">
@@ -933,9 +2135,11 @@ function buildWhyItStandsOutRows({
 
   const score = topScoredRow.scoreState.score;
   const rows = [
-    score >= 8
-      ? `${intervention.name} stands out most for ${shortOutcome(topScoredRow.claim.outcome)} because it has the strongest displayed local score (${score.toFixed(1)} ${topScoredRow.scoreState.tableBand}).`
-      : `${intervention.name} does not stand out as a broad top-tier supplement; its strongest current signal is ${shortOutcome(topScoredRow.claim.outcome)} (${score.toFixed(1)} ${topScoredRow.scoreState.tableBand}).`
+    isAdverseDirectionClaim(topScoredRow.claim)
+      ? `${intervention.name}'s strongest displayed local score is for ${shortOutcome(topScoredRow.claim.outcome)} (${score.toFixed(1)} ${topScoredRow.scoreState.tableBand}), but that row is a caution/adverse signal, so it should not be read as a standout benefit.`
+      : score >= 8
+        ? `${intervention.name} stands out most for ${shortOutcome(topScoredRow.claim.outcome)} because it has the strongest displayed local score (${score.toFixed(1)} ${topScoredRow.scoreState.tableBand}).`
+        : `${intervention.name} does not stand out as a broad top-tier supplement; its strongest current signal is ${shortOutcome(topScoredRow.claim.outcome)} (${score.toFixed(1)} ${topScoredRow.scoreState.tableBand}).`
   ];
 
   if (sourceWorkCount > 0) {
@@ -968,25 +2172,49 @@ function buildSupplementDoesNotProveRows(sourcePackets: ClaimPacketPair[]) {
 function buildSupplementCautionRows({
   australiaStatuses,
   intervention,
+  productAustraliaStatuses,
   productSignals,
   safetyAlerts,
   sourcePackets
 }: {
   australiaStatuses: AustraliaRegulatoryStatus[];
   intervention: Intervention;
+  productAustraliaStatuses: AustraliaRegulatoryStatus[];
   productSignals: ProductSignal[];
   safetyAlerts: SafetyAlert[];
   sourcePackets: ClaimPacketPair[];
 }) {
+  const unknownProductStatusCount = productAustraliaStatuses.filter(
+    (status) => status.kind === "Unknown"
+  ).length;
   const rows = [
     punctuateSentence(intervention.safetySummary),
     punctuateSentence(intervention.interactionSummary),
-    `${australiaStatuses.length.toLocaleString()} AU/TGA intervention row${australiaStatuses.length === 1 ? "" : "s"} and ${productSignals.length.toLocaleString()} product signal${productSignals.length === 1 ? "" : "s"} are attached; ingredient evidence does not verify a specific product or AUST number.`
+    `${australiaStatuses.length.toLocaleString()} AU/TGA intervention row${australiaStatuses.length === 1 ? "" : "s"}, ${productSignals.length.toLocaleString()} product signal${productSignals.length === 1 ? "" : "s"}, and ${productAustraliaStatuses.length.toLocaleString()} product-level AU/TGA row${productAustraliaStatuses.length === 1 ? "" : "s"} are attached; ingredient evidence does not verify a specific product or AUST number.`,
+    unknownProductStatusCount > 0
+      ? `${unknownProductStatusCount.toLocaleString()} product-level row${unknownProductStatusCount === 1 ? " remains" : "s remain"} exact-status unknown because the local profile lacks an exact product label, sponsor, and AUST/ARTG identifier.`
+      : ""
   ];
 
   safetyAlerts.slice(0, 2).forEach((alert) => {
     rows.push(`${alert.source} ${alert.alertType}: ${punctuateSentence(alert.summary)}`);
   });
+
+  sourcePackets
+    .filter(
+      (row) =>
+        row.claim.outcome !== "Safety/adverse effects" && isAdverseDirectionClaim(row.claim)
+    )
+    .slice(0, 3)
+    .forEach(({ claim }) => {
+      const summary = firstSentence(cleanStudyText(claim.summary ?? ""));
+
+      rows.push(
+        summary
+          ? `${shortOutcome(claim.outcome)} carries a caution/adverse signal, not a benefit read: ${punctuateSentence(summary)}`
+          : `${shortOutcome(claim.outcome)} carries a caution/adverse signal in the local record; read it as a caution row, not a benefit claim.`
+      );
+    });
 
   if (isPeptideOrTherapeutic(intervention, sourcePackets.map((row) => row.claim))) {
     rows.push(
@@ -1008,7 +2236,7 @@ function buildDirectLifespanRead(directLifespanRows: ClaimPacketPair[]) {
     return `${directLifespanRows.length.toLocaleString()} direct lifespan claim${directLifespanRows.length === 1 ? "" : "s"} are tracked, but the current local evidence does not present them as strong direct lifespan proof.`;
   }
 
-  return `${supportedRows.length.toLocaleString()} direct lifespan claim${supportedRows.length === 1 ? "" : "s"} have moderate-or-better local support, but healthspan, biomarker, product, and population boundaries still apply.`;
+  return `${supportedRows.length.toLocaleString()} direct lifespan claim${supportedRows.length === 1 ? "" : "s"} have high-confidence core-evidence local support, but healthspan, biomarker, product, and population boundaries still apply.`;
 }
 
 function practicalClaimSummary(claim: Claim) {
@@ -1022,7 +2250,8 @@ function isPracticalBenefitClaim(claim: Claim) {
     claim.finalLabel !== "Safety Concern" &&
     claim.finalLabel !== "Avoid / Not Recommended" &&
     claim.finalLabel !== "Requires Clinician Oversight" &&
-    claim.finalLabel !== "Regulatory Concern"
+    claim.finalLabel !== "Regulatory Concern" &&
+    !isAdverseDirectionClaim(claim)
   );
 }
 
@@ -1506,6 +2735,7 @@ function buildOverallEvidenceNarrative({
   australiaStatuses,
   incompleteRows,
   intervention,
+  productAustraliaStatuses,
   productSignals,
   references,
   safetyAlerts,
@@ -1516,6 +2746,7 @@ function buildOverallEvidenceNarrative({
   australiaStatuses: AustraliaRegulatoryStatus[];
   incompleteRows: ClaimPacketPair[];
   intervention: Intervention;
+  productAustraliaStatuses: AustraliaRegulatoryStatus[];
   productSignals: ProductSignal[];
   references: Reference[];
   safetyAlerts: SafetyAlert[];
@@ -1583,6 +2814,7 @@ function buildOverallEvidenceNarrative({
   const safetyParagraph = buildSafetySynthesisParagraph({
     australiaStatuses,
     intervention,
+    productAustraliaStatuses,
     productSignals,
     safetyAlerts,
     sourcePackets,
@@ -1718,8 +2950,12 @@ function buildOutcomeSynthesisParagraph({
     ? `Uncertainty: ${curatedUncertainty}`
     : claimCertaintySentence({ claim, packet, scoreState });
   const summaryText = curatedSummary || claim.claimText;
+  const directionLabel = claimEvidenceDirectionLabel(claim);
+  const outcomeHeading = directionLabel
+    ? `${shortOutcome(claim.outcome)} (${directionLabel.toLowerCase()})`
+    : shortOutcome(claim.outcome);
 
-  return `${shortOutcome(claim.outcome)}: ${summaryText} ${scoreText} ${studyText} ${limitationText}`;
+  return `${outcomeHeading}: ${summaryText} ${scoreText} ${studyText} ${limitationText}`;
 }
 
 function sourcePacketBasisSentence({
@@ -1853,6 +3089,7 @@ function buildUncertaintySynthesisParagraph({
 function buildSafetySynthesisParagraph({
   australiaStatuses,
   intervention,
+  productAustraliaStatuses,
   productSignals,
   safetyAlerts,
   sourcePackets,
@@ -1860,6 +3097,7 @@ function buildSafetySynthesisParagraph({
 }: {
   australiaStatuses: AustraliaRegulatoryStatus[];
   intervention: Intervention;
+  productAustraliaStatuses: AustraliaRegulatoryStatus[];
   productSignals: ProductSignal[];
   safetyAlerts: SafetyAlert[];
   sourcePackets: ClaimPacketPair[];
@@ -1880,6 +3118,8 @@ function buildSafetySynthesisParagraph({
     australiaStatuses.length === 1 ? "" : "s"
   }, ${productSignals.length.toLocaleString()} matching product signal${
     productSignals.length === 1 ? "" : "s"
+  }, ${productAustraliaStatuses.length.toLocaleString()} product-level AU/TGA row${
+    productAustraliaStatuses.length === 1 ? "" : "s"
   }, and ${safetyAlerts.length.toLocaleString()} local safety alert${
     safetyAlerts.length === 1 ? "" : "s"
   }. ${intervention.safetySummary}`;
@@ -1891,7 +3131,8 @@ function formatClaimOutcomeList(
   return naturalJoin(
     rows.map(({ claim, scoreState }) => {
       const score = scoreState.score === null ? "unscored" : scoreState.score.toFixed(1);
-      return `${shortOutcome(claim.outcome).toLowerCase()} (${score} ${scoreState.tableBand}, ${claim.confidenceLevel.toLowerCase()} confidence)`;
+      const directionNote = isAdverseDirectionClaim(claim) ? ", caution/adverse signal" : "";
+      return `${shortOutcome(claim.outcome).toLowerCase()} (${score} ${scoreState.tableBand}, ${claim.confidenceLevel.toLowerCase()} confidence${directionNote})`;
     })
   );
 }
@@ -2084,12 +3325,14 @@ function naturalJoin(items: string[]) {
 function buildSafetyRegulatorySummary({
   australiaStatuses,
   intervention,
+  productAustraliaStatuses,
   productSignals,
   safetyAlerts,
   sourcePackets
 }: {
   australiaStatuses: AustraliaRegulatoryStatus[];
   intervention: Intervention;
+  productAustraliaStatuses: AustraliaRegulatoryStatus[];
   productSignals: ProductSignal[];
   safetyAlerts: SafetyAlert[];
   sourcePackets: ClaimPacketPair[];
@@ -2106,6 +3349,8 @@ function buildSafetyRegulatorySummary({
     australiaStatuses.length === 1 ? "" : "s"
   } and ${productSignals.length.toLocaleString()} matching product signal${
     productSignals.length === 1 ? "" : "s"
+  }, with ${productAustraliaStatuses.length.toLocaleString()} product-level AU/TGA row${
+    productAustraliaStatuses.length === 1 ? "" : "s"
   }.${safetyClaimText} This does not prove product-level safety, efficacy, or TGA clearance.`;
 }
 
@@ -2129,8 +3374,30 @@ function summarizeStudyTypes(studies: Study[]) {
 
   return [...counts.entries()]
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
-    .map(([label, count]) => `${count} ${label}`)
+    .map(([label, count]) => `${count} ${readableStudyTypeCount(label, count)}`)
     .join(", ");
+}
+
+function readableStudyTypeCount(label: string, count: number) {
+  if (count === 1) {
+    return label;
+  }
+
+  const normalized = label.toLowerCase();
+
+  if (normalized === "meta-analysis") {
+    return label.replace(/meta-analysis/i, "meta-analyses");
+  }
+
+  if (normalized === "analysis") {
+    return label.replace(/analysis/i, "analyses");
+  }
+
+  if (/\brct$/i.test(label)) {
+    return `${label}s`;
+  }
+
+  return label.endsWith("s") ? label : `${label}s`;
 }
 
 function sourceGapSummary(claim: Claim, packet: ClaimSourcePacket) {
@@ -2146,6 +3413,72 @@ function sourceGapSummary(claim: Claim, packet: ClaimSourcePacket) {
     case "complete":
       return `${outcome} has a complete source packet.`;
   }
+}
+
+function sourceGapBlockerLabel(packet: ClaimSourcePacket) {
+  switch (packet.completeness.status) {
+    case "not_linked":
+      return "No curated sources";
+    case "missing_sources":
+      return "Source record missing";
+    case "extraction_pending":
+      return "Extraction pending";
+    case "complete":
+      return "Source-backed";
+  }
+}
+
+function sourceGapBlockedReason(packet: ClaimSourcePacket) {
+  switch (packet.completeness.status) {
+    case "not_linked":
+      return "No article or registry reference is linked to this claim yet.";
+    case "missing_sources":
+      return "The claim points to a reference ID that is not present in the local source table.";
+    case "extraction_pending":
+      return "A reference is linked, but at least one source still needs structured fields such as population, intervention, outcomes, results, adverse events, and risk of bias.";
+    case "complete":
+      return "The linked references have structured extraction rows.";
+  }
+}
+
+function summarizeSourceGapMix(rows: ClaimPacketPair[]) {
+  const counts = rows.reduce(
+    (summary, row) => {
+      summary[row.packet.completeness.status] += 1;
+      return summary;
+    },
+    {
+      complete: 0,
+      extraction_pending: 0,
+      missing_sources: 0,
+      not_linked: 0
+    } satisfies Record<ClaimSourcePacket["completeness"]["status"], number>
+  );
+  const parts = [
+    counts.extraction_pending > 0
+      ? `${counts.extraction_pending} extraction pending`
+      : "",
+    counts.not_linked > 0 ? `${counts.not_linked} no curated sources` : "",
+    counts.missing_sources > 0 ? `${counts.missing_sources} missing source records` : ""
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join("; ") : "none";
+}
+
+function sourceWorkMixLabel(readiness: InterventionReadinessSummary) {
+  const parts = [
+    readiness.extractionPendingSourcePackets > 0
+      ? `${readiness.extractionPendingSourcePackets} extraction pending`
+      : "",
+    readiness.unlinkedSourcePackets > 0
+      ? `${readiness.unlinkedSourcePackets} no curated sources`
+      : "",
+    readiness.missingSourcePackets > 0
+      ? `${readiness.missingSourcePackets} missing source records`
+      : ""
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join("; ") : "none";
 }
 
 function sourceGapRowSort(left: ClaimPacketPair, right: ClaimPacketPair) {
@@ -2185,9 +3518,11 @@ function sourcePacketCompletenessTone(status: ClaimSourcePacket["completeness"][
 type InterventionReadinessSummary = {
   completeSourcePackets: number;
   defaultScoreReviewClaims: number;
+  extractionPendingSourcePackets: number;
   extractedReferences: number;
   humanReviewedClaims: number;
   incompleteSourcePackets: number;
+  missingSourcePackets: number;
   pendingHumanReview: number;
   pendingReferences: number;
   readyToScoreClaims: number;
@@ -2197,6 +3532,7 @@ type InterventionReadinessSummary = {
   sourceWorkClaims: number;
   totalClaims: number;
   totalReferences: number;
+  unlinkedSourcePackets: number;
 };
 
 function buildInterventionReadinessSummary({
@@ -2224,12 +3560,14 @@ function buildInterventionReadinessSummary({
     completeSourcePackets: sourcePacketSummary.completeClaims,
     defaultScoreReviewClaims: readinessRows.filter((row) => row.state === "default_score_review")
       .length,
+    extractionPendingSourcePackets: sourcePacketSummary.extractionPendingClaims,
     extractedReferences: sourcePacketSummary.extractedReferences,
     humanReviewedClaims: reviewSummary.humanReviewed,
     incompleteSourcePackets:
       sourcePacketSummary.extractionPendingClaims +
       sourcePacketSummary.missingSourceClaims +
       sourcePacketSummary.unlinkedClaims,
+    missingSourcePackets: sourcePacketSummary.missingSourceClaims,
     pendingHumanReview: reviewSummary.unreviewedDrafts,
     pendingReferences: sourcePacketSummary.pendingReferences + sourcePacketSummary.missingReferences,
     readyToScoreClaims: readinessRows.filter((row) => row.state === "ready_to_score").length,
@@ -2240,17 +3578,20 @@ function buildInterventionReadinessSummary({
       (row) => row.state === "source_blocked" && !isReviewWorkClaim(row.claim)
     ).length,
     totalClaims: claims.length,
-    totalReferences: sourcePacketSummary.totalReferences
+    totalReferences: sourcePacketSummary.totalReferences,
+    unlinkedSourcePackets: sourcePacketSummary.unlinkedClaims
   };
 }
 
 function InterventionReadinessPanel({
   australiaStatuses,
+  productAustraliaStatuses,
   productSignals,
   readiness,
   safetyAlerts
 }: {
   australiaStatuses: AustraliaRegulatoryStatus[];
+  productAustraliaStatuses: AustraliaRegulatoryStatus[];
   productSignals: ProductSignal[];
   readiness: InterventionReadinessSummary;
   safetyAlerts: SafetyAlert[];
@@ -2301,7 +3642,11 @@ function InterventionReadinessPanel({
         />
         <ReadinessStat
           label="Source work"
-          value={hasClaims ? `${readiness.sourceWorkClaims}/${readiness.totalClaims}` : "0/0"}
+          value={
+            hasClaims
+              ? `${readiness.sourceWorkClaims}/${readiness.totalClaims} (${sourceWorkMixLabel(readiness)})`
+              : "0/0"
+          }
         />
         <ReadinessStat
           label="Human reviewed"
@@ -2327,7 +3672,7 @@ function InterventionReadinessPanel({
           label="AU/TGA context"
           value={`${australiaStatuses.length} intervention row${
             australiaStatuses.length === 1 ? "" : "s"
-          }, ${productSignals.length} product signal${productSignals.length === 1 ? "" : "s"}`}
+          }, ${productSignals.length} product signal${productSignals.length === 1 ? "" : "s"}, ${productAustraliaStatuses.length} product status row${productAustraliaStatuses.length === 1 ? "" : "s"}`}
         />
       </div>
 
@@ -2339,7 +3684,7 @@ function InterventionReadinessPanel({
               {strongestClaims.map(({ claim, score }) => (
                 <a
                   className="rounded-md border border-line bg-white p-3 text-left transition hover:border-signal"
-                  href={`#claim-${claim.id}`}
+                  href={`?tab=claims#claim-${claim.id}`}
                   key={claim.id}
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2369,8 +3714,8 @@ function InterventionReadinessPanel({
             )}
             {readiness.incompleteSourcePackets > 0 ? (
               <li>
-                {readiness.incompleteSourcePackets} source packet(s) still need linking or
-                extraction.
+                {readiness.incompleteSourcePackets} source packet(s) still need work:{" "}
+                {sourceWorkMixLabel(readiness)}.
               </li>
             ) : (
               <li>All visible source packets have complete structured extraction.</li>
@@ -2392,7 +3737,10 @@ function InterventionReadinessPanel({
             {productSignals.length === 0 ? (
               <li>Product-level AU/TGA status is not established by intervention evidence alone.</li>
             ) : (
-              <li>Product context exists, but exact AUST/ARTG status remains product-specific.</li>
+              <li>
+                Product context exists; {productAustraliaStatuses.length} product-level AU/TGA row(s)
+                are attached, and exact AUST/ARTG status remains product-specific.
+              </li>
             )}
           </ul>
         </div>
@@ -2405,6 +3753,15 @@ function ReadinessStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-line bg-mist p-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{label}</p>
+      <p className="mt-2 text-sm font-semibold leading-6 text-ink">{value}</p>
+    </div>
+  );
+}
+
+function SourceWorkDrilldownStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-amberline/20 bg-white p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">{label}</p>
       <p className="mt-2 text-sm font-semibold leading-6 text-ink">{value}</p>
     </div>
   );
@@ -2606,7 +3963,7 @@ function ClaimCard({
 
   return (
     <article
-      className="scroll-mt-4 rounded-lg border border-line bg-white p-3"
+      className="intervention-claim-card scroll-mt-6 rounded-lg border border-line bg-white p-3 transition"
       id={`claim-${claim.id}`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2637,6 +3994,11 @@ function ClaimCard({
           </span>
         ) : null}
       </div>
+      <p className="claim-target-note mt-3 hidden rounded-md border border-signal/25 bg-blue-50 px-3 py-2 text-sm leading-6 text-signal">
+        Selected from the ranked evidence map. Read the score, confidence, source packet, and
+        caveats together.
+      </p>
+      <ClaimPlainLanguageReadout claim={claim} scoreState={scoreState} />
       {packet ? <ClaimSourcePacketStatus packet={packet} /> : null}
       <dl className="mt-3 grid gap-2 text-sm md:grid-cols-2">
         <Detail label="Population" value={claim.populationStudied} />
@@ -2654,6 +4016,60 @@ function ClaimCard({
   );
 }
 
+function ClaimPlainLanguageReadout({
+  claim,
+  scoreState
+}: {
+  claim: Claim;
+  scoreState: ClaimScorePresentation;
+}) {
+  const summary = cleanStudyText(claim.summary ?? "");
+  const uncertainty = cleanStudyText(claim.uncertainty ?? "");
+  const scoreChangeText = cleanStudyText(claim.whatWouldChangeScore ?? "");
+  const directionLabel = claimEvidenceDirectionLabel(claim);
+  // "Has any synthesis been written yet", so AI review counts here — an
+  // AI-written summary is still a summary and should be shown rather than
+  // hidden behind the fallback. Labelling it as machine-written is the
+  // synthesis stage's job, not this check's.
+  const lowConfidenceDraft =
+    claim.confidenceLevel === "Very low" || !hasBeenReviewed(claim.reviewStatus);
+  const fallback =
+    "No claim-specific plain-language synthesis has been reviewed yet. Treat the component score as an audit signal and read the source packet, uncertainty, and caveats before interpreting this row.";
+
+  return (
+    <section className="mt-3 rounded-md border border-signal/20 bg-blue-50 px-3 py-2 text-sm leading-6 text-slate-800">
+      <p className="text-xs font-semibold uppercase text-signal">
+        What this evidence appears to say
+      </p>
+      {directionLabel ? (
+        <span className="mt-2 inline-flex rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+          {directionLabel}
+        </span>
+      ) : null}
+      <p className="mt-1">{summary || fallback}</p>
+      {uncertainty ? (
+        <p className="mt-2 text-slate-700">
+          <span className="font-semibold text-ink">Uncertainty:</span> {uncertainty}
+        </p>
+      ) : null}
+      {scoreChangeText ? (
+        <p className="mt-2 text-slate-700">
+          <span className="font-semibold text-ink">What would change this score:</span>{" "}
+          {scoreChangeText}
+        </p>
+      ) : null}
+      {lowConfidenceDraft ? (
+        <p className="mt-2 text-xs leading-5 text-slate-700">
+          <span className="font-semibold text-ink">Read the score cautiously:</span>{" "}
+          {scoreState.score === null
+            ? "this draft row is not presenting a final score yet."
+            : "the number is a draft audit score, not a recommendation or proof of benefit."}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function ClaimSourcePacketStatus({ packet }: { packet: ClaimSourcePacket }) {
   const progress = sourcePacketProgressText(packet);
   const needsSourceWork = packet.completeness.status !== "complete";
@@ -2664,10 +4080,16 @@ function ClaimSourcePacketStatus({ packet }: { packet: ClaimSourcePacket }) {
         <span className="font-semibold text-slate-900">Source extraction:</span> {progress}
       </p>
       {needsSourceWork ? (
-        <p className="mt-1">
-          <span className="font-semibold text-slate-900">Next source step:</span>{" "}
-          {packet.completeness.nextStep}
-        </p>
+        <>
+          <p className="mt-1">
+            <span className="font-semibold text-slate-900">Source-work blocker:</span>{" "}
+            {sourceGapBlockerLabel(packet)} - {sourceGapBlockedReason(packet)}
+          </p>
+          <p className="mt-1">
+            <span className="font-semibold text-slate-900">Next source step:</span>{" "}
+            {packet.completeness.nextStep}
+          </p>
+        </>
       ) : null}
     </section>
   );
@@ -2724,10 +4146,10 @@ function ScoreComponentBreakdown({ claim }: { claim: Claim }) {
           Methodology
         </a>
       </div>
-      <p className="mt-2 text-xs leading-5 text-slate-600">
+      <div className="mt-2 text-xs leading-5 text-slate-600">
         Higher is better for every component shown here. Low regulatory risk and Low hype risk
         are inverted from raw concern penalties.
-      </p>
+      </div>
       <div className="mt-3 grid gap-2">
         {rows.map((row) => (
           <div
@@ -2735,7 +4157,7 @@ function ScoreComponentBreakdown({ claim }: { claim: Claim }) {
             key={row.label}
             title={scoreComponentDetail(row.label)}
           >
-            <p className="text-xs font-semibold text-slate-700">{row.label}</p>
+            <span className="text-xs font-semibold text-slate-700">{row.label}</span>
             <div
               aria-label={`${row.label} ${row.value} out of 10. ${scoreComponentDetail(row.label)}`}
               className="h-2 self-center rounded-full bg-slate-100"
@@ -2749,7 +4171,7 @@ function ScoreComponentBreakdown({ claim }: { claim: Claim }) {
                 style={{ width: `${scorePercent(row.value)}%` }}
               />
             </div>
-            <p className="text-right text-xs font-semibold text-ink">{row.value}/10</p>
+            <span className="text-right text-xs font-semibold text-ink">{row.value}/10</span>
           </div>
         ))}
       </div>
@@ -2972,7 +4394,13 @@ function AustraliaStatusCard({ status }: { status: AustraliaRegulatoryStatus }) 
   );
 }
 
-function ProductContextCard({ product }: { product: ProductSignal }) {
+function ProductContextCard({
+  product,
+  statuses
+}: {
+  product: ProductSignal;
+  statuses: AustraliaRegulatoryStatus[];
+}) {
   return (
     <article className="rounded-lg border border-line bg-white p-3">
       <h3 className="text-sm font-semibold text-ink">
@@ -2992,6 +4420,29 @@ function ProductContextCard({ product }: { product: ProductSignal }) {
           Claim risk {product.labelClaimRiskScore}/10
         </span>
       </div>
+      {statuses.length > 0 ? (
+        <div className="mt-3 grid gap-2">
+          {statuses.map((status) => (
+            <div
+              className="rounded-md border border-amberline/30 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950"
+              key={status.id}
+            >
+              <p className="font-semibold">
+                Product AU/TGA: {status.status} ({status.kind})
+              </p>
+              <p className="mt-1">{status.supplySummary}</p>
+              <p className="mt-1">
+                <span className="font-semibold">Needed:</span> {status.evidenceRequirement}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-amberline/30 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
+          Product-level AU/TGA status is not captured for this profile. Ingredient evidence and
+          quality certifications do not verify an AUST/ARTG listing.
+        </p>
+      )}
     </article>
   );
 }
