@@ -112,6 +112,9 @@ function reviewCandidate(input: Record<string, unknown> = {}) {
     externalId: "PMID1",
     intervention: {
       name: "Creatine monohydrate",
+      // Mirrors production: the relevance gate keys its curated synonyms and
+      // trap terms by slug, so a fixture without one silently skips both.
+      slug: "creatine-monohydrate",
       synonyms: ["creatine"]
     },
     interventionId: "creatine",
@@ -330,6 +333,55 @@ describe("localCandidateReviewAutomationDecision", () => {
     expect(decision.action).toBe("accept");
     expect(decision.reasons.join(" ")).toContain("priority source type");
     expect(decision.reasons.join(" ")).toContain("visibly matches the intervention");
+  });
+
+  it("never lets the relevance gate turn a hold into an accept", () => {
+    // The core safety property of the veto: it may remove a candidate, never add
+    // one. Here the heuristics hold the row on a weak classifier score while the
+    // gate would happily accept it — titled identity, systematic review, and a
+    // tracked outcome in "resistance training".
+    const decision = localCandidateReviewAutomationDecision(
+      reviewCandidate({
+        metadata: {
+          discoveryClassification: {
+            bucket: "maybe-useful",
+            cautions: [],
+            label: "Maybe useful",
+            reasons: ["Review candidate."],
+            score: 50,
+            version: "test"
+          },
+          publicationTypes: ["Systematic Review"]
+        }
+      })
+    );
+
+    expect(decision.action).toBe("hold");
+    expect(decision.relevanceGateVeto).toBeUndefined();
+  });
+
+  it("lets the relevance gate turn an accept into a reject", () => {
+    const decision = localCandidateReviewAutomationDecision(
+      reviewCandidate({
+        metadata: {
+          abstractText:
+            "Creatine kinase was the primary endpoint in patients receiving high-intensity statin therapy.",
+          discoveryClassification: {
+            bucket: "maybe-useful",
+            cautions: [],
+            label: "Maybe useful",
+            reasons: ["Review candidate."],
+            score: 80,
+            version: "test"
+          },
+          publicationTypes: ["Systematic Review"]
+        },
+        title: "Creatine kinase elevation after statin therapy: a systematic review"
+      })
+    );
+
+    expect(decision.action).toBe("reject");
+    expect(decision.relevanceGateVeto).toContain("creatine kinase");
   });
 
   it("rejects low-score maybe-useful rows without priority type or identity signal", () => {

@@ -216,6 +216,11 @@ one does not protect the other.
 
 ### 4. LLM extraction and synthesis
 
+> **Blocked as of 2026-07-27.** `ANTHROPIC_API_KEY` is set in neither `.env` nor `.env.local`, and
+> `@anthropic-ai/sdk` is not installed. This section needs a key and an explicit decision to spend
+> before any of it can be built or run. Checked rather than assumed, because an earlier note claimed
+> the key was already in `.env`.
+
 The actual bottleneck: 5,876 references have no `Study` row, and no automated path exists from a
 placeholder claim to a written conclusion — nothing in `src/` writes `Claim.claimText` after creation.
 
