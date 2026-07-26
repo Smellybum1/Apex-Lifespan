@@ -1,12 +1,18 @@
 # Roadmap
 
-Last updated: 2026-07-02
+Last updated: 2026-07-04
 
 Compact product roadmap. The old internal artifact chain is not active roadmap work.
 
 ## Target
 
-Make Apex Lifespan a useful evidence intelligence product for supplements, peptides, and healthspan interventions. It should help a user understand scoped claims, evidence strength, safety context, AU/TGA context, uncertainty, and product-level limits without becoming medical advice or a supplement leaderboard.
+Make Apex Lifespan a useful plain-language evidence translator for supplements, peptides, and healthspan interventions. It should help a user understand what human studies, trials, source packets, safety context, AU/TGA context, uncertainty, and product-level limits actually say without becoming medical advice or a supplement leaderboard.
+
+## Product Pivot
+
+The supplement/intervention page is the primary product surface. It should read like an evidence brief: overall plain-language synthesis, common claims versus evidence, what studies tested and found, where evidence is strong/mixed/weak/missing, safety and regulatory caveats, and links back to the source trail.
+
+The heatmap-style matrix is secondary. Keep it as a browse-by-outcome index and audit aid, but do not let score buckets flatten nuance or become the main answer.
 
 ## Development Workflow
 
@@ -41,11 +47,11 @@ Make Apex Lifespan a useful evidence intelligence product for supplements, pepti
 
 Work each milestone against the **local database catalog** first. Preview is out of scope until promotion.
 
-### 1. Make The Public Evidence Map More Useful
+### 1. Make Supplement Pages The Primary Evidence Brief
 
-Improve the pages normal users see first: evidence map, intervention detail pages, safety context, regulatory context, search/filtering, and plain-language uncertainty — tested against the full local catalog (**54 interventions**).
+Improve the pages normal users should rely on first: intervention detail pages, evidence summaries, common-claim readouts, study findings, source links, safety context, regulatory context, and plain-language uncertainty. Keep the outcome matrix useful for browsing, but frame it as a secondary index tested against the full local catalog (**54 interventions**).
 
-Done when the public app feels useful without operator knowledge on real local data.
+Done when a reader can open a supplement page and understand the evidence without needing to interpret a heatmap score.
 
 ### 2. Strengthen Local Coverage Quality
 

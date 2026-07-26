@@ -32,9 +32,9 @@ Compact, stable Codex state. Ordinary startup is only `AGENTS.md` plus this file
 
 ## Routine Command Chooser
 
-- First local state check: `npx tsx scripts/codex-context-index.ts --changed`, then only the task-relevant `git diff -- <path>`.
-- Large code files: `npx tsx scripts/module-outline.ts <path>` before opening the whole file.
-- Generated artifacts: `npx tsx scripts/output-index.ts --top 20` before opening anything under `output/`.
+- For broad dirty-worktree context, use `npx tsx scripts/codex-context-index.ts --changed`; otherwise inspect only task-owned paths.
+- Large code files: start with `npx tsx scripts/module-outline.ts <path> --max-symbols 40`; raise the cap only when the target is absent.
+- Generated artifacts: start with `npx tsx scripts/output-index.ts --top 5`, then drill down by exact path.
 - Catalog status: `npx tsx scripts/db-inventory.ts` plus `npx tsx scripts/local-catalog-quality.ts`.
 - Scoring/source repair: `npx tsx scripts/local-score-worklist.ts --limit 20`, then `--repair-summary` or `--repair-batch <key>` only when fixing source-blocked rows.
 - Candidate/source ingestion: use the dashboard first; CLI fallback starts with `npm run ingest:sources -- --help`.
@@ -47,7 +47,7 @@ Compact, stable Codex state. Ordinary startup is only `AGENTS.md` plus this file
 - Ask first before production deploy, DB mutation/migration, secrets, destructive actions, or medical/regulatory boundary changes.
 - Use `Human reviewed` only when a human explicitly confirms it.
 - Dashboard reads through `src/lib/data/dashboard.ts`; local development should use `APEX_DATA_SOURCE=database` against Docker Postgres.
-- `src/lib/seed-data.ts` is a small fallback/demo set, not the active catalog. The local database is the source of truth during development (currently ~54 interventions / ~152 claims).
+- `src/lib/seed-data.ts` is a small fallback/demo set, not the active catalog. The local database is the source of truth during development; use `npx tsx scripts/db-inventory.ts` for current counts.
 - Do not push or seed preview/production databases unless the user explicitly asks to promote local work.
 - Public source-candidate persistence must not leak into public routes.
 

@@ -35,6 +35,12 @@ docs/codex/onboarding/fulltext-source-review-*.md
 # local agent run history
 .ai/
 
+# per-machine agent permissions; .claude/launch.json is shared and stays tracked
+.claude/settings.local.json
+
+# unattended pipeline task output
+logs/
+
 # misc
 .DS_Store
 Thumbs.db

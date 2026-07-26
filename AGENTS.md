@@ -16,12 +16,11 @@
 - If a task is only readiness, queue, promotion, review packets, launch rehearsal, or roadmap bookkeeping, stop and pick product-facing roadmap work instead.
 - Delete process that slows the project down.
 
-## Project Commands
-- Install/dev: `npm install`, `npm run dev`
-- Test/build: `npm run test`, `npm run lint`, `npm run typecheck`, `npm run build`
-- Database: `npm run db:validate`, `npm run db:generate`, `npm run db:push`, `npm run db:seed`
+## Lead And Subagent Policy
+- Expected lead: user-selected `gpt-5.6-sol` with `ultra` reasoning (`AGENTS.md` cannot enforce this). The lead owns planning, architecture, ambiguous/high-risk/domain-boundary decisions, critical-path work, integration, review, and verification.
+- On substantial tasks, first identify independent work and promptly spawn `gpt-5.6-luna`/`max` subagents in parallel; prefer several narrow agents, use available slots and later waves, and keep the lead moving on the critical path. Skip tiny, invented, duplicate, tightly coupled, blocking, overlapping, or integration-sensitive delegations.
+- Delegate bounded exploration/research, disjoint implementation, tests, settled mechanical refactors, docs, and independent reviews/checks. Give each agent a concrete task, output, and write scope; never overlap concurrent edits; tell agents they are not alone and must preserve existing changes.
+- Subagents inherit every Apex/user guardrail and gain no extra authority, including for Git, cleanup, deploys, DB/migrations, secrets, medical/regulatory boundaries, citation traceability, or review labels. The lead validates every result; if delegation is unavailable, continue and disclose briefly.
 
-## Project Facts
-- Stack: Next.js, TypeScript, Tailwind CSS, TanStack Table, Recharts, PostgreSQL, Prisma
-- Key dirs: `src/app/`, `src/components/`, `src/lib/`, `prisma/`, `docs/codex/`
+## Project Risks
 - Risk areas: medical claim accuracy, citation traceability, peptide/regulatory boundaries, dependency advisories
