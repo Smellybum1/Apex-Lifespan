@@ -43,6 +43,7 @@ import {
   type SourceCandidateReviewer
 } from "@/lib/data/source-candidates";
 import { prisma } from "@/lib/db/prisma";
+import { evaluateRelevance } from "@/lib/relevance-gate";
 import {
   LOCAL_ACCEPTED_PROCESSING_METADATA_VERSION,
   readLocalAcceptedCandidateProcessingMetadata,
@@ -70,6 +71,8 @@ const LOCAL_CANDIDATE_REVIEW_SELECT = {
   intervention: {
     select: {
       name: true,
+      // The relevance gate keys its curated synonyms and trap terms by slug.
+      slug: true,
       synonyms: true
     }
   },
@@ -767,6 +770,8 @@ export interface LocalCandidateReviewBulkDecisionReadout {
   errors: string[];
   filters: LocalCandidateReviewWorkbenchReadout["filters"];
   rejected: number;
+  /** Rows the relevance gate pulled out of a bulk accept. Counted in `rejected`. */
+  relevanceGateVetoed: number;
   scanned: number;
   status: "completed" | "stopped-at-limit";
 }
@@ -788,6 +793,8 @@ export interface LocalCandidateReviewAutomationDecisionReadout {
   externalId: string;
   interventionName?: string;
   reasons: string[];
+  /** Set when the relevance gate vetoed this row, for an auditable review note. */
+  relevanceGateVeto?: string;
   source: DbSourceKind;
   sourceTypeSuggestion: string;
   title: string;
@@ -1517,15 +1524,29 @@ export async function recordLocalCandidateReviewBulkDecision(
   let accepted = 0;
   let rejected = 0;
   let scanned = 0;
+  let vetoed = 0;
 
   while (scanned < LOCAL_REVIEW_BULK_MAX_CANDIDATES) {
     const candidates = await prisma.sourceCandidate.findMany({
       where: activeWhere,
       orderBy: [{ triageScore: "desc" }, { discoveredAt: "desc" }],
       take: LOCAL_REVIEW_BULK_BATCH_SIZE,
+      // The relevance gate needs the text and the intervention, not just a key.
+      // Selecting only the key is what let this lane accept 32,786 rows without
+      // once asking whether the paper was about the supplement.
       select: {
         dedupeKey: true,
-        externalId: true
+        externalId: true,
+        intervention: {
+          select: {
+            name: true,
+            slug: true,
+            synonyms: true
+          }
+        },
+        metadata: true,
+        source: true,
+        title: true
       }
     });
 
@@ -1538,21 +1559,38 @@ export async function recordLocalCandidateReviewBulkDecision(
     for (const candidate of candidates) {
       scanned += 1;
 
+      // Reject-only veto. A bulk accept is a filter, not a reading — nobody
+      // looked at these rows — so the gate is given the power to remove one from
+      // the batch but never to add one. When it vetoes, the row is rejected with
+      // the gate's own reason, which keeps the decision auditable and reversible
+      // by that note rather than disappearing into the bulk-accept count.
+      const veto =
+        decision === "Accepted"
+          ? localCandidateReviewRelevanceGateVeto(candidate)
+          : undefined;
+      const candidateDecision = veto ? "Rejected" : decision;
+
       try {
         // The human clicked once; the filter chose every row. That is an
         // automated decision, not a per-candidate human review.
         await recordLocalCandidateReviewDecision(
           {
-            decision,
+            decision: candidateDecision,
             dedupeKey: candidate.dedupeKey,
-            reviewNote
+            reviewNote: veto
+              ? `AI reviewed: rejected by the relevance gate. ${veto}`
+              : reviewNote
           },
           "automation"
         );
 
         changedInBatch += 1;
 
-        if (decision === "Accepted") {
+        if (veto) {
+          vetoed += 1;
+        }
+
+        if (candidateDecision === "Accepted") {
           accepted += 1;
         } else {
           rejected += 1;
@@ -1582,10 +1620,43 @@ export async function recordLocalCandidateReviewBulkDecision(
     errors,
     filters,
     rejected,
+    relevanceGateVetoed: vetoed,
     scanned,
     status:
       scanned >= LOCAL_REVIEW_BULK_MAX_CANDIDATES ? "stopped-at-limit" : "completed"
   };
+}
+
+/**
+ * Returns the gate's reason when it would reject this row, and undefined
+ * otherwise. Only `reject` counts — `undecided` deliberately does nothing, so a
+ * row the gate cannot judge keeps whatever the caller decided.
+ */
+function localCandidateReviewRelevanceGateVeto(candidate: {
+  intervention?: { name: string; slug: string; synonyms: string[] } | null;
+  metadata: Prisma.JsonValue;
+  source: DbSourceKind;
+  title: string;
+}): string | undefined {
+  if (!candidate.intervention) {
+    return undefined;
+  }
+
+  const metadata = sourceCandidateMetadataObject(candidate.metadata);
+  const abstract = [metadata.abstractText, metadata.briefSummary]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ");
+  const result = evaluateRelevance({
+    abstract,
+    intervention: candidate.intervention,
+    publicationTypes: sourceCandidateMetadataStringArray(metadata.publicationTypes),
+    source: candidate.source === "CLINICALTRIALS_GOV" ? "CLINICALTRIALS_GOV" : "PUBMED",
+    title: candidate.title
+  });
+
+  return result.verdict === "reject"
+    ? (result.reasons[result.reasons.length - 1] ?? "Failed the relevance gate.")
+    : undefined;
 }
 
 export function isLocalCandidateReviewAutomationInput(input: unknown) {
@@ -1695,8 +1766,9 @@ export async function runLocalCandidateReviewAutomation(
           {
             decision: decision.action === "accept" ? "Accepted" : "Rejected",
             dedupeKey: decision.dedupeKey,
-            reviewNote:
-              decision.action === "accept"
+            reviewNote: decision.relevanceGateVeto
+              ? `AI reviewed: rejected by the relevance gate. ${decision.relevanceGateVeto}`
+              : decision.action === "accept"
                 ? "Auto-accepted maybe-useful candidate after conservative local review triage."
                 : "Auto-rejected maybe-useful candidate after conservative local review triage."
           },
@@ -1794,6 +1866,37 @@ export function localCandidateReviewAutomationDecision(
     reasons.push("Ambiguous enough to keep for manual review.");
   }
 
+  // The relevance gate runs last and only ever vetoes. It can turn an accept
+  // into a reject; it can never turn a hold or a reject into an accept.
+  //
+  // Deliberate asymmetry. Its rejections are checkable against the text — the
+  // intervention is named nowhere, or the name is a biomarker, or the design
+  // cannot support a claim about people — whereas its accepts were validated
+  // only against the old triage's own decisions, which were mostly automation.
+  // That is enough to justify removing a paper, not enough to justify filing one
+  // as evidence unattended.
+  const veto = localCandidateReviewRelevanceGateVeto(candidate);
+
+  if (veto) {
+    action = "reject";
+    reasons.push(`Relevance gate: ${veto}`);
+
+    return {
+      action,
+      applied: false,
+      classificationScore,
+      dedupeKey: candidate.dedupeKey,
+      externalId: candidate.externalId,
+      interventionName: candidate.intervention?.name,
+      reasons,
+      relevanceGateVeto: veto,
+      source: candidate.source,
+      sourceTypeSuggestion,
+      title: candidate.title,
+      triageScore: candidate.triageScore
+    };
+  }
+
   return {
     action,
     applied: false,
@@ -1809,6 +1912,11 @@ export function localCandidateReviewAutomationDecision(
   };
 }
 
+/**
+ * Runs the relevance gate over a candidate's stored metadata. Returns undefined
+ * when the row is not linked to an intervention, since there is then no identity
+ * to check it against.
+ */
 function localCandidateReviewAutomationCounts(
   decisions: LocalCandidateReviewAutomationDecisionReadout[]
 ): LocalCandidateReviewAutomationReadout["counts"] {

@@ -73,6 +73,34 @@ describe("evaluateRelevance", () => {
     expect(result.identity).toBeUndefined();
   });
 
+  it("will not reject on a title-only miss when no abstract was stored", () => {
+    // Roughly a third of on-target papers never name their intervention in the
+    // title. Rejecting here would discard them for the catalog's missing
+    // abstract rather than for anything about the paper.
+    const result = evaluateRelevance({
+      abstract: "",
+      intervention: creatine,
+      publicationTypes: RCT,
+      source: "PUBMED",
+      title: "Sports supplements and training outcomes: a systematic review"
+    });
+
+    expect(result.verdict).toBe("undecided");
+    expect(result.reasons.join(" ")).toContain("no abstract is stored");
+  });
+
+  it("rejects a title-only miss once an abstract exists and also misses", () => {
+    const result = evaluateRelevance({
+      abstract: "Participants received a multi-ingredient pre-workout formula.",
+      intervention: creatine,
+      publicationTypes: RCT,
+      source: "PUBMED",
+      title: "Sports supplements and training outcomes: a systematic review"
+    });
+
+    expect(result.verdict).toBe("reject");
+  });
+
   it("rejects the biomarker the supplement shares its name with", () => {
     const result = evaluateRelevance({
       abstract: "Creatine kinase was the primary endpoint.",

@@ -199,6 +199,8 @@ export type LocalCandidateReviewBulkResponse = {
   accepted: number;
   errors: string[];
   rejected: number;
+  /** Rows the relevance gate pulled out of a bulk accept. Counted in `rejected`. */
+  relevanceGateVetoed: number;
   scanned: number;
   status: "completed" | "stopped-at-limit";
 };

@@ -175,8 +175,39 @@ auto-accept a cohort — is preserved.
 section 4 carries roughly 5,000 candidates, not a trickle. The largest buckets are no tracked
 outcome named (2,542) and abstract-only identity (1,633).
 
-**Not yet wired into the pipeline.** The gate is a pure function with tests; nothing calls it. The
-scheduled 03:00 run still uses the ungated triage.
+#### Wired in as a reject-only veto (2026-07-27)
+
+The user's call, made explicitly: the gate may **remove** a candidate but never **add** one. The
+asymmetry is the point. Its rejections are checkable against the text — the intervention is named
+nowhere, the name is a biomarker, the design cannot support a claim about people — whereas its
+accepts were validated only against the old triage's own decisions, which were mostly automation.
+That justifies removing a paper; it does not justify filing one as evidence unattended.
+
+Both candidate lanes carry it:
+
+- `localCandidateReviewAutomationDecision` (maybe-useful auto-triage) — the veto runs last and can
+  only turn an accept or a hold into a reject.
+- `recordLocalCandidateReviewBulkDecision` (likely-useful bulk accept) — this lane previously
+  selected nothing but `dedupeKey` and accepted every row the filter matched, which is how 32,786
+  rows were accepted without once asking whether the paper was about the supplement. It now loads
+  the text and the intervention, and a vetoed row is rejected instead of accepted.
+
+Vetoed rows get the review note `AI reviewed: rejected by the relevance gate. <reason>`, so the
+decision is auditable and reversible in bulk by that note rather than vanishing into a count. The
+pipeline log reports the veto count on its own.
+
+**Measured against the live pending pool before the first unattended run:** 2,249 of 10,880 pending
+candidates (20.7%) would be vetoed — 1,988 on identity, ~225 on trap terms, 36 case reports.
+Inspected samples are right: generic "botanical supplement", "nutraceutical" and "krill oil" rows
+filed under ashwagandha and astaxanthin, naming those interventions nowhere. All 10,880 are
+`maybe-useful`; there are no pending `likely-useful` rows, so the bulk-lane guard is preventive until
+discovery produces some.
+
+**A bug this caught.** The first wiring rejected a candidate whose title missed and which had **no
+stored abstract** — punishing the catalog's gaps rather than the paper. Roughly a third of on-target
+papers never name their intervention in the title, so that would have discarded them wholesale. A
+title-only miss with no abstract is now `undecided`. Three existing tests failed on it, which is what
+surfaced it; the gate was wrong, not the tests.
 
 `INTERVENTION_TRAP_RULES` is keyed by slug and covers creatine, which the existing
 `LOCAL_BENEFIT_DISCOVERY_CONTEXT_RULES` never did. That older table is keyed by intervention id,

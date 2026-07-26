@@ -530,6 +530,7 @@ describe("EvidenceDashboard", () => {
           accepted: 2,
           errors: [],
           rejected: 0,
+          relevanceGateVetoed: 0,
           scanned: 2,
           status: "completed"
         };
@@ -730,6 +731,7 @@ describe("EvidenceDashboard", () => {
         accepted: 0,
         errors: [],
         rejected: 0,
+        relevanceGateVetoed: 0,
         scanned: 0,
         status: "completed"
       }),

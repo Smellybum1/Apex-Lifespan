@@ -465,6 +465,20 @@ export function evaluateRelevance({
   const identity = findInterventionIdentityMatch({ abstract, intervention, title });
 
   if (!identity) {
+    // A title that does not name the intervention is only evidence of absence
+    // when there was an abstract to check as well. Roughly a third of on-target
+    // papers never name their intervention in the title, so rejecting on a
+    // title-only miss would discard them for having no stored abstract rather
+    // than for being irrelevant — punishing the catalog's gaps, not the paper.
+    if (!abstract || abstract.trim().length === 0) {
+      return {
+        reasons: [
+          "The title does not name this intervention and no abstract is stored, so there is nothing to check it against."
+        ],
+        verdict: "undecided"
+      };
+    }
+
     return {
       reasons: ["Neither the title nor the abstract names this intervention or a known synonym."],
       verdict: "reject"

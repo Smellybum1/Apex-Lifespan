@@ -134,6 +134,14 @@ export function localCandidateBulkResultMessage(result: LocalCandidateReviewBulk
     `${result.scanned.toLocaleString()} scanned`
   ];
 
+  // Worth its own number in an unattended log: this is the count of rows a bulk
+  // accept would have taken and the relevance gate pulled back out.
+  if (result.relevanceGateVetoed > 0) {
+    parts.push(
+      `${result.relevanceGateVetoed.toLocaleString()} vetoed by the relevance gate`
+    );
+  }
+
   if (result.status === "stopped-at-limit") {
     parts.push("stopped at the safety limit; press the button again to continue");
   }
