@@ -2939,7 +2939,8 @@ describe("recordSourceCandidateDecision", () => {
         decision: "Accepted",
         acceptedReferenceId: " ref-creatine-position-stand ",
         reviewNote: " Promoted after full-text review. ",
-        reviewedAt
+        reviewedAt,
+        reviewedBy: "human"
       })
     ).resolves.toEqual(
       expect.objectContaining({
@@ -2988,7 +2989,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Rejected",
         reviewNote: "Not relevant to the AU consumer claim.",
-        reviewedAt
+        reviewedAt,
+        reviewedBy: "human"
       })
     ).resolves.toEqual(
       expect.objectContaining({
@@ -3016,6 +3018,92 @@ describe("recordSourceCandidateDecision", () => {
     expect(prismaMocks.referenceFindUnique).not.toHaveBeenCalled();
   });
 
+  it("stamps automated accepts as AI reviewed instead of human reviewed", async () => {
+    const reviewedAt = new Date("2026-06-02T04:00:00.000Z");
+    prismaMocks.sourceCandidateUpdate.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "AI_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        reviewedAt,
+        reviewNote: "Auto-accepted by source work repair."
+      })
+    );
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Accepted",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        reviewNote: "Auto-accepted by source work repair.",
+        reviewedAt,
+        reviewedBy: "automation"
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        decision: "Accepted",
+        reviewStatus: "AI reviewed",
+        acceptedReferenceId: "ref-creatine-position-stand"
+      })
+    );
+
+    expect(prismaMocks.sourceCandidateUpdate).toHaveBeenCalledWith({
+      where: {
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "PENDING_REVIEW"
+      },
+      data: {
+        decision: "ACCEPTED",
+        reviewStatus: "AI_REVIEWED",
+        reviewedAt,
+        reviewNote: "Auto-accepted by source work repair.",
+        acceptedReferenceId: "ref-creatine-position-stand"
+      }
+    });
+  });
+
+  it("stamps automated rejects as AI reviewed instead of human reviewed", async () => {
+    const reviewedAt = new Date("2026-06-02T04:30:00.000Z");
+    prismaMocks.sourceCandidateUpdate.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "REJECTED",
+        reviewStatus: "AI_REVIEWED",
+        acceptedReferenceId: null,
+        reviewedAt,
+        reviewNote: "Auto-rejected by bulk triage."
+      })
+    );
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Rejected",
+        reviewNote: "Auto-rejected by bulk triage.",
+        reviewedAt,
+        reviewedBy: "automation"
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        decision: "Rejected",
+        reviewStatus: "AI reviewed"
+      })
+    );
+
+    expect(prismaMocks.sourceCandidateUpdate).toHaveBeenCalledWith({
+      where: {
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "PENDING_REVIEW"
+      },
+      data: {
+        decision: "REJECTED",
+        reviewStatus: "AI_REVIEWED",
+        reviewedAt,
+        reviewNote: "Auto-rejected by bulk triage.",
+        acceptedReferenceId: null
+      }
+    });
+  });
+
   it("requires a nonblank review note when rejecting candidates", async () => {
     await expect(
       recordSourceCandidateDecision({
@@ -3028,7 +3116,8 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Rejected",
-        reviewNote: " "
+        reviewNote: " ",
+        reviewedBy: "human"
       })
     ).rejects.toThrow("Rejected source candidates require a reviewNote.");
 
@@ -3081,7 +3170,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: "ref-creatine-position-stand",
-        reviewNote: " "
+        reviewNote: " ",
+        reviewedBy: "human"
       })
     ).rejects.toThrow("Accepted source candidates require a reviewNote.");
 
@@ -3095,7 +3185,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: " ",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow("Accepted source candidates require an acceptedReferenceId.");
 
@@ -3114,7 +3205,8 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Rejected",
-        reviewNote: "Duplicate."
+        reviewNote: "Duplicate.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow("Pending source candidate not found for review.");
 
@@ -3129,7 +3221,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: "missing-reference",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow("Accepted source candidate reference was not found.");
 
@@ -3150,7 +3243,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: "ods-creatine",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
@@ -3172,7 +3266,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: "wrong-pubmed-reference",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
@@ -3200,7 +3295,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|1234",
         decision: "Accepted",
         acceptedReferenceId: "substring-pubmed-reference",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
@@ -3232,7 +3328,8 @@ describe("recordSourceCandidateDecision", () => {
         decision: "Accepted",
         acceptedReferenceId: "ref-creatine-position-stand",
         reviewNote: "Full-text reviewed.",
-        reviewedAt
+        reviewedAt,
+        reviewedBy: "human"
       })
     ).resolves.toEqual(
       expect.objectContaining({
@@ -3282,7 +3379,8 @@ describe("recordSourceCandidateDecision", () => {
         decision: "Accepted",
         acceptedReferenceId: "trial-nct123",
         reviewNote: "Full-text reviewed.",
-        reviewedAt
+        reviewedAt,
+        reviewedBy: "human"
       })
     ).resolves.toEqual(
       expect.objectContaining({
@@ -3316,7 +3414,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
         decision: "Accepted",
         acceptedReferenceId: "trial-nct1234",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
@@ -3348,7 +3447,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
         decision: "Accepted",
         acceptedReferenceId: "clinicaltrials-api",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."

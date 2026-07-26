@@ -34,11 +34,13 @@ import {
   normaliseIdentityResolutionAutomationLimit,
   normaliseIdentityResolutionLimit,
   normaliseReviewLimit,
+  normaliseRunDelayMs,
   normaliseRunLimit
 } from "@/lib/data/local-ingestion-limits";
 import {
   linkAcceptedSourceCandidateClaim,
-  recordSourceCandidateDecision
+  recordSourceCandidateDecision,
+  type SourceCandidateReviewer
 } from "@/lib/data/source-candidates";
 import { prisma } from "@/lib/db/prisma";
 import {
@@ -97,6 +99,7 @@ const LOCAL_ACCEPTED_CANDIDATE_PROCESS_SELECT = {
     select: {
       claims: {
         select: {
+          claimText: true,
           outcome: true
         }
       },
@@ -258,6 +261,124 @@ const LOCAL_ACCEPTED_OUTCOME_KEYWORDS: Array<{
     label: "Mortality/lifespan",
     outcome: DbOutcomeArea.MORTALITY_LIFESPAN,
     terms: ["lifespan", "longevity", "mortality", "survival", "all-cause"]
+  }
+];
+
+type LocalAcceptedEvidenceTopic = {
+  key: string;
+  label: string;
+  outcome: DbOutcomeArea;
+  terms: string[];
+};
+
+const LOCAL_ACCEPTED_EVIDENCE_TOPICS: LocalAcceptedEvidenceTopic[] = [
+  {
+    key: "stress-cortisol",
+    label: "Stress/cortisol",
+    outcome: DbOutcomeArea.MOOD_STRESS,
+    terms: [
+      "stress",
+      "perceived stress",
+      "cortisol",
+      "hpa axis",
+      "resilience",
+      "anxiety"
+    ]
+  },
+  {
+    key: "sleep-quality",
+    label: "Sleep quality",
+    outcome: DbOutcomeArea.SLEEP,
+    terms: ["sleep quality", "insomnia", "sleep efficiency", "sleep latency", "sleep duration"]
+  },
+  {
+    key: "cognition-memory",
+    label: "Cognition/memory",
+    outcome: DbOutcomeArea.COGNITION,
+    terms: ["cognition", "cognitive", "memory", "attention", "executive function", "focus"]
+  },
+  {
+    key: "athletic-performance",
+    label: "Athletic performance",
+    outcome: DbOutcomeArea.MUSCLE_STRENGTH,
+    terms: [
+      "exercise performance",
+      "athletic performance",
+      "strength",
+      "muscle mass",
+      "lean mass",
+      "vo2 max",
+      "endurance",
+      "fatigue"
+    ]
+  },
+  {
+    key: "hormonal-reproductive",
+    label: "Hormonal/reproductive",
+    outcome: DbOutcomeArea.FERTILITY_HORMONES,
+    terms: ["testosterone", "sperm", "fertility", "reproductive", "hormone", "menopause"]
+  },
+  {
+    key: "lipids-heart",
+    label: "Lipids/heart markers",
+    outcome: DbOutcomeArea.LDL_APOB_LIPIDS,
+    terms: ["ldl", "apob", "cholesterol", "triglyceride", "lipid", "cardiovascular"]
+  },
+  {
+    key: "blood-pressure-vascular",
+    label: "Blood pressure/vascular",
+    outcome: DbOutcomeArea.BLOOD_PRESSURE,
+    terms: ["blood pressure", "hypertension", "systolic", "diastolic", "vascular", "endothelial"]
+  },
+  {
+    key: "glucose-metabolic",
+    label: "Glucose/metabolic",
+    outcome: DbOutcomeArea.GLUCOSE_INSULIN_HBA1C,
+    terms: ["glucose", "insulin", "hba1c", "glycemic", "metabolic syndrome", "insulin resistance"]
+  },
+  {
+    key: "inflammation-oxidative-stress",
+    label: "Inflammation/oxidative stress",
+    outcome: DbOutcomeArea.INFLAMMATION,
+    terms: ["inflammation", "inflammatory", "crp", "cytokine", "oxidative stress", "antioxidant"]
+  },
+  {
+    key: "immune-respiratory",
+    label: "Immune/respiratory",
+    outcome: DbOutcomeArea.IMMUNE_RESPIRATORY,
+    terms: ["immune", "immunity", "respiratory", "infection", "cold", "influenza"]
+  },
+  {
+    key: "skin-joint-tendon",
+    label: "Skin/joint/tendon",
+    outcome: DbOutcomeArea.JOINT_TENDON_SKIN,
+    terms: ["skin", "photoaging", "wrinkle", "hydration", "elasticity", "joint", "tendon"]
+  },
+  {
+    key: "eye-health",
+    label: "Eye health",
+    outcome: DbOutcomeArea.EYE_HEALTH,
+    terms: ["eye", "vision", "visual", "retina", "macular", "dry eye", "eye strain"]
+  },
+  {
+    key: "longevity-aging",
+    label: "Longevity/aging markers",
+    outcome: DbOutcomeArea.MORTALITY_LIFESPAN,
+    terms: [
+      "lifespan",
+      "longevity",
+      "mortality",
+      "survival",
+      "biological age",
+      "epigenetic clock",
+      "telomere"
+    ]
+  },
+  {
+    key: "safety-tolerability",
+    label: "Safety/tolerability",
+    outcome: DbOutcomeArea.SAFETY_ADVERSE_EFFECTS,
+    terms: ["safety", "adverse", "tolerability", "toxicity", "side effect", "interaction"]
   }
 ];
 
@@ -501,6 +622,8 @@ type LocalBenefitDiscoveryClusterBuilder = {
   outcome: DbOutcomeArea;
   outcomeLabel: string;
   rejectedCount: number;
+  topicKey: string;
+  topicLabel: string;
 };
 
 export interface LocalIngestionStatusReadout {
@@ -839,11 +962,13 @@ export interface LocalAcceptedCandidateProcessingResultReadout {
   linkedClaim: boolean;
   nextAction: string;
   novelOutcomeLabels: string[];
+  novelTopicLabels: string[];
   outcomeLabels: string[];
   processedAt?: string;
   source: DbSourceKind;
   sourceTypeSuggestion: string;
   title: string;
+  topicLabels: string[];
   url: string;
 }
 
@@ -905,6 +1030,8 @@ export interface LocalBenefitDiscoveryClusterReadout {
   rejectedCount: number;
   leadReasons: string[];
   score: number;
+  topicKey: string;
+  topicLabel: string;
   topSources: LocalBenefitDiscoverySourceReadout[];
   usableCandidateCount: number;
 }
@@ -963,6 +1090,8 @@ export interface LocalBenefitDiscoveryAutomationDecisionReadout {
   linkedReferences: number;
   mismatchCount: number;
   outcomeLabel: string;
+  topicKey: string;
+  topicLabel: string;
   usableCandidateCount: number;
 }
 
@@ -1122,6 +1251,9 @@ export interface LocalIngestionRunResult {
   limit: number;
   processed: number;
   results: SourceCandidateIngestionJobRunResult[];
+  safety: {
+    minDelayMs: number;
+  };
   status: LocalIngestionStatusReadout;
 }
 
@@ -1293,8 +1425,15 @@ export async function getLocalCandidateReviewWorkbench(
   };
 }
 
+/**
+ * `reviewedBy` is a separate argument rather than a field on `input` because
+ * `input` is an unvalidated request body — a client must not be able to claim
+ * its writes were human-confirmed. Only the caller knows: a single dashboard
+ * click is "human", every bulk and auto-triage path is "automation".
+ */
 export async function recordLocalCandidateReviewDecision(
-  input: LocalCandidateReviewDecisionInput
+  input: LocalCandidateReviewDecisionInput,
+  reviewedBy: SourceCandidateReviewer
 ): Promise<LocalCandidateReviewDecisionReadout> {
   const dedupeKey = normaliseRequiredString(input.dedupeKey, "Candidate dedupe key is required.");
   const decision = normaliseCandidateReviewDecision(input.decision);
@@ -1317,7 +1456,8 @@ export async function recordLocalCandidateReviewDecision(
     await recordSourceCandidateDecision({
       decision,
       dedupeKey,
-      reviewNote
+      reviewNote,
+      reviewedBy
     });
 
     return {
@@ -1342,7 +1482,8 @@ export async function recordLocalCandidateReviewDecision(
     acceptedReferenceId: reference.id,
     decision,
     dedupeKey,
-    reviewNote
+    reviewNote,
+    reviewedBy
   });
 
   return {
@@ -1398,11 +1539,16 @@ export async function recordLocalCandidateReviewBulkDecision(
       scanned += 1;
 
       try {
-        await recordLocalCandidateReviewDecision({
-          decision,
-          dedupeKey: candidate.dedupeKey,
-          reviewNote
-        });
+        // The human clicked once; the filter chose every row. That is an
+        // automated decision, not a per-candidate human review.
+        await recordLocalCandidateReviewDecision(
+          {
+            decision,
+            dedupeKey: candidate.dedupeKey,
+            reviewNote
+          },
+          "automation"
+        );
 
         changedInBatch += 1;
 
@@ -1545,14 +1691,17 @@ export async function runLocalCandidateReviewAutomation(
       }
 
       try {
-        await recordLocalCandidateReviewDecision({
-          decision: decision.action === "accept" ? "Accepted" : "Rejected",
-          dedupeKey: decision.dedupeKey,
-          reviewNote:
-            decision.action === "accept"
-              ? "Auto-accepted maybe-useful candidate after conservative local review triage."
-              : "Auto-rejected maybe-useful candidate after conservative local review triage."
-        });
+        await recordLocalCandidateReviewDecision(
+          {
+            decision: decision.action === "accept" ? "Accepted" : "Rejected",
+            dedupeKey: decision.dedupeKey,
+            reviewNote:
+              decision.action === "accept"
+                ? "Auto-accepted maybe-useful candidate after conservative local review triage."
+                : "Auto-rejected maybe-useful candidate after conservative local review triage."
+          },
+          "automation"
+        );
         decision.applied = true;
       } catch (error) {
         decision.error =
@@ -1773,7 +1922,7 @@ export async function runLocalCandidateReviewSignalApply(
             metadata: writeLocalCandidateReviewDispositionMetadata(item.candidate.metadata, {
               action: "park-mined-research",
               reason:
-                "Parked from held maybe-useful signal mining as a research/backlog signal. No claim, reference, or heatmap score was created.",
+                "Parked from held maybe-useful signal mining as a research/backlog signal. No claim, reference, or public evidence score was created.",
               status: "parked-research"
             })
           }
@@ -2414,12 +2563,12 @@ export async function getLocalBenefitDiscoveryQueue(
       }
     }
 
-    const clusterOutcomes = localBenefitDiscoveryClusterOutcomes(candidate);
+    const clusterTopics = localBenefitDiscoveryClusterTopics(candidate);
 
-    for (const outcome of clusterOutcomes) {
+    for (const topic of clusterTopics) {
       const clusterKey = localBenefitDiscoveryClusterKey({
         interventionId: candidate.interventionId,
-        outcome
+        topic
       });
 
       if (decision && decision.clusterKey !== clusterKey && !includeDecided) {
@@ -2429,7 +2578,7 @@ export async function getLocalBenefitDiscoveryQueue(
       const mismatch = localBenefitDiscoveryMismatch(candidate, interventionTerms);
       const cluster =
         clustersByKey.get(clusterKey) ??
-        localBenefitDiscoveryClusterBuilder(candidate, outcome, clusterKey);
+        localBenefitDiscoveryClusterBuilder(candidate, topic, clusterKey);
 
       cluster.candidates.push({
         candidate,
@@ -2462,7 +2611,7 @@ export async function getLocalBenefitDiscoveryQueue(
         right.score - left.score ||
         right.usableCandidateCount - left.usableCandidateCount ||
         left.interventionName.localeCompare(right.interventionName) ||
-        left.outcomeLabel.localeCompare(right.outcomeLabel)
+        left.topicLabel.localeCompare(right.topicLabel)
     );
 
   return {
@@ -3193,11 +3342,17 @@ export async function startLocalIngestionSynonymDiscovery(): Promise<LocalIngest
 
 export async function runLocalIngestionBatch(input: {
   limit?: unknown;
+  minDelayMs?: unknown;
 } = {}): Promise<LocalIngestionRunResult> {
   const limit = normaliseRunLimit(input.limit);
+  const minDelayMs = normaliseRunDelayMs(input.minDelayMs);
   const results: SourceCandidateIngestionJobRunResult[] = [];
 
   for (let index = 0; index < limit; index += 1) {
+    if (index > 0) {
+      await sleep(minDelayMs);
+    }
+
     const result = await runNextSourceCandidateIngestionJob({
       clinicalTrialPageSize: 20,
       pubMedRetmax: 20
@@ -3227,8 +3382,17 @@ export async function runLocalIngestionBatch(input: {
     limit,
     processed: results.length,
     results,
+    safety: {
+      minDelayMs
+    },
     status
   };
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 async function listLocalAcceptedCandidateProcessingBatch(limit: number) {
@@ -3269,14 +3433,22 @@ async function listLocalAcceptedCandidateProcessingBatch(limit: number) {
 
 function localBenefitDiscoveryClusterBuilder(
   candidate: LocalBenefitDiscoveryCandidate,
-  outcome: DbOutcomeArea,
+  topic: LocalAcceptedCandidateProcessingOutcomeMetadata,
   clusterKey: string
 ): LocalBenefitDiscoveryClusterBuilder {
+  const outcome = normaliseDbOutcomeArea(topic.outcome) ?? DbOutcomeArea.MORTALITY_LIFESPAN;
+  const topicKey = topic.key ?? `outcome-${outcome}`;
+  const topicLabel = topic.label ?? localBenefitDiscoveryOutcomeLabel(outcome);
+
   return {
     candidates: [],
     clusterKey,
     existingClaims: (candidate.intervention?.claims ?? [])
-      .filter((claim) => claim.outcome === outcome)
+      .filter(
+        (claim) =>
+          claim.outcome === outcome &&
+          localAcceptedCandidateClaimTextMatchesTopic(claim.claimText, topic)
+      )
       .map((claim) => ({
         claimText: claim.claimText,
         id: claim.id
@@ -3284,8 +3456,10 @@ function localBenefitDiscoveryClusterBuilder(
     interventionId: candidate.interventionId ?? "",
     interventionName: candidate.intervention?.name ?? "Unlinked intervention",
     outcome,
-    outcomeLabel: localBenefitDiscoveryOutcomeLabel(outcome),
-    rejectedCount: 0
+    outcomeLabel: topicLabel,
+    rejectedCount: 0,
+    topicKey,
+    topicLabel
   };
 }
 
@@ -3323,6 +3497,8 @@ function localBenefitDiscoveryClusterReadout(
     rejectedCount: cluster.rejectedCount,
     leadReasons: leadScore.reasons,
     score: leadScore.score,
+    topicKey: cluster.topicKey,
+    topicLabel: cluster.topicLabel,
     topSources: topSources.slice(0, 5).map((source) => ({
       acceptedReferenceId: source.acceptedReferenceId,
       dedupeKey: source.dedupeKey,
@@ -3415,6 +3591,8 @@ export function localBenefitDiscoveryAutomationDecision(
     linkedReferences: 0,
     mismatchCount: cluster.mismatchCount,
     outcomeLabel: cluster.outcomeLabel,
+    topicKey: cluster.topicKey,
+    topicLabel: cluster.topicLabel,
     usableCandidateCount: cluster.usableCandidateCount
   };
 }
@@ -3870,16 +4048,25 @@ function localIdentityResolutionHasSubstantialSourceText(sourceText: string) {
 
 async function getLocalBenefitDiscoveryCluster({
   interventionId,
-  outcome
+  outcome,
+  topicKey
 }: {
   interventionId: string;
-  outcome: DbOutcomeArea;
+  outcome?: DbOutcomeArea;
+  topicKey?: string;
 }) {
   const readout = await getLocalBenefitDiscoveryQueue({
     includeDecided: false,
     limit: LOCAL_BENEFIT_DISCOVERY_LIMIT_MAX
   });
-  const clusterKey = localBenefitDiscoveryClusterKey({ interventionId, outcome });
+  const clusterKey = topicKey
+    ? `${interventionId}::topic::${topicKey}`
+    : outcome
+      ? localBenefitDiscoveryClusterKey({
+          interventionId,
+          topic: localBenefitDiscoveryOutcomeTopic(outcome)
+        })
+      : `${interventionId}::topic::`;
   const [candidateRows, interventions] = await Promise.all([
     prisma.sourceCandidate.findMany({
       where: localAcceptedCandidateWhere({
@@ -3907,12 +4094,20 @@ async function getLocalBenefitDiscoveryCluster({
       continue;
     }
 
-    if (!localBenefitDiscoveryClusterOutcomes(candidate).includes(outcome)) {
+    const topic = localBenefitDiscoveryClusterTopics(candidate).find((candidateTopic) =>
+      localBenefitDiscoveryClusterTopicMatches(candidateTopic, { outcome, topicKey })
+    );
+
+    if (!topic) {
       continue;
     }
 
     const mismatch = localBenefitDiscoveryMismatch(candidate, interventionTerms);
-    builder ??= localBenefitDiscoveryClusterBuilder(candidate, outcome, clusterKey);
+    builder ??= localBenefitDiscoveryClusterBuilder(
+      candidate,
+      topic,
+      localBenefitDiscoveryClusterKey({ interventionId, topic })
+    );
     builder.candidates.push({
       candidate,
       identityCautions: mismatch.cautions,
@@ -3995,8 +4190,17 @@ async function createLocalBenefitDiscoveryDraftClaim(
 async function findLocalBenefitDiscoveryExistingClaim(
   cluster: LocalBenefitDiscoveryClusterBuilder
 ) {
+  const existingClaimIds = cluster.existingClaims.map((claim) => claim.id);
+
+  if (existingClaimIds.length === 0) {
+    throw new Error("No topic-matched existing claim exists for this supplement and benefit area.");
+  }
+
   const claim = await prisma.claim.findFirst({
     where: {
+      id: {
+        in: existingClaimIds
+      },
       interventionId: cluster.interventionId,
       outcome: cluster.outcome
     },
@@ -4004,7 +4208,7 @@ async function findLocalBenefitDiscoveryExistingClaim(
   });
 
   if (!claim) {
-    throw new Error("No existing claim exists for this supplement and benefit area.");
+    throw new Error("No topic-matched existing claim exists for this supplement and benefit area.");
   }
 
   return {
@@ -4069,8 +4273,13 @@ async function markLocalAcceptedCandidateProcessing(
     linkedClaim: boolean;
   }
 ): Promise<LocalAcceptedCandidateProcessingResultReadout> {
+  const topicSuggestions = localAcceptedCandidateEvidenceTopicSuggestions(candidate);
   const outcomeSuggestions = localAcceptedCandidateOutcomeSuggestions(candidate);
   const knownOutcomes = new Set(candidate.intervention?.claims.map((claim) => claim.outcome));
+  const existingClaims = candidate.intervention?.claims ?? [];
+  const novelTopics = topicSuggestions.filter(
+    (topic) => !localAcceptedCandidateTopicHasExistingClaim(topic, existingClaims)
+  );
   const novelOutcomes = outcomeSuggestions.filter(
     (suggestion) => !knownOutcomes.has(suggestion.outcome)
   );
@@ -4081,7 +4290,9 @@ async function markLocalAcceptedCandidateProcessing(
     error: options.error,
     linkedClaim: options.linkedClaim,
     novelOutcomeLabels: novelOutcomes.map((suggestion) => suggestion.label),
-    outcomeLabels: outcomeSuggestions.map((suggestion) => suggestion.label)
+    novelTopicLabels: novelTopics.map((suggestion) => suggestion.label),
+    outcomeLabels: outcomeSuggestions.map((suggestion) => suggestion.label),
+    topicLabels: topicSuggestions.map((suggestion) => suggestion.label)
   });
   const processing = {
     error: options.error,
@@ -4092,6 +4303,12 @@ async function markLocalAcceptedCandidateProcessing(
       label: suggestion.label,
       outcome: suggestion.outcome
     })),
+    novelTopics: novelTopics.map((suggestion) => ({
+      key: suggestion.key,
+      label: suggestion.label,
+      outcome: suggestion.outcome,
+      score: suggestion.score
+    })),
     outcomeSuggestions: outcomeSuggestions.map((suggestion) => ({
       label: suggestion.label,
       outcome: suggestion.outcome,
@@ -4100,6 +4317,12 @@ async function markLocalAcceptedCandidateProcessing(
     processedAt,
     referenceId: candidate.acceptedReferenceId,
     sourceTypeSuggestion,
+    topicSuggestions: topicSuggestions.map((suggestion) => ({
+      key: suggestion.key,
+      label: suggestion.label,
+      outcome: suggestion.outcome,
+      score: suggestion.score
+    }))
   };
 
   const updated = await prisma.sourceCandidate.update({
@@ -4184,6 +4407,15 @@ function localAcceptedCandidateProcessingReadout(
     .filter((suggestion) => !knownOutcomes.has(suggestion.outcome))
     .map((suggestion) => suggestion.label);
   const outcomeLabels = processing?.outcomeLabels ?? outcomeSuggestions.map((item) => item.label);
+  const topicSuggestions = localAcceptedCandidateEvidenceTopicSuggestions(candidate);
+  const topicLabels = processing?.topicLabels ?? topicSuggestions.map((item) => item.label);
+  const novelTopicLabels =
+    processing?.novelTopicLabels ??
+    topicSuggestions
+      .filter((topic) =>
+        !localAcceptedCandidateTopicHasExistingClaim(topic, candidate.intervention?.claims ?? [])
+      )
+      .map((topic) => topic.label);
 
   return {
     acceptedReferenceId: candidate.acceptedReferenceId ?? undefined,
@@ -4198,8 +4430,11 @@ function localAcceptedCandidateProcessingReadout(
         candidate,
         linkedClaim: Boolean(candidate.claimId),
         novelOutcomeLabels,
-        outcomeLabels
+        novelTopicLabels,
+        outcomeLabels,
+        topicLabels
       }),
+    novelTopicLabels,
     novelOutcomeLabels: processing?.novelOutcomeLabels ?? novelOutcomeLabels,
     outcomeLabels,
     processedAt: processing?.processedAt,
@@ -4207,26 +4442,95 @@ function localAcceptedCandidateProcessingReadout(
     sourceTypeSuggestion:
       processing?.sourceTypeSuggestion ?? localAcceptedCandidateSourceTypeSuggestion(candidate),
     title: candidate.title,
+    topicLabels,
     url: candidate.url
   };
 }
 
-function localBenefitDiscoveryClusterOutcomes(
+function localBenefitDiscoveryClusterTopics(
   candidate: LocalBenefitDiscoveryCandidate
-): DbOutcomeArea[] {
+): LocalAcceptedCandidateProcessingOutcomeMetadata[] {
   const processing = readLocalAcceptedCandidateProcessingMetadata(candidate.metadata);
 
   if (!processing) {
     return [];
   }
 
+  const novelTopics = localBenefitDiscoveryTopicValues(processing.novelTopics);
+
+  if (novelTopics.length > 0) {
+    return novelTopics.slice(0, 4);
+  }
+
+  const topics = localBenefitDiscoveryTopicValues(processing.topicSuggestions);
+
+  if (topics.length > 0) {
+    return topics.slice(0, 4);
+  }
+
   const novelOutcomes = localBenefitDiscoveryOutcomeValues(processing.novelOutcomes);
 
   if (novelOutcomes.length > 0) {
-    return novelOutcomes.slice(0, 3);
+    return novelOutcomes.map(localBenefitDiscoveryOutcomeTopic).slice(0, 3);
   }
 
-  return localBenefitDiscoveryOutcomeValues(processing.outcomeSuggestions).slice(0, 2);
+  return localBenefitDiscoveryOutcomeValues(processing.outcomeSuggestions)
+    .map(localBenefitDiscoveryOutcomeTopic)
+    .slice(0, 2);
+}
+
+function localBenefitDiscoveryTopicValues(
+  value: LocalAcceptedCandidateProcessingOutcomeMetadata[]
+): LocalAcceptedCandidateProcessingOutcomeMetadata[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const topics: LocalAcceptedCandidateProcessingOutcomeMetadata[] = [];
+
+  for (const item of value) {
+    const outcome = normaliseDbOutcomeArea(item.outcome);
+    const key = item.key ?? (outcome ? `outcome-${outcome}` : undefined);
+
+    if (!key || !outcome || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    topics.push({
+      key,
+      label: item.label ?? localBenefitDiscoveryOutcomeLabel(outcome),
+      outcome,
+      score: item.score
+    });
+  }
+
+  return topics;
+}
+
+function localBenefitDiscoveryOutcomeTopic(
+  outcome: DbOutcomeArea
+): LocalAcceptedCandidateProcessingOutcomeMetadata {
+  return {
+    key: `outcome-${outcome}`,
+    label: localBenefitDiscoveryOutcomeLabel(outcome),
+    outcome
+  };
+}
+
+function localBenefitDiscoveryClusterTopicMatches(
+  topic: LocalAcceptedCandidateProcessingOutcomeMetadata,
+  filter: {
+    outcome?: DbOutcomeArea;
+    topicKey?: string;
+  }
+) {
+  if (filter.topicKey) {
+    return topic.key === filter.topicKey;
+  }
+
+  return filter.outcome ? normaliseDbOutcomeArea(topic.outcome) === filter.outcome : false;
 }
 
 function localBenefitDiscoveryOutcomeValues(
@@ -4573,19 +4877,38 @@ function localBenefitDiscoveryOutcomeLabel(outcome: DbOutcomeArea) {
 
 function localBenefitDiscoveryClusterKey({
   interventionId,
-  outcome
+  topic
 }: {
   interventionId: string | null;
-  outcome: DbOutcomeArea;
+  topic: LocalAcceptedCandidateProcessingOutcomeMetadata;
 }) {
-  return `${interventionId ?? ""}::${outcome}`;
+  const outcome = normaliseDbOutcomeArea(topic.outcome) ?? DbOutcomeArea.MORTALITY_LIFESPAN;
+  const key = topic.key ?? `outcome-${outcome}`;
+
+  return `${interventionId ?? ""}::topic::${key}`;
 }
 
 function parseBenefitDiscoveryClusterKey(clusterKey: string) {
-  const [interventionId, outcomeValue] = clusterKey.split("::");
-  const outcome = normaliseDbOutcomeArea(outcomeValue);
+  const [interventionId, markerOrOutcome, topicKey] = clusterKey.split("::");
 
-  if (!interventionId || !outcome) {
+  if (!interventionId || !markerOrOutcome) {
+    throw new Error("Benefit discovery cluster key is invalid.");
+  }
+
+  if (markerOrOutcome === "topic") {
+    if (!topicKey) {
+      throw new Error("Benefit discovery cluster key is invalid.");
+    }
+
+    return {
+      interventionId,
+      topicKey
+    };
+  }
+
+  const outcome = normaliseDbOutcomeArea(markerOrOutcome);
+
+  if (!outcome) {
     throw new Error("Benefit discovery cluster key is invalid.");
   }
 
@@ -4637,6 +4960,81 @@ function localAcceptedCandidateOutcomeSuggestions(candidate: {
     .slice(0, 4);
 }
 
+export function localAcceptedCandidateEvidenceTopicSuggestions(candidate: {
+  metadata: unknown;
+  query: string;
+  sourceType: string | null;
+  title: string;
+}) {
+  const searchableText = localAcceptedCandidateSearchableText(candidate);
+
+  return LOCAL_ACCEPTED_EVIDENCE_TOPICS.map((topic) => ({
+    key: topic.key,
+    label: topic.label,
+    outcome: topic.outcome,
+    score: topic.terms.reduce(
+      (score, term) => score + (localAcceptedCandidateTextIncludes(searchableText, term) ? 1 : 0),
+      0
+    )
+  }))
+    .filter((topic) => topic.score > 0)
+    .sort((left, right) => right.score - left.score || left.label.localeCompare(right.label))
+    .slice(0, 5);
+}
+
+function localAcceptedCandidateTopicHasExistingClaim(
+  topic: { key?: string; label?: string; outcome?: DbOutcomeArea | string },
+  claims: Array<{ claimText: string; outcome: DbOutcomeArea }>
+) {
+  const definition = localAcceptedEvidenceTopicDefinition(topic.key);
+  const outcome = normaliseDbOutcomeArea(topic.outcome);
+
+  if (!outcome) {
+    return false;
+  }
+
+  return claims.some(
+    (claim) =>
+      claim.outcome === outcome &&
+      localAcceptedCandidateClaimTextMatchesTopic(claim.claimText, topic, definition)
+  );
+}
+
+function localAcceptedCandidateClaimTextMatchesTopic(
+  claimText: string,
+  topic: { key?: string; label?: string },
+  definition?: LocalAcceptedEvidenceTopic
+) {
+  const topicDefinition = definition ?? localAcceptedEvidenceTopicDefinition(topic.key);
+  const normalizedClaimText = localBenefitDiscoveryTerm(claimText);
+  const topicTerms = [
+    ...(topicDefinition?.terms ?? []),
+    ...(topic.label ? [topic.label] : [])
+  ].map(localBenefitDiscoveryTerm);
+
+  return topicTerms.some(
+    (term) =>
+      term.length >= 3 &&
+      localAcceptedCandidateTextIncludes(normalizedClaimText, term)
+  );
+}
+
+function localAcceptedEvidenceTopicDefinition(key: string | undefined) {
+  return key
+    ? LOCAL_ACCEPTED_EVIDENCE_TOPICS.find((topic) => topic.key === key)
+    : undefined;
+}
+
+function localAcceptedCandidateTextIncludes(text: string, term: string) {
+  const normalizedTerm = localBenefitDiscoveryTerm(term);
+
+  if (!normalizedTerm) {
+    return false;
+  }
+
+  return ` ${text} `.includes(` ${normalizedTerm} `);
+}
+
 function localAcceptedCandidateSearchableText(candidate: {
   metadata: unknown;
   query: string;
@@ -4656,7 +5054,7 @@ function localAcceptedCandidateSearchableText(candidate: {
     ...sourceCandidateMetadataStringArray(metadata.publicationTypes)
   ].filter((value): value is string => Boolean(value));
 
-  return parts.join(" ").toLowerCase();
+  return localBenefitDiscoveryTerm(parts.join(" "));
 }
 
 function localAcceptedCandidateSourceTypeSuggestion(candidate: {
@@ -4705,7 +5103,9 @@ function localAcceptedCandidateNextAction({
   error,
   linkedClaim,
   novelOutcomeLabels,
-  outcomeLabels
+  novelTopicLabels,
+  outcomeLabels,
+  topicLabels
 }: {
   candidate: {
     claimId: string | null;
@@ -4713,7 +5113,9 @@ function localAcceptedCandidateNextAction({
   error?: string;
   linkedClaim: boolean;
   novelOutcomeLabels: string[];
+  novelTopicLabels: string[];
   outcomeLabels: string[];
+  topicLabels: string[];
 }) {
   if (error) {
     return `Manual cleanup needed: ${error}`;
@@ -4727,6 +5129,14 @@ function localAcceptedCandidateNextAction({
     return "Candidate already has a scoped claim; retry claim-reference linking.";
   }
 
+  if (novelTopicLabels.length > 0) {
+    return `Draft or link evidence topic: ${novelTopicLabels.join(", ")}.`;
+  }
+
+  if (topicLabels.length > 0) {
+    return `Review popular-claim topic fit before linking or drafting: ${topicLabels.join(", ")}.`;
+  }
+
   if (novelOutcomeLabels.length > 0) {
     return `Draft or link claim for novel benefit area: ${novelOutcomeLabels.join(", ")}.`;
   }
@@ -4735,7 +5145,7 @@ function localAcceptedCandidateNextAction({
     return `Link to an existing claim or draft a more specific claim: ${outcomeLabels.join(", ")}.`;
   }
 
-  return "Review title/abstract to choose the best claim or outcome area.";
+  return "Review title/abstract to choose the best claim topic or evidence area.";
 }
 
 function normaliseCandidateReviewFilters(

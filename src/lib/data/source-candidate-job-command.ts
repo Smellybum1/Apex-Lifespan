@@ -581,18 +581,21 @@ export async function runSourceCandidateJobCommand(
     }
 
     if (options.reviewDecision && options.reviewCandidateDedupeKey) {
+      // A person invoking the CLI with an explicit per-candidate decision.
       const candidate = await recordDecision(
         options.reviewDecision === "Accepted"
           ? {
               acceptedReferenceId: options.acceptedReferenceId!,
               dedupeKey: options.reviewCandidateDedupeKey,
               decision: "Accepted",
-              reviewNote: options.reviewNote!
+              reviewNote: options.reviewNote!,
+              reviewedBy: "human"
             }
           : {
               dedupeKey: options.reviewCandidateDedupeKey,
               decision: "Rejected",
-              reviewNote: options.reviewNote!
+              reviewNote: options.reviewNote!,
+              reviewedBy: "human"
             }
       );
 

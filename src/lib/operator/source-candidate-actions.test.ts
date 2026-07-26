@@ -137,7 +137,8 @@ describe("operator source-candidate actions", () => {
           acceptedReferenceId: reference.id,
           decision: "Accepted",
           dedupeKey: pendingCandidate.dedupeKey,
-          reviewNote: "Matches PMID and claim context."
+          reviewNote: "Matches PMID and claim context.",
+          reviewedBy: "human"
         },
         writesEnabled
       )
@@ -147,7 +148,8 @@ describe("operator source-candidate actions", () => {
       acceptedReferenceId: reference.id,
       decision: "Accepted",
       dedupeKey: pendingCandidate.dedupeKey,
-      reviewNote: "Matches PMID and claim context."
+      reviewNote: "Matches PMID and claim context.",
+      reviewedBy: "human"
     });
     expect(operatorAuditCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -170,7 +172,8 @@ describe("operator source-candidate actions", () => {
         {
           decision: "Rejected",
           dedupeKey: pendingCandidate.dedupeKey,
-          reviewNote: "Out of scope."
+          reviewNote: "Out of scope.",
+          reviewedBy: "human"
         },
         {}
       )

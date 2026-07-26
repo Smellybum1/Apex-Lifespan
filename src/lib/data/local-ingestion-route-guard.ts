@@ -64,11 +64,11 @@ function isSafeLocalIngestionWrite(request: Request, url: URL) {
     return false;
   }
 
-  if (!isSameOriginHeader(request.headers.get("origin"), url.origin)) {
+  if (!isSameOrEquivalentLocalOriginHeader(request.headers.get("origin"), url)) {
     return false;
   }
 
-  if (!isSameOriginHeader(request.headers.get("referer"), url.origin)) {
+  if (!isSameOrEquivalentLocalOriginHeader(request.headers.get("referer"), url)) {
     return false;
   }
 
@@ -85,16 +85,46 @@ function safeRequestUrl(request: Request) {
   }
 }
 
-function isSameOriginHeader(value: string | null, expectedOrigin: string) {
+function isSameOrEquivalentLocalOriginHeader(value: string | null, expectedUrl: URL) {
   if (!value) {
     return true;
   }
 
   try {
-    return new URL(value).origin === expectedOrigin;
+    const actualUrl = new URL(value);
+
+    return (
+      actualUrl.origin === expectedUrl.origin ||
+      isEquivalentLocalOrigin(actualUrl, expectedUrl)
+    );
   } catch {
     return false;
   }
+}
+
+function isEquivalentLocalOrigin(actualUrl: URL, expectedUrl: URL) {
+  return (
+    actualUrl.protocol === expectedUrl.protocol &&
+    localOriginPort(actualUrl) === localOriginPort(expectedUrl) &&
+    LOCAL_HOSTS.has(localHostName(actualUrl.hostname)) &&
+    LOCAL_HOSTS.has(localHostName(expectedUrl.hostname))
+  );
+}
+
+function localOriginPort(url: URL) {
+  if (url.port) {
+    return url.port;
+  }
+
+  if (url.protocol === "http:") {
+    return "80";
+  }
+
+  if (url.protocol === "https:") {
+    return "443";
+  }
+
+  return "";
 }
 
 function localHostName(value: string | null) {

@@ -38,6 +38,37 @@ import {
 } from "@/components/local-ingestion/types";
 import { InlineConfirmation } from "@/components/local-ingestion/inline-confirmation";
 import {
+  formatLocalIngestionDelay,
+  localBenefitDiscoveryAutomationMessage,
+  localBenefitDiscoveryAutomationScopeLabel,
+  localBenefitDiscoveryAutomationStrategyLabel,
+  localCandidateBulkResultMessage,
+  localCandidateReviewAutomationResultMessage,
+  localCandidateReviewAutomationStrategyLabel,
+  localIdentityResolutionAutomationMessage,
+  localIdentityResolutionAutomationScopeLabel,
+  localIdentityResolutionAutomationStrategyLabel,
+  localIngestionDeepeningCatchUpSummary,
+  localIngestionDeepeningRunSummary,
+  localIngestionQueueCount,
+  localIngestionSourceLabel,
+  localIngestionStatusLabel,
+  sleep
+} from "@/lib/pipeline/messages";
+import { runLocalUpdatePipeline } from "@/lib/pipeline/run-local-update-pipeline";
+import {
+  LOCAL_ACCEPTED_PROCESSING_BATCH_SIZE,
+  LOCAL_UPDATE_PIPELINE_STAGE_DEFINITIONS,
+  type LocalUpdatePipelineOperations,
+  type LocalUpdatePipelineStage,
+  type LocalUpdatePipelineStageId,
+  type LocalUpdatePipelineStageStatus
+} from "@/lib/pipeline/types";
+
+// Re-exported so the dashboard stays the entry point callers already import
+// from; the implementation now lives in @/lib/pipeline so it can run headless.
+export { runLocalUpdatePipeline };
+import {
   LocalNextActionStrip,
   acceptedCandidateProcessingNextAction,
   benefitDiscoveryNextAction,
@@ -90,16 +121,16 @@ import type {
   LocalIdentityResolutionCandidate,
   LocalIdentityResolutionQueueResponse,
   LocalIngestionCandidateReadout,
-  LocalIngestionDeepeningCatchUpReadout,
   LocalIngestionDiscoveryClassificationReadout,
   LocalIngestionJobReadout,
   LocalIngestionJobStatus,
   LocalIngestionLogEntry,
-  LocalIngestionRunJobResult,
   LocalIngestionRunResponse,
-  LocalIngestionSource,
   LocalIngestionStartResponse,
-  LocalIngestionStatusReadout
+  LocalIngestionStatusReadout,
+  LocalClaimExpansionResponse,
+  LocalScoreFinalizationResponse,
+  LocalSourceWorkRepairResponse
 } from "@/components/local-ingestion/types";
 
 import {
@@ -107,6 +138,7 @@ import {
   isNctIdFormat,
   type CatalogTrustSummary
 } from "@/lib/catalog-trust";
+import { claimEvidenceDirectionLabel } from "@/lib/claim-direction";
 import { labelTrialWatchItem } from "@/lib/trial-registry-labels";
 import { projectConfig } from "@/lib/config/project";
 import type {
@@ -153,6 +185,7 @@ import {
 import { summarizeReviewStatus } from "@/lib/review-summary";
 import {
   buildClaimSourcePacket,
+  buildClaimSourcePacketFromSnapshot,
   summarizeClaimSourcePackets,
   type ClaimSourcePacket,
   type EvidenceDepthBadge
@@ -164,6 +197,7 @@ import type {
   EvidenceDashboardData,
   EvidenceLabel,
   Intervention,
+  NormalizedSourcePacketRow,
   OutcomeArea,
   ProductSignal,
   Reference,
@@ -194,6 +228,7 @@ type PracticalPriorityBucketId =
   | "context"
   | "performance"
   | "overhyped"
+  | "source-work"
   | "emerging"
   | "watchlist";
 
@@ -256,9 +291,12 @@ type PracticalRadarRankingLead = {
 type PracticalGuideModel = {
   buckets: PracticalPriorityBucket[];
   claimCount: number;
+  entryCount: number;
   longevityLens: PracticalLongevityLensCard[];
   quickTakes: PracticalQuickTake[];
   radar: PracticalRadar;
+  scoredCount: number;
+  sourceWorkCount: number;
 };
 
 type PracticalQuickTake = {
@@ -286,49 +324,56 @@ const compositeScoreFormula =
 const compositeScoreDetail =
   "Weighted 0-10 review aid: directness 22%, rigor 22%, impact 18%, safety 14%, low regulatory risk 10%, low hype 8%, and measurability 6%. The formula is partly heuristic and is not medical advice.";
 
-const PRACTICAL_GUIDE_ITEM_LIMIT = 3;
+const PRACTICAL_GUIDE_BUCKET_PREVIEW_LIMIT = 6;
 
 const PRACTICAL_PRIORITY_BUCKET_CONFIG: Array<
   Omit<PracticalPriorityBucket, "items">
 > = [
   {
     description: "Stronger human-use signals with cleaner source packets and fewer immediate caveats.",
-    empty: "No current-filter items meet the stronger practical-priority threshold.",
+    empty: "No local-catalog items meet the stronger practical-priority threshold.",
     id: "best",
     label: "Best practical bets now",
     tone: "border-spruce/30 bg-teal-50 text-spruce"
   },
   {
     description: "Useful only when the person, biomarker, product form, or goal matches the evidence.",
-    empty: "No context-dependent items match the current filters.",
+    empty: "No context-dependent items are prominent in the local catalog.",
     id: "context",
     label: "Worth considering if relevant",
     tone: "border-signal/25 bg-blue-50 text-signal"
   },
   {
     description: "Mostly performance, training, or narrow-use outcomes rather than broad health advice.",
-    empty: "No performance-focused items match the current filters.",
+    empty: "No performance-focused items are prominent in the local catalog.",
     id: "performance",
     label: "Niche / performance-focused",
     tone: "border-indigo-200 bg-indigo-50 text-indigo-700"
   },
   {
     description: "Common claims where the current evidence does not support broad conclusions.",
-    empty: "No overhyped or unsupported items match the current filters.",
+    empty: "No overhyped or unsupported items are prominent in the local catalog.",
     id: "overhyped",
     label: "Popular but not well-backed",
     tone: "border-slate-300 bg-slate-50 text-slate-700"
   },
   {
-    description: "Signals, trials, or source work that may matter later but is not settled evidence.",
-    empty: "No emerging-evidence items match the current filters.",
+    description: "Linked claims that still need source extraction, identity cleanup, or curated references before interpretation.",
+    empty: "No source-work items are waiting in the local catalog.",
+    id: "source-work",
+    label: "Source work needed",
+    tone: "border-amberline/30 bg-amber-50 text-amberline"
+  },
+  {
+    description: "Signals or trials that may matter later but are not settled evidence.",
+    empty: "No emerging-evidence items are prominent in the local catalog.",
     id: "emerging",
     label: "Emerging but not settled",
     tone: "border-amberline/30 bg-amber-50 text-amberline"
   },
   {
     description: "Safety, clinician-only, peptide, or regulatory items that should not be treated as routine supplements.",
-    empty: "No safety or regulatory watchlist items match the current filters.",
+    empty: "No safety or regulatory watchlist items are prominent in the local catalog.",
     id: "watchlist",
     label: "Safety / clinician-only / regulatory watchlist",
     tone: "border-danger/30 bg-red-50 text-danger"
@@ -525,6 +570,110 @@ function ActiveClaimContextBar({
   );
 }
 
+function dashboardSourcePacketSnapshotMap(data: EvidenceDashboardData) {
+  return new Map((data.normalizedSourcePackets ?? []).map((packet) => [packet.claimId, packet]));
+}
+
+function shouldUseDashboardSourcePacketSnapshots({
+  references,
+  sourcePacketSnapshotsByClaimId,
+  studies
+}: {
+  references: Reference[];
+  sourcePacketSnapshotsByClaimId: Map<string, NormalizedSourcePacketRow>;
+  studies: Study[];
+}) {
+  return references.length === 0 && studies.length === 0 && sourcePacketSnapshotsByClaimId.size > 0;
+}
+
+function buildDashboardClaimSourcePacket({
+  claim,
+  referencesById,
+  sourcePacketSnapshotsByClaimId,
+  studies,
+  useSourcePacketSnapshots
+}: {
+  claim: Claim;
+  referencesById: Map<string, Reference>;
+  sourcePacketSnapshotsByClaimId: Map<string, NormalizedSourcePacketRow>;
+  studies: Study[];
+  useSourcePacketSnapshots: boolean;
+}) {
+  if (useSourcePacketSnapshots) {
+    return buildClaimSourcePacketFromSnapshot({
+      claim,
+      packet: sourcePacketSnapshotsByClaimId.get(claim.id),
+      referencesById
+    });
+  }
+
+  return buildClaimSourcePacket({ claim, referencesById, studies });
+}
+
+function summarizeDashboardClaimSourcePackets({
+  claims,
+  referencesById,
+  sourcePacketSnapshotsByClaimId,
+  studies,
+  useSourcePacketSnapshots
+}: {
+  claims: Claim[];
+  referencesById: Map<string, Reference>;
+  sourcePacketSnapshotsByClaimId: Map<string, NormalizedSourcePacketRow>;
+  studies: Study[];
+  useSourcePacketSnapshots: boolean;
+}) {
+  if (!useSourcePacketSnapshots) {
+    return summarizeClaimSourcePackets({ claims, referencesById, studies });
+  }
+
+  return claims.reduce(
+    (summary, claim) => {
+      const packet = buildDashboardClaimSourcePacket({
+        claim,
+        referencesById,
+        sourcePacketSnapshotsByClaimId,
+        studies,
+        useSourcePacketSnapshots
+      });
+
+      summary.totalClaims += 1;
+      summary.totalReferences += packet.completeness.totalReferences;
+      summary.extractedReferences += packet.completeness.extractedReferences;
+      summary.pendingReferences += packet.completeness.pendingReferences;
+      summary.missingReferences += packet.completeness.missingReferences;
+
+      switch (packet.completeness.status) {
+        case "complete":
+          summary.completeClaims += 1;
+          break;
+        case "extraction_pending":
+          summary.extractionPendingClaims += 1;
+          break;
+        case "missing_sources":
+          summary.missingSourceClaims += 1;
+          break;
+        case "not_linked":
+          summary.unlinkedClaims += 1;
+          break;
+      }
+
+      return summary;
+    },
+    {
+      completeClaims: 0,
+      extractionPendingClaims: 0,
+      extractedReferences: 0,
+      missingReferences: 0,
+      missingSourceClaims: 0,
+      pendingReferences: 0,
+      totalClaims: 0,
+      totalReferences: 0,
+      unlinkedClaims: 0
+    }
+  );
+}
+
 function EvidenceDashboardTabbedPanels({
   activeClaim,
   activeClaimId,
@@ -574,9 +723,9 @@ function EvidenceDashboardTabbedPanels({
     id: DashboardTabId;
     label: string;
   }> = [
-    { badge: String(tableRows.length), id: "claim-scores", label: "Claim Scores" },
+    { badge: String(tableRows.length), id: "claim-scores", label: "Score Index" },
     { badge: String(safetyAlerts.length), id: "safety-center", label: "Safety Center" },
-    { badge: String(filteredClaims.length), id: "evidence-cards", label: "Evidence Cards" },
+    { badge: String(filteredClaims.length), id: "evidence-cards", label: "Evidence Notes" },
     { id: "product-labels", label: "Product Labels" },
     { badge: String(trialWatchItems.length), id: "trial-watcher", label: "Trial Watcher" },
     { id: "sources", label: "Sources" }
@@ -592,9 +741,9 @@ function EvidenceDashboardTabbedPanels({
         onClick={() => onOpenChange(!open)}
       >
         <div className="min-w-0">
-          <p className="text-base font-semibold text-ink">Claim details</p>
+          <p className="text-base font-semibold text-ink">Evidence notes</p>
           <p className="mt-0.5 text-xs text-slate-600">
-            Scores, safety, evidence cards, product labels, trials, and sources
+            Claim notes, source trails, safety, product labels, trials, and score audit fields
           </p>
         </div>
         <ChevronDown
@@ -737,7 +886,13 @@ function EvidenceDashboardTabbedPanels({
   );
 }
 
-export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
+export function EvidenceDashboard({ data: initialData }: { data: EvidenceDashboardData }) {
+  const [detailData, setDetailData] = useState<EvidenceDashboardData | null>(null);
+  const [detailDataStatus, setDetailDataStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    initialData.references.length > 0 || initialData.studies.length > 0 ? "ready" : "idle"
+  );
+  const [detailDataError, setDetailDataError] = useState<string | null>(null);
+  const data = detailData ?? initialData;
   const {
     claims,
     interventions,
@@ -747,6 +902,8 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     studies,
     trialWatchItems
   } = data;
+  const hasDetailData =
+    detailDataStatus === "ready" || references.length > 0 || studies.length > 0;
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [labelFilter, setLabelFilter] = useState("All");
@@ -762,6 +919,33 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const [mainTab, setMainTab] = useState<DashboardMainTab>("evidence-map");
   const [localToolsVisible, setLocalToolsVisible] = useState(false);
   const catalogTrustSummary = useMemo(() => buildCatalogTrustSummary(data), [data]);
+  const loadDetailData = useCallback(async () => {
+    if (detailDataStatus === "loading" || detailDataStatus === "ready") {
+      return;
+    }
+
+    setDetailDataStatus("loading");
+    setDetailDataError(null);
+
+    try {
+      const response = await fetch("/api/evidence-dashboard/details", {
+        cache: "no-store"
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Evidence detail data could not be loaded.");
+      }
+
+      setDetailData(payload as EvidenceDashboardData);
+      setDetailDataStatus("ready");
+    } catch (error) {
+      setDetailDataStatus("error");
+      setDetailDataError(
+        error instanceof Error ? error.message : "Evidence detail data could not be loaded."
+      );
+    }
+  }, [detailDataStatus]);
 
   const handleSelectClaim = useCallback<SelectClaimHandler>((claimId, options) => {
     setActiveClaimId(claimId);
@@ -778,6 +962,30 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const referencesById = useMemo(
     () => new Map(references.map((reference) => [reference.id, reference])),
     [references]
+  );
+  const sourcePacketSnapshotsByClaimId = useMemo(
+    () => dashboardSourcePacketSnapshotMap(data),
+    [data]
+  );
+  const useSourcePacketSnapshots = useMemo(
+    () =>
+      shouldUseDashboardSourcePacketSnapshots({
+        references,
+        sourcePacketSnapshotsByClaimId,
+        studies
+      }),
+    [references, sourcePacketSnapshotsByClaimId, studies]
+  );
+  const buildSourcePacketForClaim = useCallback(
+    (claim: Claim) =>
+      buildDashboardClaimSourcePacket({
+        claim,
+        referencesById,
+        sourcePacketSnapshotsByClaimId,
+        studies,
+        useSourcePacketSnapshots
+      }),
+    [referencesById, sourcePacketSnapshotsByClaimId, studies, useSourcePacketSnapshots]
   );
 
   const interventionsById = useMemo(
@@ -842,6 +1050,18 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     () => new Map(evidenceMapReadinessRows.map((row) => [row.claim.id, row])),
     [evidenceMapReadinessRows]
   );
+  const practicalGuideReadinessRows = useMemo(
+    () =>
+      buildScoreReadinessRows({
+        ...data,
+        claims
+      }),
+    [claims, data]
+  );
+  const practicalGuideReadinessByClaimId = useMemo(
+    () => new Map(practicalGuideReadinessRows.map((row) => [row.claim.id, row])),
+    [practicalGuideReadinessRows]
+  );
   const evidenceMapClaims = useMemo(
     () =>
       filteredClaims.filter((claim) =>
@@ -867,9 +1087,18 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
         claims: filteredClaims,
         readinessRows: evidenceMapReadinessRows,
         referencesById,
-        studies
+        sourcePacketSnapshotsByClaimId,
+        studies,
+        useSourcePacketSnapshots
       }),
-    [evidenceMapReadinessRows, filteredClaims, referencesById, studies]
+    [
+      evidenceMapReadinessRows,
+      filteredClaims,
+      referencesById,
+      sourcePacketSnapshotsByClaimId,
+      studies,
+      useSourcePacketSnapshots
+    ]
   );
 
   useEffect(() => {
@@ -893,6 +1122,12 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
       setMainTab("evidence-map");
     }
   }, [localToolsVisible, mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "claim-details" || mainTab === "catalog-trust") {
+      void loadDetailData();
+    }
+  }, [loadDetailData, mainTab]);
 
   const activeClaim =
     filteredClaims.find((claim) => claim.id === activeClaimId) ??
@@ -923,11 +1158,7 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     () =>
       filteredClaims.map((claim) => {
         const readinessRow = evidenceMapReadinessByClaimId.get(claim.id);
-        const sourcePacket = buildClaimSourcePacket({
-          claim,
-          referencesById,
-          studies
-        });
+        const sourcePacket = buildSourcePacketForClaim(claim);
 
         return {
           id: claim.id,
@@ -944,27 +1175,31 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
           updated: claim.lastUpdated
         };
       }),
-    [evidenceMapReadinessByClaimId, filteredClaims, interventionsById, referencesById, studies]
+    [buildSourcePacketForClaim, evidenceMapReadinessByClaimId, filteredClaims, interventionsById]
   );
   const practicalGuide = useMemo(
     () =>
       buildPracticalGuide({
-        claims: filteredClaims,
+        claims,
         interventionsById,
-        readinessByClaimId: evidenceMapReadinessByClaimId,
+        readinessByClaimId: practicalGuideReadinessByClaimId,
         referencesById,
         safetyAlerts,
+        sourcePacketSnapshotsByClaimId,
         studies,
-        trialWatchItems
+        trialWatchItems,
+        useSourcePacketSnapshots
       }),
     [
-      evidenceMapReadinessByClaimId,
-      filteredClaims,
+      claims,
       interventionsById,
+      practicalGuideReadinessByClaimId,
       referencesById,
       safetyAlerts,
+      sourcePacketSnapshotsByClaimId,
       studies,
-      trialWatchItems
+      trialWatchItems,
+      useSourcePacketSnapshots
     ]
   );
 
@@ -980,14 +1215,16 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
 
         {mainTab === "evidence-map" ? (
           <section className="min-w-0 space-y-4">
-            <PracticalGuideSection guide={practicalGuide} />
             <div className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                  <h2 className="text-base font-semibold text-ink">Evidence Map</h2>
+                  <h2 className="text-base font-semibold text-ink">
+                    Ranked evidence by outcome
+                  </h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    Reviewed cells show composite evidence confidence. Source-work and score-work
-                    cells stay marked until source packets and scoring are complete.
+                    Top-ranked supplements appear first within each outcome, using scored local
+                    evidence signals, confidence, and source readiness. Open source-work rows when
+                    you want to audit unfinished evidence trails.
                   </p>
                   <p className="mt-1 text-xs text-slate-600">
                     {formatEvidenceMapFilterSummary({
@@ -1071,19 +1308,20 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
                 </div>
               </div>
 
+              <EvidenceMap
+                claims={evidenceMapClaims}
+                readinessByClaimId={evidenceMapReadinessByClaimId}
+                interventions={evidenceMapInterventions}
+                activeClaimId={activeClaimIdForDisplay}
+              />
+
               <EvidenceMapReadinessStrip
                 onStatusFilterChange={setEvidenceMapStatusFilter}
                 statusFilter={evidenceMapStatusFilter}
                 summary={evidenceMapReadinessSummary}
               />
-
-          <EvidenceMap
-            claims={evidenceMapClaims}
-            readinessByClaimId={evidenceMapReadinessByClaimId}
-            interventions={evidenceMapInterventions}
-            activeClaimId={activeClaimIdForDisplay}
-          />
             </div>
+            <PracticalGuideSection guide={practicalGuide} />
           </section>
         ) : null}
 
@@ -1100,35 +1338,65 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
                 readinessRow={evidenceMapReadinessByClaimId.get(activeClaim.id)}
               />
             ) : null}
-            <EvidenceDashboardTabbedPanels
-              activeClaim={activeClaim}
-              activeClaimId={activeClaimIdForDisplay}
-              activeIntervention={activeIntervention}
-              filteredClaims={filteredClaims}
-              hasFilteredClaims={hasFilteredClaims}
-              interventionsById={interventionsById}
-              labelFindings={labelFindings}
-              labelText={labelText}
-              onOpenChange={setDetailPanelsOpen}
-              onSelectClaim={handleSelectClaim}
-              open={detailPanelsOpen}
-              productAustraliaVerificationById={productAustraliaVerificationById}
-              productSignals={productSignals}
-              referencesById={referencesById}
-              readinessByClaimId={evidenceMapReadinessByClaimId}
-              safetyAlerts={safetyAlerts}
-              setLabelText={setLabelText}
-              studies={studies}
-              tableRows={tableRows}
-              trialWatchItems={trialWatchItems}
-            />
+            {hasDetailData ? (
+              <EvidenceDashboardTabbedPanels
+                activeClaim={activeClaim}
+                activeClaimId={activeClaimIdForDisplay}
+                activeIntervention={activeIntervention}
+                filteredClaims={filteredClaims}
+                hasFilteredClaims={hasFilteredClaims}
+                interventionsById={interventionsById}
+                labelFindings={labelFindings}
+                labelText={labelText}
+                onOpenChange={setDetailPanelsOpen}
+                onSelectClaim={handleSelectClaim}
+                open={detailPanelsOpen}
+                productAustraliaVerificationById={productAustraliaVerificationById}
+                productSignals={productSignals}
+                referencesById={referencesById}
+                readinessByClaimId={evidenceMapReadinessByClaimId}
+                safetyAlerts={safetyAlerts}
+                setLabelText={setLabelText}
+                studies={studies}
+                tableRows={tableRows}
+                trialWatchItems={trialWatchItems}
+              />
+            ) : (
+              <DashboardDetailDataGate
+                detail="Source trails, extracted study rows, product-label review, and trial detail load only when this section is opened."
+                error={detailDataError}
+                onRetry={loadDetailData}
+                status={detailDataStatus}
+                title="Loading evidence notes"
+              />
+            )}
           </section>
         ) : null}
 
-        {mainTab === "candidate-review" ? <LocalCandidateReviewWorkbench /> : null}
-        {mainTab === "local-ingestion" ? <LocalIngestionControl /> : null}
+        {mainTab === "candidate-review" ? (
+          <div className="grid gap-4">
+            <LocalUpdatePipelineControl />
+            <LocalCandidateReviewWorkbench />
+          </div>
+        ) : null}
+        {mainTab === "local-ingestion" ? (
+          <div className="grid gap-4">
+            <LocalUpdatePipelineControl />
+            <LocalIngestionControl />
+          </div>
+        ) : null}
         {mainTab === "catalog-trust" ? (
-          <CatalogTrustPanel data={data} summary={catalogTrustSummary} />
+          hasDetailData ? (
+            <CatalogTrustPanel data={data} summary={catalogTrustSummary} />
+          ) : (
+            <DashboardDetailDataGate
+              detail="Catalog Trust uses full source, study, product, and score-audit rows, so it loads after the main ranked board."
+              error={detailDataError}
+              onRetry={loadDetailData}
+              status={detailDataStatus}
+              title="Loading catalog trust"
+            />
+          )
         ) : null}
       </div>
     </main>
@@ -1141,16 +1409,20 @@ function buildPracticalGuide({
   readinessByClaimId,
   referencesById,
   safetyAlerts,
+  sourcePacketSnapshotsByClaimId,
   studies,
-  trialWatchItems
+  trialWatchItems,
+  useSourcePacketSnapshots
 }: {
   claims: Claim[];
   interventionsById: Map<string, Intervention>;
   readinessByClaimId: Map<string, ScoreReadinessRow>;
   referencesById: Map<string, Reference>;
   safetyAlerts: SafetyAlert[];
+  sourcePacketSnapshotsByClaimId: Map<string, NormalizedSourcePacketRow>;
   studies: Study[];
   trialWatchItems: TrialWatchItem[];
+  useSourcePacketSnapshots: boolean;
 }): PracticalGuideModel {
   const safetyAlertsByInterventionId = new Map<string, SafetyAlert[]>();
 
@@ -1174,7 +1446,9 @@ function buildPracticalGuide({
         readinessRow: readinessByClaimId.get(claim.id),
         referencesById,
         safetyAlerts: safetyAlertsByInterventionId.get(claim.interventionId) ?? [],
-        studies
+        sourcePacketSnapshotsByClaimId,
+        studies,
+        useSourcePacketSnapshots
       });
     })
     .filter((item): item is PracticalGuideItem => Boolean(item))
@@ -1183,23 +1457,9 @@ function buildPracticalGuide({
   const bucketItems = new Map<PracticalPriorityBucketId, PracticalGuideItem[]>(
     PRACTICAL_PRIORITY_BUCKET_CONFIG.map((bucket) => [bucket.id, []])
   );
-  const bucketInterventionIds = new Map<PracticalPriorityBucketId, Set<string>>(
-    PRACTICAL_PRIORITY_BUCKET_CONFIG.map((bucket) => [bucket.id, new Set<string>()])
-  );
 
   items.forEach((item) => {
-    const currentItems = bucketItems.get(item.bucketId);
-    const currentInterventionIds = bucketInterventionIds.get(item.bucketId);
-
-    if (
-      currentItems &&
-      currentInterventionIds &&
-      currentItems.length < PRACTICAL_GUIDE_ITEM_LIMIT &&
-      !currentInterventionIds.has(item.intervention.id)
-    ) {
-      currentItems.push(item);
-      currentInterventionIds.add(item.intervention.id);
-    }
+    bucketItems.get(item.bucketId)?.push(item);
   });
 
   return {
@@ -1208,13 +1468,16 @@ function buildPracticalGuide({
       items: bucketItems.get(bucket.id) ?? []
     })),
     claimCount: claims.length,
+    entryCount: items.length,
     longevityLens: buildPracticalLongevityLens(items),
     quickTakes: buildPracticalQuickTakes(bucketItems, items),
     radar: buildPracticalRadar({
       items,
       interventionsById,
       trialWatchItems
-    })
+    }),
+    scoredCount: items.filter((item) => item.score !== null).length,
+    sourceWorkCount: items.filter((item) => item.sourcePacketStatus !== "complete").length
   };
 }
 
@@ -1224,23 +1487,34 @@ function buildPracticalGuideItem({
   readinessRow,
   referencesById,
   safetyAlerts,
-  studies
+  sourcePacketSnapshotsByClaimId,
+  studies,
+  useSourcePacketSnapshots
 }: {
   claim: Claim;
   intervention: Intervention;
   readinessRow?: ScoreReadinessRow;
   referencesById: Map<string, Reference>;
   safetyAlerts: SafetyAlert[];
+  sourcePacketSnapshotsByClaimId: Map<string, NormalizedSourcePacketRow>;
   studies: Study[];
+  useSourcePacketSnapshots: boolean;
 }): PracticalGuideItem {
-  const sourcePacket = buildClaimSourcePacket({ claim, referencesById, studies });
+  const sourcePacket = buildDashboardClaimSourcePacket({
+    claim,
+    referencesById,
+    sourcePacketSnapshotsByClaimId,
+    studies,
+    useSourcePacketSnapshots
+  });
   const score = evidenceMapSortableScore(claim, readinessRow);
   const bucketId = classifyPracticalPriorityBucket({
     claim,
     intervention,
     readinessRow,
     safetyAlerts,
-    score
+    score,
+    sourcePacket
   });
   const scoreLabel = practicalScoreLabel({
     bucketId,
@@ -1350,7 +1624,7 @@ function buildPracticalQuickTakes(
           tone: "border-spruce/30 bg-teal-50 text-spruce"
         }
       : {
-          detail: "No current-filter supplement reaches the strongest practical-priority threshold.",
+          detail: "No local-catalog supplement reaches the strongest practical-priority threshold.",
           label: "Most worth attention",
           title: "No clear top item",
           tone: "border-slate-300 bg-slate-50 text-slate-700"
@@ -1367,7 +1641,7 @@ function buildPracticalQuickTakes(
           tone: "border-signal/25 bg-blue-50 text-signal"
         }
       : {
-          detail: "No context-dependent item is prominent in the current filters.",
+          detail: "No context-dependent item is prominent in the local catalog.",
           label: "Context-dependent",
           title: "None prominent",
           tone: "border-slate-300 bg-slate-50 text-slate-700"
@@ -1384,7 +1658,7 @@ function buildPracticalQuickTakes(
           tone: "border-indigo-200 bg-indigo-50 text-indigo-700"
         }
       : {
-          detail: "No moderate-or-better confidence performance item is prominent in the current filters.",
+          detail: "No moderate-or-better confidence performance item is prominent in the local catalog.",
           label: "Niche use",
           title: "None prominent",
           tone: "border-slate-300 bg-slate-50 text-slate-700"
@@ -1403,7 +1677,7 @@ function buildPracticalQuickTakes(
           tone: "border-slate-300 bg-slate-50 text-slate-700"
         }
       : {
-          detail: "No overhyped claim is prominent in the current filters.",
+          detail: "No overhyped claim is prominent in the local catalog.",
           label: "Overhyped claim",
           title: "None prominent",
           tone: "border-slate-300 bg-slate-50 text-slate-700"
@@ -1420,7 +1694,7 @@ function buildPracticalQuickTakes(
           tone: "border-danger/30 bg-red-50 text-danger"
         }
       : {
-          detail: "No caution-first item is prominent in the current filters.",
+          detail: "No caution-first item is prominent in the local catalog.",
           label: "Caution first",
           title: "None prominent",
           tone: "border-slate-300 bg-slate-50 text-slate-700"
@@ -1445,13 +1719,15 @@ function classifyPracticalPriorityBucket({
   intervention,
   readinessRow,
   safetyAlerts,
-  score
+  score,
+  sourcePacket
 }: {
   claim: Claim;
   intervention: Intervention;
   readinessRow?: ScoreReadinessRow;
   safetyAlerts: SafetyAlert[];
   score: number | null;
+  sourcePacket: ClaimSourcePacket;
 }): PracticalPriorityBucketId {
   if (claim.outcome === "Safety/adverse effects") {
     return "watchlist";
@@ -1463,6 +1739,10 @@ function classifyPracticalPriorityBucket({
 
   if (isUnsupportedLongevityOrAgingClaim(claim)) {
     return "overhyped";
+  }
+
+  if (sourcePacket.completeness.status !== "complete") {
+    return "source-work";
   }
 
   if (isPracticalEmergingItem(claim, readinessRow)) {
@@ -1528,6 +1808,7 @@ function practicalPriorityScore({
     context: 20,
     performance: 16,
     overhyped: 12,
+    "source-work": 18,
     emerging: 14,
     watchlist: 22
   };
@@ -1646,6 +1927,10 @@ function practicalBucketReason(
   claim: Claim,
   sourcePacket: ClaimSourcePacket
 ) {
+  if (bucketId === "source-work") {
+    return `${shortOutcome(claim.outcome)} still needs source links, identity cleanup, or structured extraction before it should influence practical rankings.`;
+  }
+
   if (sourcePacket.completeness.status !== "complete" && bucketId !== "watchlist") {
     return `${shortOutcome(claim.outcome)} needs source links or extraction before it should influence practical rankings.`;
   }
@@ -1920,7 +2205,7 @@ function buildRankingImpactLeads(items: PracticalGuideItem[]) {
         return {
           item,
           reason:
-            "The stored score looks high, but confidence is low or very low, so this stays in source-lead territory instead of a top practical bucket."
+            "The stored score looks high, but confidence is low or very low, so this stays in source-lead territory instead of a top practical readout."
         };
       }
 
@@ -2019,18 +2304,22 @@ function PracticalGuideSection({ guide }: { guide: PracticalGuideModel }) {
             Start here
           </p>
           <h2 className="mt-1 text-base font-semibold text-ink">
-            What to pay attention to first
+            Plain-language evidence guide
           </h2>
           <p className="mt-1 text-sm leading-6 text-slate-600">
-            Practical guide: a derived readout of what is worth paying attention to, why it
-            stands out, and where the evidence is still conditional, speculative, or
-            safety-limited. These are not clinical recommendations or personal medical advice.
+            A full-local-catalog readout of what the evidence appears to say, why it may matter,
+            and where the interpretation is still conditional, speculative, source-blocked, or
+            safety-limited. The filters below change the ranked board and coverage matrix; these
+            are not clinical recommendations or personal medical advice.
           </p>
         </div>
-        <div className="grid min-w-[13rem] grid-cols-2 gap-2 text-xs text-slate-600">
-          <MiniStat label="Claims scanned" value={guide.claimCount.toLocaleString()} />
+        <div className="grid w-full grid-cols-2 gap-2 text-xs text-slate-600 sm:min-w-[20rem] lg:w-auto">
+          <MiniStat label="Claim cells scanned" value={guide.claimCount.toLocaleString()} />
+          <MiniStat label="Guide entries" value={guide.entryCount.toLocaleString()} />
+          <MiniStat label="Scored entries" value={guide.scoredCount.toLocaleString()} />
+          <MiniStat label="Source-work entries" value={guide.sourceWorkCount.toLocaleString()} />
           <MiniStat
-            label="Priority buckets"
+            label="Evidence groups"
             value={`${guide.buckets.filter((bucket) => bucket.items.length > 0).length}/${guide.buckets.length} active`}
           />
         </div>
@@ -2057,8 +2346,8 @@ function PracticalQuickTakeStrip({ quickTakes }: { quickTakes: PracticalQuickTak
     <section className="mt-4 rounded-md border border-line bg-mist p-3">
       <h3 className="text-sm font-semibold text-ink">Quick answer for friends</h3>
       <p className="mt-1 text-xs leading-5 text-slate-600">
-        A plain-language first pass before the heatmap: attention, context, caution, and
-        longevity reality check without turning scores into recommendations.
+        A plain-language first pass: attention, context, caution, and longevity reality check
+        before anyone reads a score as a recommendation.
       </p>
       <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {quickTakes.map((item) => {
@@ -2098,6 +2387,12 @@ function PracticalQuickTakeStrip({ quickTakes }: { quickTakes: PracticalQuickTak
 }
 
 function PracticalPriorityBucketPanel({ bucket }: { bucket: PracticalPriorityBucket }) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleItems = expanded
+    ? bucket.items
+    : bucket.items.slice(0, PRACTICAL_GUIDE_BUCKET_PREVIEW_LIMIT);
+  const hiddenCount = bucket.items.length - visibleItems.length;
+
   return (
     <section className="min-w-0 rounded-md border border-line bg-white p-3">
       <div className="flex min-w-0 items-start justify-between gap-2">
@@ -2111,14 +2406,25 @@ function PracticalPriorityBucketPanel({ bucket }: { bucket: PracticalPriorityBuc
       </div>
 
       <div className="mt-3 space-y-2">
-        {bucket.items.length > 0 ? (
-          bucket.items.map((item) => <PracticalGuideItemCard item={item} key={item.claim.id} />)
+        {visibleItems.length > 0 ? (
+          visibleItems.map((item) => <PracticalGuideItemCard item={item} key={item.claim.id} />)
         ) : (
           <p className="rounded-md border border-dashed border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
             {bucket.empty}
           </p>
         )}
       </div>
+      {bucket.items.length > PRACTICAL_GUIDE_BUCKET_PREVIEW_LIMIT ? (
+        <button
+          className="mt-3 h-8 w-full rounded-md border border-line bg-white px-3 text-xs font-semibold text-signal transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20"
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded
+            ? `Show top ${PRACTICAL_GUIDE_BUCKET_PREVIEW_LIMIT}`
+            : `Show all ${bucket.items.length.toLocaleString()} (${hiddenCount.toLocaleString()} more)`}
+        </button>
+      ) : null}
     </section>
   );
 }
@@ -2227,7 +2533,7 @@ function PracticalEvidenceRadar({ radar }: { radar: PracticalRadar }) {
             </ul>
           ) : (
             <p className="mt-2 rounded-md border border-dashed border-line bg-mist px-3 py-2 text-xs text-slate-600">
-              No trial leads match the current filters.
+              No trial leads are prominent in the local catalog.
             </p>
           )}
         </div>
@@ -2257,7 +2563,7 @@ function PracticalEvidenceRadar({ radar }: { radar: PracticalRadar }) {
             </ul>
           ) : (
             <p className="mt-2 rounded-md border border-dashed border-line bg-mist px-3 py-2 text-xs text-slate-600">
-              No ranking-impacting source gaps match the current filters.
+              No ranking-impacting source gaps are prominent in the local catalog.
             </p>
           )}
         </div>
@@ -2279,7 +2585,7 @@ function PracticalEvidenceRadar({ radar }: { radar: PracticalRadar }) {
             </ul>
           ) : (
             <p className="mt-2 rounded-md border border-dashed border-line bg-mist px-3 py-2 text-xs text-slate-600">
-              No source-work leads match the current filters.
+              No source-work leads are prominent in the local catalog.
             </p>
           )}
         </div>
@@ -2297,6 +2603,52 @@ function PracticalEvidenceRadar({ radar }: { radar: PracticalRadar }) {
             ))}
           </div>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function DashboardDetailDataGate({
+  detail,
+  error,
+  onRetry,
+  status,
+  title
+}: {
+  detail: string;
+  error: string | null;
+  onRetry: () => void;
+  status: "idle" | "loading" | "ready" | "error";
+  title: string;
+}) {
+  return (
+    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Detail data
+          </p>
+          <h2 className="mt-1 text-base font-semibold text-ink">{title}</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{detail}</p>
+          {error ? (
+            <p className="mt-2 rounded-md border border-danger/25 bg-red-50 px-3 py-2 text-sm leading-6 text-danger">
+              {error}
+            </p>
+          ) : null}
+        </div>
+        <button
+          className="inline-flex h-9 w-fit items-center gap-2 rounded-md border border-signal/30 bg-blue-50 px-3 text-sm font-semibold text-signal transition hover:border-signal disabled:cursor-wait disabled:border-slate-300 disabled:bg-slate-50 disabled:text-slate-500"
+          disabled={status === "loading"}
+          onClick={onRetry}
+          type="button"
+        >
+          {status === "loading" ? (
+            <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw aria-hidden="true" className="h-4 w-4" />
+          )}
+          {status === "loading" ? "Loading" : "Load details"}
+        </button>
       </div>
     </section>
   );
@@ -2342,6 +2694,494 @@ function DashboardMainTabs({
   );
 }
 
+const LOCAL_INGESTION_RUN_DELAY_DEFAULT_MS = 5000;
+const LOCAL_INGESTION_RUN_DELAY_MAX_MS = 60000;
+const LOCAL_INGESTION_RUN_DELAY_MIN_MS = 1000;
+const LOCAL_INGESTION_SESSION_JOB_LIMIT_DEFAULT = 100;
+const LOCAL_INGESTION_SESSION_JOB_LIMIT_MAX = 500;
+const LOCAL_UPDATE_PIPELINE_REFRESH_DELAY_MS = 900;
+
+function LocalUpdatePipelineControl() {
+  const [visible, setVisible] = useState(false);
+  const [active, setActive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState(false);
+  const [message, setMessage] = useState(
+    "Ready to run the recommended local evidence update."
+  );
+  const [logEntries, setLogEntries] = useState<LocalIngestionLogEntry[]>([]);
+  const [stages, setStages] = useState<LocalUpdatePipelineStage[]>(
+    initialLocalUpdatePipelineStages
+  );
+  const [runDelayMs, setRunDelayMs] = useState(LOCAL_INGESTION_RUN_DELAY_DEFAULT_MS);
+  const [sessionJobLimit, setSessionJobLimit] = useState(
+    LOCAL_INGESTION_SESSION_JOB_LIMIT_DEFAULT
+  );
+  const [leadThreshold, setLeadThreshold] = useState(70);
+  const [rejectThreshold, setRejectThreshold] = useState(40);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const stopRequestedRef = useRef(false);
+  const runIdRef = useRef(0);
+
+  const appendLog = useCallback((entry: Omit<LocalIngestionLogEntry, "id" | "timestamp">) => {
+    setLogEntries((current) =>
+      [
+        {
+          ...entry,
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          timestamp: new Date().toISOString()
+        },
+        ...current
+      ].slice(0, 24)
+    );
+  }, []);
+
+  const setStageStatus = useCallback(
+    (id: LocalUpdatePipelineStageId, status: LocalUpdatePipelineStageStatus, detail?: string) => {
+      setStages((current) =>
+        current.map((stage) =>
+          stage.id === id
+            ? {
+                ...stage,
+                detail,
+                status
+              }
+            : stage
+        )
+      );
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!isLocalDashboardHost()) {
+      return;
+    }
+
+    setVisible(true);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopRequestedRef.current = true;
+      runIdRef.current += 1;
+    };
+  }, []);
+
+  const resetRecommendedSettings = useCallback(() => {
+    setRunDelayMs(LOCAL_INGESTION_RUN_DELAY_DEFAULT_MS);
+    setSessionJobLimit(LOCAL_INGESTION_SESSION_JOB_LIMIT_DEFAULT);
+    setLeadThreshold(70);
+    setRejectThreshold(40);
+    setAutoRefresh(true);
+  }, []);
+
+  const stopUpdate = useCallback(() => {
+    stopRequestedRef.current = true;
+    setMessage("Stopping after the current update request finishes.");
+    appendLog({
+      detail: "The dashboard will not start the next UPDATE stage after the current request.",
+      level: "info",
+      message: "Stop requested"
+    });
+  }, [appendLog]);
+
+  const startUpdate = useCallback(async () => {
+    if (active || busy) {
+      return;
+    }
+
+    const runId = runIdRef.current + 1;
+    runIdRef.current = runId;
+    stopRequestedRef.current = false;
+    setPendingUpdate(false);
+    setActive(true);
+    setBusy(true);
+    setStages(initialLocalUpdatePipelineStages());
+    setLogEntries([]);
+    setMessage("Running the recommended local evidence update.");
+
+    try {
+      const result = await runLocalUpdatePipeline({
+        appendLog,
+        // The browser run keeps going over the API routes; only the headless
+        // runner swaps in the in-process operations.
+        operations: defaultLocalUpdatePipelineOperations(),
+        setStageStatus,
+        settings: {
+          leadThreshold,
+          rejectThreshold,
+          runDelayMs,
+          sessionJobLimit
+        },
+        shouldStop: () => stopRequestedRef.current || runIdRef.current !== runId,
+        sleepFor: sleep
+      });
+
+      if (result.status === "stopped") {
+        setMessage("UPDATE stopped before the next stage.");
+        return;
+      }
+
+      if (autoRefresh) {
+        setMessage("UPDATE finished. Reloading the dashboard with the refreshed local catalog.");
+        window.setTimeout(() => {
+          window.location.reload();
+        }, LOCAL_UPDATE_PIPELINE_REFRESH_DELAY_MS);
+      } else {
+        setMessage("UPDATE finished. Refresh the dashboard when you are ready to see new views.");
+      }
+    } catch (error) {
+      const nextMessage = localIngestionErrorMessage(error);
+      setMessage(nextMessage);
+      setStages((current) =>
+        current.map((stage) =>
+          stage.status === "running"
+            ? {
+                ...stage,
+                detail: nextMessage,
+                status: "error"
+              }
+            : stage
+        )
+      );
+      appendLog({
+        detail: nextMessage,
+        level: "error",
+        message: "UPDATE stopped"
+      });
+    } finally {
+      if (runIdRef.current === runId) {
+        setActive(false);
+        setBusy(false);
+        stopRequestedRef.current = false;
+      }
+    }
+  }, [
+    active,
+    appendLog,
+    autoRefresh,
+    busy,
+    leadThreshold,
+    rejectThreshold,
+    runDelayMs,
+    sessionJobLimit,
+    setStageStatus
+  ]);
+
+  const controlsBusy = active || busy;
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-lg border border-signal/25 bg-white p-4 shadow-panel">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Local update
+            </p>
+            <span className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">
+              <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
+              Recommended preset
+            </span>
+          </div>
+          <h2 className="mt-1 text-lg font-semibold text-ink">Run the evidence pipeline</h2>
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-slate-600">
+            Queues searches, catches up already accepted candidates, runs local source ingestion,
+            reviews new candidates, checks accepted processing again, clears eligible identity
+            blocks, builds score {leadThreshold}+ evidence leads, parks score{" "}
+            {rejectThreshold}-{leadThreshold - 1} backlog leads, rejects lower lead scores, then
+            drafts conservative source extraction from captured abstracts/registry summaries, applies
+            ready source-packet scores, and refreshes the derived heatmap with remaining blockers called out.
+          </p>
+          <p aria-live="polite" className="mt-2 text-sm font-semibold text-ink">
+            {message}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={resetRecommendedSettings}
+            disabled={controlsBusy}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
+            Recommended
+          </button>
+          <button
+            type="button"
+            onClick={stopUpdate}
+            disabled={!active}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-mist px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Square aria-hidden="true" className="h-3.5 w-3.5" />
+            Stop
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(12rem,15rem)_1fr]">
+        <button
+          type="button"
+          onClick={() => setPendingUpdate(true)}
+          disabled={controlsBusy}
+          className="inline-flex min-h-24 items-center justify-center gap-3 rounded-md border border-signal bg-signal px-5 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {active ? (
+            <LoaderCircle aria-hidden="true" className="h-5 w-5 animate-spin" />
+          ) : (
+            <Play aria-hidden="true" className="h-5 w-5" />
+          )}
+          {active ? "UPDATING" : "UPDATE"}
+        </button>
+
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-1 rounded-md border border-line bg-mist p-3 text-xs font-semibold text-slate-700">
+            Source pause
+            <input
+              type="range"
+              min={LOCAL_INGESTION_RUN_DELAY_MIN_MS}
+              max={LOCAL_INGESTION_RUN_DELAY_MAX_MS}
+              step={1000}
+              value={runDelayMs}
+              onChange={(event) => setRunDelayMs(Number(event.currentTarget.value))}
+              disabled={controlsBusy}
+              className="h-2 accent-signal"
+            />
+            <span className="text-sm text-ink">{formatLocalIngestionDelay(runDelayMs)}</span>
+          </label>
+          <label className="grid gap-1 rounded-md border border-line bg-mist p-3 text-xs font-semibold text-slate-700">
+            Ingestion cap
+            <input
+              type="number"
+              min={1}
+              max={LOCAL_INGESTION_SESSION_JOB_LIMIT_MAX}
+              step={1}
+              value={sessionJobLimit}
+              onChange={(event) =>
+                setSessionJobLimit(
+                  clampNumberInput(
+                    event.currentTarget.value,
+                    LOCAL_INGESTION_SESSION_JOB_LIMIT_DEFAULT,
+                    1,
+                    LOCAL_INGESTION_SESSION_JOB_LIMIT_MAX
+                  )
+                )
+              }
+              disabled={controlsBusy}
+              className="h-9 rounded-md border border-line bg-white px-2 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-60"
+            />
+          </label>
+          <label className="grid gap-1 rounded-md border border-line bg-mist p-3 text-xs font-semibold text-slate-700">
+            Build leads at
+            <input
+              type="range"
+              min="55"
+              max="95"
+              value={leadThreshold}
+              onChange={(event) => {
+                const nextThreshold = Number(event.currentTarget.value);
+                setLeadThreshold(nextThreshold);
+                setRejectThreshold((current) =>
+                  Math.min(current, Math.max(0, nextThreshold - 1))
+                );
+              }}
+              disabled={controlsBusy}
+              className="h-2 accent-signal"
+            />
+            <span className="text-sm text-ink">{leadThreshold}%</span>
+          </label>
+          <label className="grid gap-1 rounded-md border border-line bg-mist p-3 text-xs font-semibold text-slate-700">
+            Park / reject floor
+            <input
+              type="range"
+              min="0"
+              max={Math.max(0, leadThreshold - 1)}
+              value={rejectThreshold}
+              onChange={(event) =>
+                setRejectThreshold(
+                  Math.min(
+                    Math.max(0, leadThreshold - 1),
+                    Math.max(0, Number(event.currentTarget.value) || 0)
+                  )
+                )
+              }
+              disabled={controlsBusy}
+              className="h-2 accent-danger"
+            />
+            <span className="text-sm text-ink">
+              Park {rejectThreshold}-{Math.max(0, leadThreshold - 1)}, reject under{" "}
+              {rejectThreshold}
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <label className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+        <input
+          type="checkbox"
+          checked={autoRefresh}
+          onChange={(event) => setAutoRefresh(event.currentTarget.checked)}
+          disabled={controlsBusy}
+          className="h-4 w-4 rounded border-line text-signal focus:ring-signal disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        Reload dashboard when UPDATE finishes
+      </label>
+
+      {pendingUpdate ? (
+        <InlineConfirmation
+          busy={controlsBusy}
+          confirmLabel="Run UPDATE"
+          message={localUpdatePipelineConfirmMessage({
+            leadThreshold,
+            rejectThreshold,
+            runDelayMs,
+            sessionJobLimit
+          })}
+          onCancel={() => setPendingUpdate(false)}
+          onConfirm={() => startUpdate()}
+          tone="warn"
+        />
+      ) : null}
+
+      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-9">
+        {stages.map((stage) => (
+          <div
+            key={stage.id}
+            className={cn(
+              "rounded-md border px-3 py-2",
+              localUpdatePipelineStageTone(stage.status)
+            )}
+          >
+            <div className="flex items-center gap-2">
+              {stage.status === "running" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : stage.status === "done" ? (
+                <Check aria-hidden="true" className="h-3.5 w-3.5" />
+              ) : stage.status === "error" ? (
+                <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />
+              ) : (
+                <CircleHelp aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              <span className="text-xs font-semibold">{stage.label}</span>
+            </div>
+            <p className="mt-1 text-xs leading-5">
+              {stage.detail ?? localUpdatePipelineStageStatusLabel(stage.status)}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {logEntries.length > 0 ? (
+        <div className="mt-4 max-h-64 overflow-y-auto rounded-md border border-line bg-mist p-3">
+          <div className="grid gap-2">
+            {logEntries.map((entry) => (
+              <div key={entry.id} className="rounded-md border border-line bg-white px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={cn(
+                      "rounded-md border px-2 py-0.5 text-xs font-semibold",
+                      entry.level === "success"
+                        ? "border-green-200 bg-green-50 text-green-700"
+                        : entry.level === "error"
+                          ? "border-danger/20 bg-red-50 text-danger"
+                          : "border-line bg-mist text-slate-600"
+                    )}
+                  >
+                    {entry.level}
+                  </span>
+                  <span className="text-xs font-semibold text-ink">{entry.message}</span>
+                  <span className="text-xs text-slate-500">
+                    {formatLocalIngestionTime(entry.timestamp)}
+                  </span>
+                </div>
+                {entry.detail ? (
+                  <p className="mt-1 break-words text-xs leading-5 text-slate-600">
+                    {entry.detail}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function defaultLocalUpdatePipelineOperations(): LocalUpdatePipelineOperations {
+  return {
+    fetchAcceptedCandidateProcessingStatus: fetchLocalAcceptedCandidateProcessingStatus,
+    fetchBenefitDiscoveryQueue: fetchLocalBenefitDiscoveryQueue,
+    fetchIngestionStatus: fetchLocalIngestionStatus,
+    postAcceptedCandidateProcessingRun: postLocalAcceptedCandidateProcessingRun,
+    postBenefitDiscoveryAutomation: postLocalBenefitDiscoveryAutomation,
+    postCandidateReviewAutomation: postLocalCandidateReviewAutomation,
+    postCandidateReviewBulkDecision: postLocalCandidateReviewBulkDecision,
+    postClaimExpansion: postLocalClaimExpansion,
+    postIdentityResolutionAutomation: postLocalIdentityResolutionAutomation,
+    postIngestionRun: postLocalIngestionRun,
+    postIngestionStart: postLocalIngestionStart,
+    postIngestionSynonyms: postLocalIngestionSynonyms,
+    postScoreFinalization: postLocalScoreFinalization,
+    postSourceWorkRepair: postLocalSourceWorkRepair
+  };
+}
+
+function initialLocalUpdatePipelineStages(): LocalUpdatePipelineStage[] {
+  return LOCAL_UPDATE_PIPELINE_STAGE_DEFINITIONS.map((stage) => ({
+    ...stage,
+    status: "pending"
+  }));
+}
+
+function localUpdatePipelineConfirmMessage({
+  leadThreshold,
+  rejectThreshold,
+  runDelayMs,
+  sessionJobLimit
+}: {
+  leadThreshold: number;
+  rejectThreshold: number;
+  runDelayMs: number;
+  sessionJobLimit: number;
+}) {
+  return `Run the local evidence UPDATE now? This will write to the local development database: catch up accepted candidates in ${LOCAL_ACCEPTED_PROCESSING_BATCH_SIZE.toLocaleString()}-row batches before source ingestion, queue and run up to ${sessionJobLimit.toLocaleString()} ingestion job(s) with ${formatLocalIngestionDelay(runDelayMs)} between source requests, accept high-confidence candidates, check accepted processing again, auto-resolve eligible identity rows, build/link score ${leadThreshold}+ leads, park score ${rejectThreshold}-${leadThreshold - 1} leads, reject lower lead-score clusters, draft conservative source extraction from captured abstracts/registry summaries, and apply ready source-packet scores as Unreviewed AI Drafts. It will not mark Human reviewed or infer product-level AU/TGA clearance.`;
+}
+
+function localUpdatePipelineStageStatusLabel(status: LocalUpdatePipelineStageStatus) {
+  switch (status) {
+    case "pending":
+      return "Waiting";
+    case "running":
+      return "Running";
+    case "done":
+      return "Done";
+    case "skipped":
+      return "Skipped";
+    case "error":
+      return "Needs attention";
+  }
+}
+
+function localUpdatePipelineStageTone(status: LocalUpdatePipelineStageStatus) {
+  switch (status) {
+    case "done":
+      return "border-green-200 bg-green-50 text-green-700";
+    case "error":
+      return "border-danger/20 bg-red-50 text-danger";
+    case "running":
+      return "border-signal/25 bg-blue-50 text-signal";
+    case "skipped":
+      return "border-amberline/30 bg-amber-50 text-amberline";
+    case "pending":
+      return "border-line bg-white text-slate-600";
+  }
+}
+
 function LocalIngestionControl() {
   const [visible, setVisible] = useState(false);
   const [active, setActive] = useState(false);
@@ -2351,6 +3191,10 @@ function LocalIngestionControl() {
     "Idle. Press Start ingestion to queue broad supplement discovery."
   );
   const [logEntries, setLogEntries] = useState<LocalIngestionLogEntry[]>([]);
+  const [runDelayMs, setRunDelayMs] = useState(LOCAL_INGESTION_RUN_DELAY_DEFAULT_MS);
+  const [sessionJobLimit, setSessionJobLimit] = useState(
+    LOCAL_INGESTION_SESSION_JOB_LIMIT_DEFAULT
+  );
   const stopRequestedRef = useRef(false);
   const runIdRef = useRef(0);
 
@@ -2416,7 +3260,9 @@ function LocalIngestionControl() {
     stopRequestedRef.current = false;
     setActive(true);
     setBusy(true);
-    setStatusMessage("Queuing broad discovery searches for every local intervention.");
+    setStatusMessage(
+      `Queuing broad discovery searches with ${formatLocalIngestionDelay(runDelayMs)} between pulses and a ${sessionJobLimit.toLocaleString()} job session cap.`
+    );
 
     try {
       const startResult = await postLocalIngestionStart();
@@ -2429,6 +3275,7 @@ function LocalIngestionControl() {
 
       let nextStatus = startResult.status;
       let synonymExpansionQueued = false;
+      let processedThisSession = 0;
 
       while (!stopRequestedRef.current && runIdRef.current === runId) {
         const queued = localIngestionQueueCount(nextStatus, "QUEUED");
@@ -2464,10 +3311,24 @@ function LocalIngestionControl() {
           break;
         }
 
+        if (processedThisSession >= sessionJobLimit) {
+          setStatusMessage(
+            `Session safety cap reached after ${processedThisSession.toLocaleString()} job(s).`
+          );
+          appendLog({
+            level: "info",
+            message: "Session cap reached",
+            detail:
+              "Queued jobs were left in the local database so you can resume later without re-downloading completed sources."
+          });
+          break;
+        }
+
         setStatusMessage(`Processing next source search. ${queued.toLocaleString()} queued.`);
-        const batch = await postLocalIngestionRun(1);
+        const batch = await postLocalIngestionRun(1, runDelayMs);
         nextStatus = batch.status;
         setStatus(nextStatus);
+        processedThisSession += batch.processed;
 
         if (batch.results.length === 0) {
           setStatusMessage(localIngestionIdleMessage(nextStatus));
@@ -2497,7 +3358,7 @@ function LocalIngestionControl() {
           break;
         }
 
-        await sleep(5000);
+        await sleep(batch.safety.minDelayMs);
       }
     } catch (error) {
       const message = localIngestionErrorMessage(error);
@@ -2515,7 +3376,7 @@ function LocalIngestionControl() {
         refreshStatus().catch(() => undefined);
       }
     }
-  }, [active, appendLog, busy, refreshStatus]);
+  }, [active, appendLog, busy, refreshStatus, runDelayMs, sessionJobLimit]);
 
   const queued = status ? localIngestionQueueCount(status, "QUEUED") : 0;
   const running = status ? localIngestionQueueCount(status, "RUNNING") : 0;
@@ -2603,6 +3464,57 @@ function LocalIngestionControl() {
             Refresh
           </button>
         </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 rounded-md border border-line bg-mist p-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,12rem)_minmax(0,12rem)_1fr]">
+        <label className="grid gap-1 text-xs font-semibold text-slate-700">
+          Pause between jobs
+          <input
+            type="number"
+            min={LOCAL_INGESTION_RUN_DELAY_MIN_MS}
+            max={LOCAL_INGESTION_RUN_DELAY_MAX_MS}
+            step={1000}
+            value={runDelayMs}
+            onChange={(event) =>
+              setRunDelayMs(
+                clampNumberInput(
+                  event.currentTarget.value,
+                  LOCAL_INGESTION_RUN_DELAY_DEFAULT_MS,
+                  LOCAL_INGESTION_RUN_DELAY_MIN_MS,
+                  LOCAL_INGESTION_RUN_DELAY_MAX_MS
+                )
+              )
+            }
+            disabled={active || busy}
+            className="h-9 rounded-md border border-line bg-white px-2 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-60"
+          />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-slate-700">
+          Session job cap
+          <input
+            type="number"
+            min={1}
+            max={LOCAL_INGESTION_SESSION_JOB_LIMIT_MAX}
+            step={1}
+            value={sessionJobLimit}
+            onChange={(event) =>
+              setSessionJobLimit(
+                clampNumberInput(
+                  event.currentTarget.value,
+                  LOCAL_INGESTION_SESSION_JOB_LIMIT_DEFAULT,
+                  1,
+                  LOCAL_INGESTION_SESSION_JOB_LIMIT_MAX
+                )
+              )
+            }
+            disabled={active || busy}
+            className="h-9 rounded-md border border-line bg-white px-2 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-60"
+          />
+        </label>
+        <p className="text-xs leading-5 text-slate-600 xl:self-end">
+          Provider safety is always on: PubMed and ClinicalTrials.gov requests are serialized,
+          throttled, and retried after 429/503-style slowdowns.
+        </p>
       </div>
 
       <LocalNextActionStrip
@@ -3217,7 +4129,7 @@ function LocalCandidateReviewWorkbench({
                 type="button"
                 onClick={() => setPendingSignalAction("reject-mismatches")}
                 disabled={controlsBusy || signalPreview.counts.identityMismatch === 0}
-                title="Reject mined mismatch rows where the captured source points at another supplement or non-supplement context. Does not create claims or heatmap scores."
+                title="Reject mined mismatch rows where the captured source points at another supplement or non-supplement context. Does not create claims or public evidence scores."
                 className="inline-flex h-8 items-center gap-2 rounded-md border border-danger/30 bg-white px-3 text-xs font-semibold text-danger transition hover:border-danger disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {signalBusy === "reject" ? (
@@ -3396,7 +4308,9 @@ function AcceptedCandidateProcessor() {
 
     try {
       while (!stopRequestedRef.current && runIdRef.current === runId) {
-        const batch = await postLocalAcceptedCandidateProcessingRun(25);
+        const batch = await postLocalAcceptedCandidateProcessingRun(
+          LOCAL_ACCEPTED_PROCESSING_BATCH_SIZE
+        );
         setStatus(batch.status);
 
         if (batch.processed === 0) {
@@ -3571,9 +4485,13 @@ function LocalAcceptedProcessingRow({
             {candidate.sourceTypeSuggestion}
           </p>
           <p className="mt-1 text-xs leading-5 text-slate-600">{candidate.nextAction}</p>
-          {candidate.outcomeLabels.length > 0 ? (
+          {candidate.topicLabels.length > 0 ? (
             <p className="mt-1 text-xs leading-5 text-slate-500">
-              Suggested areas: {candidate.outcomeLabels.join(", ")}
+              Suggested topics: {candidate.topicLabels.join(", ")}
+            </p>
+          ) : candidate.outcomeLabels.length > 0 ? (
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Suggested legacy areas: {candidate.outcomeLabels.join(", ")}
             </p>
           ) : null}
         </div>
@@ -3611,6 +4529,8 @@ function BenefitDiscoveryQueue() {
     action: LocalBenefitDiscoveryAction;
     cluster: LocalBenefitDiscoveryCluster;
   } | null>(null);
+  const autoConfirmationRef = useRef<HTMLDivElement>(null);
+  const clusterConfirmationRef = useRef<HTMLDivElement>(null);
 
   const loadQueue = useCallback(async () => {
     setBusy(true);
@@ -3639,7 +4559,63 @@ function BenefitDiscoveryQueue() {
     setAutoRejectThreshold((current) => Math.min(current, Math.max(0, autoThreshold - 1)));
   }, [autoThreshold]);
 
+  useEffect(() => {
+    if (!pendingAutoBuild) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      autoConfirmationRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest"
+      });
+      autoConfirmationRef.current?.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingAutoBuild]);
+
+  useEffect(() => {
+    if (!pendingClusterAction) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      clusterConfirmationRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest"
+      });
+      clusterConfirmationRef.current?.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingClusterAction]);
+
   const controlsBusy = busy || Boolean(actionKey) || Boolean(autoBusy);
+
+  const requestAutoBuild = useCallback(() => {
+    setPendingClusterAction(null);
+    setPendingAutoBuild(true);
+    setMessage(
+      localBenefitDiscoveryAutomationPendingMessage(
+        autoRejectThreshold,
+        autoStrategy,
+        autoThreshold
+      )
+    );
+  }, [autoRejectThreshold, autoStrategy, autoThreshold]);
+
+  const requestClusterAction = useCallback(
+    (cluster: LocalBenefitDiscoveryCluster, action: LocalBenefitDiscoveryAction) => {
+      setPendingAutoBuild(false);
+      setPendingClusterAction({
+        action,
+        cluster
+      });
+      setMessage(localBenefitDiscoveryActionPendingMessage(cluster, action));
+    },
+    []
+  );
 
   const recordAction = useCallback(
     async (cluster: LocalBenefitDiscoveryCluster, action: LocalBenefitDiscoveryAction) => {
@@ -3715,7 +4691,7 @@ function BenefitDiscoveryQueue() {
           <h3 className="text-sm font-semibold text-ink">Benefit discovery queue</h3>
           <p className="mt-1 text-xs leading-5 text-slate-600">
             Groups processed accepted candidates by supplement and suggested benefit area. Park
-            middle-confidence leads instead of drafting weak heatmap claims.
+            middle-confidence leads instead of drafting weak public evidence claims.
           </p>
           <p aria-live="polite" className="mt-2 text-xs font-semibold text-slate-700">
             {message}
@@ -3835,7 +4811,7 @@ function BenefitDiscoveryQueue() {
             </button>
             <button
               type="button"
-              onClick={() => setPendingAutoBuild(true)}
+              onClick={() => requestAutoBuild()}
               disabled={controlsBusy || !queue?.clusters.length}
               className="inline-flex h-8 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -3848,6 +4824,17 @@ function BenefitDiscoveryQueue() {
             </button>
           </div>
         </div>
+
+        <p className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+          <span className="font-semibold text-ink">
+            {localBenefitDiscoveryAutomationStrategyButtonLabel(autoStrategy)} mode:
+          </span>{" "}
+          {localBenefitDiscoveryAutomationStrategyDescription(
+            autoStrategy,
+            autoRejectThreshold,
+            autoThreshold
+          )}
+        </p>
 
         {autoStrategy === "park-backlog" ? (
           <div className="mt-3 grid gap-2 rounded-md border border-amberline/25 bg-amber-50/50 p-2 lg:grid-cols-[1fr_auto] lg:items-center">
@@ -3893,20 +4880,22 @@ function BenefitDiscoveryQueue() {
         ) : null}
 
         {pendingAutoBuild ? (
-          <InlineConfirmation
-            busy={autoBusy === "apply"}
-            confirmLabel="Apply"
-            message={localBenefitDiscoveryAutomationConfirmMessage(
-              autoPreview,
-              autoRejectThreshold,
-              autoScope,
-              autoStrategy,
-              autoThreshold
-            )}
-            onCancel={() => setPendingAutoBuild(false)}
-            onConfirm={() => applyAutoBuild()}
-            tone="warn"
-          />
+          <div ref={autoConfirmationRef} tabIndex={-1} className="scroll-mt-4 outline-none">
+            <InlineConfirmation
+              busy={autoBusy === "apply"}
+              confirmLabel="Apply"
+              message={localBenefitDiscoveryAutomationConfirmMessage(
+                autoPreview,
+                autoRejectThreshold,
+                autoScope,
+                autoStrategy,
+                autoThreshold
+              )}
+              onCancel={() => setPendingAutoBuild(false)}
+              onConfirm={() => applyAutoBuild()}
+              tone="warn"
+            />
+          </div>
         ) : null}
 
         {autoPreview ? (
@@ -3934,8 +4923,11 @@ function BenefitDiscoveryQueue() {
                   : "preview"}
               />
             </div>
+            <p className="text-xs leading-5 text-slate-600">
+              {localBenefitDiscoveryAutomationPreviewRowsMessage(autoPreview)}
+            </p>
             <div className="grid gap-2 lg:grid-cols-2">
-              {autoPreview.decisions.slice(0, 6).map((decision) => (
+              {localBenefitDiscoveryAutomationPreviewRows(autoPreview).map((decision) => (
                 <BenefitDiscoveryAutomationDecisionRow
                   key={decision.clusterKey}
                   decision={decision}
@@ -3947,19 +4939,21 @@ function BenefitDiscoveryQueue() {
       </div>
 
       {pendingClusterAction ? (
-        <InlineConfirmation
-          busy={Boolean(actionKey)}
-          confirmLabel="Apply"
-          message={localBenefitDiscoveryConfirmMessage(
-            pendingClusterAction.cluster,
-            pendingClusterAction.action
-          )}
-          onCancel={() => setPendingClusterAction(null)}
-          onConfirm={() =>
-            recordAction(pendingClusterAction.cluster, pendingClusterAction.action)
-          }
-          tone={pendingClusterAction.action === "reject-cluster" ? "danger" : "warn"}
-        />
+        <div ref={clusterConfirmationRef} tabIndex={-1} className="scroll-mt-4 outline-none">
+          <InlineConfirmation
+            busy={Boolean(actionKey)}
+            confirmLabel="Apply"
+            message={localBenefitDiscoveryConfirmMessage(
+              pendingClusterAction.cluster,
+              pendingClusterAction.action
+            )}
+            onCancel={() => setPendingClusterAction(null)}
+            onConfirm={() =>
+              recordAction(pendingClusterAction.cluster, pendingClusterAction.action)
+            }
+            tone={pendingClusterAction.action === "reject-cluster" ? "danger" : "warn"}
+          />
+        </div>
       ) : null}
 
       <div className="mt-3 grid gap-3">
@@ -3969,12 +4963,7 @@ function BenefitDiscoveryQueue() {
               key={cluster.clusterKey}
               actionKey={actionKey}
               cluster={cluster}
-              onAction={(nextCluster, nextAction) =>
-                setPendingClusterAction({
-                  action: nextAction,
-                  cluster: nextCluster
-                })
-              }
+              onAction={requestClusterAction}
             />
           ))
         ) : (
@@ -4578,7 +5567,7 @@ function BenefitDiscoveryAutomationDecisionRow({
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-ink">
-            {decision.interventionName} - {decision.outcomeLabel}
+            {decision.interventionName} - {decision.topicLabel}
           </p>
           <p className="mt-1 text-xs leading-5 text-slate-600">
             Score {decision.leadScore}. {decision.usableCandidateCount.toLocaleString()} usable /{" "}
@@ -4643,7 +5632,7 @@ function BenefitDiscoveryClusterCard({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h4 className="text-sm font-semibold text-ink">
-              {cluster.interventionName} - {cluster.outcomeLabel}
+              {cluster.interventionName} - {cluster.topicLabel}
             </h4>
             <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-700">
               lead {cluster.score}
@@ -4668,7 +5657,7 @@ function BenefitDiscoveryClusterCard({
             {cluster.usableCandidateCount.toLocaleString()} usable after mismatch flags.
             {hasExistingClaim
               ? ` Existing: ${cluster.existingClaims[0]?.claimText}`
-              : " No existing claim for this supplement/area yet."}
+              : " No existing claim for this supplement/topic yet."}
           </p>
           {cluster.leadReasons.length > 0 ? (
             <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -5271,6 +6260,45 @@ async function postLocalIdentityResolutionAutomation(input: {
   );
 }
 
+async function postLocalClaimExpansion(input: { apply: boolean; limit?: number }) {
+  return localIngestionFetch<LocalClaimExpansionResponse>(
+    "/api/local-ingestion/claim-expansion",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalScoreFinalization(input: { apply: boolean; limit?: number }) {
+  return localIngestionFetch<LocalScoreFinalizationResponse>(
+    "/api/local-ingestion/score-finalization",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalSourceWorkRepair(input: { apply: boolean; limit?: number }) {
+  return localIngestionFetch<LocalSourceWorkRepairResponse>(
+    "/api/local-ingestion/source-work-repair",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
 async function fetchLocalCandidateReview({
   bucket,
   q,
@@ -5418,31 +6446,6 @@ function localCandidateReviewAutomationConfirmMessage(
   return `Apply ${localCandidateReviewAutomationStrategyLabel(preview.strategy).toLowerCase()} maybe-useful auto-triage? This will accept ${preview.counts.accepted.toLocaleString()}, reject ${preview.counts.rejected.toLocaleString()}, and hold ${preview.counts.held.toLocaleString()} from ${preview.counts.scanned.toLocaleString()} scanned candidate(s).`;
 }
 
-function localCandidateReviewAutomationResultMessage(
-  result: LocalCandidateReviewAutomationResponse
-) {
-  const parts = [
-    `${result.counts.scanned.toLocaleString()} scanned`,
-    `${result.counts.accepted.toLocaleString()} accept`,
-    `${result.counts.rejected.toLocaleString()} reject`,
-    `${result.counts.held.toLocaleString()} hold`
-  ];
-
-  if (result.applied) {
-    parts.push(`${result.counts.appliedActions.toLocaleString()} action(s) applied`);
-  }
-
-  if (result.status === "stopped-at-limit") {
-    parts.push("stopped at safety limit");
-  }
-
-  if (result.counts.errors > 0) {
-    parts.push(`${result.counts.errors.toLocaleString()} error(s)`);
-  }
-
-  return `Maybe-useful ${localCandidateReviewAutomationStrategyLabel(result.strategy).toLowerCase()} auto-triage ${result.applied ? "applied" : "preview"}: ${parts.join(", ")}.`;
-}
-
 function localCandidateReviewSignalMiningResultMessage(
   result: LocalCandidateReviewSignalMiningResponse
 ) {
@@ -5466,7 +6469,7 @@ function localCandidateReviewSignalApplyConfirmMessage(
   preview: LocalCandidateReviewSignalMiningResponse
 ) {
   if (signalAction === "reject-mismatches") {
-    return `Reject ${preview.counts.identityMismatch.toLocaleString()} mined mismatch row(s)? This removes source candidates where the captured source points at another intervention or context. No claims or heatmap scores will be created.`;
+    return `Reject ${preview.counts.identityMismatch.toLocaleString()} mined mismatch row(s)? This removes source candidates where the captured source points at another intervention or context. No claims or public evidence scores will be created.`;
   }
 
   return `Park ${preview.counts.parkResearch.toLocaleString()} mined research row(s)? They will leave the active Maybe useful queue but remain pending as local research/backlog signals.`;
@@ -5499,17 +6502,6 @@ function localCandidateReviewSignalApplyResultMessage(
   }
 
   return `Mined signal cleanup finished: ${parts.join(", ")}.`;
-}
-
-function localCandidateReviewAutomationStrategyLabel(
-  strategy: LocalCandidateReviewAutomationStrategy
-) {
-  switch (strategy) {
-    case "query-backed":
-      return "Pass 2";
-    case "strict":
-      return "Strict";
-  }
 }
 
 function localCandidateReviewAutomationStrategyTooltip(
@@ -5624,24 +6616,6 @@ function localCandidateBulkActionProgressLabel(action: LocalCandidateReviewBulkA
   }
 }
 
-function localCandidateBulkResultMessage(result: LocalCandidateReviewBulkResponse) {
-  const parts = [
-    `${result.accepted.toLocaleString()} accepted`,
-    `${result.rejected.toLocaleString()} rejected`,
-    `${result.scanned.toLocaleString()} scanned`
-  ];
-
-  if (result.status === "stopped-at-limit") {
-    parts.push("stopped at the safety limit; press the button again to continue");
-  }
-
-  if (result.errors.length > 0) {
-    parts.push(`${result.errors.length.toLocaleString()} error(s)`);
-  }
-
-  return `Bulk review finished: ${parts.join(", ")}.`;
-}
-
 function localCandidateBucketLabel(bucket: LocalCandidateReviewBucket) {
   return (
     LOCAL_CANDIDATE_BUCKET_OPTIONS.find((option) => option.value === bucket)?.label ??
@@ -5705,13 +6679,33 @@ function localBenefitDiscoveryConfirmMessage(
 ) {
   switch (action) {
     case "draft-claim":
-      return `Create an unreviewed local draft claim for ${cluster.interventionName} / ${cluster.outcomeLabel} and link ${cluster.usableCandidateCount.toLocaleString()} usable accepted reference(s)?`;
+      return `Create an unreviewed local draft claim for ${cluster.interventionName} / ${cluster.topicLabel} and link ${cluster.usableCandidateCount.toLocaleString()} usable accepted reference(s)?`;
     case "link-existing-claim":
-      return `Link ${cluster.usableCandidateCount.toLocaleString()} usable accepted reference(s) to the existing ${cluster.interventionName} / ${cluster.outcomeLabel} claim?`;
+      return `Link ${cluster.usableCandidateCount.toLocaleString()} usable accepted reference(s) to the existing ${cluster.interventionName} / ${cluster.topicLabel} claim?`;
     case "park-lead":
-      return `Park this ${cluster.interventionName} / ${cluster.outcomeLabel} discovery lead? It stays available for later source review, but no claim or heatmap score will be created.`;
+      return `Park this ${cluster.interventionName} / ${cluster.topicLabel} discovery lead? It stays available for later source review, but no claim or public evidence score will be created.`;
     case "reject-cluster":
-      return `Reject this ${cluster.interventionName} / ${cluster.outcomeLabel} discovery cluster from the local queue?`;
+      return `Reject this ${cluster.interventionName} / ${cluster.topicLabel} discovery cluster from the local queue?`;
+  }
+}
+
+function localBenefitDiscoveryActionPendingMessage(
+  cluster: LocalBenefitDiscoveryCluster,
+  action: LocalBenefitDiscoveryAction
+) {
+  return `Confirm ${localBenefitDiscoveryActionLabel(action)} for ${cluster.interventionName} / ${cluster.topicLabel} below. Nothing has been written yet.`;
+}
+
+function localBenefitDiscoveryActionLabel(action: LocalBenefitDiscoveryAction) {
+  switch (action) {
+    case "draft-claim":
+      return "draft claim";
+    case "link-existing-claim":
+      return "link existing claim";
+    case "park-lead":
+      return "park lead";
+    case "reject-cluster":
+      return "reject cluster";
   }
 }
 
@@ -5765,28 +6759,6 @@ function localIdentityResolutionProgressMessage(action: LocalIdentityResolutionA
   }
 }
 
-function localIdentityResolutionAutomationMessage(
-  result: LocalIdentityResolutionAutomationResponse
-) {
-  const parts = [
-    `${result.counts.scannedCandidates.toLocaleString()} scanned`,
-    `${result.counts.confirmTarget.toLocaleString()} confirm`,
-    `${result.counts.reassignIntervention.toLocaleString()} reassign`,
-    `${result.counts.rejectWrongSupplement.toLocaleString()} reject`,
-    `${result.counts.hold.toLocaleString()} hold`
-  ];
-
-  if (result.applied) {
-    parts.push(`${result.counts.appliedActions.toLocaleString()} action(s) applied`);
-  }
-
-  if (result.counts.errors > 0) {
-    parts.push(`${result.counts.errors.toLocaleString()} error(s)`);
-  }
-
-  return `Identity auto-resolve ${localIdentityResolutionAutomationStrategyLabel(result.strategy)} ${localIdentityResolutionAutomationScopeLabel(result.scope)} ${result.applied ? "applied" : "preview"}: ${parts.join(", ")}.`;
-}
-
 function localIdentityResolutionAutomationConfirmMessage(
   preview: LocalIdentityResolutionAutomationResponse | null,
   strategy: LocalIdentityResolutionAutomationStrategy,
@@ -5797,18 +6769,6 @@ function localIdentityResolutionAutomationConfirmMessage(
   }
 
   return `Apply ${localIdentityResolutionAutomationStrategyLabel(preview.strategy)} ${localIdentityResolutionAutomationScopeLabel(preview.scope)} identity auto-resolve? This will confirm ${preview.counts.confirmTarget.toLocaleString()} source(s), reassign ${preview.counts.reassignIntervention.toLocaleString()}, reject ${preview.counts.rejectWrongSupplement.toLocaleString()}, and hold ${preview.counts.hold.toLocaleString()}.`;
-}
-
-function localIdentityResolutionAutomationStrategyLabel(
-  strategy: LocalIdentityResolutionAutomationStrategy
-) {
-  return strategy === "source-led" ? "source-led" : "strict";
-}
-
-function localIdentityResolutionAutomationScopeLabel(
-  scope: LocalIdentityResolutionAutomationScope
-) {
-  return scope === "all-eligible" ? "all eligible" : "batch";
 }
 
 function localIdentityResolutionAutomationActionLabel(
@@ -5841,33 +6801,20 @@ function localIdentityResolutionAutomationTone(
   }
 }
 
-function localBenefitDiscoveryAutomationMessage(
-  result: LocalBenefitDiscoveryAutomationResponse
+function localBenefitDiscoveryAutomationPendingMessage(
+  rejectThreshold: number,
+  strategy: LocalBenefitDiscoveryAutomationStrategy,
+  threshold: number
 ) {
-  const parts = [
-    `${result.counts.scannedClusters.toLocaleString()} scanned`,
-    `${result.counts.draftClaims.toLocaleString()} draft`,
-    `${result.counts.linkExistingClaims.toLocaleString()} link`,
-    `${result.counts.parkLeadClusters.toLocaleString()} park`,
-    `${result.counts.holdClusters.toLocaleString()} hold`,
-    `${result.counts.rejectClusters.toLocaleString()} reject`
-  ];
-
-  if (result.applied) {
-    parts.push(`${result.counts.appliedActions.toLocaleString()} action(s) applied`);
-    parts.push(`${result.counts.linkedReferences.toLocaleString()} reference(s) linked`);
+  if (strategy === "park-backlog") {
+    return `Confirm below. Park backlog processes only score ${rejectThreshold}-${threshold - 1} leads; score ${threshold}+ clusters stay held for build/link review.`;
   }
 
-  if (result.counts.errors > 0) {
-    parts.push(`${result.counts.errors.toLocaleString()} error(s)`);
+  if (strategy === "link-existing") {
+    return "Confirm below. Link existing mode attaches sources only to claim areas that already exist; novel claim areas stay held.";
   }
 
-  const bands =
-    result.strategy === "park-backlog"
-      ? ` Park ${result.rejectThreshold}-${result.threshold - 1}, reject below ${result.rejectThreshold}.`
-      : "";
-
-  return `Auto-build ${localBenefitDiscoveryAutomationStrategyLabel(result.strategy)} ${localBenefitDiscoveryAutomationScopeLabel(result.scope)} ${result.applied ? "applied" : "preview"}: ${parts.join(", ")}.${bands}`;
+  return "Confirm below. Build leads mode creates unreviewed local draft claims for high-confidence novel areas and links high-confidence existing areas.";
 }
 
 function localBenefitDiscoveryAutomationConfirmMessage(
@@ -5884,23 +6831,51 @@ function localBenefitDiscoveryAutomationConfirmMessage(
   return `Apply ${localBenefitDiscoveryAutomationStrategyLabel(preview.strategy)} ${localBenefitDiscoveryAutomationScopeLabel(preview.scope)} automation at score ${preview.threshold}? This will draft ${preview.counts.draftClaims.toLocaleString()} claim(s), link ${preview.counts.linkExistingClaims.toLocaleString()} existing claim cluster(s), park ${preview.counts.parkLeadClusters.toLocaleString()} lead(s), and reject ${preview.counts.rejectClusters.toLocaleString()} low-confidence cluster(s).${preview.strategy === "park-backlog" ? ` Park ${preview.rejectThreshold}-${preview.threshold - 1}; reject below ${preview.rejectThreshold}.` : ""}`;
 }
 
-function localBenefitDiscoveryAutomationScopeLabel(
-  scope: LocalBenefitDiscoveryAutomationScope
+function localBenefitDiscoveryAutomationPreviewRows(
+  preview: LocalBenefitDiscoveryAutomationResponse
 ) {
-  return scope === "all-eligible" ? "all eligible" : "batch";
+  return [...preview.decisions]
+    .sort((left, right) => {
+      const leftPriority = localBenefitDiscoveryAutomationDecisionPriority(left);
+      const rightPriority = localBenefitDiscoveryAutomationDecisionPriority(right);
+
+      return leftPriority - rightPriority || right.leadScore - left.leadScore;
+    })
+    .slice(0, 6);
 }
 
-function localBenefitDiscoveryAutomationStrategyLabel(
-  strategy: LocalBenefitDiscoveryAutomationStrategy
+function localBenefitDiscoveryAutomationDecisionPriority(
+  decision: LocalBenefitDiscoveryAutomationDecision
 ) {
-  switch (strategy) {
-    case "build-leads":
-      return "build leads";
-    case "link-existing":
-      return "link existing";
-    case "park-backlog":
-      return "park backlog";
+  if (decision.error) {
+    return 0;
   }
+
+  if (decision.applied) {
+    return 1;
+  }
+
+  if (decision.action !== "hold") {
+    return 2;
+  }
+
+  return 3;
+}
+
+function localBenefitDiscoveryAutomationPreviewRowsMessage(
+  preview: LocalBenefitDiscoveryAutomationResponse
+) {
+  const actionable =
+    preview.counts.draftClaims +
+    preview.counts.linkExistingClaims +
+    preview.counts.parkLeadClusters +
+    preview.counts.rejectClusters;
+
+  if (actionable === 0) {
+    return `Showing held decisions because ${localBenefitDiscoveryAutomationStrategyLabel(preview.strategy)} found no actionable clusters at the current thresholds.`;
+  }
+
+  return `Showing actionable decisions first: ${actionable.toLocaleString()} cluster(s) would be processed and ${preview.counts.holdClusters.toLocaleString()} would stay held.`;
 }
 
 function localBenefitDiscoveryAutomationStrategyButtonLabel(
@@ -5926,7 +6901,7 @@ function localBenefitDiscoveryAutomationStrategyDescription(
   }
 
   if (strategy === "park-backlog") {
-    return `This parks leads from ${rejectThreshold} to ${threshold - 1}, rejects leads below ${rejectThreshold}, and holds ${threshold}+ for build/link review without creating heatmap claims.`;
+    return `This parks leads from ${rejectThreshold} to ${threshold - 1}, rejects leads below ${rejectThreshold}, and holds ${threshold}+ for build/link review without creating weak public evidence claims.`;
   }
 
   return "This will create unreviewed local draft claims, link existing local claims, and reject very low-confidence clusters from the local queue.";
@@ -5978,9 +6953,9 @@ async function postLocalIngestionSynonyms() {
   });
 }
 
-async function postLocalIngestionRun(limit: number) {
+async function postLocalIngestionRun(limit: number, minDelayMs: number) {
   return localIngestionFetch<LocalIngestionRunResponse>("/api/local-ingestion/run", {
-    body: JSON.stringify({ limit }),
+    body: JSON.stringify({ limit, minDelayMs }),
     headers: {
       "Content-Type": "application/json"
     },
@@ -6018,13 +6993,6 @@ function isLocalDashboardHost() {
   return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 }
 
-function localIngestionQueueCount(
-  status: LocalIngestionStatusReadout,
-  key: LocalIngestionJobStatus
-) {
-  return status.queue.counts[key] ?? 0;
-}
-
 function localIngestionIdleMessage(status: LocalIngestionStatusReadout) {
   const queued = localIngestionQueueCount(status, "QUEUED");
   const running = localIngestionQueueCount(status, "RUNNING");
@@ -6040,17 +7008,14 @@ function localIngestionErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Local ingestion request failed.";
 }
 
-function localIngestionSourceLabel(source: LocalIngestionSource) {
-  switch (source) {
-    case "CLINICALTRIALS_GOV":
-      return "ClinicalTrials.gov";
-    case "PUBMED":
-      return "PubMed";
-  }
-}
+function clampNumberInput(value: string, fallback: number, min: number, max: number) {
+  const parsed = Number(value);
 
-function localIngestionStatusLabel(status: LocalIngestionJobStatus | LocalIngestionRunJobResult["status"]) {
-  return status.replace(/_/g, " ").toLowerCase();
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, Math.floor(parsed)));
 }
 
 function localIngestionStatusTone(status: LocalIngestionJobStatus) {
@@ -6066,33 +7031,6 @@ function localIngestionStatusTone(status: LocalIngestionJobStatus) {
     case "SUCCEEDED":
       return "border-green-200 bg-green-50 text-green-700";
   }
-}
-
-function localIngestionDeepeningCatchUpSummary(
-  catchUp: LocalIngestionDeepeningCatchUpReadout
-) {
-  if (catchUp.eligibleJobs === 0) {
-    return "No completed full PubMed first-page jobs needed catch-up deepening.";
-  }
-
-  return `Deepening catch-up: ${catchUp.newJobs.toLocaleString()} queued, ${catchUp.existingJobs.toLocaleString()} already queued, ${catchUp.skippedJobs.toLocaleString()} skipped from ${catchUp.eligibleJobs.toLocaleString()} completed full PubMed first-page job(s).`;
-}
-
-function localIngestionDeepeningRunSummary(
-  deepening: NonNullable<LocalIngestionRunJobResult["deepening"]>
-) {
-  const usefulRatio = `${Math.round(deepening.usefulRatio * 100)}%`;
-  const pageRange = `${deepening.pageStart + 1}-${deepening.pageStart + deepening.pageSize}`;
-  const total =
-    deepening.totalCount !== undefined
-      ? ` of ${deepening.totalCount.toLocaleString()} reported`
-      : `; cap ${deepening.maxResults.toLocaleString()}`;
-  const nextPage =
-    deepening.nextPageStart !== undefined
-      ? ` Next page starts at ${deepening.nextPageStart + 1}.`
-      : "";
-
-  return `Deepening: ${deepening.reason}. Useful-looking ${deepening.usefulCandidateCount.toLocaleString()}/${deepening.candidateCount.toLocaleString()} (${usefulRatio}) on PubMed page ${pageRange}${total}.${nextPage}`;
 }
 
 function localIngestionClassificationTone(
@@ -6139,12 +7077,6 @@ function formatLocalIngestionTime(value?: string) {
   }).format(date);
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
-
 type SourcePacketGapPriority = "High" | "Medium" | "Low";
 
 type SourcePacketGapRow = {
@@ -6169,6 +7101,12 @@ type SourcePacketGapSummary = {
 
 export function buildSourcePacketGapRows(data: EvidenceDashboardData): SourcePacketGapRow[] {
   const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
+  const sourcePacketSnapshotsByClaimId = dashboardSourcePacketSnapshotMap(data);
+  const useSourcePacketSnapshots = shouldUseDashboardSourcePacketSnapshots({
+    references: data.references,
+    sourcePacketSnapshotsByClaimId,
+    studies: data.studies
+  });
   const interventionsById = new Map(
     data.interventions.map((intervention) => [intervention.id, intervention])
   );
@@ -6186,10 +7124,12 @@ export function buildSourcePacketGapRows(data: EvidenceDashboardData): SourcePac
 
   return data.claims
     .map((claim) => {
-      const packet = buildClaimSourcePacket({
+      const packet = buildDashboardClaimSourcePacket({
         claim,
         referencesById,
-        studies: data.studies
+        sourcePacketSnapshotsByClaimId,
+        studies: data.studies,
+        useSourcePacketSnapshots
       });
 
       return {
@@ -7044,12 +7984,13 @@ function Header({ data }: { data: EvidenceDashboardData }) {
               Apex Lifespan
             </h1>
             <span className="rounded-md border border-signal/25 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
-              Evidence Intelligence
+              Evidence Translator
             </span>
           </div>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            General public evidence dashboard. Draft evidence must stay citation-linked, uncertainty-aware,
-            and separate from individualized medical advice.
+            Plain-language supplement evidence briefs for normal readers. Apex keeps dense study
+            findings citation-linked, uncertainty-aware, and separate from individualized medical
+            advice.
           </p>
           <div
             aria-label={
@@ -7065,14 +8006,14 @@ function Header({ data }: { data: EvidenceDashboardData }) {
             </p>
             <p className="mt-1 text-sm leading-6 text-slate-700">
               {data.dataSource === "database"
-                ? `Apex Lifespan is running against your local catalog (${data.interventions.length} interventions, ${data.claims.length} scoped claims). Scores and packets are review aids, not medical advice.`
-                : "Apex Lifespan is in early public prototype. Current scores are based on a small curated seed dataset and live source-search previews. Scores are review aids, not medical advice."}
+                ? `Apex Lifespan is running against your local catalog (${data.interventions.length} interventions, ${data.claims.length} scoped claims). Evidence briefs are the main product; scores and packets are supporting audit aids, not medical advice.`
+                : "Apex Lifespan is in early public prototype. The seed dataset and live source-search previews support plain-language evidence briefs; scores are audit aids, not medical advice."}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-medium">
           <span className="rounded-md border border-spruce/25 bg-teal-50 px-2 py-1 text-spruce">
-            Score claims
+            Translate evidence
           </span>
           <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-amberline">
             {projectConfig.defaultRegion} / {projectConfig.defaultRegulatoryAgency}
@@ -7374,14 +8315,22 @@ function writeBrowserStorage(key: string, value: string) {
 
 export function buildCodexReviewPacket(data: EvidenceDashboardData) {
   const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
+  const sourcePacketSnapshotsByClaimId = dashboardSourcePacketSnapshotMap(data);
+  const useSourcePacketSnapshots = shouldUseDashboardSourcePacketSnapshots({
+    references: data.references,
+    sourcePacketSnapshotsByClaimId,
+    studies: data.studies
+  });
   const interventionsById = new Map(
     data.interventions.map((intervention) => [intervention.id, intervention])
   );
   const reviewSummary = summarizeReviewStatus(data.claims);
-  const sourcePacketSummary = summarizeClaimSourcePackets({
+  const sourcePacketSummary = summarizeDashboardClaimSourcePackets({
     claims: data.claims,
     referencesById,
-    studies: data.studies
+    sourcePacketSnapshotsByClaimId,
+    studies: data.studies,
+    useSourcePacketSnapshots
   });
   const scoreWorkClaims = buildScoreReadinessRows(data)
     .filter((row) => row.state !== "scored")
@@ -7504,6 +8453,20 @@ type EvidenceMapSort =
     }
   | null;
 
+type RankedEvidenceMapTileModel = {
+  claim: Claim;
+  claimCount: number;
+  confidenceRank: number;
+  intervention: Intervention;
+  rankGroup: number;
+  score: number | null;
+  sourceLabel: string;
+  statusLabel: string;
+  statusTone: string;
+};
+
+type RankedEvidenceMapLimit = 3 | 5 | 10 | "all";
+
 function isDraftLeadClaim(claim: Claim) {
   return claim.evidenceGrade === DRAFT_LEAD_EVIDENCE_GRADE;
 }
@@ -7552,14 +8515,24 @@ function buildEvidenceMapReadinessSummary({
   claims,
   readinessRows,
   referencesById,
-  studies
+  sourcePacketSnapshotsByClaimId,
+  studies,
+  useSourcePacketSnapshots
 }: {
   claims: Claim[];
   readinessRows: ScoreReadinessRow[];
   referencesById: Map<string, Reference>;
+  sourcePacketSnapshotsByClaimId: Map<string, NormalizedSourcePacketRow>;
   studies: Study[];
+  useSourcePacketSnapshots: boolean;
 }): EvidenceMapReadinessSummary {
-  const packetSummary = summarizeClaimSourcePackets({ claims, referencesById, studies });
+  const packetSummary = summarizeDashboardClaimSourcePackets({
+    claims,
+    referencesById,
+    sourcePacketSnapshotsByClaimId,
+    studies,
+    useSourcePacketSnapshots
+  });
   const scoreSummary = buildScoreReadinessSummary(readinessRows);
   const draftLeadClaims = claims.filter(isDraftLeadClaim).length;
   const sourcePacketScaffoldClaims = claims.filter(isSourcePacketScaffoldClaim).length;
@@ -7627,7 +8600,7 @@ function evidenceMapScoreStatusLabel(
   }
 
   if (readinessRow?.state === "source_blocked") {
-    return "Source work pending extraction";
+    return sourceWorkStatusText(readinessRow).statusLabel;
   }
 
   if (readinessRow?.state === "default_score_review") {
@@ -7645,18 +8618,61 @@ function evidenceMapScoreStatusLabel(
   return "Composite pending source review";
 }
 
+function sourceWorkStatusText(readinessRow: ScoreReadinessRow) {
+  const { completeness } = readinessRow.packet;
+
+  switch (completeness.status) {
+    case "not_linked":
+      return {
+        ariaSummary:
+          "no curated source is linked to this claim; source work is blocked before scoring",
+        detail: "No article or registry reference is linked to this claim yet.",
+        primary: "No",
+        secondary: "Sources",
+        statusLabel: "No curated sources"
+      };
+    case "missing_sources":
+      return {
+        ariaSummary:
+          "a linked source record is missing from the local source table; source repair is required before scoring",
+        detail: "The claim points to a reference ID that is missing from the curated source records.",
+        primary: "Source",
+        secondary: "Missing",
+        statusLabel: "Source record missing"
+      };
+    case "extraction_pending":
+      return {
+        ariaSummary:
+          "curated sources are linked but structured extraction is still pending",
+        detail: `${completeness.extractedReferences}/${completeness.totalReferences} linked references have structured extraction.`,
+        primary: "Extract",
+        secondary: "Refs",
+        statusLabel: "Extraction pending"
+      };
+    case "complete":
+      return {
+        ariaSummary: "source packet is complete",
+        detail: "Every linked curated reference has structured extraction.",
+        primary: "Source",
+        secondary: "Backed",
+        statusLabel: "Source-backed"
+      };
+  }
+}
+
 function evidenceMapCellPresentation(
   claim: Claim,
   score: number,
   readinessRow?: ScoreReadinessRow
 ) {
   if (readinessRow?.state === "source_blocked") {
+    const sourceWork = sourceWorkStatusText(readinessRow);
+
     return {
-      ariaSummary:
-        "source work pending; no final evidence score is shown until source links or extraction are complete",
-      primary: "Source",
-      secondary: "Work",
-      title: `${readinessRow.packet.completeness.label}. ${scoreReadinessNextAction(readinessRow)}`,
+      ariaSummary: `${sourceWork.ariaSummary}; no final evidence score is shown until this source-work blocker clears`,
+      primary: sourceWork.primary,
+      secondary: sourceWork.secondary,
+      title: `${sourceWork.statusLabel}. ${sourceWork.detail} ${scoreReadinessNextAction(readinessRow)}`,
       tone:
         "border-dashed border-amberline/35 bg-amber-50 text-amberline hover:border-amberline hover:bg-amber-50"
     };
@@ -7815,6 +8831,180 @@ function evidenceMapSortAriaLabel(sort: EvidenceMapSort, outcome: OutcomeArea) {
   return `Clear ${outcome} sort and return to alphabetical order`;
 }
 
+function evidenceMapConfidenceRank(confidence: Claim["confidenceLevel"]) {
+  switch (confidence) {
+    case "High":
+      return 4;
+    case "Moderate":
+      return 3;
+    case "Low":
+      return 2;
+    case "Very low":
+      return 1;
+  }
+}
+
+function evidenceMapConfidenceScoreLabel(confidence: Claim["confidenceLevel"]) {
+  return `Confidence ${evidenceMapConfidenceRank(confidence)}/4 (${confidence})`;
+}
+
+function rankedEvidenceMapStatus(
+  claim: Claim,
+  readinessRow?: ScoreReadinessRow
+) {
+  if (readinessRow?.state === "scored" && !isEvidenceMapPlaceholderClaim(claim)) {
+    return {
+      rankGroup: 0,
+      statusLabel: "Scored",
+      statusTone: labelTone(claim.finalLabel)
+    };
+  }
+
+  if (readinessRow?.state === "snapshot_gap" && !isEvidenceMapPlaceholderClaim(claim)) {
+    return {
+      rankGroup: 1,
+      statusLabel: "Audit gap",
+      statusTone: "border-dashed border-signal/35 bg-blue-50 text-signal"
+    };
+  }
+
+  if (readinessRow?.state === "ready_to_score") {
+    return {
+      rankGroup: 2,
+      statusLabel: "Ready to score",
+      statusTone: "border-dashed border-spruce/35 bg-teal-50 text-spruce"
+    };
+  }
+
+  if (readinessRow?.state === "default_score_review") {
+    return {
+      rankGroup: 3,
+      statusLabel: "Score work",
+      statusTone: "border-dashed border-danger/30 bg-red-50 text-danger"
+    };
+  }
+
+  if (readinessRow?.state === "source_blocked") {
+    return {
+      rankGroup: 4,
+      statusLabel: "Source work",
+      statusTone: "border-dashed border-amberline/35 bg-amber-50 text-amberline"
+    };
+  }
+
+  if (isDraftLeadClaim(claim)) {
+    return {
+      rankGroup: 5,
+      statusLabel: "Lead draft",
+      statusTone: "border-dashed border-amberline/35 bg-amber-50 text-amberline"
+    };
+  }
+
+  if (isSourcePacketScaffoldClaim(claim)) {
+    return {
+      rankGroup: 6,
+      statusLabel: "Needs review",
+      statusTone: "border-dashed border-slate-300 bg-slate-50 text-slate-600"
+    };
+  }
+
+  return {
+    rankGroup: 7,
+    statusLabel: "Unsorted",
+    statusTone: "border-line bg-mist text-slate-600"
+  };
+}
+
+function buildRankedEvidenceMapTiles({
+  claims,
+  interventionsById,
+  outcome,
+  readinessByClaimId
+}: {
+  claims: Claim[];
+  interventionsById: Map<string, Intervention>;
+  outcome: OutcomeArea;
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
+}) {
+  const candidateTiles = claims
+    .filter((claim) => claim.outcome === outcome)
+    .map((claim): RankedEvidenceMapTileModel | null => {
+      const intervention = interventionsById.get(claim.interventionId);
+
+      if (!intervention) {
+        return null;
+      }
+
+      const readinessRow = readinessByClaimId.get(claim.id);
+      const status = rankedEvidenceMapStatus(claim, readinessRow);
+
+      return {
+        claim,
+        claimCount: 1,
+        confidenceRank: evidenceMapConfidenceRank(claim.confidenceLevel),
+        intervention,
+        rankGroup: status.rankGroup,
+        score: evidenceMapSortableScore(claim, readinessRow),
+        sourceLabel: readinessRow?.packet.completeness.label ?? "Source status unknown",
+        statusLabel: status.statusLabel,
+        statusTone: status.statusTone
+      };
+    })
+    .filter((tile): tile is RankedEvidenceMapTileModel => Boolean(tile))
+    .sort(sortRankedEvidenceMapTiles);
+
+  const claimCountsByInterventionId = new Map<string, number>();
+
+  for (const tile of candidateTiles) {
+    claimCountsByInterventionId.set(
+      tile.intervention.id,
+      (claimCountsByInterventionId.get(tile.intervention.id) ?? 0) + 1
+    );
+  }
+
+  const bestTileByInterventionId = new Map<string, RankedEvidenceMapTileModel>();
+
+  for (const tile of candidateTiles) {
+    if (!bestTileByInterventionId.has(tile.intervention.id)) {
+      bestTileByInterventionId.set(tile.intervention.id, {
+        ...tile,
+        claimCount: claimCountsByInterventionId.get(tile.intervention.id) ?? 1
+      });
+    }
+  }
+
+  return Array.from(bestTileByInterventionId.values());
+}
+
+function sortRankedEvidenceMapTiles(
+  left: RankedEvidenceMapTileModel,
+  right: RankedEvidenceMapTileModel
+) {
+  if (left.rankGroup !== right.rankGroup) {
+    return left.rankGroup - right.rankGroup;
+  }
+
+  const leftScore = left.score ?? -1;
+  const rightScore = right.score ?? -1;
+  const scoreDelta = rightScore - leftScore;
+
+  if (Math.abs(scoreDelta) >= 0.3) {
+    return scoreDelta;
+  }
+
+  const confidenceDelta = right.confidenceRank - left.confidenceRank;
+
+  if (confidenceDelta !== 0) {
+    return confidenceDelta;
+  }
+
+  if (scoreDelta !== 0) {
+    return scoreDelta;
+  }
+
+  return left.intervention.name.localeCompare(right.intervention.name);
+}
+
 function EvidenceMapReadinessStrip({
   onStatusFilterChange,
   statusFilter,
@@ -7955,138 +9145,430 @@ function EvidenceMap({
   activeClaimId: string;
 }) {
   const [sort, setSort] = useState<EvidenceMapSort>(null);
+  const [matrixOpen, setMatrixOpen] = useState(false);
+  const [rankedLimit, setRankedLimit] = useState<RankedEvidenceMapLimit>(3);
+  const [showRankedWorkRows, setShowRankedWorkRows] = useState(false);
   const outcomes = useMemo(
     () => Array.from(new Set(visibleClaims.map((claim) => claim.outcome))),
     [visibleClaims]
   );
-  const sortedInterventions = useMemo(
+  const interventionsById = useMemo(
+    () => new Map(visibleInterventions.map((intervention) => [intervention.id, intervention])),
+    [visibleInterventions]
+  );
+  const rankedOutcomeColumns = useMemo(
     () =>
-      sortEvidenceMapInterventions({
+      outcomes.map((outcome) => ({
+        outcome,
+        tiles: buildRankedEvidenceMapTiles({
+          claims: visibleClaims,
+          interventionsById,
+          outcome,
+          readinessByClaimId
+        })
+      })),
+    [interventionsById, outcomes, readinessByClaimId, visibleClaims]
+  );
+  const sortedInterventions = useMemo(
+    () => {
+      if (!matrixOpen) {
+        return [];
+      }
+
+      return sortEvidenceMapInterventions({
         claims: visibleClaims,
         interventions: visibleInterventions,
         readinessByClaimId,
         sort
-      }),
-    [readinessByClaimId, sort, visibleClaims, visibleInterventions]
+      });
+    },
+    [matrixOpen, readinessByClaimId, sort, visibleClaims, visibleInterventions]
   );
 
   if (visibleClaims.length === 0) {
     return (
       <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-        No evidence-map cells match the current filters and map mode. Clear the search, category, label,
-        outcome, or map-mode filter to rebuild the evidence map.
+        No evidence-browser cells match the current filters and map mode. Clear the search,
+        category, label, outcome, or map-mode filter to rebuild the evidence browser.
       </p>
     );
   }
 
   return (
     <div className="mt-4">
-      <div className="max-w-full overflow-x-auto">
-      <table
-        aria-describedby="evidence-map-legend"
-        className="w-full min-w-0 border-separate border-spacing-1 text-sm"
-      >
-          <caption className="sr-only">
-            Evidence map. Rows are interventions and columns are outcomes. Unassessed cells do not
-            imply absence of evidence.
-          </caption>
-          <thead>
-            <tr>
-              <th
-                className="sticky left-0 z-20 w-[220px] rounded-md border border-transparent bg-mist px-2 py-2 text-left text-xs font-semibold text-slate-600"
-                scope="col"
-              >
-                <button
-                  type="button"
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-left outline-none transition hover:text-signal focus:ring-4 focus:ring-signal/20",
-                    sort === null && "text-signal"
-                  )}
-                  onClick={() => setSort(null)}
-                  aria-label="Sort supplements alphabetically by name"
-                  title="Sort alphabetically by intervention name"
-                >
-                  Intervention
-                  {sort === null ? (
-                    <ArrowUpDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
-                  ) : null}
-                </button>
-              </th>
-              {outcomes.map((outcome) => {
-                const isActive = sort?.outcome === outcome;
+      <RankedEvidenceMapBoard
+        activeClaimId={activeClaimId}
+        columns={rankedOutcomeColumns}
+        rankedLimit={rankedLimit}
+        readinessByClaimId={readinessByClaimId}
+        setRankedLimit={setRankedLimit}
+        setShowWorkRows={setShowRankedWorkRows}
+        showWorkRows={showRankedWorkRows}
+      />
 
-                return (
+      <section className="mt-4 rounded-lg border border-line bg-mist p-3">
+        <button
+          aria-expanded={matrixOpen}
+          className="flex w-full items-center justify-between gap-3 text-left text-sm font-semibold text-ink outline-none transition hover:text-signal focus:ring-4 focus:ring-signal/20"
+          onClick={() => setMatrixOpen((current) => !current)}
+          type="button"
+        >
+          <span>
+            Coverage matrix and source-work gaps
+          </span>
+          <ChevronDown
+            aria-hidden="true"
+            className={cn("h-4 w-4 shrink-0 transition", matrixOpen && "rotate-180")}
+          />
+        </button>
+        <p className="mt-2 max-w-4xl text-xs leading-5 text-slate-600">
+          This secondary matrix keeps the old coverage view for spotting unassessed cells and
+          source-work gaps. The ranked board above is the faster way to compare supplements within
+          each outcome. It renders only when opened to keep the initial board lighter.
+        </p>
+        {matrixOpen ? (
+          <div className="mt-3 max-w-full overflow-x-auto">
+            <table
+              aria-describedby="evidence-map-legend"
+              className="w-full min-w-0 border-separate border-spacing-1 text-sm"
+            >
+              <caption className="sr-only">
+                Evidence browser. Rows are interventions and columns are outcomes. It is a
+                navigation aid for evidence briefs, not a supplement ranking table. Unassessed cells
+                do not imply absence of evidence.
+              </caption>
+              <thead>
+                <tr>
                   <th
-                    key={outcome}
-                    aria-sort={
-                      isActive
-                        ? sort.direction === "desc"
-                          ? "descending"
-                          : "ascending"
-                        : "none"
-                    }
-                    className="w-[4.25rem] min-w-[4.25rem] max-w-[4.75rem] rounded-md border border-line bg-mist px-0.5 py-1 text-center text-xs font-semibold text-slate-700"
+                    className="sticky left-0 z-20 w-[220px] rounded-md border border-transparent bg-mist px-2 py-2 text-left text-xs font-semibold text-slate-600"
                     scope="col"
                   >
-                    <div className="flex flex-col items-center gap-1 py-0.5">
-                      <div className="flex items-center justify-center gap-0.5">
-                        <button
-                          type="button"
-                          className={cn(
-                            "inline-flex h-5 w-5 items-center justify-center rounded-md outline-none transition hover:bg-white focus:ring-4 focus:ring-signal/20",
-                            isActive && "bg-white text-signal"
-                          )}
-                          onClick={() => setSort((current) => cycleEvidenceMapSort(current, outcome))}
-                          aria-label={evidenceMapSortAriaLabel(sort, outcome)}
-                          title={evidenceMapSortAriaLabel(sort, outcome)}
-                        >
-                          <EvidenceMapSortIndicator
-                            direction={isActive ? sort.direction : null}
-                          />
-                        </button>
-                        <OutcomeColumnTooltip outcome={outcome} />
-                      </div>
-                      <button
-                        type="button"
-                        className={cn(
-                          "w-full rounded-md px-0.5 py-0.5 text-center text-[11px] leading-tight outline-none transition hover:bg-white hover:text-signal focus:ring-4 focus:ring-signal/20",
-                          isActive && "text-signal"
-                        )}
-                        onClick={() => setSort((current) => cycleEvidenceMapSort(current, outcome))}
-                        aria-label={evidenceMapSortAriaLabel(sort, outcome)}
-                        title={evidenceMapSortAriaLabel(sort, outcome)}
-                      >
-                        {shortOutcome(outcome)}
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-left outline-none transition hover:text-signal focus:ring-4 focus:ring-signal/20",
+                        sort === null && "text-signal"
+                      )}
+                      onClick={() => setSort(null)}
+                      aria-label="Sort supplements alphabetically by name"
+                      title="Sort alphabetically by intervention name"
+                    >
+                      Intervention
+                      {sort === null ? (
+                        <ArrowUpDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                      ) : null}
+                    </button>
                   </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {sortedInterventions.map((intervention) => (
-              <EvidenceMapRow
-                key={intervention.id}
-                intervention={intervention}
-                outcomes={outcomes}
-                claims={visibleClaims}
-                readinessByClaimId={readinessByClaimId}
-                activeClaimId={activeClaimId}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <EvidenceMapLegend />
+                  {outcomes.map((outcome) => {
+                    const isActive = sort?.outcome === outcome;
+
+                    return (
+                      <th
+                        key={outcome}
+                        aria-sort={
+                          isActive
+                            ? sort.direction === "desc"
+                              ? "descending"
+                              : "ascending"
+                            : "none"
+                        }
+                        className="w-[4.25rem] min-w-[4.25rem] max-w-[4.75rem] rounded-md border border-line bg-mist px-0.5 py-1 text-center text-xs font-semibold text-slate-700"
+                        scope="col"
+                      >
+                        <div className="flex flex-col items-center gap-1 py-0.5">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <button
+                              type="button"
+                              className={cn(
+                                "inline-flex h-5 w-5 items-center justify-center rounded-md outline-none transition hover:bg-white focus:ring-4 focus:ring-signal/20",
+                                isActive && "bg-white text-signal"
+                              )}
+                              onClick={() =>
+                                setSort((current) => cycleEvidenceMapSort(current, outcome))
+                              }
+                              aria-label={evidenceMapSortAriaLabel(sort, outcome)}
+                              title={evidenceMapSortAriaLabel(sort, outcome)}
+                            >
+                              <EvidenceMapSortIndicator
+                                direction={isActive ? sort.direction : null}
+                              />
+                            </button>
+                            <OutcomeColumnTooltip outcome={outcome} />
+                          </div>
+                          <button
+                            type="button"
+                            className={cn(
+                              "w-full rounded-md px-0.5 py-0.5 text-center text-[11px] leading-tight outline-none transition hover:bg-white hover:text-signal focus:ring-4 focus:ring-signal/20",
+                              isActive && "text-signal"
+                            )}
+                            onClick={() =>
+                              setSort((current) => cycleEvidenceMapSort(current, outcome))
+                            }
+                            aria-label={evidenceMapSortAriaLabel(sort, outcome)}
+                            title={evidenceMapSortAriaLabel(sort, outcome)}
+                          >
+                            {shortOutcome(outcome)}
+                          </button>
+                        </div>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedInterventions.map((intervention) => (
+                  <EvidenceMapRow
+                    key={intervention.id}
+                    intervention={intervention}
+                    outcomes={outcomes}
+                    claims={visibleClaims}
+                    readinessByClaimId={readinessByClaimId}
+                    activeClaimId={activeClaimId}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+      {matrixOpen ? <EvidenceMapLegend /> : null}
     </div>
   );
+}
+
+function RankedEvidenceMapBoard({
+  activeClaimId,
+  columns,
+  rankedLimit,
+  readinessByClaimId,
+  setRankedLimit,
+  setShowWorkRows,
+  showWorkRows
+}: {
+  activeClaimId: string;
+  columns: Array<{ outcome: OutcomeArea; tiles: RankedEvidenceMapTileModel[] }>;
+  rankedLimit: RankedEvidenceMapLimit;
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
+  setRankedLimit: (limit: RankedEvidenceMapLimit) => void;
+  setShowWorkRows: (showWorkRows: boolean) => void;
+  showWorkRows: boolean;
+}) {
+  return (
+    <section aria-label="Ranked evidence by outcome">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Ranked evidence signals by outcome</h3>
+          <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-600">
+            Each card ranks supplements for one outcome. The default view keeps the top three
+            scored entries visible so more outcomes fit on the first screen; this remains a browse
+            aid for evidence briefs, not a supplement recommendation.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 text-xs sm:items-end">
+          <div className="inline-flex w-fit overflow-hidden rounded-md border border-line bg-white p-0.5 font-semibold">
+            {([3, 5, 10, "all"] as const).map((limit) => (
+              <button
+                className={cn(
+                  "px-2.5 py-1 transition hover:text-signal focus:outline-none focus:ring-4 focus:ring-signal/20",
+                  rankedLimit === limit
+                    ? "rounded bg-signal text-white hover:text-white"
+                    : "text-slate-700"
+                )}
+                key={limit}
+                onClick={() => setRankedLimit(limit)}
+                type="button"
+              >
+                {limit === "all" ? "All" : `Top ${limit}`}
+              </button>
+            ))}
+          </div>
+          <label className="inline-flex w-fit items-center gap-2 rounded-md border border-line bg-mist px-2 py-1 font-semibold text-slate-700">
+            <input
+              checked={showWorkRows}
+              className="h-3.5 w-3.5 rounded border-line text-signal focus:ring-signal/20"
+              onChange={(event) => setShowWorkRows(event.target.checked)}
+              type="checkbox"
+            />
+            Show source/score work
+          </label>
+        </div>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+        <span className="rounded-md border border-spruce/25 bg-teal-50 px-2 py-1 font-semibold text-spruce">
+          Top scored first
+        </span>
+        <span className="rounded-md border border-signal/25 bg-blue-50 px-2 py-1 font-semibold text-signal">
+          Confidence tie-breaker
+        </span>
+        <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 font-semibold text-amberline">
+          Work hidden by default
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        {columns.map(({ outcome, tiles }) => {
+          const scoredTiles = tiles.filter((tile) => tile.rankGroup === 0);
+          const workTileCount = tiles.length - scoredTiles.length;
+          const filteredTiles = showWorkRows ? tiles : scoredTiles;
+          const visibleTiles =
+            rankedLimit === "all" ? filteredTiles : filteredTiles.slice(0, rankedLimit);
+          const hiddenRankedCount = Math.max(filteredTiles.length - visibleTiles.length, 0);
+
+          return (
+            <section
+              className="min-h-[150px] rounded-md border border-line bg-white p-2.5"
+              key={outcome}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h4 className="text-sm font-semibold leading-tight text-ink">
+                    {shortOutcome(outcome)}
+                  </h4>
+                  <p className="mt-0.5 text-[11px] leading-4 text-slate-600">
+                    {scoredTiles.length.toLocaleString()} scored supplement
+                    {scoredTiles.length === 1 ? "" : "s"}
+                    {workTileCount > 0
+                      ? `, ${workTileCount.toLocaleString()} work row${
+                          workTileCount === 1 ? "" : "s"
+                        }`
+                      : ""}
+                  </p>
+                </div>
+                <OutcomeColumnTooltip outcome={outcome} />
+              </div>
+
+              {visibleTiles.length > 0 ? (
+                <ol className="mt-2 grid gap-1.5">
+                  {visibleTiles.map((tile, index) => (
+                    <RankedEvidenceMapTile
+                      active={activeClaimId === tile.claim.id}
+                      key={tile.claim.id}
+                      rank={index + 1}
+                      readinessRow={readinessByClaimId.get(tile.claim.id)}
+                      tile={tile}
+                    />
+                  ))}
+                </ol>
+              ) : (
+                <p className="mt-2 rounded-md border border-dashed border-line bg-slate-50 p-2 text-xs leading-5 text-slate-500">
+                  {workTileCount > 0 && !showWorkRows
+                    ? "No scored supplements yet. Enable source/score work to audit unfinished rows."
+                    : "No local claim rows match this outcome under the current filters."}
+                </p>
+              )}
+              {hiddenRankedCount > 0 ? (
+                <p className="mt-1.5 text-[11px] text-slate-500">
+                  {hiddenRankedCount.toLocaleString()} more ranked supplement
+                  {hiddenRankedCount === 1 ? "" : "s"} hidden by the current limit.
+                </p>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function RankedEvidenceMapTile({
+  active,
+  rank,
+  readinessRow,
+  tile
+}: {
+  active: boolean;
+  rank: number;
+  readinessRow?: ScoreReadinessRow;
+  tile: RankedEvidenceMapTileModel;
+}) {
+  const scoreLabel =
+    tile.score === null ? tile.statusLabel : `${tile.score.toFixed(1)} ${scoreBand(tile.score)}`;
+  const confidenceScoreLabel = evidenceMapConfidenceScoreLabel(tile.claim.confidenceLevel);
+  const claimCountLabel =
+    tile.claimCount > 1 ? `${tile.claimCount.toLocaleString()} scoped claim rows` : null;
+  const takeaway = rankedEvidenceMapTileTakeaway(tile.claim, readinessRow);
+  const directionLabel = claimEvidenceDirectionLabel(tile.claim);
+  const confidenceTone =
+    tile.claim.confidenceLevel === "High" || tile.claim.confidenceLevel === "Moderate"
+      ? "border-spruce/25 bg-teal-50 text-spruce"
+      : "border-amberline/25 bg-amber-50 text-amberline";
+
+  return (
+    <li>
+      <a
+        aria-label={`${rank}. ${tile.intervention.name}, ${tile.claim.outcome}: ${scoreLabel}, ${confidenceScoreLabel}, ${tile.sourceLabel}${
+          claimCountLabel ? `, representative of ${claimCountLabel}` : ""
+        }, ${classificationLabel(
+          tile.claim,
+          readinessRow
+        )} ${tile.claim.finalLabel}.`}
+        className={cn(
+          "block rounded-md border p-1.5 text-left transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20",
+          tile.statusTone,
+          active && "border-signal ring-2 ring-signal/25"
+        )}
+        href={`/interventions/${tile.intervention.slug}?tab=claims#claim-${tile.claim.id}`}
+        title={`${tile.intervention.name} - ${tile.claim.outcome}. ${scoreLabel}; ${confidenceScoreLabel}; ${tile.sourceLabel}${
+          claimCountLabel ? `; representative of ${claimCountLabel}` : ""
+        }.`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 truncate text-sm font-semibold leading-5 text-ink">
+            <span className="mr-1 text-[11px] font-semibold text-slate-500">#{rank}</span>
+            {tile.intervention.name}
+          </p>
+          <span className="shrink-0 rounded-md border border-white/70 bg-white/80 px-1.5 py-0.5 text-xs font-semibold">
+            {tile.score === null ? tile.statusLabel : tile.score.toFixed(1)}
+          </span>
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-1 text-[10px] leading-4">
+          <span className={cn("rounded-md border px-1.5 py-0.5 font-semibold", confidenceTone)}>
+            {confidenceScoreLabel}
+          </span>
+          <span
+            className={cn(
+              "rounded-md border px-1.5 py-0.5 font-semibold",
+              sourcePacketCompletenessTone(
+                readinessRow?.packet.completeness.status ?? "not_linked"
+              )
+            )}
+          >
+            {tile.sourceLabel}
+          </span>
+          {directionLabel ? (
+            <span className="rounded-md border border-amberline/25 bg-amber-50 px-1.5 py-0.5 font-semibold text-amberline">
+              {directionLabel}
+            </span>
+          ) : null}
+          {claimCountLabel ? (
+            <span className="rounded-md border border-line bg-white px-1.5 py-0.5 font-semibold text-slate-600">
+              {claimCountLabel}
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 opacity-90">
+          {takeaway}
+        </p>
+      </a>
+    </li>
+  );
+}
+
+function rankedEvidenceMapTileTakeaway(claim: Claim, readinessRow?: ScoreReadinessRow) {
+  const summary = normaliseSentence(claim.summary ?? "");
+
+  if (summary) {
+    return `Takeaway: ${summary}`;
+  }
+
+  return `${classificationLabel(claim, readinessRow)}: ${claim.finalLabel}`;
 }
 
 function EvidenceMapLegend() {
   return (
     <div
-      aria-label="Evidence map legend"
+      aria-label="Evidence browser legend"
       className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600"
       id="evidence-map-legend"
     >
@@ -8152,8 +9634,8 @@ function OutcomeColumnTooltip({ outcome }: { outcome: OutcomeArea }) {
         <span className="block font-semibold text-ink">{outcome}</span>
         <span className="mt-2 block">{detail}</span>
         <span className="mt-2 block text-slate-600">
-          Source-backed scored cells show a composite score. Source-work and score-work cells show
-          status instead of placeholder numbers.
+          Source-backed scored cells can show a composite score as an audit aid. Source-work and
+          score-work cells show status instead of placeholder numbers.
         </span>
       </span>
     </span>
@@ -8407,8 +9889,11 @@ function ClaimTable({
     <section className={dashboardPanelShellClassName(embedded)}>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-ink">Claim Scores</h2>
-          <p className="mt-1 text-sm text-slate-600">Each row is an intervention-outcome pair.</p>
+          <h2 className="text-base font-semibold text-ink">Score index</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Sortable audit fields for intervention-outcome pairs. Use linked evidence notes for
+            interpretation.
+          </p>
         </div>
       </div>
       {rows.length > 0 ? (
@@ -8570,7 +10055,7 @@ function EvidenceCards({
   return (
     <section className={dashboardPanelShellClassName(embedded)}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-ink">Evidence Cards</h2>
+        <h2 className="text-base font-semibold text-ink">Evidence notes</h2>
         {visibleClaims.length > 0 ? (
           <p className="text-xs text-slate-600">
             {visibleClaims.length} local evidence card{visibleClaims.length === 1 ? "" : "s"}

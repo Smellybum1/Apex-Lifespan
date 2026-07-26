@@ -98,6 +98,9 @@ export type LocalIngestionRunResponse = {
   limit: number;
   processed: number;
   results: LocalIngestionRunJobResult[];
+  safety: {
+    minDelayMs: number;
+  };
   status: LocalIngestionStatusReadout;
 };
 
@@ -370,11 +373,13 @@ export type LocalAcceptedCandidateProcessingResult = {
   linkedClaim: boolean;
   nextAction: string;
   novelOutcomeLabels: string[];
+  novelTopicLabels: string[];
   outcomeLabels: string[];
   processedAt?: string;
   source: LocalIngestionSource;
   sourceTypeSuggestion: string;
   title: string;
+  topicLabels: string[];
   url: string;
 };
 
@@ -418,6 +423,8 @@ export type LocalBenefitDiscoveryCluster = {
   rejectedCount: number;
   leadReasons: string[];
   score: number;
+  topicKey: string;
+  topicLabel: string;
   topSources: LocalBenefitDiscoverySource[];
   usableCandidateCount: number;
 };
@@ -460,6 +467,8 @@ export type LocalBenefitDiscoveryAutomationDecision = {
   linkedReferences: number;
   mismatchCount: number;
   outcomeLabel: string;
+  topicKey: string;
+  topicLabel: string;
   usableCandidateCount: number;
 };
 
@@ -578,6 +587,145 @@ export type LocalIdentityResolutionAutomationResponse = {
   updatedAt: string;
 };
 
+export type LocalScoreFinalizationResponse = {
+  action: "finalize-score-ready";
+  applied: boolean;
+  counts: {
+    appliedUpdates: number;
+    defaultScoreReview: number;
+    errors: number;
+    readyAfter: number;
+    readyBefore: number;
+    scanned: number;
+    scoredPublicClaims: number;
+    skippedNoChange: number;
+    snapshotGaps: number;
+    sourceBlocked: number;
+    sourceBlockedWithoutNextAction: number;
+    sourceBlockers: {
+      extraction_pending: number;
+      missing_sources: number;
+      not_linked: number;
+    };
+  };
+  decisions: Array<{
+    applied: boolean;
+    claimId: string;
+    currentScoreLabel: string;
+    error?: string;
+    finalLabel?: string;
+    interventionName?: string;
+    outcome: string;
+    reasons: string[];
+    snapshotCreated?: boolean;
+    suggestedScoreLabel?: string;
+    updatedClaim?: boolean;
+  }>;
+  limit: number;
+  message: string;
+  repairSummary: {
+    blockerBreakdown: Array<{
+      claimCount: number;
+      kind: string;
+      label: string;
+      nextAction: string;
+      priority: number;
+    }>;
+    extractionBatchGroups: Array<{
+      claimCount: number;
+      claimLinks: number;
+      highestPriority: number;
+      intervention: {
+        id: string;
+        name: string;
+        slug: string;
+      } | null;
+      key: string;
+      nextAction: string;
+      outcome: string;
+      priority: number;
+      referenceCount: number;
+    }>;
+    extractionPendingRows: number;
+    extractionReadyReferenceGroups: number;
+    identityWarningReferenceGroups: number;
+    missingSourceRows: number;
+    sourceBlockedRows: number;
+    unlinkedRows: number;
+  };
+  updatedAt: string;
+};
+
+export type LocalClaimExpansionResponse = {
+  action: "expand-claims";
+  applied: boolean;
+  counts: {
+    claimCellsAfter: number;
+    claimCellsBefore: number;
+    claimsCreated: number;
+    errors: number;
+    groupsHeld: number;
+    groupsScanned: number;
+    heldIdentity: number;
+    heldNoOutcome: number;
+    heldRejectedDecision: number;
+    linkedExistingClaims: number;
+    linkedReferences: number;
+    sourceCandidatesAfter: number;
+    sourceCandidatesBefore: number;
+    syncedClaims: number;
+  };
+  decisions: Array<{
+    action: "draft-claim" | "link-existing-claim" | "hold";
+    applied: boolean;
+    candidateCount: number;
+    claimCreated?: boolean;
+    claimId?: string;
+    error?: string;
+    existingClaimCount: number;
+    interventionName: string;
+    linkedReferences: number;
+    outcome: string;
+    reason?: string;
+    referenceCount: number;
+  }>;
+  limit: number;
+  message: string;
+  updatedAt: string;
+};
+
+export type LocalSourceWorkRepairResponse = {
+  action: "repair-source-work";
+  applied: boolean;
+  counts: {
+    draftedExtractions: number;
+    errors: number;
+    heldExistingMultiStudy: number;
+    heldIdentityWarnings: number;
+    heldNoCandidate: number;
+    heldNoSourceText: number;
+    identityWarningsCovered: number;
+    scannedReferences: number;
+    sourceBlockedAfter: number;
+    sourceBlockedBefore: number;
+    syncedClaims: number;
+  };
+  decisions: Array<{
+    action: "draft-extraction" | "hold";
+    applied: boolean;
+    claimCount: number;
+    error?: string;
+    reason?: string;
+    referenceId: string;
+    referenceLabel: string;
+    sourceType?: string;
+    title: string;
+  }>;
+  limit: number;
+  message: string;
+  updatedAt: string;
+};
+
 export type DashboardMainTab =
   | "evidence-map"
   | "claim-details"
@@ -586,8 +734,8 @@ export type DashboardMainTab =
   | "catalog-trust";
 
 export const DASHBOARD_MAIN_TABS: Array<{ label: string; value: DashboardMainTab }> = [
-  { label: "Evidence Map", value: "evidence-map" },
-  { label: "Claim Details", value: "claim-details" },
+  { label: "Evidence Guide", value: "evidence-map" },
+  { label: "Evidence Notes", value: "claim-details" },
   { label: "Candidate Review", value: "candidate-review" },
   { label: "Local Ingestion", value: "local-ingestion" },
   { label: "Catalog Trust", value: "catalog-trust" }

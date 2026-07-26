@@ -107,7 +107,8 @@ describe("operator browser write action parsers", () => {
         acceptedReferenceId: "ref-pubmed-42141930",
         decision: "Accepted",
         dedupeKey: "candidate-1",
-        reviewNote: "Matches the scoped claim."
+        reviewNote: "Matches the scoped claim.",
+        reviewedBy: "human"
       },
       approvedEnv
     );
@@ -124,7 +125,8 @@ describe("operator browser write action parsers", () => {
       {
         decision: "Rejected",
         dedupeKey: "candidate-2",
-        reviewNote: "Not relevant."
+        reviewNote: "Not relevant.",
+        reviewedBy: "human"
       },
       approvedEnv
     );

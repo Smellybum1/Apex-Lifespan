@@ -11,6 +11,7 @@ import {
 } from "@prisma/client";
 
 import { prisma } from "@/lib/db/prisma";
+import { mapReviewStatusFromDb } from "@/lib/data/evidence-model-mappers";
 import type {
   Reference,
   ReviewStatus,
@@ -297,7 +298,15 @@ export type ReviewedSourceCandidateDecision = Exclude<
 interface RecordSourceCandidateDecisionInputBase {
   dedupeKey: string;
   reviewedAt?: Date;
+  /**
+   * Who actually made this call. Required, with no default, on purpose: this
+   * used to be hardcoded to `HUMAN_REVIEWED`, so every automated accept and
+   * reject was stamped as human-confirmed. Callers must say which they are.
+   */
+  reviewedBy: SourceCandidateReviewer;
 }
+
+export type SourceCandidateReviewer = "human" | "automation";
 
 export type RecordSourceCandidateDecisionInput =
   | (RecordSourceCandidateDecisionInputBase & {
@@ -1176,7 +1185,8 @@ export async function recordSourceCandidateDecision({
   decision,
   acceptedReferenceId,
   reviewNote,
-  reviewedAt = new Date()
+  reviewedAt = new Date(),
+  reviewedBy
 }: RecordSourceCandidateDecisionInput): Promise<SourceCandidate> {
   const acceptedReferenceIdOrUndefined = acceptedReferenceId?.trim();
   const reviewNoteOrUndefined = reviewNote?.trim();
@@ -1237,7 +1247,8 @@ export async function recordSourceCandidateDecision({
       },
       data: {
         decision: decisionMap[decision],
-        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        reviewStatus:
+          reviewedBy === "human" ? DbReviewStatus.HUMAN_REVIEWED : DbReviewStatus.AI_REVIEWED,
         reviewedAt,
         reviewNote: reviewNoteOrUndefined,
         acceptedReferenceId:
@@ -2558,12 +2569,7 @@ function decisionFromDb(decision: DbSourceCandidateDecision): SourceCandidateDec
 }
 
 function reviewStatusFromDb(reviewStatus: DbReviewStatus): ReviewStatus {
-  switch (reviewStatus) {
-    case DbReviewStatus.UNREVIEWED_AI_DRAFT:
-      return "Unreviewed AI draft";
-    case DbReviewStatus.HUMAN_REVIEWED:
-      return "Human reviewed";
-  }
+  return mapReviewStatusFromDb(reviewStatus);
 }
 
 function metadataObject(value: Prisma.JsonValue | null): Record<string, unknown> {

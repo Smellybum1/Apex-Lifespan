@@ -1,5 +1,10 @@
 export const LOCAL_RUN_LIMIT_DEFAULT = 1;
 export const LOCAL_RUN_LIMIT_MAX = 3;
+export const LOCAL_RUN_DELAY_MS_DEFAULT = 5000;
+export const LOCAL_RUN_DELAY_MS_MAX = 60000;
+export const LOCAL_RUN_DELAY_MS_MIN = 1000;
+export const LOCAL_RUN_SESSION_JOB_LIMIT_DEFAULT = 100;
+export const LOCAL_RUN_SESSION_JOB_LIMIT_MAX = 500;
 export const LOCAL_RECENT_ITEM_LIMIT = 10;
 export const LOCAL_REVIEW_LIMIT_DEFAULT = 12;
 export const LOCAL_REVIEW_LIMIT_MAX = 50;
@@ -23,6 +28,23 @@ export const LOCAL_IDENTITY_RESOLUTION_AUTOMATION_ALL_MAX = 2000;
 
 export function normaliseRunLimit(value: unknown) {
   return normaliseLocalLimit(value, LOCAL_RUN_LIMIT_DEFAULT, LOCAL_RUN_LIMIT_MAX);
+}
+
+export function normaliseRunDelayMs(value: unknown) {
+  return normaliseLocalLimit(
+    value,
+    LOCAL_RUN_DELAY_MS_DEFAULT,
+    LOCAL_RUN_DELAY_MS_MAX,
+    LOCAL_RUN_DELAY_MS_MIN
+  );
+}
+
+export function normaliseRunSessionJobLimit(value: unknown) {
+  return normaliseLocalLimit(
+    value,
+    LOCAL_RUN_SESSION_JOB_LIMIT_DEFAULT,
+    LOCAL_RUN_SESSION_JOB_LIMIT_MAX
+  );
 }
 
 export function normaliseAcceptedProcessingLimit(value: unknown) {

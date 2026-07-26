@@ -23,12 +23,14 @@ export function InlineConfirmation({
 }) {
   return (
     <div
+      aria-live="assertive"
       className={cn(
         "mt-3 flex flex-col gap-3 rounded-md border px-3 py-2 sm:flex-row sm:items-center sm:justify-between",
         tone === "danger"
           ? "border-danger/25 bg-red-50"
           : "border-amberline/30 bg-amber-50"
       )}
+      role="alert"
     >
       <p className="text-xs font-semibold leading-5 text-slate-800">{message}</p>
       <div className="flex shrink-0 flex-wrap gap-2">

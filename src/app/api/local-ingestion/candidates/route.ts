@@ -60,7 +60,8 @@ export async function POST(request: Request) {
       return Response.json(await recordLocalCandidateReviewBulkDecision(input));
     }
 
-    return Response.json(await recordLocalCandidateReviewDecision(input));
+    // Single-candidate decision from the dashboard: a person read this one row.
+    return Response.json(await recordLocalCandidateReviewDecision(input, "human"));
   } catch (error) {
     return Response.json(
       {

@@ -47,7 +47,9 @@ export async function reviewCandidateFromBrowserForm(
         acceptedReferenceId: requiredFormString(formData, "acceptedReferenceId"),
         decision,
         dedupeKey,
-        reviewNote
+        reviewNote,
+        // An authenticated operator submitting one candidate form by hand.
+        reviewedBy: "human"
       },
       env
     );
@@ -59,7 +61,8 @@ export async function reviewCandidateFromBrowserForm(
       {
         decision,
         dedupeKey,
-        reviewNote
+        reviewNote,
+        reviewedBy: "human"
       },
       env
     );

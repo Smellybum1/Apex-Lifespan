@@ -4072,7 +4072,10 @@ describe("runSourceCandidateJobCommand", () => {
       dedupeKey: "pubmed|au|creatine|28615996",
       decision: "Accepted",
       acceptedReferenceId: "ref-creatine-position-stand",
-      reviewNote: "Full-text reviewed."
+      reviewNote: "Full-text reviewed.",
+      // The CLI review flags are driven by a person, so this path is the one
+      // that may still write HUMAN_REVIEWED.
+      reviewedBy: "human"
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
@@ -4115,7 +4118,8 @@ describe("runSourceCandidateJobCommand", () => {
       dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
       decision: "Rejected",
       acceptedReferenceId: undefined,
-      reviewNote: "Not relevant to the consumer claim."
+      reviewNote: "Not relevant to the consumer claim.",
+      reviewedBy: "human"
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(

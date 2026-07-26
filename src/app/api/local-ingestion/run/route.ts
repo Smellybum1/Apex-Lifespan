@@ -15,9 +15,9 @@ export async function POST(request: Request) {
 
 async function readRunInput(request: Request) {
   try {
-    const body = (await request.json()) as { limit?: unknown };
+    const body = (await request.json()) as { limit?: unknown; minDelayMs?: unknown };
 
-    return { limit: body.limit };
+    return { limit: body.limit, minDelayMs: body.minDelayMs };
   } catch {
     return {};
   }

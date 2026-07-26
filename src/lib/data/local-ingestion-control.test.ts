@@ -2,6 +2,7 @@ import { OutcomeArea as DbOutcomeArea, SourceKind } from "@prisma/client";
 import { describe, expect, it } from "vitest";
 
 import {
+  localAcceptedCandidateEvidenceTopicSuggestions,
   localCandidateReviewAutomationDecision,
   localCandidateReviewSignalDecision,
   localBenefitDiscoveryAutomationDecision,
@@ -94,6 +95,8 @@ function cluster(
     outcomeLabel: "Cognition",
     rejectedCount: 0,
     score: 66,
+    topicKey: "cognition-memory",
+    topicLabel: "Cognition/memory",
     topSources: [],
     usableCandidateCount: 2,
     ...input
@@ -430,6 +433,28 @@ describe("localCandidateReviewSignalDecision", () => {
     expect(decision.kind).toBe("identity-mismatch");
     expect(decision.sourcePointsElsewhere).toBe(true);
     expect(decision.reasons.join(" ")).toContain("Caffeine");
+  });
+});
+
+describe("localAcceptedCandidateEvidenceTopicSuggestions", () => {
+  it("finds popular claim-style topics beyond the legacy heatmap bucket", () => {
+    const topics = localAcceptedCandidateEvidenceTopicSuggestions({
+      metadata: {
+        abstractText:
+          "Ashwagandha supplementation reduced perceived stress and serum cortisol and improved sleep quality in adults."
+      },
+      query: "Ashwagandha systematic review human",
+      sourceType: "Systematic Review",
+      title: "Ashwagandha for stress, cortisol, and sleep quality"
+    });
+
+    expect(topics.map((topic) => topic.key)).toEqual(
+      expect.arrayContaining(["stress-cortisol", "sleep-quality"])
+    );
+    expect(topics[0]).toMatchObject({
+      key: "stress-cortisol",
+      label: "Stress/cortisol"
+    });
   });
 });
 

@@ -61,6 +61,22 @@ describe("local ingestion route guard", () => {
     ).toBe(true);
   });
 
+  it("allows equivalent local hostnames on the same dashboard port", () => {
+    expect(
+      isLocalIngestionRequest(
+        new Request("http://localhost:3000/api/local-ingestion/start", {
+          headers: {
+            [LOCAL_INGESTION_WRITE_HEADER]: LOCAL_INGESTION_WRITE_HEADER_VALUE,
+            origin: "http://127.0.0.1:3000",
+            referer: "http://127.0.0.1:3000/",
+            "sec-fetch-site": "same-origin"
+          },
+          method: "POST"
+        })
+      )
+    ).toBe(true);
+  });
+
   it("allows script-style local writes when the dashboard write header is present", () => {
     expect(isLocalIngestionWriteAllowed({})).toBe(true);
   });
