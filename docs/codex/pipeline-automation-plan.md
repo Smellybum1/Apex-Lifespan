@@ -237,6 +237,40 @@ placeholder claim to a written conclusion — nothing in `src/` writes `Claim.cl
   uncertainty labels, AU/TGA caveats, product-level boundaries, and no peptide sourcing, dosing,
   reconstitution or self-administration guidance.
 
+#### Landed — derivation and a dry-run backfill (2026-07-27)
+
+`src/lib/claim-confidence.ts`. **Not wired into the write path yet**; the backfill is
+`scripts/_tmp_backfill_claim_confidence.ts`, dry-run by default, `--apply` to write.
+
+The trap here is the one next door. Stage 9 derived a claim's rigor from the design of its linked
+papers without checking whether the claim said anything, which is how 552 placeholders scored 7.5.
+Confidence is read by *more* reader-facing surface than the composite is — `readerScore` and
+`claimTier` both key off it — so deriving it the same way would put scaffolding in front of readers
+with a tier attached. The first question is therefore never "how good are the papers", it is "is
+there a claim". Verified: **all 552 placeholders stay at the floor.**
+
+Dry run over 704 claims — **15 changes, 12 up and 3 down**:
+
+| held at the floor | count |
+| --- | --- |
+| source-collection placeholder | 552 |
+| no effect size or population stated | 70 |
+| safety-context (no scoped conclusion) | 37 |
+| watchlist (no scoped conclusion) | 30 |
+
+The promotions are the well-established ones and each states its evidence: omega-3 on lipids (50
+reviews across 56 studies), melatonin on sleep (32/51), whey protein on muscle (24/36), ashwagandha
+on mood, caffeine on VO2 max. Three claims come *down*, including a Vitamin D safety row sitting at
+`High` while carrying no scoped conclusion at all.
+
+`Moderate` was tightened during the dry run: a single review-level source used to be enough, which
+lifted whey protein on **mortality** off one review and one trial. It now needs a review-level source
+plus at least three extracted studies, or three randomised trials. Whey/mortality still qualifies at
+exactly three studies and is the weakest promotion in the set — **eyeball that row before applying.**
+
+Only 15 of 704 claims are eligible for anything above the floor at all. That is not the deriver being
+strict, it is the catalog being thin, and it is the honest number.
+
 ### 5. Recompute `confidenceLevel`
 
 `src/lib/data/score-update.ts` writes ten score fields and never touches `confidenceLevel`. It is
