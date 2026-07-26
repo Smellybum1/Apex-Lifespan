@@ -203,6 +203,26 @@ filed under ashwagandha and astaxanthin, naming those interventions nowhere. All
 `maybe-useful`; there are no pending `likely-useful` rows, so the bulk-lane guard is preventive until
 discovery produces some.
 
+**That 2,249 is not what a nightly run will act on, and the first real run proved it.** The run
+rejected **9**. The reason is that `localCandidateReviewActiveWhere` excludes candidates parked as
+research, and **10,577 of the 10,871 pending rows are parked** — 97% of the pool. Only ~294 are
+reachable by the review lane at all, and only a few dozen of those are unparked `maybe-useful`.
+
+So there are two different numbers and they answer different questions. 2,249 is *what the gate would
+say about the whole pending pool*. 9 is *what the nightly run actually touches*. Clearing the backlog
+would need a deliberate sweep over the parked rows, which is a separate decision — those rows were
+parked on purpose.
+
+Verified in production after the run: 9 candidates carry the note `AI reviewed: rejected by the
+relevance gate. …`, all stamped `AI_REVIEWED` rather than `HUMAN_REVIEWED`. The rejections hold up on
+inspection — a liraglutide cardiac trial, an antibiotic PK study, a honeybush skin extract, and a
+paper on whether alcohol timing affects sleep, none of which name the intervention they were filed
+under.
+
+**The placeholder generator is still running.** The same run created 9 new draft claims (704 → 713),
+so scaffold rows accrue nightly. That matters for any plan to retire them: it is a treadmill unless
+the expansion stage changes too.
+
 **A bug this caught.** The first wiring rejected a candidate whose title missed and which had **no
 stored abstract** — punishing the catalog's gaps rather than the paper. Roughly a third of on-target
 papers never name their intervention in the title, so that would have discarded them wholesale. A
@@ -419,6 +439,19 @@ candidate pool to grow faster than its quality. Section 3 is the fix; until then
 ```powershell
 Unregister-ScheduledTask -TaskName "Apex Lifespan pipeline" -Confirm:$false
 ```
+
+**The first 03:00 run failed, and the way it failed is worth remembering.** It
+exited 1 and produced no log — and the missing log was not a side effect, it was
+the cause. Given `/c "prog" args >> "file"`, `cmd.exe` strips the first and last
+quote it sees rather than treating them as a pair around the program name,
+leaving an unbalanced string; cmd exits 1 with *"The filename, directory name, or
+volume label syntax is incorrect"* before the redirect ever opens. Task Scheduler
+reports a bare non-zero result with nothing to explain it, because writing the
+explanation is the step that failed.
+
+Wrapping the whole command in one more pair of quotes gives cmd the pair it
+consumes. Verify a registered action by checking the log file appears within
+seconds of `Start-ScheduledTask`, not by trusting the exit code.
 
 ### Open: a type assertion that hides source-kind drift
 
