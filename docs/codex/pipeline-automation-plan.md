@@ -253,7 +253,16 @@ dev machine; a hosted runner gets an empty ephemeral database, writes to it, and
 result. So the schedule has to be local: `scripts/register-pipeline-schedule.ps1` registers a
 Windows scheduled task (supports `-WhatIf`, logs to `logs/pipeline-run.log`).
 
-**Not registered.** Creating a standing unattended writer is the user's call, not the agent's.
+**Registered 2026-07-27** at the user's explicit instruction: task `Apex Lifespan pipeline`, daily
+03:00 local, `--max-jobs 100 --quiet`, appending to `logs/pipeline-run.log`.
+
+It was registered **before** section 3, so every unattended run until the relevance gate lands uses
+the current triage — the one measured at 55–61% precision in the 70–89 band. Expect the accepted
+candidate pool to grow faster than its quality. Section 3 is the fix; until then, read the log.
+
+```powershell
+Unregister-ScheduledTask -TaskName "Apex Lifespan pipeline" -Confirm:$false
+```
 
 ### Open: a type assertion that hides source-kind drift
 
