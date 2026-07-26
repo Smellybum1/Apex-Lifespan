@@ -47,3 +47,6 @@ Thumbs.db
 output/
 
 .vercel
+
+# one-off backup written by the score reset script
+scripts/_tmp_laundered_scores_backup.json
