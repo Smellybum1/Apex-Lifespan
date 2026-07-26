@@ -50,3 +50,4 @@ output/
 
 # one-off backup written by the score reset script
 scripts/_tmp_laundered_scores_backup.json
+scripts/_tmp_parked_sweep_backup.json

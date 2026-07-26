@@ -209,9 +209,33 @@ research, and **10,577 of the 10,871 pending rows are parked** — 97% of the po
 reachable by the review lane at all, and only a few dozen of those are unparked `maybe-useful`.
 
 So there are two different numbers and they answer different questions. 2,249 is *what the gate would
-say about the whole pending pool*. 9 is *what the nightly run actually touches*. Clearing the backlog
-would need a deliberate sweep over the parked rows, which is a separate decision — those rows were
-parked on purpose.
+say about the whole pending pool*. 9 is *what the nightly run actually touches*.
+
+#### The parked sweep — applied 2026-07-27
+
+The user authorised a one-off sweep over the parked backlog.
+`scripts/_tmp_sweep_parked_offtarget.ts` rejected **2,184 of 10,577** parked candidates, 0 failures.
+Pending 10,871 → 8,687; accepted unchanged at 12,000; claims untouched at 713. Every row went through
+`recordSourceCandidateDecision(..., "automation")`, so all 2,184 are `AI_REVIEWED` (verified: zero
+exceptions) and carry a note that reverses them in bulk:
+
+```
+AI reviewed: rejected by the relevance gate (parked-research sweep). <reason>
+```
+
+Only `reject` was acted on — 1,959 identity, 225 trap. `undecided` (5,235) and `accept` (3,158) were
+left parked untouched, because the gate cannot show those are wrong and parking was intentional.
+
+**Reading the design rejections before writing is what caught the gate's worst bug.** All 36 were
+adverse-event case reports for catalog supplements — Tongkat Ali liver injury, creatine-loading kidney
+injury, caffeine intoxication, turmeric hepatitis, ashwagandha HPA suppression. See the case-report
+note in `REJECTED_DESIGNS`. Fixed before the sweep ran; the sweep count dropped 2,220 → 2,184 and every
+one of those 36 is still `PENDING_REVIEW`.
+
+**Follow-up worth chasing:** an *earlier* bulk pass had already rejected duplicate copies of those same
+harm reports with the note `Bulk rejected likely-noise candidates from local completion pass`. The
+discovery classifier treats supplement-harm case reports as noise — the same failure mode, still
+unfixed upstream, and the surviving copies were preserved only because the rows were duplicated.
 
 Verified in production after the run: 9 candidates carry the note `AI reviewed: rejected by the
 relevance gate. …`, all stamped `AI_REVIEWED` rather than `HUMAN_REVIEWED`. The rejections hold up on
