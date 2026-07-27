@@ -1,5 +1,29 @@
 import { describe, expect, it } from "vitest";
 
+describe("pipeline bookkeeping is not a safety signal", () => {
+  it("does not read a request for adverse-event data as an adverse finding", () => {
+    // Hydrolyzed collagen and probiotic blend both rendered as safety cautions
+    // on the dashboard because of this sentence, burying two of the
+    // better-evidenced positive findings in the catalog.
+    expect(
+      isAdverseDirectionClaim({
+        summary: "Osteoarthritis symptom support in reviewed collagen supplementation trials.",
+        uncertainty:
+          "Uncertainty remains because current local confidence is low. What would change the score: Product-specific extraction, adverse-event detail, and product-quality verification."
+      })
+    ).toBe(false);
+  });
+
+  it("still reads a real adverse finding as one", () => {
+    expect(
+      isAdverseDirectionClaim({
+        summary: "High doses worsened sleep quality and impaired next-day alertness.",
+        uncertainty: "What would change the score: adverse-event detail."
+      })
+    ).toBe(true);
+  });
+});
+
 import { claimEvidenceDirectionLabel, isAdverseDirectionClaim } from "@/lib/claim-direction";
 
 describe("claim-direction", () => {

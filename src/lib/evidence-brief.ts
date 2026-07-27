@@ -1,4 +1,9 @@
 import { isAdverseDirectionClaim } from "@/lib/claim-direction";
+import {
+  SUMMARY_NOISE_PREFIXES,
+  UNCERTAINTY_NOISE_PREFIXES,
+  startsWithAny
+} from "@/lib/claim-text-noise";
 import { compositeScore } from "@/lib/scoring";
 import type { ClaimSourcePacket } from "@/lib/source-packet";
 import type {
@@ -136,15 +141,10 @@ const TIER_STRENGTH: Record<EvidenceTier, number> = {
 /**
  * Trailing sentences the ingestion pipeline appends to almost every summary.
  * They describe the pipeline, not the supplement, so they never reach a reader.
+ *
+ * Defined in `claim-text-noise` because the direction detector has to ignore
+ * exactly the same sentences — see the note there.
  */
-const SUMMARY_NOISE_PREFIXES = [
-  "This is based on ",
-  "Representative extracted text:",
-  "Keep the conclusion scoped to",
-  "Safety evidence is kept separate from efficacy",
-  "The current claim should be treated as low-certainty",
-  "Local abstract/source metadata reports:"
-];
 
 /** Same idea, for boilerplate that embeds the intervention name. */
 const SUMMARY_NOISE_PATTERNS = [
@@ -152,12 +152,6 @@ const SUMMARY_NOISE_PATTERNS = [
   /^The local (?:source set|record) includes .{0,80}material, but the captured conclusion text is still too thin/i
 ];
 
-const UNCERTAINTY_NOISE_PREFIXES = [
-  "Uncertainty remains because current local confidence is",
-  "What would change the score:",
-  "population, dose/form, duration, comparator, product quality",
-  "Keep population, endpoint,"
-];
 
 const GENERIC_CAVEAT_FRAGMENTS = [
   "remain claim-specific boundaries",
@@ -957,12 +951,6 @@ function pluralizeStudyType(label: string) {
 }
 
 /** Case-insensitive so a capitalisation change upstream cannot silently disable a filter. */
-function startsWithAny(sentence: string, prefixes: string[]) {
-  const lowered = sentence.toLowerCase();
-
-  return prefixes.some((prefix) => lowered.startsWith(prefix.toLowerCase()));
-}
-
 function splitSentences(text: string) {
   return text
     .replace(/\s+/g, " ")
