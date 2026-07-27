@@ -1,3 +1,8 @@
+import {
+  fetchLiveSource,
+  LIVE_SOURCE_JSON_FETCH_INIT
+} from "@/lib/live-source-fetch";
+
 export interface ClinicalTrialSearchItem {
   nctId: string;
   title: string;
@@ -9,29 +14,40 @@ export interface ClinicalTrialSearchItem {
   conditions: string[];
   interventions: string[];
   primaryOutcomes: string[];
+  briefSummary?: string;
   lastUpdateDate: string;
   startDate: string;
   completionDate: string;
   hasResults: boolean;
   resultsFirstPostDate: string | null;
   sponsor: string | null;
+  trialRelevanceDetail: string;
+  trialRelevanceLabel: ClinicalTrialRelevanceLabel;
+  trialResultDetail: string;
+  trialResultLabel: ClinicalTrialResultLabel;
   triageScore: number;
   triageReasons: string[];
   url: string;
 }
+
+export type ClinicalTrialRelevanceLabel =
+  | "Combination product"
+  | "Direct match"
+  | "Related outcome only"
+  | "Unreviewed lead"
+  | "Wrong population";
+
+export type ClinicalTrialResultLabel =
+  | "Completed, no results posted"
+  | "Results posted"
+  | "Terminated/unknown"
+  | "Unreviewed lead";
 
 export interface ClinicalTrialSearchResult {
   query: string;
   studies: ClinicalTrialSearchItem[];
   source: string;
 }
-
-const LIVE_SOURCE_FETCH_INIT = {
-  headers: {
-    accept: "application/json"
-  },
-  cache: "no-store"
-} satisfies RequestInit;
 
 interface ClinicalTrialsApiStudy {
   protocolSection?: {
@@ -69,6 +85,9 @@ interface ClinicalTrialsApiStudy {
     conditionsModule?: {
       conditions?: string[];
     };
+    descriptionModule?: {
+      briefSummary?: string;
+    };
     armsInterventionsModule?: {
       interventions?: Array<{
         type?: string;
@@ -98,7 +117,11 @@ export async function searchClinicalTrials(
   url.searchParams.set("query.term", term);
   url.searchParams.set("pageSize", String(safePageSize));
 
-  const response = await fetch(url, LIVE_SOURCE_FETCH_INIT);
+  const response = await fetchLiveSource(
+    "ClinicalTrials.gov",
+    url,
+    LIVE_SOURCE_JSON_FETCH_INIT
+  );
 
   if (!response.ok) {
     throw new Error(`ClinicalTrials.gov search failed with ${response.status}`);
@@ -154,6 +177,7 @@ function mapClinicalTrialStudy(
     conditions,
     interventions,
     primaryOutcomes,
+    briefSummary: firstText(protocol?.descriptionModule?.briefSummary) ?? undefined,
     lastUpdateDate: firstText(protocol?.statusModule?.lastUpdatePostDateStruct?.date) ?? "Unknown",
     startDate: firstText(protocol?.statusModule?.startDateStruct?.date) ?? "Unknown",
     completionDate:
@@ -165,16 +189,135 @@ function mapClinicalTrialStudy(
     hasResults,
     resultsFirstPostDate: firstText(protocol?.statusModule?.resultsFirstPostDateStruct?.date),
     sponsor: firstText(protocol?.sponsorCollaboratorsModule?.leadSponsor?.name),
+    trialRelevanceDetail: "Trial relevance needs manual review against the scoped claim.",
+    trialRelevanceLabel: "Unreviewed lead" as const,
+    trialResultDetail: "Registry status needs manual review before treating this as evidence.",
+    trialResultLabel: "Unreviewed lead" as const,
     triageScore: 0,
     triageReasons: [],
     url: nctId === "Unknown NCT" ? "https://clinicaltrials.gov/" : `https://clinicaltrials.gov/study/${nctId}`
   };
-  const triage = triageClinicalTrial(item, term);
+  const relevance = classifyClinicalTrialRelevance(item, term);
+  const resultStatus = classifyClinicalTrialResultStatus(item);
+  const labelledItem = {
+    ...item,
+    ...relevance,
+    ...resultStatus
+  };
+  const triage = triageClinicalTrial(labelledItem, term);
 
   return {
-    ...item,
+    ...labelledItem,
     triageScore: triage.score,
     triageReasons: triage.reasons
+  };
+}
+
+function classifyClinicalTrialRelevance(
+  item: Pick<
+    ClinicalTrialSearchItem,
+    "briefSummary" | "conditions" | "interventions" | "primaryOutcomes" | "title"
+  >,
+  term: string
+): Pick<ClinicalTrialSearchItem, "trialRelevanceDetail" | "trialRelevanceLabel"> {
+  const tokens = meaningfulQueryTokens(term);
+  const populationText = [
+    item.title,
+    item.briefSummary ?? "",
+    ...item.conditions
+  ].join(" ");
+  const interventionMatches = valuesContainQueryTokens(item.interventions, tokens);
+  const titleMatches = valuesContainQueryTokens([item.title], tokens);
+  const outcomeMatches = valuesContainQueryTokens(
+    [...item.conditions, ...item.primaryOutcomes],
+    tokens
+  );
+
+  if (hasWrongPopulationSignal(populationText)) {
+    return {
+      trialRelevanceDetail:
+        "Registry title, condition, or summary metadata suggests a population that may not match the public adult supplement claim; review before using.",
+      trialRelevanceLabel: "Wrong population"
+    };
+  }
+
+  if (interventionMatches && hasCombinationProductSignal(item.interventions, tokens)) {
+    return {
+      trialRelevanceDetail:
+        "The query intervention appears with another non-control intervention or combination wording; isolate product/form before interpreting.",
+      trialRelevanceLabel: "Combination product"
+    };
+  }
+
+  if (interventionMatches) {
+    return {
+      trialRelevanceDetail:
+        "The query intervention appears in the registered intervention metadata; still confirm dose, form, comparator, and outcome.",
+      trialRelevanceLabel: "Direct match"
+    };
+  }
+
+  if (outcomeMatches) {
+    return {
+      trialRelevanceDetail:
+        "The query appears in condition or outcome metadata, but not as a registered intervention match.",
+      trialRelevanceLabel: "Related outcome only"
+    };
+  }
+
+  if (titleMatches) {
+    return {
+      trialRelevanceDetail:
+        "The title matches the search term, but intervention and outcome metadata do not yet confirm claim relevance.",
+      trialRelevanceLabel: "Unreviewed lead"
+    };
+  }
+
+  return {
+    trialRelevanceDetail:
+      "ClinicalTrials.gov metadata does not yet show a direct intervention, outcome, or population match; inspect manually before use.",
+    trialRelevanceLabel: "Unreviewed lead"
+  };
+}
+
+function classifyClinicalTrialResultStatus(
+  item: Pick<ClinicalTrialSearchItem, "hasResults" | "status">
+): Pick<ClinicalTrialSearchItem, "trialResultDetail" | "trialResultLabel"> {
+  const status = item.status.toLowerCase();
+
+  if (item.hasResults) {
+    return {
+      trialResultDetail:
+        "ClinicalTrials.gov indicates posted results or a results section is available; inspect the record before interpreting outcomes.",
+      trialResultLabel: "Results posted"
+    };
+  }
+
+  if (status === "completed") {
+    return {
+      trialResultDetail:
+        "The registry status is completed, but no posted results were detected in the public metadata.",
+      trialResultLabel: "Completed, no results posted"
+    };
+  }
+
+  if (
+    status.includes("terminated") ||
+    status.includes("withdrawn") ||
+    status.includes("suspended") ||
+    status.includes("unknown")
+  ) {
+    return {
+      trialResultDetail:
+        "The registry status is terminated, suspended, withdrawn, or unknown; treat this as a weak lead until reviewed.",
+      trialResultLabel: "Terminated/unknown"
+    };
+  }
+
+  return {
+    trialResultDetail:
+      "The record is not completed with posted results in the captured metadata; treat as an unreviewed registry lead.",
+    trialResultLabel: "Unreviewed lead"
   };
 }
 
@@ -233,6 +376,64 @@ function triageClinicalTrial(item: ClinicalTrialSearchItem, term: string) {
     score: Math.min(score, 100),
     reasons: reasons.length > 0 ? reasons : ["Needs manual trial review"]
   };
+}
+
+function meaningfulQueryTokens(term: string) {
+  const stopWords = new Set([
+    "and",
+    "for",
+    "in",
+    "of",
+    "or",
+    "outcome",
+    "study",
+    "the",
+    "trial",
+    "with"
+  ]);
+
+  return Array.from(
+    new Set(
+      term
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((token) => token.length >= 3 && !stopWords.has(token))
+    )
+  );
+}
+
+function valuesContainQueryTokens(values: string[], tokens: string[]) {
+  if (tokens.length === 0) {
+    return false;
+  }
+
+  const text = values.join(" ").toLowerCase();
+  return tokens.some((token) => text.includes(token));
+}
+
+function hasCombinationProductSignal(interventions: string[], tokens: string[]) {
+  const nonControlInterventions = interventions.filter(
+    (intervention) => !/\b(placebo|control|standard care|usual care)\b/i.test(intervention)
+  );
+  const matchingInterventions = nonControlInterventions.filter((intervention) =>
+    valuesContainQueryTokens([intervention], tokens)
+  );
+  const matchingText = matchingInterventions.join(" ").toLowerCase();
+
+  return (
+    matchingInterventions.length > 0 &&
+    (nonControlInterventions.length > 1 ||
+      /\b(adjunct|coadministered|co-administered|combination|combined|plus|with)\b/.test(
+        matchingText
+      ) ||
+      /[+/]/.test(matchingText))
+  );
+}
+
+function hasWrongPopulationSignal(value: string) {
+  return /\b(adolescent|animal|canine|child|children|infant|juvenile|mice|mouse|murine|neonate|paediatric|pediatric|pregnancy|pregnant|rat|rats|veterinary)\b/i.test(
+    value
+  );
 }
 
 function normalisePageSize(pageSize: number) {
@@ -357,6 +558,36 @@ function clinicalTrialOutcomeLabels(values: unknown) {
 
 function isClinicalTrialsApiStudy(value: unknown): value is ClinicalTrialsApiStudy {
   return isRecord(value);
+}
+
+export function labelTrialRegistryRecord(
+  record: {
+    briefSummary?: string;
+    conditions?: string[];
+    hasResults?: boolean;
+    registeredInterventions?: string[];
+    primaryOutcomes?: string[];
+    status: string;
+    title: string;
+  },
+  searchTerm: string
+) {
+  return {
+    ...classifyClinicalTrialRelevance(
+      {
+        briefSummary: record.briefSummary ?? "",
+        conditions: record.conditions ?? [],
+        interventions: record.registeredInterventions ?? [],
+        primaryOutcomes: record.primaryOutcomes ?? [],
+        title: record.title
+      },
+      searchTerm
+    ),
+    ...classifyClinicalTrialResultStatus({
+      hasResults: record.hasResults ?? false,
+      status: record.status
+    })
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

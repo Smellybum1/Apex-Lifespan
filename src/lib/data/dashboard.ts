@@ -26,6 +26,13 @@ import { Socket } from "node:net";
 import { projectConfig } from "@/lib/config/project";
 import { prisma } from "@/lib/db/prisma";
 import {
+  listClaimScoreHistory,
+  listLatestClaimScoreSnapshots,
+  mapClaimScoreHistoryRow,
+  mapClaimScoreSnapshotRow
+} from "@/lib/data/score-history";
+import { listCurrentSourcePackets } from "@/lib/data/source-packets";
+import {
   australiaRegulatoryStatuses,
   claims,
   interventions,
@@ -49,9 +56,11 @@ import type {
   ProductSignal,
   Reference,
   SafetyAlert,
+  SourceTypeTaxonomy,
   Study,
   TrialWatchItem
 } from "@/lib/types";
+import { reviewStatusFromDb } from "@/lib/review-status";
 
 type DbClaimWithReferences = DbClaim & {
   references: DbClaimReference[];
@@ -132,7 +141,8 @@ const studyTypeMap: Record<DbStudyType, Study["studyType"]> = {
   ANIMAL_STUDY: "Animal study",
   IN_VITRO_MECHANISTIC: "In vitro/mechanistic",
   CLINICAL_TRIAL_RECORD: "Clinical trial record",
-  REGULATORY_SAFETY_WARNING: "Regulatory safety warning"
+  REGULATORY_SAFETY_WARNING: "Regulatory safety warning",
+  UNCLASSIFIED: "Unclassified"
 };
 
 const trialStatusMap: Record<DbTrialStatus, TrialWatchItem["status"]> = {
@@ -191,6 +201,10 @@ const australiaRegulatoryKindMap: Record<DbAustraliaRegulatoryKind, AustraliaReg
   UNKNOWN: "Unknown"
 };
 
+export async function getEvidenceDashboardOverviewData(): Promise<EvidenceDashboardData> {
+  return toEvidenceDashboardOverviewData(await getEvidenceDashboardData());
+}
+
 export async function getEvidenceDashboardData(): Promise<EvidenceDashboardData> {
   if (process.env.APEX_DATA_SOURCE === "seed") {
     return getSeedDashboardData("Seed mode forced by APEX_DATA_SOURCE.");
@@ -219,6 +233,47 @@ export async function getEvidenceDashboardData(): Promise<EvidenceDashboardData>
   }
 }
 
+export function toEvidenceDashboardOverviewData(
+  data: EvidenceDashboardData
+): EvidenceDashboardData {
+  return {
+    ...data,
+    references: [],
+    studies: [],
+    claimScoreHistory: []
+  };
+}
+
+export async function getInterventionEvidenceDashboardData(
+  slug: string
+): Promise<EvidenceDashboardData> {
+  if (process.env.APEX_DATA_SOURCE === "seed") {
+    return getSeedInterventionDashboardData(slug, "Seed mode forced by APEX_DATA_SOURCE.");
+  }
+
+  const databasePreflight = await checkDatabaseConnection(process.env.DATABASE_URL);
+
+  if (!databasePreflight.reachable) {
+    if (process.env.APEX_DATA_SOURCE === "database") {
+      throw new Error(databasePreflight.reason);
+    }
+
+    return getSeedInterventionDashboardData(slug, databasePreflight.reason);
+  }
+
+  try {
+    return await getPrismaInterventionDashboardData(slug, {
+      strictDatabaseMode: process.env.APEX_DATA_SOURCE === "database"
+    });
+  } catch (error) {
+    if (process.env.APEX_DATA_SOURCE === "database") {
+      throw error;
+    }
+
+    return getSeedInterventionDashboardData(slug, readableError(error));
+  }
+}
+
 function getSeedDashboardData(fallbackReason?: string): EvidenceDashboardData {
   return {
     references,
@@ -229,6 +284,50 @@ function getSeedDashboardData(fallbackReason?: string): EvidenceDashboardData {
     safetyAlerts,
     productSignals,
     australiaRegulatoryStatuses,
+    dataSource: "seed",
+    fallbackReason
+  };
+}
+
+function getSeedInterventionDashboardData(
+  slug: string,
+  fallbackReason?: string
+): EvidenceDashboardData {
+  const intervention = interventions.find((item) => item.slug === slug);
+
+  if (!intervention) {
+    return {
+      references: [],
+      interventions: [],
+      claims: [],
+      studies: [],
+      trialWatchItems: [],
+      safetyAlerts: [],
+      productSignals: [],
+      australiaRegulatoryStatuses: [],
+      dataSource: "seed",
+      fallbackReason
+    };
+  }
+
+  const interventionClaims = claims.filter((claim) => claim.interventionId === intervention.id);
+  const referenceIds = new Set(interventionClaims.flatMap((claim) => claim.keyReferenceIds));
+  const scopedProductSignals = productSignalsForIntervention(productSignals, intervention);
+  const scopedProductIds = new Set(scopedProductSignals.map((product) => product.id));
+
+  return {
+    references: references.filter((reference) => referenceIds.has(reference.id)),
+    interventions: [intervention],
+    claims: interventionClaims,
+    studies: studies.filter((study) => referenceIds.has(study.referenceId)),
+    trialWatchItems: trialWatchItems.filter((trial) => trial.interventionId === intervention.id),
+    safetyAlerts: safetyAlerts.filter((alert) => alert.interventionId === intervention.id),
+    productSignals: scopedProductSignals,
+    australiaRegulatoryStatuses: australiaRegulatoryStatuses.filter(
+      (status) =>
+        status.interventionId === intervention.id ||
+        (status.productId !== undefined && scopedProductIds.has(status.productId))
+    ),
     dataSource: "seed",
     fallbackReason
   };
@@ -247,7 +346,10 @@ async function getPrismaDashboardData({
     dbTrials,
     dbSafetyAlerts,
     dbProducts,
-    dbAustraliaRegulatoryStatuses
+    dbAustraliaRegulatoryStatuses,
+    dbSourcePackets,
+    dbScoreSnapshots,
+    dbScoreHistory
   ] = await Promise.all([
     prisma.reference.findMany({ orderBy: [{ source: "asc" }, { title: "asc" }] }),
     prisma.intervention.findMany({ orderBy: { name: "asc" } }),
@@ -261,7 +363,10 @@ async function getPrismaDashboardData({
     prisma.product.findMany({ orderBy: [{ qualityScore: "desc" }, { name: "asc" }] }),
     prisma.australiaRegulatoryStatus.findMany({
       orderBy: [{ region: "asc" }, { kind: "asc" }, { status: "asc" }]
-    })
+    }),
+    listCurrentSourcePackets(),
+    listLatestClaimScoreSnapshots(),
+    listClaimScoreHistory(undefined, 200)
   ]);
 
   if (dbInterventions.length === 0 || dbClaims.length === 0) {
@@ -283,6 +388,121 @@ async function getPrismaDashboardData({
     safetyAlerts: dbSafetyAlerts.map(mapSafetyAlert),
     productSignals: dbProducts.map(mapProduct),
     australiaRegulatoryStatuses: dbAustraliaRegulatoryStatuses.map(mapAustraliaRegulatoryStatus),
+    normalizedSourcePackets: dbSourcePackets,
+    claimScoreSnapshots: dbScoreSnapshots.map(mapClaimScoreSnapshotRow),
+    claimScoreHistory: dbScoreHistory.map(mapClaimScoreHistoryRow),
+    dataSource: "database"
+  };
+}
+
+async function getPrismaInterventionDashboardData(
+  slug: string,
+  {
+    strictDatabaseMode = false
+  }: {
+    strictDatabaseMode?: boolean;
+  } = {}
+): Promise<EvidenceDashboardData> {
+  const dbIntervention = await prisma.intervention.findUnique({
+    where: { slug }
+  });
+
+  if (!dbIntervention) {
+    return {
+      references: [],
+      interventions: [],
+      claims: [],
+      studies: [],
+      trialWatchItems: [],
+      safetyAlerts: [],
+      productSignals: [],
+      australiaRegulatoryStatuses: [],
+      normalizedSourcePackets: [],
+      claimScoreSnapshots: [],
+      claimScoreHistory: [],
+      dataSource: "database"
+    };
+  }
+
+  const dbClaims = await prisma.claim.findMany({
+    include: { references: true },
+    orderBy: [{ finalLabel: "asc" }, { updatedAt: "desc" }],
+    where: { interventionId: dbIntervention.id }
+  });
+
+  if (dbClaims.length === 0) {
+    const reason = "Database connected but this intervention has no claims yet.";
+
+    if (strictDatabaseMode) {
+      throw new Error(reason);
+    }
+  }
+
+  const claimIds = dbClaims.map((claim) => claim.id);
+  const referenceIds = Array.from(
+    new Set(dbClaims.flatMap((claim) => claim.references.map((reference) => reference.referenceId)))
+  );
+  const mappedIntervention = mapIntervention(dbIntervention);
+
+  const dbProducts = await prisma.product.findMany({
+    orderBy: [{ qualityScore: "desc" }, { name: "asc" }]
+  });
+  const mappedProducts = dbProducts.map(mapProduct);
+  const scopedProducts = productSignalsForIntervention(mappedProducts, mappedIntervention);
+  const scopedProductIds = scopedProducts.map((product) => product.id);
+
+  const [
+    dbReferences,
+    dbStudies,
+    dbTrials,
+    dbSafetyAlerts,
+    dbAustraliaRegulatoryStatuses,
+    dbSourcePackets,
+    dbScoreSnapshots,
+    dbScoreHistory
+  ] = await Promise.all([
+    prisma.reference.findMany({
+      orderBy: [{ source: "asc" }, { title: "asc" }],
+      where: { id: { in: referenceIds } }
+    }),
+    prisma.study.findMany({
+      orderBy: [{ year: "desc" }, { title: "asc" }],
+      where: { referenceId: { in: referenceIds } }
+    }),
+    prisma.trial.findMany({
+      orderBy: [{ lastUpdateDate: "desc" }, { title: "asc" }],
+      where: { interventionId: dbIntervention.id }
+    }),
+    prisma.safetyAlert.findMany({
+      orderBy: [{ date: "desc" }, { severity: "desc" }],
+      where: { interventionId: dbIntervention.id }
+    }),
+    prisma.australiaRegulatoryStatus.findMany({
+      orderBy: [{ region: "asc" }, { kind: "asc" }, { status: "asc" }],
+      where: {
+        OR: [
+          { interventionId: dbIntervention.id },
+          ...(scopedProductIds.length > 0 ? [{ productId: { in: scopedProductIds } }] : [])
+        ]
+      }
+    }),
+    listCurrentSourcePackets(claimIds),
+    listLatestClaimScoreSnapshots(claimIds),
+    listClaimScoreHistory(claimIds, 200)
+  ]);
+
+  return {
+    references: dbReferences.map(mapReference),
+    interventions: [mappedIntervention],
+    claims: dbClaims.map(mapClaim),
+    studies: dbStudies.map(mapStudy),
+    trialWatchItems: dbTrials.map(mapTrial),
+    safetyAlerts: dbSafetyAlerts.map(mapSafetyAlert),
+    productSignals: scopedProducts,
+    australiaRegulatoryStatuses: dbAustraliaRegulatoryStatuses.map(mapAustraliaRegulatoryStatus),
+    normalizedSourcePackets: dbSourcePackets,
+    claimScoreSnapshots: dbScoreSnapshots.map(mapClaimScoreSnapshotRow),
+    claimScoreHistory: dbScoreHistory.map(mapClaimScoreHistoryRow),
     dataSource: "database"
   };
 }
@@ -296,6 +516,23 @@ function mapReference(reference: DbReference): Reference {
     year: reference.year ?? undefined,
     url: reference.url
   };
+}
+
+function productSignalsForIntervention(
+  products: ProductSignal[],
+  intervention: Intervention
+) {
+  const terms = [intervention.name, ...intervention.synonyms]
+    .map((term) => term.toLowerCase())
+    .filter(Boolean);
+
+  return products.filter((product) => {
+    const haystack = [product.name, product.brand, ...product.ingredients]
+      .join(" ")
+      .toLowerCase();
+
+    return terms.some((term) => haystack.includes(term));
+  });
 }
 
 function mapIntervention(intervention: DbIntervention): Intervention {
@@ -333,6 +570,8 @@ function mapClaim(claim: DbClaimWithReferences): Claim {
     confidenceLevel: confidenceMap[claim.confidenceLevel],
     safetyNotes: claim.safetyNotes,
     applicabilityNotes: claim.applicabilityNotes,
+    summary: claim.summary ?? undefined,
+    uncertainty: claim.uncertainty ?? undefined,
     keyReferenceIds: claim.references.map((reference) => reference.referenceId),
     scores: {
       evidenceDirectness: claim.evidenceDirectnessScore,
@@ -346,8 +585,7 @@ function mapClaim(claim: DbClaimWithReferences): Claim {
     },
     finalLabel: evidenceLabelMap[claim.finalLabel],
     momentum: momentumMap[claim.momentum],
-    reviewStatus:
-      claim.reviewStatus === "HUMAN_REVIEWED" ? "Human reviewed" : "Unreviewed AI draft",
+    reviewStatus: reviewStatusFromDb(claim.reviewStatus),
     lastUpdated: formatDate(claim.lastReviewedAt ?? claim.updatedAt),
     whatWouldChangeScore: claim.whatWouldChangeScore
   };
@@ -360,6 +598,11 @@ function mapStudy(study: DbStudy): Study {
     year: study.year ?? 0,
     source: study.source,
     studyType: studyTypeMap[study.sourceType],
+    sourceTypeTaxonomy: sourceTypeTaxonomyFromDbStudy(study),
+    abstract: study.abstract ?? study.extractedAbstract ?? undefined,
+    dose: study.dose ?? undefined,
+    duration: study.duration ?? undefined,
+    mainResults: study.mainResults ?? undefined,
     sampleSize: study.sampleSize,
     population: study.population,
     intervention: study.interventionName,
@@ -369,6 +612,64 @@ function mapStudy(study: DbStudy): Study {
     riskOfBias: study.riskOfBias,
     referenceId: study.referenceId ?? ""
   };
+}
+
+function sourceTypeTaxonomyFromDbStudy(study: DbStudy): SourceTypeTaxonomy | undefined {
+  if (study.sourceType === DbStudyType.META_ANALYSIS) {
+    return "meta-analysis";
+  }
+
+  if (study.sourceType === DbStudyType.RANDOMIZED_CONTROLLED_TRIAL) {
+    return "RCT";
+  }
+
+  if (study.sourceType === DbStudyType.OBSERVATIONAL_COHORT) {
+    return "observational study";
+  }
+
+  if (study.sourceType === DbStudyType.CASE_REPORT) {
+    return "case report";
+  }
+
+  if (study.sourceType === DbStudyType.ANIMAL_STUDY) {
+    return "animal study";
+  }
+
+  if (study.sourceType === DbStudyType.IN_VITRO_MECHANISTIC) {
+    return "in vitro/mechanistic";
+  }
+
+  if (study.sourceType === DbStudyType.REGULATORY_SAFETY_WARNING) {
+    return "regulatory warning";
+  }
+
+  if (study.sourceType === DbStudyType.UNCLASSIFIED) {
+    return "unclassified";
+  }
+
+  if (study.sourceType !== DbStudyType.SYSTEMATIC_REVIEW) {
+    return undefined;
+  }
+
+  const sourceText = `${study.title} ${study.source}`.toLowerCase();
+
+  if (sourceText.includes("position stand")) {
+    return "position stand";
+  }
+
+  if (
+    sourceText.includes("fact sheet") ||
+    sourceText.includes("office of dietary supplements") ||
+    sourceText.includes("health professional")
+  ) {
+    return "narrative review";
+  }
+
+  if (sourceText.includes("guideline")) {
+    return "guideline";
+  }
+
+  return "systematic review";
 }
 
 function mapTrial(trial: DbTrial): TrialWatchItem {
@@ -381,7 +682,12 @@ function mapTrial(trial: DbTrial): TrialWatchItem {
     enrollment: trial.enrollment,
     lastUpdateDate: formatDate(trial.lastUpdateDate),
     evidenceImpact: momentumMap[trial.evidenceImpact],
-    url: trial.url
+    url: trial.url,
+    conditions: trial.conditions,
+    nctId: trial.nctId ?? undefined,
+    primaryOutcomes: trial.outcomes,
+    registeredInterventions: trial.interventions,
+    resultsPosted: trial.resultsPosted
   };
 }
 

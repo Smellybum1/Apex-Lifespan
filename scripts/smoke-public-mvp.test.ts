@@ -111,7 +111,7 @@ async function listenWithPages({
     if (url.pathname === "/") {
       writeHtml(
         response,
-        `Apex Lifespan AU TGA ${homeDataSourceBadge} ${homeExtraHtml} ${homeReviewStatus} Source packet Live PubMed results are unreviewed citation leads Registry records are research leads, not proof of benefit href="/privacy" href="/terms"`
+        `Apex Lifespan AU TGA ${homeDataSourceBadge} ${homeExtraHtml} ${homeReviewStatus} Evidence readiness Evidence briefs are the main product Source work Source packet Live PubMed results are unreviewed citation leads Registry records are research leads, not proof of benefit href="/privacy" href="/terms"`
       );
       return;
     }

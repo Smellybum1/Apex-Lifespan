@@ -1,58 +1,49 @@
 # Source Candidate Workflow
 
-Local operator workflow for PubMed and ClinicalTrials.gov source candidates. Use `npm run ingest:sources -- --help` for the live flag list and `docs/codex/reference/source-candidate-command-reference.md` only when the compact guide is not enough.
+Conditional local workflow. Do not load during ordinary startup; use this only when working on local ingestion, source candidates, accepted-candidate processing, benefit discovery, or claim/source linking.
+
+## Current Path
+
+Use the local dashboard first. The local tabs now handle the routine loop:
+
+1. Start or resume local ingestion from the Local Ingestion tab.
+2. Review pending candidates from Candidate Review; accept likely useful items and reject likely noise.
+3. Run accepted-candidate processing before moving to maybe-useful candidates.
+4. Use Benefit Discovery auto-build/preview for high-confidence local leads.
+5. Use Identity Resolver when the dashboard flags a source as wrong or ambiguous for the selected supplement.
+
+The dashboard is the preferred path because it keeps status, activity, accepted references, candidate processing, benefit clusters, identity blockers, and safe local-only actions visible in one place.
 
 ## Rules
 
-- Public routes and the public dashboard do not run this workflow or persist candidates.
-- Candidates are review leads; triage scores rank review priority, not evidence quality.
-- Accept/reject decisions require a human review note. Acceptance also requires an existing curated reference that matches the candidate source and external id.
-- Accepted candidates do not auto-promote into public evidence cards.
-- Curation writes are explicit local commands: first claim link, then structured study extraction.
-- Study extraction fields are human-entered; the command may draft metadata, but it should not invent sample size, population, outcomes, adverse events, funding/conflicts, or risk of bias.
+- Public routes stay read-only; local ingestion routes must remain localhost-only.
+- Candidates are review leads; triage and lead scores rank review priority, not evidence quality.
+- Accepted candidates and auto-built claims do not become reviewed public evidence.
+- Auto-built claims must stay unreviewed local drafts with conservative uncertainty and citation traceability.
+- Use `Human reviewed` only after explicit human confirmation.
+- Do not infer product-level ARTG/AUST status from generic intervention evidence.
+- Avoid medical advice and peptide sourcing, compounding, reconstitution, injection, cycling, dosing, or self-administration guidance.
 
-## Quick Flow
+## CLI Fallback
 
-1. Check DB: `npm run ingest:sources -- --db-status`
-2. Inspect state: `npm run ingest:sources -- --summary`
-3. Choose a group: `npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10`
-4. Inspect flagged groups when useful: `npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10`
-5. Inspect a candidate packet, siblings, and reference matches before any decision.
-6. Record accept/reject only after human review.
-7. For accepted candidates, run curation handoff/status/draft before any claim-link or extraction write.
-
-## Common Commands
+Use CLI commands only when the dashboard does not cover the task or when debugging local services:
 
 ```bash
+npm run ingest:sources -- --help
 npm run ingest:sources -- --db-status
 npm run ingest:sources -- --summary
 npm run ingest:sources -- --jobs --jobs-status queued
 npm run ingest:sources -- --run-next --limit 1
-npm run ingest:sources -- --queue-claim-sources <claim-id>
-npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10
-npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10
-npm run ingest:sources -- --candidates --candidates-limit 10
-npm run ingest:sources -- --candidates --candidate-duplicates
-npm run ingest:sources -- --candidate-review-packet <dedupe-key>
-npm run ingest:sources -- --candidate-reference-matches <dedupe-key>
-npm run ingest:sources -- --candidate-siblings <dedupe-key>
-npm run ingest:sources -- --accept-candidate <dedupe-key> --accepted-reference-id <reference-id> --review-note "Human-reviewed rationale."
-npm run ingest:sources -- --reject-candidate <dedupe-key> --review-note "Human-reviewed rationale."
-npm run ingest:sources -- --candidate-curation-handoff
-npm run ingest:sources -- --candidate-curation-status <dedupe-key>
-npm run ingest:sources -- --candidate-curation-draft <dedupe-key>
 ```
 
-Prefer emitted `key=b64:...` values on Windows when passing a `<dedupe-key>`.
+For one-off catalog source queueing, inspect the script first and keep it local:
 
-## Curation Readiness
+```bash
+npx tsx scripts/queue-catalog-source-ingestion.ts --help
+```
 
-- `Not accepted`: pending or rejected candidate.
-- `Accepted reference missing`: no accepted reference id or referenced row missing.
-- `Accepted reference mismatch`: accepted reference no longer matches candidate source and external id.
-- `Candidate claim missing`: accepted candidate has no claim id.
-- `Claim link missing`: accepted reference is not linked to the candidate claim.
-- `Extraction pending`: accepted reference is claim-linked but lacks structured study extraction.
-- `Public source packet ready`: accepted reference is claim-linked and structurally extracted.
+Do not use old promotion, readiness, launch, operator, onboarding, or review-packet aliases unless `package.json` currently exposes them or the user explicitly asks to restore that workflow.
 
-Before any public promotion, use `docs/codex/curation-promotion-checklist.md` and confirm `npm run promotion:dry-run -- <dedupe-key>` reports no blockers. The dry run emits read-only follow-up commands under `worksheet.readOnlyCommands`.
+## Public Promotion
+
+Public promotion is out of the ordinary local workflow. If the user explicitly asks for preview/production promotion, inspect current scripts and docs first, ask before remote DB/deploy actions, and keep product-level AU/TGA and human-review boundaries intact.

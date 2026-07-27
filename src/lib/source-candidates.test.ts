@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildClinicalTrialSourceCandidates,
   buildPubMedSourceCandidates,
-  buildSourceCandidateDedupeKey
+  buildSourceCandidateDedupeKey,
+  classifySourceCandidateForDiscovery
 } from "@/lib/source-candidates";
 
 describe("source candidate mapping", () => {
@@ -13,6 +14,7 @@ describe("source candidate mapping", () => {
         query: "creatine strength",
         ids: ["28615996"],
         count: 1,
+        retstart: 0,
         source: "NCBI E-utilities",
         articles: [
           {
@@ -24,6 +26,8 @@ describe("source candidate mapping", () => {
             publicationTypes: ["Journal Article", "Review"],
             doi: "10.1186/s12970-017-0173-z",
             hasAbstract: true,
+            abstractText:
+              "Creatine can support strength and lean mass when paired with training.",
             authors: ["Kreider RB"],
             relevanceScore: 80,
             relevanceReasons: ["Title matches query", "Review-level source"],
@@ -38,7 +42,7 @@ describe("source candidate mapping", () => {
       }
     );
 
-    expect(candidates).toEqual([
+    expect(candidates).toMatchObject([
       {
         dedupeKey:
           "pubmed|au|creatine%20strength|28615996|creatine|creatine-strength",
@@ -64,7 +68,15 @@ describe("source candidate mapping", () => {
           publicationDate: "2017 Jun 13",
           publicationTypes: ["Journal Article", "Review"],
           doi: "10.1186/s12970-017-0173-z",
-          authors: ["Kreider RB"]
+          authors: ["Kreider RB"],
+          abstractText:
+            "Creatine can support strength and lean mass when paired with training.",
+          discoveryClassification: {
+            bucket: "likely-useful",
+            label: "Likely useful",
+            reasons: expect.arrayContaining(["review or meta-analysis signal"]),
+            version: "2026-06-27"
+          }
         }
       }
     ]);
@@ -87,12 +99,19 @@ describe("source candidate mapping", () => {
             conditions: ["Aging"],
             interventions: ["DIETARY_SUPPLEMENT: Creatine"],
             primaryOutcomes: ["Whole-body lean mass"],
+            briefSummary: "Registry summary for creatine and resistance training.",
             lastUpdateDate: "2024-09-23",
             startDate: "2024-09",
             completionDate: "Unknown",
             hasResults: false,
             resultsFirstPostDate: null,
             sponsor: "Example University",
+            trialRelevanceDetail:
+              "The query intervention appears in the registered intervention metadata; still confirm dose, form, comparator, and outcome.",
+            trialRelevanceLabel: "Direct match",
+            trialResultDetail:
+              "The record is not completed with posted results in the captured metadata; treat as an unreviewed registry lead.",
+            trialResultLabel: "Unreviewed lead",
             triageScore: 80,
             triageReasons: ["Matches query context", "Active trial signal"],
             url: "https://clinicaltrials.gov/study/NCT06606704"
@@ -127,8 +146,95 @@ describe("source candidate mapping", () => {
       upstreamSource: "ClinicalTrials.gov API v2",
       status: "Recruiting",
       hasResults: false,
-      primaryOutcomes: ["Whole-body lean mass"]
+      primaryOutcomes: ["Whole-body lean mass"],
+      briefSummary: "Registry summary for creatine and resistance training.",
+      discoveryClassification: {
+        bucket: "likely-useful",
+        label: "Likely useful",
+        reasons: expect.arrayContaining(["registered intervention directly matches query"])
+      }
     });
+  });
+
+  it("classifies preclinical-only PubMed candidates as likely noise", () => {
+    expect(
+      classifySourceCandidateForDiscovery({
+        dedupeKey: "pubmed|au|creatine|1||",
+        source: "PubMed",
+        externalId: "1",
+        query: "Creatine cognition randomized placebo",
+        region: "AU",
+        title: "Creatine effects in cultured cells and mice",
+        url: "https://pubmed.ncbi.nlm.nih.gov/1/",
+        publishedYear: 2024,
+        sourceType: "Journal Article",
+        abstractAvailable: true,
+        triageScore: 30,
+        triageReasons: [],
+        decision: "Pending review",
+        reviewStatus: "Unreviewed AI draft",
+        metadata: {
+          abstractText: "In vitro cells and mice were used to study mechanisms."
+        }
+      })
+    ).toMatchObject({
+      bucket: "likely-noise",
+      cautions: expect.arrayContaining(["preclinical or non-human signal"])
+    });
+  });
+
+  it("never buckets a human harm report as noise", () => {
+    // Observed in the catalog and bulk-rejected as "likely noise": case reports
+    // are how supplement harms reach the literature, and the scoring penalises
+    // them twice for not being a trial.
+    expect(
+      classifySourceCandidateForDiscovery({
+        dedupeKey: "pubmed|au|tongkat|2||",
+        source: "PubMed",
+        externalId: "2",
+        query: "Tongkat Ali safety randomized placebo trial",
+        region: "AU",
+        title: "A Rare Case of Tongkat Ali-Induced Liver Injury: A Case Report.",
+        url: "https://pubmed.ncbi.nlm.nih.gov/2/",
+        publishedYear: 2024,
+        sourceType: "Case Reports",
+        abstractAvailable: true,
+        triageScore: 30,
+        triageReasons: [],
+        decision: "Pending review",
+        reviewStatus: "Unreviewed AI draft",
+        metadata: {
+          abstractText: "A patient developed acute liver injury after taking Tongkat Ali."
+        }
+      })
+    ).toMatchObject({
+      bucket: "maybe-useful",
+      reasons: expect.arrayContaining([
+        "reports a possible harm from this intervention in a person"
+      ])
+    });
+  });
+
+  it("still calls preclinical harm noise, because a mouse liver is not a person", () => {
+    expect(
+      classifySourceCandidateForDiscovery({
+        dedupeKey: "pubmed|au|creatine|3||",
+        source: "PubMed",
+        externalId: "3",
+        query: "Creatine safety randomized placebo trial",
+        region: "AU",
+        title: "Creatine-induced hepatotoxicity in mice",
+        url: "https://pubmed.ncbi.nlm.nih.gov/3/",
+        publishedYear: 2024,
+        sourceType: "Journal Article",
+        abstractAvailable: true,
+        triageScore: 30,
+        triageReasons: [],
+        decision: "Pending review",
+        reviewStatus: "Unreviewed AI draft",
+        metadata: { abstractText: "Mice were dosed and liver enzymes measured." }
+      })
+    ).toMatchObject({ bucket: "likely-noise" });
   });
 
   it("builds stable keys from normalized candidate identity context", () => {

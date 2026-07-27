@@ -1,0 +1,52 @@
+{
+  "supplements": [
+    {
+      "name": "Trimethylglycine (TMG)",
+      "category": "Amino acid",
+      "claimTemplateIds": ["safety", "lipids", "glucose", "inflammation"],
+      "synonyms": ["betaine", "glycine betaine"]
+    },
+    {
+      "name": "Collagen",
+      "category": "Amino acid",
+      "claimTemplateIds": ["safety", "joint-skin", "strength"],
+      "synonyms": ["collagen peptides", "hydrolyzed collagen peptides"]
+    },
+    {
+      "name": "Lutein and Zeaxanthin",
+      "category": "Vitamin/mineral",
+      "claimTemplateIds": ["safety", "eye-health", "cognition"],
+      "synonyms": ["macular carotenoids", "xanthophylls"]
+    },
+    {
+      "name": "Matcha",
+      "category": "Food/beverage",
+      "claimTemplateIds": ["safety", "cognition", "glucose", "lipids"],
+      "synonyms": ["matcha green tea", "Camellia sinensis powder"]
+    },
+    {
+      "name": "Lithium Orotate",
+      "category": "Drug/geroprotector watchlist",
+      "claimTemplateIds": ["safety", "mood-stress", "cognition"],
+      "synonyms": ["lithium salt supplement"]
+    },
+    {
+      "name": "Fadogia Agrestis",
+      "category": "Botanical/herbal",
+      "claimTemplateIds": ["safety", "fertility-hormones", "strength"],
+      "synonyms": ["Fadogia agrestis stem extract"]
+    },
+    {
+      "name": "Tongkat Ali",
+      "category": "Botanical/herbal",
+      "claimTemplateIds": ["safety", "fertility-hormones", "mood-stress", "strength"],
+      "synonyms": ["Eurycoma longifolia", "longjack"]
+    },
+    {
+      "name": "Hyaluronic Acid",
+      "category": "Amino acid",
+      "claimTemplateIds": ["safety", "joint-skin", "eye-health"],
+      "synonyms": ["sodium hyaluronate", "hyaluronan"]
+    }
+  ]
+}

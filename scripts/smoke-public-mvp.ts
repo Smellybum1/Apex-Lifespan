@@ -40,8 +40,9 @@ const pageSmokes: PageSmoke[] = [
       "AU",
       "TGA",
       "Source packet",
-      "Live PubMed results are unreviewed citation leads",
-      "Registry records are research leads, not proof of benefit",
+      "Evidence readiness",
+      "Evidence briefs are the main product",
+      "Source work",
       'href="/privacy"',
       'href="/terms"'
     ],
@@ -203,7 +204,6 @@ function parseSmokeArgs(args: string[]) {
 
 function readBaseUrl(rawUrlInput: string) {
   const rawUrl = rawUrlInput.trim();
-
   const url = new URL(rawUrl);
 
   if (!["http:", "https:"].includes(url.protocol)) {

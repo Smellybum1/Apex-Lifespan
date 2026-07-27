@@ -1,15 +1,19 @@
 import { Buffer } from "node:buffer";
 
+import { commandUsage } from "@/lib/data/source-candidate-job-command-usage";
 import {
   listSourceCandidateIngestionJobs,
   queueClaimSourceCandidateIngestionJobs,
+  queueInterventionSourceCandidateDiscoveryJobs,
   queueSourceCandidateIngestionJob,
   runNextSourceCandidateIngestionJob,
   runSourceCandidateIngestionJob,
   summarizeSourceCandidateIngestionJobs,
   type QueueClaimSourceCandidateIngestionJobsInput,
+  type QueueInterventionSourceCandidateDiscoveryJobsInput,
   type QueueSourceCandidateIngestionJobInput,
   type QueuedClaimSourceCandidateIngestionJobs,
+  type QueuedInterventionSourceCandidateDiscoveryJobs,
   type QueuedSourceCandidateIngestionJob,
   type SourceCandidateIngestionJobListItem,
   type SourceCandidateIngestionJobListOptions,
@@ -18,6 +22,10 @@ import {
   type SourceCandidateIngestionJobSummary
 } from "@/lib/data/source-candidate-jobs";
 import { prisma } from "@/lib/db/prisma";
+import {
+  previewLocalIdentityResolutionActionsForCandidates,
+  type LocalIdentityResolutionAutomationDecisionReadout
+} from "@/lib/data/local-ingestion-control";
 import {
   extractAcceptedSourceCandidateStudy,
   getSourceCandidateCurationDraft,
@@ -59,6 +67,8 @@ import type {
   SourceCandidateDecision,
   SourceCandidateSource
 } from "@/lib/types";
+
+export { commandUsage };
 
 const SOURCE_CANDIDATE_REVIEW_FLAG_CODES = [
   "broad-safety-query",
@@ -120,6 +130,7 @@ export interface SourceCandidateJobCommandOptions
   linkCandidateClaimDedupeKey?: string;
   limit: number;
   queueClaimSourcesClaimId?: string;
+  queueInterventionSourcesInterventionId?: string;
   queueQuery?: string;
   queueSource?: SourceCandidateSource;
   region?: string;
@@ -127,6 +138,9 @@ export interface SourceCandidateJobCommandOptions
   reviewDecision?: ReviewedSourceCandidateDecision;
   reviewNote?: string;
   runNextJobs?: boolean;
+  watch?: boolean;
+  watchIdleExit?: number;
+  watchIntervalMs?: number;
   studyAbstract?: string;
   studyAdverseEvents?: string;
   studyDose?: string;
@@ -196,6 +210,9 @@ export interface SourceCandidateJobCommandRunners {
   listReferenceMatches?: (
     dedupeKey: string
   ) => Promise<SourceCandidateAcceptedReferenceMatches | null>;
+  previewIdentityResolution?: (
+    dedupeKeys: string[]
+  ) => Promise<LocalIdentityResolutionAutomationDecisionReadout[]>;
   listSiblings?: (
     dedupeKey: string,
     options: SourceCandidateSiblingOptions
@@ -209,6 +226,9 @@ export interface SourceCandidateJobCommandRunners {
   queueClaimSources?: (
     input: QueueClaimSourceCandidateIngestionJobsInput
   ) => Promise<QueuedClaimSourceCandidateIngestionJobs>;
+  queueInterventionSources?: (
+    input: QueueInterventionSourceCandidateDiscoveryJobsInput
+  ) => Promise<QueuedInterventionSourceCandidateDiscoveryJobs>;
   runJobById?: (
     jobId: string,
     options: SourceCandidateIngestionJobOptions
@@ -216,6 +236,7 @@ export interface SourceCandidateJobCommandRunners {
   runNextJob?: (
     options: SourceCandidateIngestionJobOptions
   ) => Promise<SourceCandidateIngestionJobRunResult | null>;
+  sleep?: (ms: number) => Promise<void>;
   recordDecision?: (
     input: RecordSourceCandidateDecisionInput
   ) => Promise<SourceCandidate>;
@@ -237,6 +258,8 @@ interface SourceCandidateReviewPacket {
 
 const DEFAULT_JOB_LIMIT = 1;
 const MAX_JOB_LIMIT = 25;
+const DEFAULT_WATCH_INTERVAL_MS = 5000;
+const MAX_WATCH_INTERVAL_MS = 10 * 60 * 1000;
 const MAX_METADATA_ARRAY_ITEMS = 8;
 const MAX_METADATA_VALUE_LENGTH = 240;
 const MIN_REVIEW_QUERY_TOKENS_FOR_OVERLAP_FLAG = 3;
@@ -312,15 +335,20 @@ export async function runSourceCandidateJobCommand(
   const listJobs = runners.listJobs ?? listSourceCandidateIngestionJobs;
   const listReferenceMatches =
     runners.listReferenceMatches ?? listSourceCandidateAcceptedReferenceMatches;
+  const previewIdentityResolution =
+    runners.previewIdentityResolution ?? sourceLedIdentityResolutionPreview;
   const listSiblings = runners.listSiblings ?? listSourceCandidateSiblings;
   const linkCandidateClaim =
     runners.linkCandidateClaim ?? linkAcceptedSourceCandidateClaim;
   const queueJob = runners.queueJob ?? queueSourceCandidateIngestionJob;
   const queueClaimSources =
     runners.queueClaimSources ?? queueClaimSourceCandidateIngestionJobs;
+  const queueInterventionSources =
+    runners.queueInterventionSources ?? queueInterventionSourceCandidateDiscoveryJobs;
   const recordDecision = runners.recordDecision ?? recordSourceCandidateDecision;
   const runJobById = runners.runJobById ?? runSourceCandidateIngestionJob;
   const runNextJob = runners.runNextJob ?? runNextSourceCandidateIngestionJob;
+  const sleep = runners.sleep ?? defaultSleep;
   const summarizeBacklog = runners.summarizeBacklog ?? summarizeSourceCandidateBacklog;
   const summarizeCurationHandoff =
     runners.summarizeCurationHandoff ?? summarizeSourceCandidateCurationHandoff;
@@ -389,6 +417,10 @@ export async function runSourceCandidateJobCommand(
           duplicateIdentityInfo: await sourceCandidateDuplicateIdentityInfoForDedupeKey(
             draft.status.candidate.dedupeKey,
             listSiblings
+          ),
+          identityDecision: await sourceCandidateIdentityDecisionForDedupeKey(
+            draft.status.candidate.dedupeKey,
+            previewIdentityResolution
           )
         })
       );
@@ -549,18 +581,21 @@ export async function runSourceCandidateJobCommand(
     }
 
     if (options.reviewDecision && options.reviewCandidateDedupeKey) {
+      // A person invoking the CLI with an explicit per-candidate decision.
       const candidate = await recordDecision(
         options.reviewDecision === "Accepted"
           ? {
               acceptedReferenceId: options.acceptedReferenceId!,
               dedupeKey: options.reviewCandidateDedupeKey,
               decision: "Accepted",
-              reviewNote: options.reviewNote!
+              reviewNote: options.reviewNote!,
+              reviewedBy: "human"
             }
           : {
               dedupeKey: options.reviewCandidateDedupeKey,
               decision: "Rejected",
-              reviewNote: options.reviewNote!
+              reviewNote: options.reviewNote!,
+              reviewedBy: "human"
             }
       );
 
@@ -691,6 +726,16 @@ export async function runSourceCandidateJobCommand(
       return 0;
     }
 
+    if (options.queueInterventionSourcesInterventionId) {
+      const result = await queueInterventionSources({
+        interventionId: options.queueInterventionSourcesInterventionId,
+        region: options.region
+      });
+
+      stdout(formatQueuedInterventionSourceCandidateDiscoveryJobs(result));
+      return 0;
+    }
+
     if (options.summary) {
       const [
         jobSummary,
@@ -719,7 +764,17 @@ export async function runSourceCandidateJobCommand(
       const runnerOptions = sourceCandidateIngestionJobOptions(options);
       const results = options.jobId
         ? [await runJobById(options.jobId, runnerOptions)]
-        : await runNextJobs(options.limit, runnerOptions, runNextJob);
+        : options.watch
+          ? await watchNextJobs({
+              intervalMs: options.watchIntervalMs ?? DEFAULT_WATCH_INTERVAL_MS,
+              idleExit: options.watchIdleExit,
+              limit: options.limit,
+              options: runnerOptions,
+              runNextJob,
+              sleep,
+              stdout
+            })
+          : await runNextJobs(options.limit, runnerOptions, runNextJob);
 
       if (results.length === 0) {
         stdout("No queued PubMed or ClinicalTrials.gov source-candidate jobs found.");
@@ -918,6 +973,26 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (arg === "--run-next") {
       options.runNextJobs = true;
+      continue;
+    }
+
+    if (arg === "--watch") {
+      options.watch = true;
+      continue;
+    }
+
+    if (arg === "--watch-interval-ms") {
+      options.watchIntervalMs = Math.max(
+        1000,
+        readPositiveInteger(args, index, arg, MAX_WATCH_INTERVAL_MS)
+      );
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--watch-idle-exit") {
+      options.watchIdleExit = readPositiveInteger(args, index, arg, 1000);
+      index += 1;
       continue;
     }
 
@@ -1347,6 +1422,12 @@ export function parseSourceCandidateJobCommandArgs(
       continue;
     }
 
+    if (arg === "--queue-intervention-sources") {
+      setQueueInterventionSourcesOption(options, readRequiredValue(args, index, arg));
+      index += 1;
+      continue;
+    }
+
     if (arg === "--region") {
       options.region = readRequiredValue(args, index, arg);
       index += 1;
@@ -1395,6 +1476,18 @@ export function parseSourceCandidateJobCommandArgs(
 
   if (options.runNextJobs && options.jobId) {
     throw new Error("--run-next cannot be combined with --job-id.");
+  }
+
+  if (options.watch && !options.runNextJobs) {
+    throw new Error("--watch requires --run-next.");
+  }
+
+  if (options.watchIntervalMs !== undefined && !options.watch) {
+    throw new Error("--watch-interval-ms requires --watch.");
+  }
+
+  if (options.watchIdleExit !== undefined && !options.watch) {
+    throw new Error("--watch-idle-exit requires --watch.");
   }
 
   const runOptionProvided =
@@ -1499,6 +1592,15 @@ export function parseSourceCandidateJobCommandArgs(
 
     if (!options.studyRiskOfBias?.trim()) {
       throw new Error("Study extraction requires --study-risk-of-bias.");
+    }
+
+    const placeholderFields = studyExtractionPlaceholderFields(options);
+    if (placeholderFields.length) {
+      throw new Error(
+        `Study extraction fields require human edits before saving: ${placeholderFields.join(
+          ", "
+        )}. Replace draft placeholder text from --candidate-curation-draft.`
+      );
     }
   }
 
@@ -2656,6 +2758,15 @@ export function parseSourceCandidateJobCommandArgs(
     );
   }
 
+  if (
+    options.queueInterventionSourcesInterventionId &&
+    (options.interventionId || options.claimId)
+  ) {
+    throw new Error(
+      "--intervention-id and --claim-id cannot be combined with --queue-intervention-sources."
+    );
+  }
+
   if (!hasQueueOption(options) && (options.region || options.interventionId || options.claimId)) {
     throw new Error("--region, --intervention-id, and --claim-id require a queue option.");
   }
@@ -2706,85 +2817,6 @@ export function parseSourceCandidateJobCommandArgs(
   return options;
 }
 
-export function commandUsage() {
-  return [
-    "Usage: npm run ingest:sources -- [options]",
-    "",
-    "Options:",
-    "  --job-id <id>                     Run one specific ingestion job.",
-    "  --run-next                        Run queued PubMed/ClinicalTrials.gov jobs.",
-    "  --limit <count>                   With --run-next, run up to count queued jobs (default 1, max 25).",
-    "  --db-status                       Check local PostgreSQL connectivity without reading review data.",
-    "  --candidate-detail <dedupe-key>   Print one source-candidate detail record with review/curation hints.",
-    "  --candidate-curation-draft <dedupe-key> Print read-only claim-link/study draft fields with command hints.",
-    "  --candidate-curation-status <dedupe-key> Print curation handoff status, next action, and command hints.",
-    "  --candidate-curation-handoff      Print accepted source-candidate curation handoff rows, next actions, and command hints.",
-    "  --candidate-curation-handoff-limit <count> Handoff row count (default 25, max 50).",
-    "  --candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready.",
-    "  --candidate-reference-matches <dedupe-key> Print accepted-reference matches and review/curation hints.",
-    "  --candidate-review-flags        Print read-only flagged pending review groups with review/curation hints.",
-    "  --candidate-review-flag <flag>  With --candidate-review-flags, filter by broad-safety-query or low-title-query-overlap.",
-    "  --candidate-review-flags-limit <count> Review flag group count (default 25, max 50).",
-    "  --candidate-review-overview     Print read-only pending review groups with review/curation hints.",
-    "  --candidate-review-overview-limit <count> Review overview group count (default 25, max 50).",
-    "  --candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, sibling/duplicate context, and curation hints.",
-    "  --candidate-siblings <dedupe-key> Print source-candidate siblings with match reasons and review/curation hints.",
-    "  --candidate-siblings-limit <count> Sibling row count (default 25, max 50).",
-    "  --accept-candidate <dedupe-key>   Mark a source candidate accepted.",
-    "  --reject-candidate <dedupe-key>   Mark a source candidate rejected.",
-    "  --accepted-reference-id <id>      Required curated reference id for --accept-candidate.",
-    "  --review-note <note>              Human review note; required for --accept-candidate and --reject-candidate.",
-    "  --link-candidate-claim <dedupe-key> Link an accepted candidate reference to its claim.",
-    "  --claim-link-note <note>          Optional note for --link-candidate-claim.",
-    "  --claim-link-relevance <1-5>      Optional relevance for --link-candidate-claim.",
-    "  --extract-candidate-study <dedupe-key> Write structured Study extraction for an accepted, claim-linked candidate.",
-    "  --study-source-type <type>        Optional study type override: meta-analysis, systematic-review, randomized-controlled-trial, observational-cohort, case-report, animal-study, in-vitro-mechanistic, clinical-trial-record, or regulatory-safety-warning.",
-    "  --study-sample-size <text>        Required for --extract-candidate-study.",
-    "  --study-population <text>         Required for --extract-candidate-study.",
-    "  --study-intervention-name <text>  Required for --extract-candidate-study.",
-    "  --study-outcome <text>            Required; repeat for multiple outcomes.",
-    "  --study-adverse-events <text>     Required for --extract-candidate-study.",
-    "  --study-funding-conflicts <text>  Required for --extract-candidate-study.",
-    "  --study-risk-of-bias <text>       Required for --extract-candidate-study.",
-    "  --study-dose <text>               Optional dose field for --extract-candidate-study.",
-    "  --study-duration <text>           Optional duration field for --extract-candidate-study.",
-    "  --study-main-results <text>       Optional main results field for --extract-candidate-study.",
-    "  --study-abstract <text>           Optional abstract field for --extract-candidate-study.",
-    "  --study-relevance <1-5>           Optional relevance score for --extract-candidate-study.",
-    "  --update-existing-study           Update the one existing extraction for this accepted reference.",
-    "  --candidates                      Print read-only source-candidate review rows with review/curation hints.",
-    "  --candidates-limit <count>        Candidate count for --candidates (default 25, max 50).",
-    "  <dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse.",
-    "  --candidate-source <source>       Filter candidates, overview, flags, or handoff by source: pubmed or clinical-trials.",
-    "  --candidate-decision <decision>   Candidate decision: pending, accepted, or rejected.",
-    "  --candidate-duplicates            With --candidates, print read-only duplicate source/external-id groups with review/curation hints.",
-    "  --candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id.",
-    "  --candidate-job-id <id>           Filter candidates, overview, flags, or handoff by ingestion job id.",
-    "  --candidate-intervention-id <id>  Filter candidates, overview, flags, or handoff by intervention id.",
-    "  --candidate-intervention-missing  Filter candidates, overview, flags, or handoff to rows without intervention id.",
-    "  --candidate-claim-id <id>         Filter candidates, overview, flags, or handoff by claim id.",
-    "  --candidate-claim-missing         Filter candidates, overview, flags, or handoff to rows without claim id.",
-    "  --candidate-region <region>       Filter candidates, overview, flags, or handoff by region.",
-    "  --jobs                            Print recent source-candidate ingestion jobs with read-only hints.",
-    "  --jobs-limit <count>              Recent job count for --jobs (default 10, max 50).",
-    "  --jobs-source <source>            Filter --jobs by source: pubmed or clinical-trials.",
-    "  --jobs-region <region>            Filter --jobs by region.",
-    "  --jobs-intervention-id <id>       Filter --jobs by intervention id.",
-    "  --jobs-claim-id <id>              Filter --jobs by claim id.",
-    "  --jobs-status <status>            Filter --jobs by queued, running, succeeded, failed, or skipped.",
-    "  --queue-pubmed <term>             Queue a PubMed source-candidate job.",
-    "  --queue-clinical-trials <term>    Queue a ClinicalTrials.gov source-candidate job.",
-    "  --queue-claim-sources <claim-id>  Queue PubMed and ClinicalTrials.gov jobs from claim context.",
-    "  --region <region>                 Region metadata for queued jobs (default AU).",
-    "  --intervention-id <id>            Intervention metadata for queued jobs.",
-    "  --claim-id <id>                   Claim metadata for queued jobs.",
-    "  --pubmed-retmax <count>           PubMed result limit passed to NCBI (max 20).",
-    "  --clinical-trial-page-size <count> ClinicalTrials.gov page size (max 20).",
-    "  --summary                         Print read-only workflow counts and next-command hints.",
-    "  --help                            Show this help."
-  ].join("\n");
-}
-
 function sourceCandidateIngestionJobOptions(
   options: SourceCandidateJobCommandOptions
 ): SourceCandidateIngestionJobOptions {
@@ -2819,6 +2851,72 @@ async function runNextJobs(
   }
 
   return results;
+}
+
+async function watchNextJobs({
+  idleExit,
+  intervalMs,
+  limit,
+  options,
+  runNextJob,
+  sleep,
+  stdout
+}: {
+  idleExit?: number;
+  intervalMs: number;
+  limit: number;
+  options: SourceCandidateIngestionJobOptions;
+  runNextJob: NonNullable<SourceCandidateJobCommandRunners["runNextJob"]>;
+  sleep: NonNullable<SourceCandidateJobCommandRunners["sleep"]>;
+  stdout: NonNullable<SourceCandidateJobCommandIo["stdout"]>;
+}) {
+  const results: SourceCandidateIngestionJobRunResult[] = [];
+  let idleCycles = 0;
+
+  stdout(
+    `Watching queued PubMed/ClinicalTrials.gov source-candidate jobs intervalMs=${intervalMs} batchLimit=${limit}`
+  );
+
+  while (true) {
+    let ranThisCycle = 0;
+
+    for (let index = 0; index < limit; index += 1) {
+      const result = await runNextJob(options);
+
+      if (!result) {
+        break;
+      }
+
+      results.push(result);
+      ranThisCycle += 1;
+      stdout(formatSourceCandidateJobResult(result));
+
+      if (index < limit - 1) {
+        await sleep(intervalMs);
+      }
+    }
+
+    if (ranThisCycle > 0) {
+      idleCycles = 0;
+      await sleep(intervalMs);
+      continue;
+    }
+
+    idleCycles += 1;
+    stdout(`No queued source-candidate jobs found idlePoll=${idleCycles}`);
+
+    if (idleExit !== undefined && idleCycles >= idleExit) {
+      return results;
+    }
+
+    await sleep(intervalMs);
+  }
+}
+
+function defaultSleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function formatSourceCandidateJobResult(result: SourceCandidateIngestionJobRunResult) {
@@ -2867,6 +2965,15 @@ function formatQueuedClaimSourceCandidateJobs(
 ) {
   return [
     `Claim source-candidate jobs: ${quote(result.label)} claim=${result.claimId} intervention=${result.interventionId} region=${result.region}`,
+    ...result.jobs.map((job) => `- ${formatQueuedSourceCandidateJob(job)}`)
+  ].join("\n");
+}
+
+function formatQueuedInterventionSourceCandidateDiscoveryJobs(
+  result: QueuedInterventionSourceCandidateDiscoveryJobs
+) {
+  return [
+    `Intervention discovery jobs: ${quote(result.label)} intervention=${result.interventionId} searchTerm=${quote(result.searchTerm)} region=${result.region}`,
     ...result.jobs.map((job) => `- ${formatQueuedSourceCandidateJob(job)}`)
   ].join("\n");
 }
@@ -3254,6 +3361,24 @@ async function sourceCandidateDuplicateIdentityInfoForDedupeKey(
   };
 }
 
+async function sourceCandidateIdentityDecisionForDedupeKey(
+  dedupeKey: string,
+  previewIdentityResolution: NonNullable<
+    SourceCandidateJobCommandRunners["previewIdentityResolution"]
+  >
+) {
+  const decisions = await previewIdentityResolution([dedupeKey]);
+
+  return decisions.find((decision) => decision.dedupeKey === dedupeKey);
+}
+
+async function sourceLedIdentityResolutionPreview(dedupeKeys: string[]) {
+  return previewLocalIdentityResolutionActionsForCandidates({
+    dedupeKeys,
+    strategy: "source-led"
+  });
+}
+
 async function sourceCandidateDuplicateIdentityInfoMap(
   candidates: SourceCandidate[],
   listSiblings: NonNullable<SourceCandidateJobCommandRunners["listSiblings"]>
@@ -3306,7 +3431,10 @@ function formatSourceCandidateDuplicateIdentityFields(
 
 function formatSourceCandidateCurationDraft(
   draft: SourceCandidateCurationDraft,
-  options: { duplicateIdentityInfo?: SourceCandidateDuplicateIdentityInfo } = {}
+  options: {
+    duplicateIdentityInfo?: SourceCandidateDuplicateIdentityInfo;
+    identityDecision?: LocalIdentityResolutionAutomationDecisionReadout;
+  } = {}
 ) {
   const status = draft.status;
   const candidate = status.candidate;
@@ -3316,6 +3444,7 @@ function formatSourceCandidateCurationDraft(
     "readOnly=true",
     `dedupe=${quote(candidate.dedupeKey)}`,
     `key=${safeCandidateKey(candidate.dedupeKey)}`,
+    `query=${quote(candidate.query)}`,
     ...formatSourceCandidateCurationCommandHints(candidate, "draft"),
     `decision=${quote(candidate.decision)}`,
     `reviewStatus=${quote(candidate.reviewStatus)}`,
@@ -3348,6 +3477,7 @@ function formatSourceCandidateCurationDraft(
       }
     )
   );
+  lines.push(...formatSourceCandidateIdentityPreviewFields(options.identityDecision));
 
   if (reviewFlagFields.length > 0) {
     lines.push(...reviewFlagFields);
@@ -3442,12 +3572,81 @@ function formatSourceCandidateCurationDraft(
       `  manualFields=${quote(draft.studyExtractionDraft.manualFields.join(", "))}`
     );
     lines.push(
+      `  fieldReadiness=${quote(
+        formatStudyExtractionFieldReadiness(draft.studyExtractionDraft)
+      )}`
+    );
+
+    const prefillFields = draft.studyExtractionDraft.prefillFields ?? [];
+    const reviewCues = draft.studyExtractionDraft.reviewCues ?? [];
+    const uncertaintyNotes = draft.studyExtractionDraft.uncertaintyNotes ?? [];
+
+    if (prefillFields.length > 0) {
+      lines.push("  prefillFields:");
+      lines.push(
+        ...prefillFields.map(
+          (field) =>
+            `    ${field.field}=${quote(field.value)} confidence=${field.confidence}` +
+            `${field.writeFlag ? ` writeFlag=${field.writeFlag}` : ""}` +
+            ` note=${quote(field.note)}`
+        )
+      );
+    }
+
+    if (reviewCues.length > 0) {
+      lines.push("  reviewCues:");
+      lines.push(
+        ...reviewCues.map(
+          (cue) =>
+            `    ${cue.label}=${quote(cue.value)} confidence=${cue.confidence}` +
+            ` note=${quote(cue.note)}`
+        )
+      );
+    }
+
+    if (uncertaintyNotes.length > 0) {
+      lines.push("  uncertaintyNotes:");
+      lines.push(
+        ...uncertaintyNotes.map(
+          (note) => `    - ${quote(note)}`
+        )
+      );
+    }
+
+    lines.push(
+      `  whatWouldChangeScore=${quote(
+        draft.studyExtractionDraft.whatWouldChangeScore ??
+          "Reviewed extraction fields would support stronger claim scoring and public wording decisions."
+      )}`
+    );
+    lines.push(
       `  commandTemplate=${quote(
         formatSourceCandidateStudyExtractionCommandTemplate(
           candidate,
           draft.studyExtractionDraft
         )
       )}`
+    );
+    const humanRequiredCommandFields = studyExtractionHumanRequiredCommandFields(
+      draft.studyExtractionDraft
+    );
+    lines.push(`  commandTemplateRequiresHumanEdits=${humanRequiredCommandFields.length > 0}`);
+    if (humanRequiredCommandFields.length > 0) {
+      lines.push(`  humanRequiredCommandFields=${quote(humanRequiredCommandFields.join(", "))}`);
+    }
+    lines.push("  scoreRepairFollowup:");
+    lines.push(
+      `    referenceBrief=${quote(
+        `npx tsx scripts/local-score-worklist.ts --repair-reference ${draft.studyExtractionDraft.referenceId}`
+      )}`
+    );
+    lines.push(
+      `    readyCheck=${quote(
+        "npx tsx scripts/local-score-worklist.ts --state ready_to_score --limit 20"
+      )}`
+    );
+    lines.push(
+      `    scoreDraft=${quote("npx tsx scripts/local-score-draft.ts --limit 15")}`
     );
 
     if (draft.studyExtractionDraft.metadataFields.length > 0) {
@@ -3463,6 +3662,40 @@ function formatSourceCandidateCurationDraft(
   }
 
   return lines.join("\n");
+}
+
+function formatSourceCandidateIdentityPreviewFields(
+  decision: LocalIdentityResolutionAutomationDecisionReadout | undefined
+) {
+  const lines = [
+    `identityPreview=${quote(formatSourceCandidateIdentityPreview(decision))}`
+  ];
+
+  if (decision && decision.reasons.length > 0) {
+    lines.push("identityReasons:");
+    lines.push(...decision.reasons.slice(0, 3).map((reason) => `  - ${quote(reason)}`));
+  }
+
+  return lines;
+}
+
+function formatSourceCandidateIdentityPreview(
+  decision: LocalIdentityResolutionAutomationDecisionReadout | undefined
+) {
+  if (!decision) {
+    return "source-led identity preview unavailable; inspect accepted reference identity before extraction.";
+  }
+
+  switch (decision.action) {
+    case "confirm-target":
+      return "source-led resolver would confirm the current supplement identity.";
+    case "reassign-intervention":
+      return `source-led resolver would reassign to ${decision.matchedInterventionName ?? decision.matchedInterventionId ?? "the matched intervention"}.`;
+    case "reject-wrong-supplement":
+      return "source-led resolver would reject this as the wrong supplement.";
+    case "hold":
+      return "source-led resolver would hold for manual identity review.";
+  }
 }
 
 function sourceCandidateStudyExtractionWriteReadiness(
@@ -3485,6 +3718,46 @@ function sourceCandidateStudyExtractionWriteReadiness(
   return { ready: true };
 }
 
+function formatStudyExtractionFieldReadiness(
+  draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>
+) {
+  const manualFields = new Set(draft.manualFields);
+  const reviewCues = draft.reviewCues ?? [];
+  const uncertaintyNotes = draft.uncertaintyNotes ?? [];
+  const commandPrefillFields = draft.prefillFields.filter(
+    (field) =>
+      manualFields.has(field.field) &&
+      field.writeFlag &&
+      field.confidence !== "manual-required"
+  ).length;
+  const humanRequiredFields = Math.max(draft.manualFields.length - commandPrefillFields, 0);
+  const reviewOnlyCues =
+    reviewCues.length +
+    draft.prefillFields.filter(
+      (field) =>
+        !manualFields.has(field.field) ||
+        !field.writeFlag ||
+        field.confidence === "manual-required"
+    ).length;
+
+  return [
+    `command-prefill candidates ${commandPrefillFields}/${draft.manualFields.length}`,
+    `human-required fields ${humanRequiredFields}/${draft.manualFields.length}`,
+    `review-only cues ${reviewOnlyCues}`,
+    `uncertainty notes ${uncertaintyNotes.length}`
+  ].join("; ");
+}
+
+function studyExtractionHumanRequiredCommandFields(
+  draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>
+) {
+  return draft.manualFields.filter((field) => {
+    const prefill = draft.prefillFields.find((candidate) => candidate.field === field);
+
+    return !prefill || prefill.confidence === "manual-required";
+  });
+}
+
 function formatSourceCandidateClaimLinkCommandTemplate(
   candidate: SourceCandidate,
   draft: NonNullable<SourceCandidateCurationDraft["claimLinkDraft"]>
@@ -3500,28 +3773,97 @@ function formatSourceCandidateStudyExtractionCommandTemplate(
   candidate: SourceCandidate,
   draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>
 ) {
+  const abstract = studyExtractionPrefillCommandValue(draft, "abstract");
+  const duration = studyExtractionPrefillCommandValue(draft, "duration");
+  const mainResults = studyExtractionPrefillCommandValue(draft, "mainResults");
+
   return [
     `--extract-candidate-study ${safeCandidateKey(candidate.dedupeKey)}`,
     `--study-source-type ${formatStudySourceTypeCommandValue(
       draft.sourceTypeSuggestion
     )}`,
-    `--study-sample-size ${commandTextArgument("Human-entered sample size.")}`,
-    `--study-population ${commandTextArgument("Human-reviewed population.")}`,
-    `--study-intervention-name ${commandTextArgument(
-      "Human-reviewed intervention."
+    `--study-sample-size ${commandTextArgument(
+      studyExtractionPrefillCommandValue(
+        draft,
+        "sampleSize",
+        "Human-entered sample size."
+      )
     )}`,
-    `--study-outcome ${commandTextArgument("Human-reviewed outcome.")}`,
+    `--study-population ${commandTextArgument(
+      studyExtractionPrefillCommandValue(
+        draft,
+        "population",
+        "Human-reviewed population."
+      )
+    )}`,
+    `--study-intervention-name ${commandTextArgument(
+      studyExtractionPrefillCommandValue(
+        draft,
+        "interventionName",
+        "Human-reviewed intervention."
+      )
+    )}`,
+    `--study-outcome ${commandTextArgument(
+      studyExtractionPrefillCommandValue(
+        draft,
+        "outcomes",
+        "Human-reviewed outcome."
+      )
+    )}`,
     `--study-adverse-events ${commandTextArgument(
-      "Human-reviewed adverse event summary."
+      studyExtractionPrefillCommandValue(
+        draft,
+        "adverseEvents",
+        "Human-reviewed adverse event summary."
+      )
     )}`,
     `--study-funding-conflicts ${commandTextArgument(
-      "Human-reviewed funding/conflict note."
+      studyExtractionPrefillCommandValue(
+        draft,
+        "fundingConflicts",
+        "Human-reviewed funding/conflict note."
+      )
     )}`,
     `--study-risk-of-bias ${commandTextArgument(
-      "Human-reviewed risk-of-bias assessment."
+      studyExtractionPrefillCommandValue(
+        draft,
+        "riskOfBias",
+        "Human-reviewed risk-of-bias assessment."
+      )
     )}`,
+    ...(duration ? [`--study-duration ${commandTextArgument(duration)}`] : []),
+    ...(mainResults
+      ? [`--study-main-results ${commandTextArgument(mainResults)}`]
+      : []),
+    ...(abstract ? [`--study-abstract ${commandTextArgument(abstract)}`] : []),
     ...(draft.alreadyExtracted ? ["--update-existing-study"] : [])
   ].join(" ");
+}
+
+function studyExtractionPrefillCommandValue(
+  draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>,
+  field: string,
+  fallback: string
+): string;
+function studyExtractionPrefillCommandValue(
+  draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>,
+  field: string,
+  fallback?: string
+): string | undefined;
+function studyExtractionPrefillCommandValue(
+  draft: NonNullable<SourceCandidateCurationDraft["studyExtractionDraft"]>,
+  field: string,
+  fallback?: string
+) {
+  const prefill = (draft.prefillFields ?? []).find(
+    (candidate) => candidate.field === field
+  );
+
+  if (!prefill || prefill.confidence === "manual-required") {
+    return fallback;
+  }
+
+  return prefill.value;
 }
 
 function formatStudySourceTypeCommandValue(sourceTypeSuggestion: string) {
@@ -5644,6 +5986,53 @@ function hasStudyExtractionOptions(options: SourceCandidateJobCommandOptions) {
   );
 }
 
+function studyExtractionPlaceholderFields(options: SourceCandidateJobCommandOptions) {
+  const fields: string[] = [];
+  const checkValue = (field: string, value?: string) => {
+    if (isStudyExtractionPlaceholder(value)) {
+      fields.push(field);
+    }
+  };
+
+  checkValue("--study-sample-size", options.studySampleSize);
+  checkValue("--study-population", options.studyPopulation);
+  checkValue("--study-intervention-name", options.studyInterventionName);
+  (options.studyOutcomes ?? []).forEach((outcome) =>
+    checkValue("--study-outcome", outcome)
+  );
+  checkValue("--study-adverse-events", options.studyAdverseEvents);
+  checkValue("--study-funding-conflicts", options.studyFundingConflicts);
+  checkValue("--study-risk-of-bias", options.studyRiskOfBias);
+  checkValue("--study-duration", options.studyDuration);
+  checkValue("--study-main-results", options.studyMainResults);
+  checkValue("--study-abstract", options.studyAbstract);
+  checkValue("--study-dose", options.studyDose);
+
+  return [...new Set(fields)];
+}
+
+function isStudyExtractionPlaceholder(value?: string) {
+  const normalized = value?.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!normalized) {
+    return false;
+  }
+
+  return (
+    STUDY_EXTRACTION_PLACEHOLDERS.has(normalized) ||
+    /^human-(entered|reviewed) .+ required\.$/.test(normalized)
+  );
+}
+
+const STUDY_EXTRACTION_PLACEHOLDERS = new Set([
+  "human-entered sample size.",
+  "human-reviewed population.",
+  "human-reviewed intervention.",
+  "human-reviewed outcome.",
+  "human-reviewed adverse event summary.",
+  "human-reviewed funding/conflict note.",
+  "human-reviewed risk-of-bias assessment."
+]);
+
 function setQueueOption(
   options: SourceCandidateJobCommandOptions,
   source: SourceCandidateSource,
@@ -5668,8 +6057,23 @@ function setQueueClaimSourcesOption(
   options.queueClaimSourcesClaimId = claimId;
 }
 
+function setQueueInterventionSourcesOption(
+  options: SourceCandidateJobCommandOptions,
+  interventionId: string
+) {
+  if (hasQueueOption(options)) {
+    throw new Error("Only one queue option can be used at a time.");
+  }
+
+  options.queueInterventionSourcesInterventionId = interventionId;
+}
+
 function hasQueueOption(options: SourceCandidateJobCommandOptions) {
-  return Boolean(options.queueSource || options.queueClaimSourcesClaimId);
+  return Boolean(
+    options.queueSource ||
+      options.queueClaimSourcesClaimId ||
+      options.queueInterventionSourcesInterventionId
+  );
 }
 
 function setCandidateReviewOption(

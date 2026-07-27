@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildOperatorReadinessReport } from "@/lib/operator/readiness";
+import {
+  buildOperatorReadinessReport,
+  summarizeOperatorReadinessCheck,
+  summarizeOperatorReadinessReport
+} from "@/lib/operator/readiness";
 
 const localFilesReady = {
   auditTrail: true,
@@ -16,6 +20,26 @@ const localFilesReady = {
   reviewQueue: true
 };
 
+const operatorCheckIds = [
+  "operator-page",
+  "auth-route",
+  "review-queue",
+  "audit-trail",
+  "audited-action-wrappers",
+  "browser-write-control-gate",
+  "browser-write-action-handlers",
+  "promotion-readiness",
+  "operator-bootstrap",
+  "manual-qa-checklist",
+  "operator-smoke",
+  "operator-auth-config",
+  "active-operator",
+  "operator-write-gate",
+  "nonproduction-write-qa",
+  "operator-flow-qa",
+  "browser-write-controls-approval"
+];
+
 describe("operator readiness report", () => {
   it("reports local operator surfaces as ready but external auth and QA proof as blocked", () => {
     const report = buildOperatorReadinessReport({
@@ -26,6 +50,87 @@ describe("operator readiness report", () => {
 
     expect(report.overall).toBe("blocked");
     expect(report.counts.ready).toBe(12);
+    expect(report.worksheet.copySafeCommands).toEqual([
+      {
+        command: "npm run operator:readiness",
+        id: "operator-readiness",
+        label: "Refresh operator readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck operator auth, local artifacts, and manual QA evidence without printing secret values."
+      },
+      {
+        command: "npm run operator:readiness -- --summary",
+        id: "operator-readiness-summary",
+        label: "Refresh compact operator summary",
+        mode: "read-only",
+        purpose:
+          "Print compact operator readiness counts, blockers, warnings, and the next action without dumping all checks."
+      },
+      {
+        command: "npm run operator:readiness -- --check <check-id>",
+        id: "operator-readiness-check",
+        label: "Focus one operator readiness check",
+        mode: "read-only",
+        purpose:
+          "Print one operator readiness check with its evidence keys and next action for auth or QA setup."
+      },
+      {
+        command: "npm run operator:readiness -- --env-file <non-production-env-file> --summary",
+        id: "operator-readiness-env-file-summary",
+        label: "Refresh operator summary from env file",
+        mode: "read-only",
+        purpose:
+          "Check approved non-production operator evidence without printing secret values or enabling writes."
+      },
+      {
+        command: "npm run operator:smoke -- <base-url>",
+        id: "operator-smoke-closed",
+        label: "Smoke anonymous operator boundary",
+        mode: "read-only",
+        purpose: "Verify /operator stays closed to anonymous users and does not expose review content."
+      },
+      {
+        command: "npm run operator:smoke -- <base-url> --expect-auth-unavailable",
+        id: "operator-smoke-auth-unavailable",
+        label: "Smoke auth-unavailable operator boundary",
+        mode: "read-only",
+        purpose: "Verify an environment without auth secrets shows the closed auth-unavailable state."
+      },
+      {
+        command: "npm run operator:smoke -- <base-url> --expect-auth-required",
+        id: "operator-smoke-auth-required",
+        label: "Smoke auth-required operator boundary",
+        mode: "read-only",
+        purpose: "Verify configured auth shows the closed sign-in-required state before operator login."
+      },
+      {
+        command:
+          'npm run operator:bootstrap -- --email operator@example.com --role REVIEWER --note "Non-production operator QA bootstrap"',
+        id: "operator-bootstrap-plan",
+        label: "Plan operator bootstrap",
+        mode: "dry-run",
+        purpose: "Preview a local operator account bootstrap plan without writing to the database."
+      },
+      {
+        command: "npm run launch:readiness",
+        id: "launch-readiness",
+        label: "Refresh aggregate launch readiness",
+        mode: "read-only",
+        purpose: "Recheck fully-live launch gates after operator evidence changes."
+      },
+      {
+        command: "npm run launch:readiness -- --env-file <non-production-env-file> --summary",
+        id: "launch-readiness-env-file-summary",
+        label: "Refresh aggregate launch summary from env file",
+        mode: "read-only",
+        purpose:
+          "Recheck launch gates with approved non-production evidence without printing secret values."
+      }
+    ]);
+    expect(
+      report.worksheet.copySafeCommands.some((item) => item.command.includes("--apply"))
+    ).toBe(false);
     expect(report.worksheet.readyLocalArtifacts.map((item) => item.id)).toEqual([
       "operator-page",
       "auth-route",
@@ -50,7 +155,7 @@ describe("operator readiness report", () => {
       "browser-write-controls-approval"
     ]);
     expect(report.worksheet.nextOperatorAction).toBe(
-      "Configure database-backed GitHub OAuth in a non-production environment before manual operator-flow QA."
+      "Configure database-backed GitHub OAuth in a non-production environment, or record APEX_VERCEL_DATABASE_CONFIGURED_AT and APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT after dashboard review, before manual operator-flow QA."
     );
     expect(report.checks).toEqual(
       expect.arrayContaining([
@@ -74,6 +179,148 @@ describe("operator readiness report", () => {
         })
       ])
     );
+  });
+
+  it("builds a focused read-only packet for one operator readiness check", () => {
+    expect(
+      summarizeOperatorReadinessCheck(
+        {
+          env: {},
+          files: localFilesReady,
+          generatedAt: new Date("2026-06-11T00:00:00.000Z")
+        },
+        "operator-auth-config"
+      )
+    ).toEqual({
+      availableCheckIds: operatorCheckIds,
+      check: {
+        detail:
+          "Missing operator auth variables: DATABASE_URL, AUTH_SECRET, AUTH_GITHUB_ID, AUTH_GITHUB_SECRET.",
+        evidenceKeys: [
+          "DATABASE_URL",
+          "AUTH_SECRET",
+          "AUTH_GITHUB_ID",
+          "AUTH_GITHUB_SECRET",
+          "APEX_VERCEL_DATABASE_CONFIGURED_AT",
+          "APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT"
+        ],
+        id: "operator-auth-config",
+        label: "Database-backed GitHub auth",
+        nextAction:
+          "Configure database-backed GitHub OAuth in a non-production environment, or record APEX_VERCEL_DATABASE_CONFIGURED_AT and APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT after dashboard review, before manual operator-flow QA.",
+        status: "blocked"
+      },
+      checkId: "operator-auth-config",
+      found: true,
+      humanOwned: true,
+      nextAction:
+        "Configure database-backed GitHub OAuth in a non-production environment, or record APEX_VERCEL_DATABASE_CONFIGURED_AT and APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT after dashboard review, before manual operator-flow QA.",
+      readOnly: true,
+      relatedCommand: {
+        command: "npm run operator:readiness",
+        id: "operator-readiness",
+        label: "Refresh operator readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck operator auth, local artifacts, and manual QA evidence without printing secret values."
+      },
+      status: "blocked"
+    });
+  });
+
+  it("summarizes operator readiness without full check or command payloads", () => {
+    const report = buildOperatorReadinessReport({
+      env: {},
+      files: localFilesReady,
+      generatedAt: new Date("2026-06-11T00:00:00.000Z")
+    });
+    const summary = summarizeOperatorReadinessReport(report);
+
+    expect(summary).toEqual({
+      blockedChecks: report.worksheet.blocked,
+      counts: {
+        blocked: 5,
+        ready: 12,
+        warning: 0
+      },
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      humanOwned: true,
+      nextAction:
+        "Configure database-backed GitHub OAuth in a non-production environment, or record APEX_VERCEL_DATABASE_CONFIGURED_AT and APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT after dashboard review, before manual operator-flow QA.",
+      overall: "blocked",
+      readOnly: true,
+      readyEvidence: report.worksheet.readyEvidence,
+      readyLocalArtifacts: report.worksheet.readyLocalArtifacts,
+      warningChecks: []
+    });
+    expect(JSON.stringify(summary)).not.toContain("copySafeCommands");
+    expect(JSON.stringify(summary)).not.toContain('"checks"');
+  });
+
+  it("reports missing focused operator readiness checks without writes", () => {
+    expect(
+      summarizeOperatorReadinessCheck(
+        {
+          env: {},
+          files: localFilesReady,
+          generatedAt: new Date("2026-06-11T00:00:00.000Z")
+        },
+        "missing-check"
+      )
+    ).toEqual({
+      availableCheckIds: operatorCheckIds,
+      check: null,
+      checkId: "missing-check",
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No operator readiness check matched this id; rerun npm run operator:readiness to inspect valid check ids.",
+      readOnly: true,
+      relatedCommand: null,
+      status: "not-found"
+    });
+  });
+
+  it("accepts value-free Vercel dashboard evidence for database-backed auth", () => {
+    const report = buildOperatorReadinessReport({
+      env: {
+        APEX_OPERATOR_ACTIVE_ACCOUNT_READY: "true",
+        APEX_OPERATOR_BROWSER_WRITE_CONTROLS_APPROVED_AT: "2026-06-11T13:00:00Z",
+        APEX_OPERATOR_FLOW_QA_REVIEWED_AT: "2026-06-11T12:00:00Z",
+        APEX_OPERATOR_NONPROD_WRITE_QA_AT: "2026-06-11T11:00:00Z",
+        APEX_VERCEL_DATABASE_CONFIGURED_AT: "2026-06-11T09:00:00Z",
+        APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT: "2026-06-11T10:00:00Z"
+      },
+      files: localFilesReady,
+      generatedAt: new Date("2026-06-11T00:00:00.000Z")
+    });
+
+    const serialized = JSON.stringify(report);
+
+    expect(report.overall).toBe("ready");
+    expect(report.counts.blocked).toBe(0);
+    expect(report.worksheet.readyEvidence.map((item) => item.id)).toEqual([
+      "operator-auth-config",
+      "active-operator",
+      "operator-write-gate",
+      "nonproduction-write-qa",
+      "operator-flow-qa",
+      "browser-write-controls-approval"
+    ]);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "operator-auth-config",
+          status: "ready",
+          evidenceKeys: [
+            "APEX_VERCEL_DATABASE_CONFIGURED_AT",
+            "APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT"
+          ]
+        })
+      ])
+    );
+    expect(serialized).not.toContain("2026-06-11T09:00:00Z");
+    expect(serialized).not.toContain("2026-06-11T10:00:00Z");
   });
 
   it("reports ready when local artifacts, auth configuration, and manual QA evidence are present", () => {

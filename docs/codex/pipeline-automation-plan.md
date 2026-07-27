@@ -1,0 +1,492 @@
+# Pipeline automation plan
+
+Decided 2026-07-27. Goal: run discovery → published brief with no human in the loop, without
+labelling machine output as human-reviewed.
+
+Two decisions are already made and are not open questions:
+
+- **An LLM stage is in scope.** Anthropic SDK (`@anthropic-ai/sdk`), Batch API, `ANTHROPIC_API_KEY`
+  in `.env`. Opus 5 (`claude-opus-5`) for claim synthesis, a cheaper tier for mechanical field
+  extraction. Full backfill is roughly $8–39 one-off at 50% batch pricing; incremental runs are cents.
+- **`AI reviewed` becomes a real review status.** New `ReviewStatus` enum value, Prisma migration,
+  automation stamps it instead of `HUMAN_REVIEWED`. Existing mislabelled rows get corrected.
+
+## Already done
+
+- **Score laundering closed.** `buildClaimScoreSuggestion` now returns `blockedReason` for pipeline
+  and watchlist rows (`src/lib/score-suggestions.ts`), `buildScoreUpdateDraft` throws on a blocked
+  suggestion, and `runLocalScoreFinalization` filters those rows out into a `skippedUnscorable`
+  count rather than scoring them. This was the bug that let a placeholder claim linked to 19
+  meta-analyses render as "Score 7.5 · Moderate".
+- **Reader model.** `src/lib/evidence-brief.ts` classifies every claim as
+  `conclusion` / `safety-context` / `pipeline` / `watchlist`, and both the supplement page and the
+  dashboard index read from it.
+- **Study-design misclassification.** `studyTypeFromCandidate` no longer promotes a bare
+  "clinical trial" signal to `RANDOMIZED_CONTROLLED_TRIAL` (rigor 8) — that now requires actual
+  randomization wording and otherwise resolves to `CLINICAL_TRIAL_RECORD` (rigor 5). The no-match
+  fallback moved off `SYSTEMATIC_REVIEW` (rigor 8) to `CASE_REPORT` (rigor 2).
+- **Sections 0, 1 and 2 below are now done** (2026-07-27). See "Landed" at the end of this file for
+  what shipped, what changed relative to the plan, and the open questions.
+
+## Work remaining
+
+### 0. Fold `StudyType.UNCLASSIFIED` into the same migration
+
+`CASE_REPORT` is a stopgap for the no-match fallback, not the right answer. It stops the rigor
+inflation, but it is still a false factual claim — "a single unreplicated observation" — and it
+reaches readers, because `summarizeStudyMix` in `evidence-brief.ts` renders study design on the
+public page. An unclassifiable source will show up as "1 case report".
+
+The enum has no "unknown" member, which is the only reason the stopgap exists. Since section 1
+already requires a Prisma migration, add `UNCLASSIFIED` to `StudyType` in the same one: give it
+rigor 0 in `studyRigorScores`, keep it out of `directHumanStudyTypes`, map it in
+`sourceTypeTaxonomyFromDbStudy`, and have `readerStudyType` render it as "design not established"
+rather than naming a design. Then switch the fallback off `CASE_REPORT`.
+
+While there: `src/lib/study-source-type-hints.ts:51` has the same bare-"clinical trial" → RCT
+mapping. It was left alone because it only renders a curator-facing hint string
+(`score-extraction-preview.ts`, `scripts/local-score-worklist.ts`) and never feeds
+`studyRigorScores`, so it misleads a human rather than inflating a stored score. Worth fixing in
+the same pass for consistency; its no-match path already returns `undefined`, which is correct.
+
+### 1. `AI reviewed` review status
+
+Add `AI_REVIEWED` to the `ReviewStatus` enum in `prisma/schema.prisma` and to `ReviewStatus` in
+`src/lib/types.ts`, plus the mapper in `src/lib/data/dashboard.ts`. About 91 files reference
+`ReviewStatus`; most only compare against `"Human reviewed"` and keep working, but every
+`reviewStatus === "Unreviewed AI draft"` check needs auditing — several are really asking
+"has anyone looked at this", which is now a three-way question.
+
+The write that matters is `src/lib/data/source-candidates.ts:1240`, which hardcodes
+`reviewStatus: HUMAN_REVIEWED` on every decision including automated ones. Take the status as a
+parameter; the CLI path passes human, the automation paths pass AI.
+
+Then a correction pass over the 32,786 rows already stamped `HUMAN_REVIEWED`. Their `reviewNote`
+identifies the automated ones exactly — they read "Bulk accepted likely useful candidates from the
+one-click local UPDATE pipeline", "Auto-accepted maybe-useful candidate after conservative local
+review triage", "Rejected by local identity resolver as wrong supplement", and similar. Prepare it
+as a `_tmp_` dry-run script; the user applies with `--apply`.
+
+### 2. Headless pipeline runner
+
+`runLocalUpdatePipeline` in `src/components/evidence-dashboard.tsx:3171` is already an exported
+async function taking an injected `operations` object — the logic is headless-capable, only the
+wiring is React. Stage 10 (`refresh`) is UI-only and drops out.
+
+Extract the stage logic to `src/lib/pipeline/` and add `scripts/pipeline-run.ts` calling the lib
+functions directly rather than over HTTP. Doing so also bypasses `guardLocalIngestionRequest`
+(`src/lib/data/local-ingestion-route-guard.ts`), which requires localhost origin headers and so
+structurally requires a browser. Keep the API routes as they are — the dashboard button still uses them.
+
+Then a cron. The only existing one (`.github/workflows/scheduled-ingestion-alert-monitor.yml`) runs
+`npm run ingest:scheduled-dry-run`, an alias that is not in `package.json`.
+
+### 3. Relevance gate to replace human triage
+
+Do **not** auto-accept on `triageScore`. In the 70–89 band where most accepts live only 55–61% were
+actually accepted — the score does not discriminate relevance. 18.9% of accepted candidates never
+name their intervention in the title.
+
+Build a gate that runs before the score:
+
+- **Identity.** Intervention name or synonym must appear in title or abstract. The synonym lists are
+  too thin — omega-3 misses "n-3 PUFA" and "icosapent ethyl", green tea misses "epigallocatechin
+  gallate". Expand these first; a large share of the 18.9% is synonym gaps rather than contamination.
+- **Trap terms.** `LOCAL_BENEFIT_DISCOVERY_CONTEXT_RULES` (`local-ingestion-control.ts:384`) already
+  handles this pattern for calcium ("coronary artery calcium"). There is no creatine entry despite
+  creatinine being the known contamination case. Extend the table.
+- **Design.** RCT / SR / MA / registered trial only.
+- **Outcome.** Must map to one of the 17 `OutcomeArea` values.
+
+Anything the gate cannot decide goes to the LLM relevance check rather than to a human.
+
+#### Landed — identity (2026-07-27)
+
+`src/lib/intervention-identity.ts`. Measured against all 12,000 accepted candidates:
+
+| | seeded synonyms | + curated expansion |
+| --- | --- | --- |
+| intervention named in title | 8,045 (67.0%) | 9,117 (76.0%) |
+| named in title or abstract | 11,506 (95.9%) | 11,810 (98.4%) |
+| **named nowhere** | **494 (4.1%)** | **190 (1.6%)** |
+
+Three of those gains were normalisation bugs, not missing synonyms, and each was invisible until
+measured:
+
+- `vitamin B12`, `vitamin B-12` and `vitamin B(12)` normalised to different strings. Separating
+  letter runs from digit runs collapses them, and does the same for `omega-3`/`omega 3`/`GLP-1`.
+- Terms were stored singular and papers write plural, so `GLP-1 receptor agonist` missed every
+  review of `GLP-1 receptor agonists`. A trailing `s`/`es` is now optional; the boundary either side
+  is still required, so the substring hole stays shut.
+- Greek letters were stripped as punctuation, turning `β-Alanine` into `alanine` — the intervention
+  vanished from its own paper. They are transliterated now. Beta-alanine's miss rate halved.
+
+The gate's term set is deliberately **stricter** than the triage reviewer's. Both call the same
+module, at `strict` and `broad` breadth respectively, so they cannot drift — but a name is only
+split where the separator means "either substance" (`Lutein and Zeaxanthin`,
+`Glucosamine/chondroitin`, `Trimethylglycine (TMG)`). It is never split on whitespace, because
+`Whey protein` would yield `protein` and match most of the nutrition literature.
+
+The 190 remaining failures are mostly **correct** rejections, not gaps: whey protein is linked to
+tart cherry powder and inhaled nintedanib trials, astaxanthin to tomato sauce and generic carotenoid
+reviews. The search queries matched `powder` and `carotenoid`. This is the contamination the gate
+exists to stop, and it is the same pattern as creatinine/creatine.
+
+Class terms are kept out on purpose: a GLP-1 receptor agonist meta-analysis is not semaglutide
+evidence, and `classic psychedelic` covers LSD and DMT as much as psilocybin.
+
+Word-boundary matching alone does **not** solve creatine. It rejects `phosphocreatine` and
+`creatinine`, but `creatine kinase` is separated by a space and still matches. That one needs the
+trap-term table.
+
+#### Landed — the gate (2026-07-27)
+
+`src/lib/relevance-gate.ts`. Four checks in order — identity, trap terms, design, outcome —
+returning `accept`, `reject` or `undecided`. `undecided` is the point of the design: it routes to
+the LLM relevance check rather than being silently accepted or quietly dropped.
+
+Validated against every candidate a reviewer had already decided on. **The gold standard here is
+weak** — most of those "reviewer" decisions were the automation stamping itself `HUMAN_REVIEWED`, so
+this measures agreement with the old triage, not correctness:
+
+| | reviewer ACCEPTED (12,000) | reviewer REJECTED (26,946) |
+| --- | --- | --- |
+| gate accept | 6,520 (54.3%) | **1,127 (4.2%)** |
+| gate undecided | 5,021 (41.8%) | 14,249 (52.9%) |
+| gate reject | 459 (3.8%) | 11,570 (42.9%) |
+
+The bottom-left cell is the one that matters, and measuring it changed the design. A first pass put
+it at 3,090 (11.5%), and the errors had one shape: a tirzepatide trial filed under semaglutide, an
+ashwagandha review filed under ginseng, a polyphenol review filed under quercetin. Every one matched
+on the **abstract**. An abstract names comparators, background and the other arm; a title is a claim
+of subject. Requiring the title for an unattended accept — abstract-only goes `undecided` — more than
+halved wrong accepts.
+
+Sampling the 1,127 that remain, many look like papers the old triage rejected wrongly (`ashwagen
+(standardized withania somnifera extract)` under ashwagandha, `Two Triglyceride Forms of Fish Oil`
+under omega-3). That is a sample, not a measurement, and it is not evidence the gate is right.
+
+**Deviation from the plan.** The plan said "RCT / SR / MA / registered trial only". Observational
+cohorts are `undecided` rather than `reject`, because rejecting them outright discards most of the
+mortality and lifespan literature, which is overwhelmingly observational. The plan's intent — never
+auto-accept a cohort — is preserved.
+
+**Cost to be aware of:** 41.8% of the accepted pool lands `undecided`, so the LLM relevance check in
+section 4 carries roughly 5,000 candidates, not a trickle. The largest buckets are no tracked
+outcome named (2,542) and abstract-only identity (1,633).
+
+#### Wired in as a reject-only veto (2026-07-27)
+
+The user's call, made explicitly: the gate may **remove** a candidate but never **add** one. The
+asymmetry is the point. Its rejections are checkable against the text — the intervention is named
+nowhere, the name is a biomarker, the design cannot support a claim about people — whereas its
+accepts were validated only against the old triage's own decisions, which were mostly automation.
+That justifies removing a paper; it does not justify filing one as evidence unattended.
+
+Both candidate lanes carry it:
+
+- `localCandidateReviewAutomationDecision` (maybe-useful auto-triage) — the veto runs last and can
+  only turn an accept or a hold into a reject.
+- `recordLocalCandidateReviewBulkDecision` (likely-useful bulk accept) — this lane previously
+  selected nothing but `dedupeKey` and accepted every row the filter matched, which is how 32,786
+  rows were accepted without once asking whether the paper was about the supplement. It now loads
+  the text and the intervention, and a vetoed row is rejected instead of accepted.
+
+Vetoed rows get the review note `AI reviewed: rejected by the relevance gate. <reason>`, so the
+decision is auditable and reversible in bulk by that note rather than vanishing into a count. The
+pipeline log reports the veto count on its own.
+
+**Measured against the live pending pool before the first unattended run:** 2,249 of 10,880 pending
+candidates (20.7%) would be vetoed — 1,988 on identity, ~225 on trap terms, 36 case reports.
+Inspected samples are right: generic "botanical supplement", "nutraceutical" and "krill oil" rows
+filed under ashwagandha and astaxanthin, naming those interventions nowhere. All 10,880 are
+`maybe-useful`; there are no pending `likely-useful` rows, so the bulk-lane guard is preventive until
+discovery produces some.
+
+**That 2,249 is not what a nightly run will act on, and the first real run proved it.** The run
+rejected **9**. The reason is that `localCandidateReviewActiveWhere` excludes candidates parked as
+research, and **10,577 of the 10,871 pending rows are parked** — 97% of the pool. Only ~294 are
+reachable by the review lane at all, and only a few dozen of those are unparked `maybe-useful`.
+
+So there are two different numbers and they answer different questions. 2,249 is *what the gate would
+say about the whole pending pool*. 9 is *what the nightly run actually touches*.
+
+#### The parked sweep — applied 2026-07-27
+
+The user authorised a one-off sweep over the parked backlog.
+`scripts/_tmp_sweep_parked_offtarget.ts` rejected **2,184 of 10,577** parked candidates, 0 failures.
+Pending 10,871 → 8,687; accepted unchanged at 12,000; claims untouched at 713. Every row went through
+`recordSourceCandidateDecision(..., "automation")`, so all 2,184 are `AI_REVIEWED` (verified: zero
+exceptions) and carry a note that reverses them in bulk:
+
+```
+AI reviewed: rejected by the relevance gate (parked-research sweep). <reason>
+```
+
+Only `reject` was acted on — 1,959 identity, 225 trap. `undecided` (5,235) and `accept` (3,158) were
+left parked untouched, because the gate cannot show those are wrong and parking was intentional.
+
+**Reading the design rejections before writing is what caught the gate's worst bug.** All 36 were
+adverse-event case reports for catalog supplements — Tongkat Ali liver injury, creatine-loading kidney
+injury, caffeine intoxication, turmeric hepatitis, ashwagandha HPA suppression. See the case-report
+note in `REJECTED_DESIGNS`. Fixed before the sweep ran; the sweep count dropped 2,220 → 2,184 and every
+one of those 36 is still `PENDING_REVIEW`.
+
+**Follow-up worth chasing:** an *earlier* bulk pass had already rejected duplicate copies of those same
+harm reports with the note `Bulk rejected likely-noise candidates from local completion pass`. The
+discovery classifier treats supplement-harm case reports as noise — the same failure mode, still
+unfixed upstream, and the surviving copies were preserved only because the rows were duplicated.
+
+Verified in production after the run: 9 candidates carry the note `AI reviewed: rejected by the
+relevance gate. …`, all stamped `AI_REVIEWED` rather than `HUMAN_REVIEWED`. The rejections hold up on
+inspection — a liraglutide cardiac trial, an antibiotic PK study, a honeybush skin extract, and a
+paper on whether alcohol timing affects sleep, none of which name the intervention they were filed
+under.
+
+**The placeholder generator is still running.** The same run created 9 new draft claims (704 → 713),
+so scaffold rows accrue nightly. That matters for any plan to retire them: it is a treadmill unless
+the expansion stage changes too.
+
+**A bug this caught.** The first wiring rejected a candidate whose title missed and which had **no
+stored abstract** — punishing the catalog's gaps rather than the paper. Roughly a third of on-target
+papers never name their intervention in the title, so that would have discarded them wholesale. A
+title-only miss with no abstract is now `undecided`. Three existing tests failed on it, which is what
+surfaced it; the gate was wrong, not the tests.
+
+`INTERVENTION_TRAP_RULES` is keyed by slug and covers creatine, which the existing
+`LOCAL_BENEFIT_DISCOVERY_CONTEXT_RULES` never did. That older table is keyed by intervention id,
+which only resolves for seeded rows; the two should fold together, and until they do a term added to
+one does not protect the other.
+
+### 4. LLM extraction and synthesis
+
+> **Blocked as of 2026-07-27.** `ANTHROPIC_API_KEY` is set in neither `.env` nor `.env.local`, and
+> `@anthropic-ai/sdk` is not installed. This section needs a key and an explicit decision to spend
+> before any of it can be built or run. Checked rather than assumed, because an earlier note claimed
+> the key was already in `.env`.
+
+The actual bottleneck: 5,876 references have no `Study` row, and no automated path exists from a
+placeholder claim to a written conclusion — nothing in `src/` writes `Claim.claimText` after creation.
+
+- **Extraction.** Input is the stored abstract. **There is no `sourceText` key on any row** — this
+  plan named the wrong field. PubMed candidates store the abstract as `metadata.abstractText`
+  (11,592 of 12,000 accepted, 11,591 of them 200+ characters); ClinicalTrials.gov records store
+  `metadata.briefSummary` instead (368 of 377). Only 40 accepted candidates carry neither. Output is a
+  structured `Study`: sampleSize, population, dose, duration, mainResults, outcomes, riskOfBias.
+  Use strict tool use or `output_config.format` with a JSON schema so the shape is guaranteed.
+  Replaces the regex fallbacks in `local-source-work-repair.ts` that currently write prose like
+  "Sample size not captured in local metadata".
+- **Synthesis.** Input is the packet of extracted studies for one (intervention, outcome). Output is
+  a scoped conclusion, the population it applies to, the effect size, the honest uncertainty, and
+  what would change it. This is what fills `claimText`, `populationStudied`, `effectSize`,
+  `summary`, `uncertainty`.
+- Batch API for both. Results arrive in any order — key by `custom_id`, never by position.
+- Everything written this way is stamped `AI reviewed`, never `Human reviewed`.
+- The guardrails in AGENTS.md are prompt-level requirements, not optional: citation traceability,
+  uncertainty labels, AU/TGA caveats, product-level boundaries, and no peptide sourcing, dosing,
+  reconstitution or self-administration guidance.
+
+#### Landed — derivation and a dry-run backfill (2026-07-27)
+
+`src/lib/claim-confidence.ts`. **Not wired into the write path yet**; the backfill is
+`scripts/_tmp_backfill_claim_confidence.ts`, dry-run by default, `--apply` to write.
+
+The trap here is the one next door. Stage 9 derived a claim's rigor from the design of its linked
+papers without checking whether the claim said anything, which is how 552 placeholders scored 7.5.
+Confidence is read by *more* reader-facing surface than the composite is — `readerScore` and
+`claimTier` both key off it — so deriving it the same way would put scaffolding in front of readers
+with a tier attached. The first question is therefore never "how good are the papers", it is "is
+there a claim". Verified: **all 552 placeholders stay at the floor.**
+
+Dry run over 704 claims — **15 changes, 12 up and 3 down**:
+
+| held at the floor | count |
+| --- | --- |
+| source-collection placeholder | 552 |
+| no effect size or population stated | 70 |
+| safety-context (no scoped conclusion) | 37 |
+| watchlist (no scoped conclusion) | 30 |
+
+The promotions are the well-established ones and each states its evidence: omega-3 on lipids (50
+reviews across 56 studies), melatonin on sleep (32/51), whey protein on muscle (24/36), ashwagandha
+on mood, caffeine on VO2 max. Three claims come *down*, including a Vitamin D safety row sitting at
+`High` while carrying no scoped conclusion at all.
+
+`Moderate` was tightened during the dry run: a single review-level source used to be enough, which
+lifted whey protein on **mortality** off one review and one trial. It now needs a review-level source
+plus at least three extracted studies, or three randomised trials. Whey/mortality still qualifies at
+exactly three studies and is the weakest promotion in the set — **eyeball that row before applying.**
+
+Only 15 of 704 claims are eligible for anything above the floor at all. That is not the deriver being
+strict, it is the catalog being thin, and it is the honest number.
+
+### 5. Recompute `confidenceLevel`
+
+`src/lib/data/score-update.ts` writes ten score fields and never touches `confidenceLevel`. It is
+set once at claim creation as `VERY_LOW` and frozen, which is why 687 of 704 claims sit there and
+nothing ever tiers up — while the public page reads it in five places. Derive it in the same pass
+that writes scores, from packet completeness, study design mix, and count.
+
+## Order
+
+1. `AI reviewed` enum + `StudyType.UNCLASSIFIED` in one migration, and stop the mislabelling
+   (unblocks everything else being honest)
+2. Headless runner + cron
+3. Synonym expansion and the relevance gate
+4. LLM extraction, then LLM synthesis
+5. `confidenceLevel` recomputation
+
+Each stage must stay idempotent and resumable, and DB writes stay dry-run-first.
+
+## Landed — 2026-07-27 (sections 0 and 1)
+
+### Migration history had drifted
+
+`prisma migrate dev` refused to run and offered to reset the database. The local dev DB was ahead
+of this branch: `20260613193000_trial_alerts` and `20260616120000_ai_review_status` were applied but
+absent from `prisma/migrations/`. Both live on `origin/cursor/cloud-agent-1782299624963-tz4p5`
+(commit `7e29bcb`), which is not an ancestor of `codex/queue-claim-sources`.
+
+So `ReviewStatus.AI_REVIEWED` **already existed in the database** — the plan's premise for section 1
+was stale. `ReviewEventType.AI_REVIEWED` existed too, which the plan did not mention.
+
+Resolved by absorbing both migrations into this branch and porting the schema delta (`TrialAlert`
+model, `TrialAlertKind`, `TrialAlertStatus`, six back-relation lines). Then one new migration,
+`20260726143914_unclassified_study_type`, added `StudyType.UNCLASSIFIED`. No reset, no data loss.
+`TrialAlert` is now carried by this branch although nothing in `src/` uses it yet.
+
+### `StudyType.UNCLASSIFIED`
+
+Rigor **0** in `studyRigorScores` — deliberately the only zero, so `strongestLinkedStudy` sorts it
+last. Excluded from `directHumanStudyTypes`. Reader-facing label is **"study of unclear design"**,
+not the plan's "design not established": `readerStudyType` output is always consumed inside a count
+("3 studies of unclear design"), and the plan's wording does not pluralise. `pluralizeStudyType`
+gained an irregular-plural table for it. The `local-source-work-repair.ts` fallback now returns
+`UNCLASSIFIED` instead of `CASE_REPORT`.
+
+`study-source-type-hints.ts` was fixed in the same pass: a bare "clinical trial" now resolves to
+`clinical-trial-record`, not `randomized-controlled-trial`.
+
+### `ReviewStatus` is three-way
+
+New module `src/lib/review-status.ts` holds the mapping plus two named predicates, because the old
+binary comparison was being used to ask two different questions:
+
+- `hasBeenReviewed` — "has anyone looked at this", now satisfied by AI review
+- `isHumanConfirmed` — "did a human sign off", never satisfied by automation
+
+Both reader-facing checks on the intervention page were classified rather than mechanically
+converted. `readerOverallConfidence` (page.tsx:874) now requires `isHumanConfirmed` — it drives the
+site's strongest confidence badge, and letting AI review raise it is exactly the laundering this
+work exists to stop. The synthesis fallback (page.tsx:4027) uses `hasBeenReviewed`, so an
+AI-written summary will display rather than hide. **Labelling that summary as machine-written is
+section 4's job and is not done yet.**
+
+`recordSourceCandidateDecision` takes a required `reviewedBy: "human" | "automation"`. Required and
+undefaulted on purpose — the old hardcoded `HUMAN_REVIEWED` is why the data is wrong. For
+`recordLocalCandidateReviewDecision` it is a separate argument rather than an input field, because
+that input is an unvalidated request body and a client must not be able to claim human confirmation.
+Single dashboard click and the CLI pass `"human"`; every bulk, auto-triage, and catalog-script path
+passes `"automation"`.
+
+The methodology page now documents `AI reviewed` and the unclear-design tier to readers.
+
+### The correction pass is written but NOT applied
+
+`scripts/_tmp_correct_mislabelled_human_reviewed.ts`, dry-run by default, apply with `--apply`.
+
+Dry run against 32,786 `HUMAN_REVIEWED` SourceCandidate rows: **32,781 would become `AI_REVIEWED`,
+5 stay.** The plan's expected notes all appear, plus two the plan did not list — the
+`(hobby-project mode)` note shared by the three `local-db-catalog-*` triage scripts, and 15 notes
+that literally begin `"AI reviewed:"`.
+
+**Adjudicated 2026-07-27.** 2 rows read "Codex confirmed all listed AI recommendations in the
+Operator Review Queue." Asked whether a person drove that, the user did not recall doing so — so
+there is no evidence a human confirmed them. An unremembered confirmation is not a confirmation, and
+`HUMAN_REVIEWED` has to mean exactly what it says, so the fragment moved into
+`AUTOMATED_NOTE_FRAGMENTS`. **32,783 now change; 3 stay.** The rows are not lost — they can be
+re-reviewed for real, which is why downgrading is the cheap direction to be wrong in.
+`AMBIGUOUS_NOTE_FRAGMENTS` stays in the script, now empty, so a future unvouchable note pattern
+still has somewhere to land instead of defaulting into a status it has not earned.
+
+The other six models carrying `reviewStatus` (Claim 19, SourcePacket 74, ClaimScoreSnapshot 129,
+ReviewEvent 174, Product 0, SourceDocument 0) are reported by the script but never touched — they
+have no `reviewNote` to adjudicate.
+
+Verified: 885 tests pass across 106 files, `typecheck:tsc` clean, `git diff --check` clean,
+methodology page renders both new strings.
+
+## Landed — 2026-07-27 (section 2, headless runner)
+
+`runLocalUpdatePipeline` moved out of `evidence-dashboard.tsx` into `src/lib/pipeline/`:
+
+- `types.ts` — stage definitions, settings, and the `LocalUpdatePipelineOperations` seam
+- `messages.ts` — the pure log/detail formatters, so a headless run emits log lines identical to
+  the on-screen ones
+- `run-local-update-pipeline.ts` — the runner, moved verbatim
+- `direct-operations.ts` — `LocalUpdatePipelineOperations` implemented against the data layer
+  in-process, bypassing `guardLocalIngestionRequest`
+
+`operations` is now **required** rather than defaulting. The default was the HTTP implementation;
+leaving it in the lib would have quietly reintroduced the browser dependency. The dashboard passes
+`defaultLocalUpdatePipelineOperations()` explicitly and re-exports `runLocalUpdatePipeline`, so
+existing importers are unaffected. `evidence-dashboard.tsx` dropped from 12,572 to 10,715 lines.
+
+Entry point is `scripts/pipeline-run.ts` (`npm run pipeline:run`), with `--max-jobs`,
+`--run-delay-ms`, `--lead-threshold`, `--reject-threshold`, `--quiet`. It refuses a reject threshold
+at or above the lead threshold, exits 130 on interrupt (first Ctrl-C stops at a stage boundary), and
+exits 1 if any stage reported row-level errors so a scheduler sees the failure. There is
+deliberately no dry-run flag — every stage of this pipeline writes.
+
+**Deviation from the plan:** the `refresh` stage was kept rather than dropped. The plan called it
+UI-only, but its body is three status reads that produce the run's closing summary — the most useful
+line in an unattended log. Nothing in it touches the DOM.
+
+### The cron cannot be hosted
+
+The plan said "then a cron", and the broken alias is fixed: `ingest:scheduled-dry-run` now exists
+(`tsx scripts/scheduled-source-ingestion.ts`), so `.github/workflows/scheduled-ingestion-alert-monitor.yml`
+stops failing every 30 minutes on a missing script. Verified: exits 0.
+
+But the pipeline itself **cannot** run on GitHub Actions. It writes to the local PostgreSQL on the
+dev machine; a hosted runner gets an empty ephemeral database, writes to it, and discards the
+result. So the schedule has to be local: `scripts/register-pipeline-schedule.ps1` registers a
+Windows scheduled task (supports `-WhatIf`, logs to `logs/pipeline-run.log`).
+
+**Registered 2026-07-27** at the user's explicit instruction: task `Apex Lifespan pipeline`, daily
+03:00 local, `--max-jobs 100 --quiet`, appending to `logs/pipeline-run.log`.
+
+It was registered **before** section 3, so every unattended run until the relevance gate lands uses
+the current triage — the one measured at 55–61% precision in the 70–89 band. Expect the accepted
+candidate pool to grow faster than its quality. Section 3 is the fix; until then, read the log.
+
+```powershell
+Unregister-ScheduledTask -TaskName "Apex Lifespan pipeline" -Confirm:$false
+```
+
+**The first 03:00 run failed, and the way it failed is worth remembering.** It
+exited 1 and produced no log — and the missing log was not a side effect, it was
+the cause. Given `/c "prog" args >> "file"`, `cmd.exe` strips the first and last
+quote it sees rather than treating them as a pair around the program name,
+leaving an unbalanced string; cmd exits 1 with *"The filename, directory name, or
+volume label syntax is incorrect"* before the redirect ever opens. Task Scheduler
+reports a bare non-zero result with nothing to explain it, because writing the
+explanation is the step that failed.
+
+Wrapping the whole command in one more pair of quotes gives cmd the pair it
+consumes. Verify a registered action by checking the log file appears within
+seconds of `Start-ScheduledTask`, not by trusting the exit code.
+
+### Open: a type assertion that hides source-kind drift
+
+Building `direct-operations.ts` surfaced this. `@/components/local-ingestion/types` narrows `source`
+to `LocalIngestionSource = "PUBMED" | "CLINICALTRIALS_GOV"`, while the data layer returns Prisma's
+full 9-member `SourceKind`. The routes reshape nothing — the narrowing was only ever an unchecked
+`as T` inside the dashboard's `localIngestionFetch`, so the component types were never verified
+against the data layer.
+
+It is runtime-true today because `LOCAL_SUPPORTED_SOURCES` restricts local-ingestion queries to
+those two. `direct-operations.ts` reproduces the assertion through a mapped type that rewrites only
+`SourceKind` and leaves everything else structurally checked — which confirmed `source` is the sole
+mismatch. The real fix is for `local-ingestion-control.ts` to type these fields as the narrow union
+at source; until then a third local source kind would break both paths with no compile error.

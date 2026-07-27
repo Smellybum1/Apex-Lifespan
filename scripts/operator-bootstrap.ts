@@ -22,7 +22,7 @@ async function main() {
 
   if (!email) {
     throw new Error(
-      "Usage: npm run operator:bootstrap -- --email <email> [--role OWNER|ADMIN|REVIEWER|AUDITOR] [--status ACTIVE|DISABLED] [--name <name>] [--note <note>] [--apply --confirm-email <email>]"
+      "Usage: npx tsx scripts/operator-bootstrap.ts --email <email> [--role OWNER|ADMIN|REVIEWER|AUDITOR] [--status ACTIVE|DISABLED] [--name <name>] [--note <note>] [--apply --confirm-email <email>]"
     );
   }
 

@@ -10,6 +10,7 @@ import {
   type LinkAcceptedSourceCandidateClaimInput,
   type RecordSourceCandidateDecisionInput
 } from "@/lib/data/source-candidates";
+import { recordHumanClaimEvidenceReview, recordSourcePacketMutationReview } from "@/lib/data/evidence-review-sync";
 import { prisma } from "@/lib/db/prisma";
 import type { OperatorPrincipal, OperatorWriteEnv } from "@/lib/operator/authorization";
 import { requireOperatorPermission } from "@/lib/operator/authorization";
@@ -78,6 +79,13 @@ export async function linkSourceCandidateClaimAsOperator(
   const before = await getSourceCandidateCurationStatus(input.dedupeKey);
   const result = await linkAcceptedSourceCandidateClaim(input);
 
+  await recordSourcePacketMutationReview({
+    claimId: result.claimLink.claimId,
+    note: input.note,
+    principal,
+    referenceId: result.acceptedReference.id
+  });
+
   await recordOperatorAuditEvent(principal, {
     action: "sourceCandidate.claimLink",
     afterSummary: {
@@ -109,6 +117,16 @@ export async function extractSourceCandidateStudyAsOperator(
 
   const before = await getSourceCandidateCurationStatus(input.dedupeKey);
   const result = await extractAcceptedSourceCandidateStudy(input);
+
+  if (result.candidate.claimId) {
+    await recordSourcePacketMutationReview({
+      claimId: result.candidate.claimId,
+      note: input.abstract,
+      principal,
+      referenceId: result.acceptedReference.id,
+      studyId: result.study.id
+    });
+  }
 
   await recordOperatorAuditEvent(principal, {
     action: "sourceCandidate.studyExtraction",
@@ -185,6 +203,13 @@ export async function promoteSourceCandidatePublicEvidenceAsOperator(
     where: {
       id: claimId
     }
+  });
+
+  await recordHumanClaimEvidenceReview({
+    claimId,
+    principal,
+    reviewNote: promotionNote,
+    reviewedAt: promotedAt
   });
 
   await recordOperatorAuditEvent(principal, {

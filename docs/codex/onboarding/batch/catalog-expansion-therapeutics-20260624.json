@@ -1,0 +1,22 @@
+{
+  "supplements": [
+    {
+      "name": "Semaglutide",
+      "category": "Drug/geroprotector watchlist",
+      "claimTemplateIds": ["safety", "glucose", "lipids", "cv-events"],
+      "synonyms": ["GLP-1 receptor agonist", "Ozempic", "Wegovy"]
+    },
+    {
+      "name": "Retatrutide",
+      "category": "Drug/geroprotector watchlist",
+      "claimTemplateIds": ["safety", "glucose", "lipids", "lifespan"],
+      "synonyms": ["LY3437943", "GLP-1 GIP glucagon agonist"]
+    },
+    {
+      "name": "Psilocybin",
+      "category": "Drug/geroprotector watchlist",
+      "claimTemplateIds": ["safety", "mood-stress", "cognition"],
+      "synonyms": ["psilocybin-assisted therapy research", "classic psychedelic compound"]
+    }
+  ]
+}

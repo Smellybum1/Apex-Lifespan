@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeEvidenceCoverage } from "@/lib/evidence-coverage";
+import {
+  summarizeEvidenceCoverage,
+  summarizeEvidenceCoverageClaimReview,
+  summarizeEvidenceCoverageReviewReport
+} from "@/lib/evidence-coverage";
 import {
   claims,
   interventions,
@@ -121,6 +125,24 @@ describe("evidence coverage summary", () => {
           reviewStatus: "Unreviewed AI draft"
         },
         {
+          claimId: "psyllium-ldl-lipids",
+          confidenceLevel: "Moderate",
+          extractedReferences: 1,
+          finalLabel: "Useful for Specific Use Case",
+          interventionId: "psyllium",
+          nextAction: "Human review the complete source packet before upgrading review status.",
+          outcome: "LDL/ApoB/lipids",
+          packetStatus: "complete",
+          priority: 160,
+          priorityReasons: [
+            "Unreviewed draft claim",
+            "Complete source packet ready for human review",
+            "Moderate confidence draft"
+          ],
+          referenceCount: 1,
+          reviewStatus: "Unreviewed AI draft"
+        },
+        {
           claimId: "creatine-lifespan",
           confidenceLevel: "Very low",
           extractedReferences: 1,
@@ -128,6 +150,23 @@ describe("evidence coverage summary", () => {
           interventionId: "creatine",
           nextAction: "Human review the complete source packet before upgrading review status.",
           outcome: "Mortality/lifespan",
+          packetStatus: "complete",
+          priority: 150,
+          priorityReasons: [
+            "Unreviewed draft claim",
+            "Complete source packet ready for human review"
+          ],
+          referenceCount: 1,
+          reviewStatus: "Unreviewed AI draft"
+        },
+        {
+          claimId: "magnesium-sleep",
+          confidenceLevel: "Low",
+          extractedReferences: 1,
+          finalLabel: "Insufficient Evidence",
+          interventionId: "magnesium",
+          nextAction: "Human review the complete source packet before upgrading review status.",
+          outcome: "Sleep",
           packetStatus: "complete",
           priority: 150,
           priorityReasons: [
@@ -155,7 +194,7 @@ describe("evidence coverage summary", () => {
           reviewStatus: "Unreviewed AI draft"
         }
       ],
-      completeSourcePackets: 7,
+      completeSourcePackets: 9,
       humanReviewedClaims: 0,
       incompleteClaims: claims.map((claim) => ({
         claimId: claim.id,
@@ -163,16 +202,9 @@ describe("evidence coverage summary", () => {
         packetStatus: "complete",
         reviewStatus: "Unreviewed AI draft"
       })),
-      interventionGaps: [
-        {
-          interventionId: "psyllium",
-          interventionName: "Psyllium",
-          nextAction:
-            "Add at least one scoped claim with curated source links before treating this intervention as covered."
-        }
-      ],
-      interventionsWithClaims: 4,
-      interventionsWithoutClaims: ["psyllium"],
+      interventionGaps: [],
+      interventionsWithClaims: 6,
+      interventionsWithoutClaims: [],
       reviewSamplingPlan: {
         batchSize: 3,
         items: [
@@ -273,18 +305,87 @@ describe("evidence coverage summary", () => {
         ],
         nextAction:
           "Human review this sampled batch first; do not update review status until the cited packet and extraction are checked.",
-        readyClaims: 7
+        readyClaims: 9
       },
-      totalClaims: 7,
-      totalInterventions: 5,
-      unreviewedClaims: 7,
+      totalClaims: 9,
+      totalInterventions: 6,
+      unreviewedClaims: 9,
       worksheet: {
-        coverageGaps: [
+        coverageGaps: [],
+        copySafeCommands: [
           {
-            interventionId: "psyllium",
-            interventionName: "Psyllium",
-            nextAction:
-              "Add at least one scoped claim with curated source links before treating this intervention as covered."
+            command: "npm run coverage:review",
+            id: "coverage-review",
+            label: "Refresh coverage review",
+            mode: "read-only",
+            purpose:
+              "Recheck source-packet coverage, review backlog, sampled review batch, and intervention gaps without changing review status."
+          },
+          {
+            command: "npm run coverage:review -- --summary",
+            id: "coverage-review-summary",
+            label: "Refresh compact coverage summary",
+            mode: "read-only",
+            purpose:
+              "Print coverage counts, sampled review claims, ready review claims, gaps, and next action without dumping the full review report."
+          },
+          {
+            command: "npm run coverage:review -- --env-file <non-production-env-file> --summary",
+            id: "coverage-review-env-file-summary",
+            label: "Refresh compact coverage summary from env file",
+            mode: "read-only",
+            purpose:
+              "Print coverage counts from an approved non-production env file without dumping secrets or changing review status."
+          },
+          {
+            command: "npm run coverage:review -- --claim <claim-id>",
+            id: "coverage-claim-review",
+            label: "Focus one claim review packet",
+            mode: "read-only",
+            purpose:
+              "Print one claim's source-packet boundary, checklist, references, and structured study IDs for human review."
+          },
+          {
+            command: "npm run regulatory:review",
+            id: "regulatory-review",
+            label: "Refresh AU/TGA review",
+            mode: "read-only",
+            purpose:
+              "Recheck product-level AU/TGA unknown/stale states before updating coverage decisions."
+          },
+          {
+            command:
+              "npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10",
+            id: "candidate-review-overview",
+            label: "Review pending source candidates",
+            mode: "read-only",
+            purpose:
+              "Inspect pending source-candidate groups that may support future curated coverage expansion."
+          },
+          {
+            command:
+              "npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10",
+            id: "candidate-review-flags",
+            label: "Review flagged source candidates",
+            mode: "read-only",
+            purpose:
+              "Inspect broad safety or low-overlap candidate groups before any human curation decision."
+          },
+          {
+            command:
+              "npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-limit 10",
+            id: "candidate-curation-handoff",
+            label: "Review accepted candidate curation",
+            mode: "read-only",
+            purpose:
+              "Inspect accepted source candidates that still need claim linking or structured extraction before public source-packet use."
+          },
+          {
+            command: "npm run launch:readiness",
+            id: "launch-readiness",
+            label: "Refresh aggregate launch readiness",
+            mode: "read-only",
+            purpose: "Recheck fully-live launch gates after evidence coverage review changes."
           }
         ],
         humanOwned: true,
@@ -347,6 +448,197 @@ describe("evidence coverage summary", () => {
         ]),
         remainingBacklog: []
       }
+    });
+  });
+
+  it("builds a compact read-only coverage review summary", () => {
+    const summary = summarizeEvidenceCoverageReviewReport(
+      summarizeEvidenceCoverage(seedDashboardData)
+    );
+
+    expect(summary).toEqual({
+      counts: {
+        completeSourcePackets: 9,
+        coverageGaps: 0,
+        humanReviewedClaims: 0,
+        incompleteClaims: 9,
+        interventionsWithClaims: 6,
+        interventionsWithoutClaims: 0,
+        readyReviewBatch: 3,
+        readySourcePackets: 9,
+        totalClaims: 9,
+        totalInterventions: 6,
+        unreviewedClaims: 9
+      },
+      coverageGaps: [],
+      humanOwned: true,
+      nextAction:
+        "Human review this sampled batch first; do not update review status until the cited packet and extraction are checked.",
+      readOnly: true,
+      readyReviewClaims: expect.arrayContaining([
+        expect.objectContaining({
+          claimId: "bpc-157-injury-healing",
+          packetStatus: "complete",
+          priority: 175
+        }),
+        expect.objectContaining({
+          claimId: "vitamin-d-deficiency",
+          packetStatus: "complete",
+          priority: 175
+        }),
+        expect.objectContaining({
+          claimId: "creatine-strength",
+          packetStatus: "complete",
+          priority: 160
+        })
+      ]),
+      sampledReviewClaims: [
+        {
+          claimId: "bpc-157-injury-healing",
+          interventionId: "bpc-157",
+          outcome: "Joint/tendon/skin",
+          priority: 175,
+          priorityReasons: [
+            "Unreviewed draft claim",
+            "Complete source packet ready for human review",
+            "Regulatory concern label"
+          ],
+          referenceIds: ["tga-safety-alerts", "fda-bpc-157-category-2"],
+          sourcePacketStatus: "complete",
+          studyIds: ["study-tga-unapproved-peptides", "study-fda-bpc-157"]
+        },
+        {
+          claimId: "vitamin-d-deficiency",
+          interventionId: "vitamin-d",
+          outcome: "Safety/adverse effects",
+          priority: 175,
+          priorityReasons: [
+            "Unreviewed draft claim",
+            "Complete source packet ready for human review",
+            "Safety outcome",
+            "High confidence draft"
+          ],
+          referenceIds: ["ods-vitamin-d"],
+          sourcePacketStatus: "complete",
+          studyIds: ["study-vitamin-d-ods"]
+        },
+        {
+          claimId: "creatine-strength",
+          interventionId: "creatine",
+          outcome: "Muscle/strength",
+          priority: 160,
+          priorityReasons: [
+            "Unreviewed draft claim",
+            "Complete source packet ready for human review",
+            "High confidence draft"
+          ],
+          referenceIds: ["issn-creatine-2017"],
+          sourcePacketStatus: "complete",
+          studyIds: ["study-creatine-issn"]
+        }
+      ]
+    });
+    expect(JSON.stringify(summary)).not.toContain("copySafeCommands");
+    expect(JSON.stringify(summary)).not.toContain("claimReviewBacklog");
+    expect(JSON.stringify(summary)).not.toContain("reviewChecklist");
+  });
+
+  it("emits only read-only commands for human coverage review", () => {
+    const summary = summarizeEvidenceCoverage(seedDashboardData);
+    const blockedWriteTokens = [
+      "--accept-candidate",
+      "--reject-candidate",
+      "--link-candidate-claim",
+      "--extract-candidate-study",
+      "--queue-",
+      "--run-next",
+      "--apply"
+    ];
+
+    expect(summary.worksheet.copySafeCommands).toHaveLength(9);
+    expect(summary.worksheet.copySafeCommands.every((item) => item.mode === "read-only")).toBe(
+      true
+    );
+    expect(
+      summary.worksheet.copySafeCommands.some((item) =>
+        blockedWriteTokens.some((token) => item.command.includes(token))
+      )
+    ).toBe(false);
+  });
+
+  it("builds a focused read-only human review packet for one claim", () => {
+    expect(
+      summarizeEvidenceCoverageClaimReview(seedDashboardData, "creatine-strength")
+    ).toEqual({
+      claimId: "creatine-strength",
+      found: true,
+      humanOwned: true,
+      nextAction:
+        "Human review this claim packet; do not update review status until cited references and structured extraction are checked.",
+      readOnly: true,
+      reviewBacklogItem: {
+        claimId: "creatine-strength",
+        confidenceLevel: "High",
+        extractedReferences: 1,
+        finalLabel: "Core Evidence-Based",
+        interventionId: "creatine",
+        nextAction: "Human review the complete source packet before upgrading review status.",
+        outcome: "Muscle/strength",
+        packetStatus: "complete",
+        priority: 160,
+        priorityReasons: [
+          "Unreviewed draft claim",
+          "Complete source packet ready for human review",
+          "High confidence draft"
+        ],
+        referenceCount: 1,
+        reviewStatus: "Unreviewed AI draft"
+      },
+      reviewContext: {
+        claimBoundary: {
+          confidenceLevel: "High",
+          doseFormStudied: "Creatine monohydrate; dose details must be checked per study.",
+          durationStudied: "Varies by trial and review.",
+          finalLabel: "Core Evidence-Based",
+          populationStudied: "Adults in exercise and sport nutrition literature.",
+          reviewStatus: "Unreviewed AI draft"
+        },
+        claimId: "creatine-strength",
+        interventionId: "creatine",
+        nextAction:
+          "Review the linked references and structured study extraction before changing this claim's review status.",
+        outcome: "Muscle/strength",
+        priority: 160,
+        priorityReasons: [
+          "Unreviewed draft claim",
+          "Complete source packet ready for human review",
+          "High confidence draft"
+        ],
+        referenceIds: ["issn-creatine-2017"],
+        reviewChecklist: [
+          "Confirm the cited references and structured studies match this claim's population, outcome, comparator, and uncertainty label.",
+          "Check population, dose/form, duration, safety notes, and applicability notes before changing review status.",
+          "Verify source packet status is still complete and every linked reference has traceable extraction.",
+          "Leave review status unchanged until a human reviewer records the evidence decision."
+        ],
+        sourcePacketStatus: "complete",
+        studyIds: ["study-creatine-issn"]
+      },
+      status: "ready-for-human-review"
+    });
+  });
+
+  it("reports missing focused claim review packets without writes", () => {
+    expect(summarizeEvidenceCoverageClaimReview(seedDashboardData, "missing-claim")).toEqual({
+      claimId: "missing-claim",
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No claim found for missing-claim; rerun npm run coverage:review to inspect valid claim IDs.",
+      readOnly: true,
+      reviewBacklogItem: null,
+      reviewContext: null,
+      status: "not-found"
     });
   });
 });

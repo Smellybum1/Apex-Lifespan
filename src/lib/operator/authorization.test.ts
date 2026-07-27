@@ -25,6 +25,8 @@ describe("operator authorization policy", () => {
   it("allows higher roles to perform lower-role permissions", () => {
     expect(canOperatorAccess(OperatorRole.OWNER, "operator:manage")).toBe(true);
     expect(canOperatorAccess(OperatorRole.ADMIN, "evidence:promote")).toBe(true);
+    expect(canOperatorAccess(OperatorRole.ADMIN, "onboarding:draft")).toBe(true);
+    expect(canOperatorAccess(OperatorRole.ADMIN, "onboarding:import")).toBe(true);
     expect(canOperatorAccess(OperatorRole.REVIEWER, "candidate:review")).toBe(true);
     expect(canOperatorAccess(OperatorRole.AUDITOR, "audit:read")).toBe(true);
   });
@@ -32,15 +34,19 @@ describe("operator authorization policy", () => {
   it("blocks lower roles from elevated permissions", () => {
     expect(canOperatorAccess(OperatorRole.AUDITOR, "candidate:review")).toBe(false);
     expect(canOperatorAccess(OperatorRole.REVIEWER, "curation:claim-link")).toBe(false);
+    expect(canOperatorAccess(OperatorRole.REVIEWER, "onboarding:draft")).toBe(false);
+    expect(canOperatorAccess(OperatorRole.REVIEWER, "onboarding:import")).toBe(false);
     expect(canOperatorAccess(OperatorRole.ADMIN, "operator:manage")).toBe(false);
   });
 
-  it("treats review, curation, promotion, and operator management as writes", () => {
+  it("treats review, curation, onboarding draft, promotion, and operator management as writes", () => {
     expect(isOperatorWritePermission("audit:read")).toBe(false);
     expect(isOperatorWritePermission("candidate:review")).toBe(true);
     expect(isOperatorWritePermission("curation:claim-link")).toBe(true);
     expect(isOperatorWritePermission("curation:study-extraction")).toBe(true);
     expect(isOperatorWritePermission("evidence:promote")).toBe(true);
+    expect(isOperatorWritePermission("onboarding:draft")).toBe(true);
+    expect(isOperatorWritePermission("onboarding:import")).toBe(true);
     expect(isOperatorWritePermission("operator:manage")).toBe(true);
   });
 

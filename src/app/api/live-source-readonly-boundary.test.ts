@@ -88,7 +88,9 @@ describe("live source API read-only boundary", () => {
   });
 
   it("does not expose source-candidate persistence from public route handlers", () => {
-    const routeFiles = listRouteFiles(API_DIR).filter((filePath) => !isAuthRoute(filePath));
+    const routeFiles = listRouteFiles(API_DIR).filter(
+      (filePath) => !isAuthRoute(filePath) && !isLocalIngestionRoute(filePath)
+    );
 
     expect(routeFiles.length).toBeGreaterThan(0);
 
@@ -105,9 +107,24 @@ describe("live source API read-only boundary", () => {
     }
   });
 
+  it("keeps local ingestion route handlers behind the central local guard", () => {
+    const routeFiles = listRouteFiles(API_DIR).filter(isLocalIngestionRoute);
+
+    expect(routeFiles.length).toBeGreaterThan(0);
+
+    for (const filePath of routeFiles) {
+      const source = readFileSync(filePath, "utf8");
+
+      expect(
+        source,
+        `${relativeRoutePath(filePath)} must check the local ingestion guard before doing work`
+      ).toContain("guardLocalIngestionRequest(request)");
+    }
+  });
+
   it("does not expose source-candidate workflows from the public dashboard surface", () => {
     const publicFiles = listPublicRuntimeFiles(PUBLIC_RUNTIME_PATHS)
-      .filter((filePath) => !isAuthRoute(filePath));
+      .filter((filePath) => !isAuthRoute(filePath) && !isLocalIngestionRoute(filePath));
 
     expect(publicFiles.length).toBeGreaterThan(0);
 
@@ -169,4 +186,8 @@ function relativeProjectPath(filePath: string) {
 
 function isAuthRoute(filePath: string) {
   return relativeProjectPath(filePath) === "src/app/api/auth/[...nextauth]/route.ts";
+}
+
+function isLocalIngestionRoute(filePath: string) {
+  return relativeProjectPath(filePath).startsWith("src/app/api/local-ingestion/");
 }

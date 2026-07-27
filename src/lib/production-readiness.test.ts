@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildProductionReadinessReport } from "@/lib/production-readiness";
+import {
+  buildProductionReadinessReport,
+  summarizeProductionReadinessCheck,
+  summarizeProductionReadinessReport
+} from "@/lib/production-readiness";
 
 describe("production readiness report", () => {
   it("reports ready when managed database and required production secrets are configured", () => {
@@ -79,6 +83,86 @@ describe("production readiness report", () => {
     expect(report.worksheet.nextOperatorAction).toBe(
       "Use a managed non-local PostgreSQL target before production migration rehearsal."
     );
+    expect(report.worksheet.copySafeCommands).toEqual([
+      {
+        command: "npm run production:readiness",
+        id: "production-readiness",
+        label: "Refresh production readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck production database, secrets, and evidence gates without printing secret values."
+      },
+      {
+        command: "npm run production:readiness -- --summary",
+        id: "production-readiness-summary",
+        label: "Refresh compact production summary",
+        mode: "read-only",
+        purpose:
+          "Print production readiness counts, blockers, warnings, ready checks, and next action without dumping all checks."
+      },
+      {
+        command: "npm run production:readiness -- --check <check-id>",
+        id: "production-readiness-check",
+        label: "Focus one production readiness check",
+        mode: "read-only",
+        purpose:
+          "Print one production readiness check with its evidence keys and next action for dashboard setup."
+      },
+      {
+        command: "npm run production:readiness -- --env-file <non-production-env-file> --summary",
+        id: "production-readiness-env-file-summary",
+        label: "Refresh production summary from env file",
+        mode: "read-only",
+        purpose:
+          "Check an approved non-production env file without printing secret values or changing databases."
+      },
+      {
+        command: "npm run production:migration-rehearsal",
+        id: "migration-rehearsal-plan",
+        label: "Plan non-production migration rehearsal",
+        mode: "read-only",
+        purpose: "Dry-run the migration rehearsal plan before any managed database changes."
+      },
+      {
+        command: "npm run production:migration-rehearsal -- --env-file <non-production-env-file>",
+        id: "migration-rehearsal-env-file-plan",
+        label: "Plan migration rehearsal from env file",
+        mode: "read-only",
+        purpose:
+          "Dry-run the rehearsal against an approved non-production env file without applying migrations."
+      },
+      {
+        command: "npm run production:migration-rehearsal -- --apply",
+        id: "migration-rehearsal-apply",
+        label: "Apply non-production migration rehearsal",
+        mode: "explicit-apply",
+        purpose:
+          "Run only after confirming a non-production managed DATABASE_URL and APEX_MIGRATION_REHEARSAL_TARGET=non-production."
+      },
+      {
+        command:
+          "npm run production:migration-rehearsal -- --env-file <non-production-env-file> --apply",
+        id: "migration-rehearsal-env-file-apply",
+        label: "Apply migration rehearsal from env file",
+        mode: "explicit-apply",
+        purpose:
+          "Run only after reviewing an approved non-production env file and confirming its database target is not production."
+      },
+      {
+        command: "npm run db:validate",
+        id: "database-schema-validate",
+        label: "Validate Prisma schema",
+        mode: "read-only",
+        purpose: "Validate the committed Prisma schema before and after managed environment setup."
+      },
+      {
+        command: "npm run launch:readiness",
+        id: "launch-readiness",
+        label: "Refresh aggregate launch readiness",
+        mode: "read-only",
+        purpose: "Recheck fully-live launch gates after production evidence changes."
+      }
+    ]);
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -107,6 +191,156 @@ describe("production readiness report", () => {
         })
       ])
     );
+  });
+
+  it("builds a compact production readiness summary without full report detail", () => {
+    const report = buildProductionReadinessReport({
+      env: {
+        APEX_DATA_SOURCE: "seed",
+        DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/apex_lifespan",
+        NCBI_TOOL: "apex-lifespan"
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      migrationDirectories: ["20260602032000_init"],
+      productionProvisioningChecklistExists: true,
+      trackedEnvFiles: [],
+      vercelCliAvailable: false,
+      vercelProjectLinked: false
+    });
+
+    const summary = summarizeProductionReadinessReport(report);
+
+    expect(summary).toMatchObject({
+      counts: {
+        blocked: 5,
+        info: 0,
+        ready: 5,
+        warning: 2
+      },
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      humanOwned: true,
+      nextAction: "Use a managed non-local PostgreSQL target before production migration rehearsal.",
+      overall: "blocked",
+      readOnly: true
+    });
+    expect(summary.blockedChecks.map((item) => item.id)).toEqual([
+      "database-url",
+      "apex-data-source",
+      "migration-rehearsal",
+      "vercel-project",
+      "operator-auth-secrets"
+    ]);
+    expect(summary.readyChecks.map((item) => item.id)).toEqual([
+      "prisma-migrations",
+      "production-provisioning-checklist",
+      "local-only-sidecar-secrets",
+      "tracked-env-files",
+      "operator-write-flag"
+    ]);
+    expect(summary.warningChecks.map((item) => item.id)).toEqual([
+      "vercel-cli",
+      "ncbi-metadata"
+    ]);
+    expect(summary).not.toHaveProperty("checks");
+    expect(summary).not.toHaveProperty("worksheet");
+    expect(JSON.stringify(summary)).not.toContain("postgres:postgres");
+  });
+
+  it("builds a focused read-only packet for one production readiness check", () => {
+    expect(
+      summarizeProductionReadinessCheck(
+        {
+          env: {
+            APEX_DATA_SOURCE: "seed",
+            DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/apex_lifespan"
+          },
+          generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+          migrationDirectories: ["20260602032000_init"],
+          productionProvisioningChecklistExists: true,
+          trackedEnvFiles: [],
+          vercelCliAvailable: false,
+          vercelProjectLinked: false
+        },
+        "database-url"
+      )
+    ).toEqual({
+      availableCheckIds: [
+        "database-url",
+        "apex-data-source",
+        "prisma-migrations",
+        "production-provisioning-checklist",
+        "migration-rehearsal",
+        "vercel-project",
+        "vercel-cli",
+        "operator-auth-secrets",
+        "local-only-sidecar-secrets",
+        "tracked-env-files",
+        "operator-write-flag",
+        "ncbi-metadata"
+      ],
+      check: {
+        detail: "DATABASE_URL points at local target postgresql://localhost:5432/apex_lifespan.",
+        id: "database-url",
+        label: "Managed database URL",
+        nextAction: "Use a managed non-local PostgreSQL target before production migration rehearsal.",
+        status: "blocked"
+      },
+      checkId: "database-url",
+      found: true,
+      humanOwned: true,
+      nextAction: "Use a managed non-local PostgreSQL target before production migration rehearsal.",
+      readOnly: true,
+      relatedCommand: {
+        command: "npm run production:readiness",
+        id: "production-readiness",
+        label: "Refresh production readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck production database, secrets, and evidence gates without printing secret values."
+      },
+      status: "blocked"
+    });
+  });
+
+  it("reports missing focused production readiness checks without writes", () => {
+    expect(
+      summarizeProductionReadinessCheck(
+        {
+          env: {},
+          generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+          migrationDirectories: ["20260602032000_init"],
+          productionProvisioningChecklistExists: true,
+          trackedEnvFiles: [],
+          vercelCliAvailable: false,
+          vercelProjectLinked: false
+        },
+        "missing-check"
+      )
+    ).toEqual({
+      availableCheckIds: [
+        "database-url",
+        "apex-data-source",
+        "prisma-migrations",
+        "production-provisioning-checklist",
+        "migration-rehearsal",
+        "vercel-project",
+        "vercel-cli",
+        "operator-auth-secrets",
+        "local-only-sidecar-secrets",
+        "tracked-env-files",
+        "operator-write-flag",
+        "ncbi-metadata"
+      ],
+      check: null,
+      checkId: "missing-check",
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No production readiness check matched this id; rerun npm run production:readiness to inspect valid check ids.",
+      readOnly: true,
+      relatedCommand: null,
+      status: "not-found"
+    });
   });
 
   it("accepts GitHub-imported Vercel project evidence without a local Vercel link", () => {
@@ -141,6 +375,49 @@ describe("production readiness report", () => {
       ])
     );
     expect(report.worksheet.warnings.map((item) => item.id)).toEqual(["vercel-cli"]);
+  });
+
+  it("accepts dashboard-managed Vercel database and auth evidence without local secret values", () => {
+    const report = buildProductionReadinessReport({
+      env: {
+        APEX_MIGRATION_REHEARSAL_PASSED_AT: "2026-06-11T00:00:00Z",
+        APEX_VERCEL_DATABASE_CONFIGURED_AT: "2026-06-11T02:00:00Z",
+        APEX_VERCEL_DATABASE_MODE_CONFIGURED_AT: "2026-06-11T02:05:00Z",
+        APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT: "2026-06-11T02:10:00Z",
+        APEX_VERCEL_PROJECT_CONFIGURED_AT: "2026-06-11T01:00:00Z",
+        NCBI_EMAIL: "operator@example.com",
+        NCBI_TOOL: "apex-lifespan"
+      },
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      migrationDirectories: ["20260602032000_init", "20260611131000_operator_auth_foundation"],
+      productionProvisioningChecklistExists: true,
+      trackedEnvFiles: [],
+      vercelCliAvailable: false,
+      vercelProjectLinked: false
+    });
+
+    expect(report.overall).toBe("ready");
+    expect(report.counts.warning).toBe(1);
+    expect(report.sanitizedDatabaseTarget).toBeUndefined();
+    expect(report.worksheet.ready).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evidenceKeys: ["APEX_VERCEL_DATABASE_CONFIGURED_AT"],
+          id: "database-url"
+        }),
+        expect.objectContaining({
+          evidenceKeys: ["APEX_VERCEL_DATABASE_MODE_CONFIGURED_AT"],
+          id: "apex-data-source"
+        }),
+        expect.objectContaining({
+          evidenceKeys: ["APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT"],
+          id: "operator-auth-secrets"
+        })
+      ])
+    );
+    expect(JSON.stringify(report)).not.toContain("dbpass");
+    expect(JSON.stringify(report)).not.toContain("github-oauth-value");
+    expect(JSON.stringify(report)).not.toContain("session-value");
   });
 
   it("blocks local-only sidecar variables and tracked private env files", () => {

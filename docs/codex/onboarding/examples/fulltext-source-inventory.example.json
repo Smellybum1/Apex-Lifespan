@@ -1,0 +1,35 @@
+{
+  "sources": [
+    {
+      "id": "example-reviewed-open-access-source",
+      "label": "Example reviewed open-access source",
+      "sourceKind": "biomedical-literature",
+      "accessMethod": "api",
+      "allowedUse": "Example only. Replace with source-specific reviewed allowed use before live capture.",
+      "termsUrl": "",
+      "policyUrl": "",
+      "reviewedAt": "",
+      "reviewedBy": "",
+      "notes": "Keep approvals false until the source terms, access method, rate/cache policy, raw retention, and derived-only export are reviewed.",
+      "authRequired": false,
+      "loginRequired": false,
+      "captchaRisk": false,
+      "privateDataRisk": false,
+      "rateLimit": "",
+      "cacheTtl": "",
+      "rawRetentionPolicy": "",
+      "dryRunSupported": true,
+      "liveFetchSupported": false,
+      "approval": {
+        "termsReviewed": false,
+        "accessMethodReviewed": false,
+        "robotsOrApiPolicyReviewed": false,
+        "rawRetentionReviewed": false,
+        "derivedOnlyExportReviewed": false,
+        "approvedForStorage": false,
+        "approvedForLiveFetch": false,
+        "approvedForPublicExport": false
+      }
+    }
+  ]
+}

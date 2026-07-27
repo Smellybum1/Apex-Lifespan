@@ -29,6 +29,7 @@ export interface LaunchReadinessPromotion {
 
 export interface LaunchReadinessScheduledIngestion {
   hostedCronReady?: boolean;
+  hostedRunGateReady?: boolean;
   missingEnv?: string[];
   noAutoPromotion?: boolean;
   retryAutomationReady?: boolean;
@@ -61,12 +62,33 @@ export interface LaunchReadinessReport {
   worksheet: LaunchReadinessWorksheet;
 }
 
+export interface LaunchReadinessSummary {
+  blockedGates: LaunchReadinessWorksheetItem[];
+  counts: Record<LaunchReadinessStatus, number>;
+  generatedAt: string;
+  humanOwned: true;
+  nextAction: string;
+  overall: "ready" | "blocked";
+  readOnly: true;
+  readyGates: LaunchReadinessWorksheetItem[];
+  warningGates: LaunchReadinessWorksheetItem[];
+}
+
 export interface LaunchReadinessWorksheet {
   blockedGates: LaunchReadinessWorksheetItem[];
+  copySafeCommands: LaunchReadinessCommand[];
   humanOwned: true;
   nextLaunchAction: string;
   readyGates: LaunchReadinessWorksheetItem[];
   warningGates: LaunchReadinessWorksheetItem[];
+}
+
+export interface LaunchReadinessCommand {
+  command: string;
+  id: string;
+  label: string;
+  mode: "read-only";
+  purpose: string;
 }
 
 export interface LaunchReadinessWorksheetItem {
@@ -77,7 +99,7 @@ export interface LaunchReadinessWorksheetItem {
   nextAction?: string;
 }
 
-const PUBLIC_SMOKE_KEY = "APEX_PUBLIC_SMOKE_PASSED_AT";
+const PUBLIC_DATABASE_SMOKE_KEY = "APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT";
 const ADMIN_FLOW_SMOKE_KEY = "APEX_ADMIN_FLOW_SMOKE_PASSED_AT";
 const LAUNCH_APPROVAL_KEY = "APEX_FULLY_LIVE_LAUNCH_APPROVED_AT";
 const POST_LAUNCH_REVIEW_KEY = "APEX_POST_LAUNCH_REVIEW_SCHEDULED_AT";
@@ -123,10 +145,10 @@ export function buildLaunchReadinessReport(
     timestampEvidenceCheck({
       env: context.env,
       id: "public-smoke",
-      key: PUBLIC_SMOKE_KEY,
+      key: PUBLIC_DATABASE_SMOKE_KEY,
       label: "Public smoke",
       nextAction:
-        "Run public smoke against the fully-live production URL and record APEX_PUBLIC_SMOKE_PASSED_AT."
+        "Run npm run smoke:public-mvp -- <fully-live-url> --require-database and record APEX_PUBLIC_DATABASE_SMOKE_PASSED_AT."
     }),
     timestampEvidenceCheck({
       env: context.env,
@@ -166,6 +188,22 @@ export function buildLaunchReadinessReport(
     nextAction,
     overall: counts.blocked > 0 ? "blocked" : "ready",
     worksheet: launchReadinessWorksheet(checks, nextAction)
+  };
+}
+
+export function summarizeLaunchReadinessReport(
+  report: LaunchReadinessReport
+): LaunchReadinessSummary {
+  return {
+    blockedGates: report.worksheet.blockedGates,
+    counts: report.counts,
+    generatedAt: report.generatedAt,
+    humanOwned: true,
+    nextAction: report.nextAction,
+    overall: report.overall,
+    readOnly: true,
+    readyGates: report.worksheet.readyGates,
+    warningGates: report.worksheet.warningGates
   };
 }
 
@@ -260,6 +298,7 @@ function scheduledIngestionCheck(
 
   const blockers = [
     ...(scheduledIngestion.hostedCronReady ? [] : ["hosted-cron"]),
+    ...(scheduledIngestion.hostedRunGateReady ? [] : ["hosted-run-gate"]),
     ...(scheduledIngestion.retryAutomationReady ? [] : ["retry-policy"]),
     ...(scheduledIngestion.noAutoPromotion ? [] : ["no-auto-promotion"])
   ];
@@ -269,7 +308,8 @@ function scheduledIngestionCheck(
       id: "scheduled-ingestion",
       label: "Scheduled source ingestion",
       status: "ready",
-      detail: "Hosted cron, retry policy, and no-auto-promotion evidence are ready."
+      detail:
+        "Hosted cron, hosted-run gate, retry policy, and no-auto-promotion evidence are ready."
     };
   }
 
@@ -282,6 +322,8 @@ function scheduledIngestionCheck(
     nextAction:
       (scheduledIngestion.missingEnv?.length ?? 0) > 0
         ? `Configure scheduled ingestion evidence: ${scheduledIngestion.missingEnv?.join(", ")}.`
+        : blockers.includes("hosted-run-gate")
+          ? "Refresh scheduled ingestion dry-run and verify the hosted-run gate before launch."
         : "Review scheduled ingestion retry policy before launch."
   };
 }
@@ -421,6 +463,7 @@ function launchReadinessWorksheet(
     blockedGates: checks
       .filter((check) => check.status === "blocked")
       .map(launchReadinessWorksheetItem),
+    copySafeCommands: launchReadinessCopySafeCommands(),
     humanOwned: true,
     nextLaunchAction: nextAction,
     readyGates: checks
@@ -430,6 +473,166 @@ function launchReadinessWorksheet(
       .filter((check) => check.status === "warning")
       .map(launchReadinessWorksheetItem)
   };
+}
+
+function launchReadinessCopySafeCommands(): LaunchReadinessCommand[] {
+  return [
+    {
+      command: "npm run launch:readiness",
+      id: "launch-readiness",
+      label: "Refresh aggregate launch readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck production, operator, operations, ingestion, promotion, coverage, smoke, and launch evidence gates."
+    },
+    {
+      command: "npm run launch:readiness -- --summary",
+      id: "launch-readiness-summary",
+      label: "Refresh compact launch summary",
+      mode: "read-only",
+      purpose:
+        "Print a compact launch status with counts, blocked gates, ready gates, and the next action."
+    },
+    {
+      command: "npm run launch:readiness -- --env-file <non-production-env-file> --summary",
+      id: "launch-readiness-env-file-summary",
+      label: "Refresh launch summary from env file",
+      mode: "read-only",
+      purpose:
+        "Recheck aggregate launch gates with approved non-production evidence without printing secret values."
+    },
+    {
+      command: "npm run production:readiness",
+      id: "production-readiness",
+      label: "Refresh production readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck managed database, migration rehearsal, Vercel project, and secret evidence without printing secret values."
+    },
+    {
+      command: "npm run production:readiness -- --env-file <non-production-env-file> --summary",
+      id: "production-readiness-env-file-summary",
+      label: "Refresh production summary from env file",
+      mode: "read-only",
+      purpose:
+        "Recheck production data and secret evidence from an approved env file without printing values."
+    },
+    {
+      command: "npm run operator:readiness",
+      id: "operator-readiness",
+      label: "Refresh operator readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck GitHub OAuth, active operator, manual QA, and browser-write-control evidence without enabling writes."
+    },
+    {
+      command: "npm run operator:readiness -- --env-file <non-production-env-file> --summary",
+      id: "operator-readiness-env-file-summary",
+      label: "Refresh operator summary from env file",
+      mode: "read-only",
+      purpose:
+        "Recheck operator auth and QA evidence from an approved env file without printing values."
+    },
+    {
+      command: "npm run operations:readiness",
+      id: "operations-readiness",
+      label: "Refresh operations readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck monitoring, alert, backup, restore, rollback, privacy, terms, and runbook evidence."
+    },
+    {
+      command: "npm run operations:readiness -- --env-file <non-production-env-file> --summary",
+      id: "operations-readiness-env-file-summary",
+      label: "Refresh operations summary from env file",
+      mode: "read-only",
+      purpose:
+        "Recheck operations evidence from an approved env file without printing secret values."
+    },
+    {
+      command: "npm run ingest:scheduled-dry-run",
+      id: "scheduled-ingestion-dry-run",
+      label: "Refresh scheduled ingestion dry run",
+      mode: "read-only",
+      purpose:
+        "Recheck hosted-cron, retry-policy, queue, dedupe, and no-auto-promotion readiness without running jobs."
+    },
+    {
+      command: "npm run coverage:review",
+      id: "coverage-review",
+      label: "Refresh evidence coverage review",
+      mode: "read-only",
+      purpose:
+        "Recheck human-reviewed coverage, review backlog, source-packet readiness, and intervention gaps."
+    },
+    {
+      command: "npm run coverage:review -- --env-file <non-production-env-file> --summary",
+      id: "coverage-review-env-file-summary",
+      label: "Refresh evidence coverage summary from env file",
+      mode: "read-only",
+      purpose:
+        "Recheck database-backed coverage from an approved non-production env file without printing secret values."
+    },
+    {
+      command: "npm run promotion:readiness -- --env-file <non-production-env-file> --summary",
+      id: "promotion-readiness-env-file-summary",
+      label: "Refresh promotion readiness from env file",
+      mode: "read-only",
+      purpose:
+        "Recheck accepted-candidate promotion readiness from an approved non-production env file without writing public evidence."
+    },
+    {
+      command: "npm run promotion:dry-run -- --pmid <pmid>",
+      id: "promotion-dry-run",
+      label: "Dry-run accepted candidate promotion",
+      mode: "read-only",
+      purpose:
+        "Inspect promotion blockers for an accepted PubMed candidate before any explicit human promotion decision."
+    },
+    {
+      command: "npm run smoke:public-mvp -- <fully-live-url> --require-database",
+      id: "public-smoke",
+      label: "Smoke fully-live public routes",
+      mode: "read-only",
+      purpose:
+        "Verify the public URL, database-backed dashboard mode, legal pages, security headers, health endpoint, and live-source preview guards."
+    },
+    {
+      command: "npm run operator:smoke -- <fully-live-url>",
+      id: "operator-anonymous-smoke",
+      label: "Smoke anonymous operator boundary",
+      mode: "read-only",
+      purpose:
+        "Verify anonymous visitors cannot see operator queues, audit content, promotion controls, or write controls."
+    },
+    {
+      command:
+        'npm run launch:evidence -- --env-file <ignored-evidence-env-file> --evidence admin-flow-smoke --url <fully-live-url>/operator --note "<manual smoke note>" --summary',
+      id: "admin-flow-smoke-evidence-dry-run",
+      label: "Preview admin-flow smoke evidence",
+      mode: "read-only",
+      purpose:
+        "Preview the local ignored-env evidence entry after authenticated operator smoke has actually passed; this dry-run does not write evidence."
+    },
+    {
+      command:
+        'npm run launch:evidence -- --env-file <ignored-evidence-env-file> --evidence post-launch-review --review-window "<24-48 hour review window>" --note "<schedule note>" --summary',
+      id: "post-launch-review-evidence-dry-run",
+      label: "Preview post-launch review evidence",
+      mode: "read-only",
+      purpose:
+        "Preview the local ignored-env evidence entry after the 24-48 hour post-launch review is actually scheduled; this dry-run does not write evidence."
+    },
+    {
+      command:
+        'npm run launch:evidence -- --env-file <ignored-evidence-env-file> --evidence launch-approval --approved-by <approver> --note "<approval note>" --summary',
+      id: "launch-approval-evidence-dry-run",
+      label: "Preview final launch approval evidence",
+      mode: "read-only",
+      purpose:
+        "Preview the local ignored-env evidence entry after final approval is explicit and readiness has been reviewed; this dry-run does not write evidence."
+    }
+  ];
 }
 
 function launchReadinessWorksheetItem(

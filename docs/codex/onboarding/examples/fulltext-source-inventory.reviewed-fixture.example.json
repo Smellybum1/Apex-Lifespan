@@ -1,0 +1,35 @@
+{
+  "sources": [
+    {
+      "id": "synthetic-reviewed-open-access-source",
+      "label": "Synthetic reviewed open-access source",
+      "sourceKind": "synthetic-biomedical-fixture",
+      "accessMethod": "api",
+      "allowedUse": "Synthetic fixture only. Exercises the reviewed full-text inventory happy path and does not approve any real source, connector, or live fetch.",
+      "termsUrl": "https://example.test/synthetic-terms",
+      "policyUrl": "https://example.test/synthetic-api-policy",
+      "reviewedAt": "2026-06-12",
+      "reviewedBy": "synthetic-fixture",
+      "notes": "Fixture data only. Replace with source-specific reviewed terms, policy, rate/cache, retention, and export evidence before any real connector review.",
+      "authRequired": false,
+      "loginRequired": false,
+      "captchaRisk": false,
+      "privateDataRisk": false,
+      "rateLimit": "synthetic fixture: no live requests",
+      "cacheTtl": "synthetic fixture: no raw cache",
+      "rawRetentionPolicy": "Synthetic raw text is not fetched or stored; fixture-derived fields only.",
+      "dryRunSupported": true,
+      "liveFetchSupported": true,
+      "approval": {
+        "termsReviewed": true,
+        "accessMethodReviewed": true,
+        "robotsOrApiPolicyReviewed": true,
+        "rawRetentionReviewed": true,
+        "derivedOnlyExportReviewed": true,
+        "approvedForStorage": true,
+        "approvedForLiveFetch": true,
+        "approvedForPublicExport": true
+      }
+    }
+  ]
+}

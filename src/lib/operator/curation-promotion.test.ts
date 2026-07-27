@@ -6,11 +6,44 @@ import {
 } from "@/lib/data/source-candidates";
 import {
   assessSourceCandidatePublicPromotion,
-  getSourceCandidatePromotionReadinessSnapshot
+  buildSourceCandidatePromotionReadinessReport,
+  getSourceCandidatePromotionReadinessSnapshot,
+  summarizeSourceCandidatePromotionReadinessReport
 } from "@/lib/operator/curation-promotion";
 import type { Reference, SourceCandidate } from "@/lib/types";
 
 vi.mock("@/lib/data/source-candidates", () => ({
+  buildSourceCandidateStudyExtractionPrefillFields: (sourceCandidate: SourceCandidate) => [
+    {
+      confidence: sourceCandidate.metadata.abstractText
+        ? "candidate-metadata"
+        : "manual-required",
+      confidenceLabel: sourceCandidate.metadata.abstractText ? "Strong" : "Missing",
+      confidenceRationale: sourceCandidate.metadata.abstractText
+        ? "Value comes directly from captured source metadata or source-text preview, but still needs operator verification."
+        : "No abstract value was available in candidate metadata; human extraction is required.",
+      field: "abstract",
+      note:
+        "Captured abstract or registry summary can seed the optional study abstract field, but operators must verify source context before writing.",
+      reviewConfidence: sourceCandidate.metadata.abstractText ? "strong" : "missing",
+      value: sourceCandidate.metadata.abstractText
+        ? `PubMed abstract: ${sourceCandidate.metadata.abstractText}`
+        : "Human-reviewed abstract required.",
+      writeFlag: "--study-abstract"
+    },
+    {
+      confidence: "manual-required",
+      confidenceLabel: "Missing",
+      confidenceRationale:
+        "No sampleSize value was available in candidate metadata; human extraction is required.",
+      field: "sampleSize",
+      note:
+        "Enrollment/sample-size metadata may describe planned rather than analyzed sample; verify actual analyzed sample before writing.",
+      reviewConfidence: "missing",
+      value: "Human-reviewed sampleSize required.",
+      writeFlag: "--study-sample-size"
+    }
+  ],
   getSourceCandidateCurationStatus: vi.fn(),
   listSourceCandidateCurationHandoff: vi.fn()
 }));
@@ -24,7 +57,9 @@ const candidate: SourceCandidate = {
   decision: "Accepted",
   dedupeKey: "pubmed|au|creatine-strength|42141930|creatine|creatine-strength",
   externalId: "42141930",
-  metadata: {},
+  metadata: {
+    abstractText: "Creatine abstract for extraction prefill."
+  },
   query: "creatine strength",
   region: "AU",
   reviewStatus: "Human reviewed",
@@ -106,6 +141,46 @@ describe("source candidate promotion assessment", () => {
         ],
         publicSourcePacketReady: false,
         readOnlyCommands: candidateReadOnlyCommands,
+        requiredEvidence: [
+          {
+            id: "candidate-accepted",
+            label: "Candidate accepted",
+            nextAction: "Candidate is accepted.",
+            ready: true
+          },
+          {
+            id: "candidate-human-reviewed",
+            label: "Candidate human review",
+            nextAction: "Candidate review status is Human reviewed.",
+            ready: true
+          },
+          {
+            id: "accepted-reference-traceable",
+            label: "Traceable accepted reference",
+            nextAction: "Accepted reference has id, title, and URL.",
+            ready: true
+          },
+          {
+            id: "claim-link",
+            label: "Claim link",
+            nextAction:
+              "Human link the accepted reference to the candidate claim before promotion review.",
+            ready: false
+          },
+          {
+            id: "structured-extraction",
+            label: "Structured extraction",
+            nextAction:
+              "Human add structured study extraction for the accepted reference before promotion review.",
+            ready: false
+          },
+          {
+            id: "public-source-packet-ready",
+            label: "Public source packet readiness",
+            nextAction: "Rerun the dry run after claim link and structured extraction are complete.",
+            ready: false
+          }
+        ],
         studyExtraction: {
           existingStudyIds: [],
           nextAction:
@@ -179,6 +254,44 @@ describe("source candidate promotion assessment", () => {
         nextHumanActions: ["Human review the ready public packet before any explicit promotion."],
         publicSourcePacketReady: true,
         readOnlyCommands: candidateReadOnlyCommands,
+        requiredEvidence: [
+          {
+            id: "candidate-accepted",
+            label: "Candidate accepted",
+            nextAction: "Candidate is accepted.",
+            ready: true
+          },
+          {
+            id: "candidate-human-reviewed",
+            label: "Candidate human review",
+            nextAction: "Candidate review status is Human reviewed.",
+            ready: true
+          },
+          {
+            id: "accepted-reference-traceable",
+            label: "Traceable accepted reference",
+            nextAction: "Accepted reference has id, title, and URL.",
+            ready: true
+          },
+          {
+            id: "claim-link",
+            label: "Claim link",
+            nextAction: "Accepted reference is linked to the candidate claim.",
+            ready: true
+          },
+          {
+            id: "structured-extraction",
+            label: "Structured extraction",
+            nextAction: "Structured study extraction is present for the accepted reference.",
+            ready: true
+          },
+          {
+            id: "public-source-packet-ready",
+            label: "Public source packet readiness",
+            nextAction: "Curation status reports publicSourcePacketReady=true.",
+            ready: true
+          }
+        ],
         studyExtraction: {
           existingStudyIds: ["study-pubmed-42141930"],
           nextAction: "Structured study extraction is present for the accepted reference.",
@@ -237,6 +350,33 @@ describe("source candidate promotion readiness snapshot", () => {
       readyCount: 1,
       rows: [
         {
+          actionPreview: expect.objectContaining({
+            dryRunCommand: `npm run promotion:dry-run -- ${candidateSafeKey}`,
+            promotionEffect:
+              "No public packet write preview until accepted reference, claim link, structured extraction, and packet readiness are complete.",
+            requiredPermission: "evidence:promote"
+          }),
+          extractionPrefill: {
+            curationDraftCommand:
+              `npm run ingest:sources -- --candidate-curation-draft ${candidateSafeKey}`,
+            fieldSuggestions: expect.arrayContaining([
+              expect.objectContaining({
+                confidence: "candidate-metadata",
+                confidenceLabel: "Strong",
+                confidenceRationale:
+                  "Value comes directly from captured source metadata or source-text preview, but still needs operator verification.",
+                field: "abstract",
+                label: "Abstract/source summary",
+                reviewConfidence: "strong",
+                value: "PubMed abstract: Creatine abstract for extraction prefill.",
+                writeFlag: "--study-abstract"
+              })
+            ]),
+            fullTextStatus:
+              "Full text is not automatically captured; operators must verify the source packet before writing extraction fields.",
+            sourceTextStatus:
+              "PubMed abstract text captured for the curation draft."
+          },
           blockers: [
             "Accepted reference must be linked to the candidate claim.",
             "Accepted reference must have a structured study extraction.",
@@ -247,6 +387,13 @@ describe("source candidate promotion readiness snapshot", () => {
           status: "Claim link missing"
         },
         {
+          actionPreview: expect.objectContaining({
+            browserAction:
+              "Promote accepted candidate 42141930 with an explicit human promotion note.",
+            promotionEffect:
+              "Would expose reference ref-pubmed-42141930 and 1 structured extraction(s) on claim creatine-strength.",
+            requiredPermission: "evidence:promote"
+          }),
           blockers: [],
           nextAction: "Ready for explicit human promotion review.",
           ready: true,
@@ -256,6 +403,161 @@ describe("source candidate promotion readiness snapshot", () => {
       total: 2
     });
     expect(listSourceCandidateCurationHandoffMock).toHaveBeenCalledWith({ limit: 2 });
+  });
+
+  it("builds a read-only promotion readiness report", async () => {
+    listSourceCandidateCurationHandoffMock.mockResolvedValue([
+      {
+        acceptedReference,
+        acceptedReferenceId: acceptedReference.id,
+        candidate,
+        claimLinks: [],
+        nextAction: "Link accepted reference to candidate claim.",
+        publicSourcePacketReady: false,
+        status: "Claim link missing",
+        studies: []
+      }
+    ]);
+
+    await expect(
+      buildSourceCandidatePromotionReadinessReport({
+        generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+        limit: 1
+      })
+    ).resolves.toMatchObject({
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      humanOwned: true,
+      readOnly: true,
+      snapshot: {
+        blockedCount: 1,
+        readyCount: 0,
+        total: 1
+      },
+      worksheet: {
+        blocked: [
+          {
+            blockers: [
+              "Accepted reference must be linked to the candidate claim.",
+              "Accepted reference must have a structured study extraction.",
+              "Curation status must report publicSourcePacketReady=true."
+            ],
+            dedupeKey: candidate.dedupeKey,
+            externalId: candidate.externalId,
+            label: candidate.title,
+            nextAction: "Accepted reference must be linked to the candidate claim.",
+            source: "PubMed",
+            status: "Claim link missing"
+          }
+        ],
+        copySafeCommands: [
+          {
+            command: "npm run promotion:readiness",
+            id: "promotion-readiness",
+            label: "Refresh promotion readiness",
+            mode: "read-only",
+            purpose:
+              "Summarize accepted source-candidate promotion blockers without writing public evidence."
+          },
+          {
+            command: "npm run promotion:readiness -- --summary",
+            id: "promotion-readiness-summary",
+            label: "Refresh compact promotion summary",
+            mode: "read-only",
+            purpose:
+              "Print accepted-candidate promotion counts, blockers, ready rows, and next action without dumping the full snapshot."
+          },
+          {
+            command: "npm run promotion:readiness -- --env-file <non-production-env-file> --summary",
+            id: "promotion-readiness-env-file-summary",
+            label: "Refresh compact promotion summary from env file",
+            mode: "read-only",
+            purpose:
+              "Print accepted-candidate promotion readiness from an approved non-production env file without dumping secret values."
+          },
+          {
+            command: "npm run promotion:dry-run -- --pmid <pmid>",
+            id: "promotion-dry-run",
+            label: "Dry-run one accepted PMID",
+            mode: "read-only",
+            purpose:
+              "Inspect one accepted PubMed candidate's claim link, extraction, and public packet readiness."
+          },
+          {
+            command:
+              "npm run promotion:dry-run -- --env-file <non-production-env-file> --pmid <pmid>",
+            id: "promotion-dry-run-env-file",
+            label: "Dry-run one accepted PMID from env file",
+            mode: "read-only",
+            purpose:
+              "Inspect one accepted PubMed candidate's promotion blockers from an approved non-production env file without writing public evidence."
+          },
+          {
+            command: "npm run ingest:sources -- --candidate-curation-handoff",
+            id: "candidate-curation-handoff",
+            label: "Review curation handoff",
+            mode: "read-only",
+            purpose:
+              "List accepted candidates and their curation handoff status without mutating decisions."
+          },
+          {
+            command:
+              "npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10",
+            id: "candidate-review-overview",
+            label: "Review pending candidate overview",
+            mode: "read-only",
+            purpose: "Inspect pending source-candidate groups before any human review decisions."
+          },
+          {
+            command: "npm run launch:readiness",
+            id: "launch-readiness",
+            label: "Refresh aggregate launch readiness",
+            mode: "read-only",
+            purpose: "Recheck fully-live launch gates after promotion evidence changes."
+          }
+        ],
+        humanOwned: true,
+        nextHumanAction: "Accepted reference must be linked to the candidate claim.",
+        ready: []
+      }
+    });
+    expect(listSourceCandidateCurationHandoffMock).toHaveBeenCalledWith({ limit: 1 });
+  });
+
+  it("summarizes promotion readiness without full snapshot or command payloads", async () => {
+    listSourceCandidateCurationHandoffMock.mockResolvedValue([
+      {
+        acceptedReference,
+        acceptedReferenceId: acceptedReference.id,
+        candidate,
+        claimLinks: [],
+        nextAction: "Link accepted reference to candidate claim.",
+        publicSourcePacketReady: false,
+        status: "Claim link missing",
+        studies: []
+      }
+    ]);
+
+    const report = await buildSourceCandidatePromotionReadinessReport({
+      generatedAt: new Date("2026-06-11T00:00:00.000Z"),
+      limit: 1
+    });
+    const summary = summarizeSourceCandidatePromotionReadinessReport(report);
+
+    expect(summary).toEqual({
+      blocked: report.worksheet.blocked,
+      counts: {
+        blocked: 1,
+        ready: 0,
+        total: 1
+      },
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      humanOwned: true,
+      nextAction: "Accepted reference must be linked to the candidate claim.",
+      readOnly: true,
+      ready: []
+    });
+    expect(JSON.stringify(summary)).not.toContain("copySafeCommands");
+    expect(JSON.stringify(summary)).not.toContain('"snapshot"');
   });
 });
 

@@ -17,12 +17,37 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .codex-dev-server.log
+.codex-temp/
 
 # env
 .env
 .env*.local
 
+# local review inventories
+docs/codex/onboarding/*.local.json
+docs/codex/onboarding/fulltext-connector-approval-packet.md
+docs/codex/onboarding/fulltext-connector-implementation-plan.md
+docs/codex/onboarding/fulltext-connector-prep-kit-index.md
+docs/codex/onboarding/fulltext-connector-review.md
+docs/codex/onboarding/fulltext-fixtures/*.local.json
+docs/codex/onboarding/fulltext-source-review-*.md
+
+# local agent run history
+.ai/
+
+# per-machine agent permissions; .claude/launch.json is shared and stays tracked
+.claude/settings.local.json
+
+# unattended pipeline task output
+logs/
+
 # misc
 .DS_Store
 Thumbs.db
 output/
+
+.vercel
+
+# one-off backup written by the score reset script
+scripts/_tmp_laundered_scores_backup.json
+scripts/_tmp_parked_sweep_backup.json

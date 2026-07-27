@@ -1336,7 +1336,9 @@ describe("getSourceCandidateCurationDraft", () => {
           doi: "10.1186/s12970-017-0173-z",
           journal: "Journal of the International Society of Sports Nutrition",
           publicationDate: "2017 Jun 13",
-          publicationTypes: ["Journal Article", "Review"]
+          publicationTypes: ["Journal Article", "Review"],
+          abstractText:
+            "Creatine supplementation can support strength, power, and lean mass when paired with resistance training."
         }
       })
     );
@@ -1347,7 +1349,7 @@ describe("getSourceCandidateCurationDraft", () => {
       getSourceCandidateCurationDraft(
         "pubmed|au|creatine|28615996|creatine|creatine-strength"
       )
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       claimLinkDraft: {
         alreadyLinked: false,
         claimId: "creatine-strength",
@@ -1399,12 +1401,352 @@ describe("getSourceCandidateCurationDraft", () => {
         ],
         nctId: undefined,
         pmid: "28615996",
+        prefillFields: [
+          {
+            confidence: "candidate-metadata",
+            field: "abstract",
+            note:
+              "Captured abstract or registry summary can seed the optional study abstract field, but operators must verify source context before writing.",
+            value:
+              "PubMed abstract: Creatine supplementation can support strength, power, and lean mass when paired with resistance training.",
+            writeFlag: "--study-abstract"
+          },
+          {
+            confidence: "manual-required",
+            field: "sampleSize",
+            note:
+              "Enrollment/sample-size metadata may describe planned rather than analyzed sample; verify actual analyzed sample before writing.",
+            value: "Human-reviewed sampleSize required.",
+            writeFlag: "--study-sample-size"
+          },
+          {
+            confidence: "manual-required",
+            field: "population",
+            note:
+              "Condition/population metadata may be broad; verify population, inclusion criteria, and health status before writing.",
+            value: "Human-reviewed population required.",
+            writeFlag: "--study-population"
+          },
+          {
+            confidence: "manual-required",
+            field: "interventionName",
+            note:
+              "Intervention metadata may omit formulation and comparator context; verify before writing.",
+            value: "Human-reviewed interventionName required.",
+            writeFlag: "--study-intervention-name"
+          },
+          {
+            confidence: "manual-required",
+            field: "outcomes",
+            note:
+              "Outcome metadata may omit endpoint hierarchy and claim relevance; verify before writing.",
+            value: "Human-reviewed outcomes required.",
+            writeFlag: "--study-outcome"
+          },
+          {
+            confidence: "manual-required",
+            field: "adverseEvents",
+            note:
+              "Adverse-event reporting is not fully captured by candidate metadata; review results or full text before writing.",
+            value: "Human-reviewed adverseEvents required.",
+            writeFlag: "--study-adverse-events"
+          },
+          {
+            confidence: "manual-required",
+            field: "fundingConflicts",
+            note:
+              "Sponsor metadata is not a full funding/conflict-of-interest assessment.",
+            value: "Human-reviewed fundingConflicts required.",
+            writeFlag: "--study-funding-conflicts"
+          },
+          {
+            confidence: "derived",
+            field: "riskOfBias",
+            note:
+              "Risk of bias requires protocol/results/full-text review; this is only a starting note.",
+            value:
+              "Review-level source; assess search strategy, inclusion criteria, bias appraisal, and funding/conflicts.",
+            writeFlag: "--study-risk-of-bias"
+          },
+          {
+            confidence: "manual-required",
+            field: "duration",
+            note:
+              "Duration inferred only from registry date metadata; verify actual intervention and follow-up duration.",
+            value: "Human-reviewed duration required.",
+            writeFlag: "--study-duration"
+          },
+          {
+            confidence: "manual-required",
+            field: "mainResults",
+            note:
+              "Results summary is not extracted automatically; verify registry results or full text before writing.",
+            value: "Human-reviewed mainResults required.",
+            writeFlag: "--study-main-results"
+          },
+          {
+            confidence: "manual-required",
+            field: "comparator",
+            note:
+              "Comparator is not currently a Study write field, but it should inform claim-level extraction.",
+            value:
+              "Not available in candidate metadata; review full text or registry arms before describing comparator.",
+            writeFlag: undefined
+          }
+        ],
         referenceId: "ref-creatine-position-stand",
+        reviewCues: [
+          {
+            confidence: "candidate-metadata",
+            label: "sourceTraceability",
+            note:
+              "Use identifiers to verify the accepted reference is the same source record before extraction.",
+            value:
+              "PMID: 28615996; DOI: 10.1186/s12970-017-0173-z; URL: https://pubmed.ncbi.nlm.nih.gov/28615996/"
+          },
+          {
+            confidence: "derived",
+            label: "studyDesign",
+            note:
+              "Study-design suggestion is derived from source type and publication metadata; verify during extraction.",
+            value: "SYSTEMATIC_REVIEW"
+          },
+          {
+            confidence: "derived",
+            label: "titleQueryOverlap",
+            note:
+              "Title/query overlap is a relevance cue only; it is not evidence quality or claim support.",
+            value: "Title/query overlap 1/1: creatine."
+          },
+          {
+            confidence: "candidate-metadata",
+            label: "abstractStatus",
+            note:
+              "Abstract availability only tells the operator where to start; full-text or registry review may still be required.",
+            value: "PubMed abstract text captured in source-candidate metadata."
+          },
+          {
+            confidence: "candidate-metadata",
+            label: "sourceTextPreview",
+            note:
+              "Captured source text can guide extraction targets, but it is not a reviewed extraction or source-quality decision.",
+            value:
+              "PubMed abstract preview: Creatine supplementation can support strength, power, and lean mass when paired with resistance training."
+          },
+          {
+            confidence: "manual-required",
+            label: "fullTextStatus",
+            note:
+              "Full-text article content is not automatically captured by onboarding automation.",
+            value:
+              "Full text not captured; review the linked source or an approved source packet before writing extraction fields."
+          },
+          {
+            confidence: "candidate-metadata",
+            label: "publicationContext",
+            note:
+              "Journal, date, and publication-type metadata can help prioritize review but do not replace full source appraisal.",
+            value:
+              "Journal: Journal of the International Society of Sports Nutrition; Publication date: 2017 Jun 13; Publication types: Journal Article; Review"
+          }
+        ],
         source: "PubMed",
         sourceTypeSuggestion: "SYSTEMATIC_REVIEW",
         title: "Creatine position stand",
+        uncertaintyNotes: [
+          "Prefill values are decision support only; do not write extraction fields without checking the source packet.",
+          "Candidate metadata may omit comparator, analyzed sample, adverse events, funding conflicts, and risk-of-bias details.",
+          "Captured source text is limited to abstract or registry-summary metadata; it is not a full-text review."
+        ],
         url: "https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        whatWouldChangeScore:
+          "Reviewed extraction of sample size, population, comparator, duration, outcomes, safety/adverse events, funding/conflicts, and risk of bias would support stronger claim scoring and public wording decisions.",
         year: 2017
+      }
+    });
+  });
+
+  it("does not mark PubMed abstract unavailable when captured source text exists", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        acceptedReferenceId: "ref-creatine-position-stand",
+        abstractAvailable: false,
+        decision: "ACCEPTED",
+        metadata: {
+          abstractText:
+            "Creatine supplementation can support strength, power, and lean mass when paired with resistance training."
+        },
+        reviewStatus: "HUMAN_REVIEWED"
+      })
+    );
+
+    const draft = await getSourceCandidateCurationDraft(
+      "pubmed|au|creatine|28615996|creatine|creatine-strength"
+    );
+
+    expect(draft?.studyExtractionDraft?.prefillFields).toContainEqual(
+      expect.objectContaining({
+        field: "abstract",
+        value:
+          "PubMed abstract: Creatine supplementation can support strength, power, and lean mass when paired with resistance training."
+      })
+    );
+    expect(draft?.studyExtractionDraft?.uncertaintyNotes).toContain(
+      "Captured source text is limited to abstract or registry-summary metadata; it is not a full-text review."
+    );
+    expect(draft?.studyExtractionDraft?.uncertaintyNotes).not.toContain(
+      "PubMed abstract was not available from candidate metadata."
+    );
+  });
+
+  it("prefills conservative study extraction fields from ClinicalTrials metadata", async () => {
+    prismaMocks.sourceCandidateFindUnique.mockResolvedValue(
+      dbSourceCandidate({
+        acceptedReferenceId: "trial-nct123",
+        abstractAvailable: false,
+        decision: "ACCEPTED",
+        dedupeKey: "clinicaltrials.gov|au|creatine|nct123|creatine|creatine-strength",
+        externalId: "NCT123",
+        metadata: {
+          completionDate: "2025-06-01",
+          conditions: ["Creatine response"],
+          enrollment: "120 actual",
+          briefSummary:
+            "Registry summary with creatine intervention and strength outcome context.",
+          hasResults: true,
+          interventions: ["DIETARY_SUPPLEMENT: Creatine monohydrate"],
+          primaryOutcomes: ["Strength change"],
+          resultsFirstPostDate: "2026-01-01",
+          sponsor: "Example University",
+          startDate: "2025-01-01"
+        },
+        reviewStatus: "HUMAN_REVIEWED",
+        source: "CLINICALTRIALS_GOV",
+        sourceType: "Clinical trial record",
+        title: "Creatine response trial",
+        url: "https://clinicaltrials.gov/study/NCT123"
+      })
+    );
+    prismaMocks.referenceFindUnique.mockResolvedValue(
+      dbReference({
+        id: "trial-nct123",
+        identifier: "NCT123",
+        source: "CLINICALTRIALS_GOV",
+        title: "Creatine response trial",
+        url: "https://clinicaltrials.gov/study/NCT123"
+      })
+    );
+    prismaMocks.claimReferenceFindMany.mockResolvedValue([]);
+    prismaMocks.studyFindMany.mockResolvedValue([]);
+
+    await expect(
+      getSourceCandidateCurationDraft(
+        "clinicaltrials.gov|au|creatine|nct123|creatine|creatine-strength"
+      )
+    ).resolves.toMatchObject({
+      studyExtractionDraft: {
+        nctId: "NCT123",
+        prefillFields: expect.arrayContaining([
+          expect.objectContaining({
+            confidence: "candidate-metadata",
+            confidenceLabel: "Strong",
+            field: "abstract",
+            note:
+              "Captured abstract or registry summary can seed the optional study abstract field, but operators must verify source context before writing.",
+            reviewConfidence: "strong",
+            value:
+              "ClinicalTrials.gov brief summary: Registry summary with creatine intervention and strength outcome context.",
+            writeFlag: "--study-abstract"
+          }),
+          expect.objectContaining({
+            confidence: "candidate-metadata",
+            confidenceLabel: "Weak",
+            field: "sampleSize",
+            note:
+              "Enrollment/sample-size metadata may describe planned rather than analyzed sample; verify actual analyzed sample before writing.",
+            reviewConfidence: "weak",
+            value: "120 actual",
+            writeFlag: "--study-sample-size"
+          }),
+          expect.objectContaining({
+            confidence: "candidate-metadata",
+            confidenceLabel: "Weak",
+            field: "population",
+            note:
+              "Condition/population metadata may be broad; verify population, inclusion criteria, and health status before writing.",
+            reviewConfidence: "weak",
+            value: "Conditions: Creatine response",
+            writeFlag: "--study-population"
+          }),
+          expect.objectContaining({
+            confidence: "derived",
+            confidenceLabel: "Inferred",
+            field: "duration",
+            note:
+              "Duration inferred only from registry date metadata; verify actual intervention and follow-up duration.",
+            reviewConfidence: "inferred",
+            value: "Study dates: 2025-01-01 to 2025-06-01",
+            writeFlag: "--study-duration"
+          }),
+          expect.objectContaining({
+            confidence: "derived",
+            confidenceLabel: "Inferred",
+            field: "mainResults",
+            note:
+              "Results summary is not extracted automatically; verify registry results or full text before writing.",
+            reviewConfidence: "inferred",
+            value:
+              "Results posted 2026-01-01; extract actual effect results after review.",
+            writeFlag: "--study-main-results"
+          })
+        ]),
+        source: "ClinicalTrials.gov",
+        sourceTypeSuggestion: "CLINICAL_TRIAL_RECORD",
+        reviewCues: expect.arrayContaining([
+          expect.objectContaining({
+            confidence: "candidate-metadata",
+            confidenceLabel: "Strong",
+            label: "sourceTextPreview",
+            note:
+              "Captured source text can guide extraction targets, but it is not a reviewed extraction or source-quality decision.",
+            reviewConfidence: "strong",
+            value:
+              "ClinicalTrials.gov brief summary preview: Registry summary with creatine intervention and strength outcome context."
+          }),
+          expect.objectContaining({
+            confidence: "manual-required",
+            confidenceLabel: "Missing",
+            label: "fullTextStatus",
+            note:
+              "Full-text article content is not automatically captured by onboarding automation.",
+            reviewConfidence: "missing",
+            value:
+              "Full text not captured; review the linked source or an approved source packet before writing extraction fields."
+          }),
+          expect.objectContaining({
+            confidence: "candidate-metadata",
+            confidenceLabel: "Weak",
+            label: "registryStatus",
+            note:
+              "Registry state and result-posting cues can differ from published evidence; verify current record and publications.",
+            reviewConfidence: "weak",
+            value:
+              "Has posted results: true; Results first posted: 2026-01-01"
+          }),
+          expect.objectContaining({
+            confidence: "candidate-metadata",
+            confidenceLabel: "Weak",
+            label: "outcomeReviewTargets",
+            note:
+              "Outcome metadata should guide extraction targets, but endpoint hierarchy and claim relevance need review.",
+            reviewConfidence: "weak",
+            value: "Strength change"
+          })
+        ]),
+        uncertaintyNotes: expect.arrayContaining([
+          "Captured source text is limited to abstract or registry-summary metadata; it is not a full-text review.",
+          "Registry records can describe planned methods or posted results; verify publication and results status separately."
+        ])
       }
     });
   });
@@ -2597,7 +2939,8 @@ describe("recordSourceCandidateDecision", () => {
         decision: "Accepted",
         acceptedReferenceId: " ref-creatine-position-stand ",
         reviewNote: " Promoted after full-text review. ",
-        reviewedAt
+        reviewedAt,
+        reviewedBy: "human"
       })
     ).resolves.toEqual(
       expect.objectContaining({
@@ -2646,7 +2989,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Rejected",
         reviewNote: "Not relevant to the AU consumer claim.",
-        reviewedAt
+        reviewedAt,
+        reviewedBy: "human"
       })
     ).resolves.toEqual(
       expect.objectContaining({
@@ -2674,6 +3018,92 @@ describe("recordSourceCandidateDecision", () => {
     expect(prismaMocks.referenceFindUnique).not.toHaveBeenCalled();
   });
 
+  it("stamps automated accepts as AI reviewed instead of human reviewed", async () => {
+    const reviewedAt = new Date("2026-06-02T04:00:00.000Z");
+    prismaMocks.sourceCandidateUpdate.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "ACCEPTED",
+        reviewStatus: "AI_REVIEWED",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        reviewedAt,
+        reviewNote: "Auto-accepted by source work repair."
+      })
+    );
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Accepted",
+        acceptedReferenceId: "ref-creatine-position-stand",
+        reviewNote: "Auto-accepted by source work repair.",
+        reviewedAt,
+        reviewedBy: "automation"
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        decision: "Accepted",
+        reviewStatus: "AI reviewed",
+        acceptedReferenceId: "ref-creatine-position-stand"
+      })
+    );
+
+    expect(prismaMocks.sourceCandidateUpdate).toHaveBeenCalledWith({
+      where: {
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "PENDING_REVIEW"
+      },
+      data: {
+        decision: "ACCEPTED",
+        reviewStatus: "AI_REVIEWED",
+        reviewedAt,
+        reviewNote: "Auto-accepted by source work repair.",
+        acceptedReferenceId: "ref-creatine-position-stand"
+      }
+    });
+  });
+
+  it("stamps automated rejects as AI reviewed instead of human reviewed", async () => {
+    const reviewedAt = new Date("2026-06-02T04:30:00.000Z");
+    prismaMocks.sourceCandidateUpdate.mockResolvedValue(
+      dbSourceCandidate({
+        decision: "REJECTED",
+        reviewStatus: "AI_REVIEWED",
+        acceptedReferenceId: null,
+        reviewedAt,
+        reviewNote: "Auto-rejected by bulk triage."
+      })
+    );
+
+    await expect(
+      recordSourceCandidateDecision({
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "Rejected",
+        reviewNote: "Auto-rejected by bulk triage.",
+        reviewedAt,
+        reviewedBy: "automation"
+      })
+    ).resolves.toEqual(
+      expect.objectContaining({
+        decision: "Rejected",
+        reviewStatus: "AI reviewed"
+      })
+    );
+
+    expect(prismaMocks.sourceCandidateUpdate).toHaveBeenCalledWith({
+      where: {
+        dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
+        decision: "PENDING_REVIEW"
+      },
+      data: {
+        decision: "REJECTED",
+        reviewStatus: "AI_REVIEWED",
+        reviewedAt,
+        reviewNote: "Auto-rejected by bulk triage.",
+        acceptedReferenceId: null
+      }
+    });
+  });
+
   it("requires a nonblank review note when rejecting candidates", async () => {
     await expect(
       recordSourceCandidateDecision({
@@ -2686,7 +3116,8 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Rejected",
-        reviewNote: " "
+        reviewNote: " ",
+        reviewedBy: "human"
       })
     ).rejects.toThrow("Rejected source candidates require a reviewNote.");
 
@@ -2739,7 +3170,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: "ref-creatine-position-stand",
-        reviewNote: " "
+        reviewNote: " ",
+        reviewedBy: "human"
       })
     ).rejects.toThrow("Accepted source candidates require a reviewNote.");
 
@@ -2753,7 +3185,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: " ",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow("Accepted source candidates require an acceptedReferenceId.");
 
@@ -2772,7 +3205,8 @@ describe("recordSourceCandidateDecision", () => {
       recordSourceCandidateDecision({
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Rejected",
-        reviewNote: "Duplicate."
+        reviewNote: "Duplicate.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow("Pending source candidate not found for review.");
 
@@ -2787,7 +3221,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: "missing-reference",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow("Accepted source candidate reference was not found.");
 
@@ -2808,7 +3243,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: "ods-creatine",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
@@ -2830,7 +3266,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|28615996|creatine|creatine-strength",
         decision: "Accepted",
         acceptedReferenceId: "wrong-pubmed-reference",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
@@ -2858,7 +3295,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "pubmed|au|creatine|1234",
         decision: "Accepted",
         acceptedReferenceId: "substring-pubmed-reference",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
@@ -2890,7 +3328,8 @@ describe("recordSourceCandidateDecision", () => {
         decision: "Accepted",
         acceptedReferenceId: "ref-creatine-position-stand",
         reviewNote: "Full-text reviewed.",
-        reviewedAt
+        reviewedAt,
+        reviewedBy: "human"
       })
     ).resolves.toEqual(
       expect.objectContaining({
@@ -2940,7 +3379,8 @@ describe("recordSourceCandidateDecision", () => {
         decision: "Accepted",
         acceptedReferenceId: "trial-nct123",
         reviewNote: "Full-text reviewed.",
-        reviewedAt
+        reviewedAt,
+        reviewedBy: "human"
       })
     ).resolves.toEqual(
       expect.objectContaining({
@@ -2974,7 +3414,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
         decision: "Accepted",
         acceptedReferenceId: "trial-nct1234",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."
@@ -3006,7 +3447,8 @@ describe("recordSourceCandidateDecision", () => {
         dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
         decision: "Accepted",
         acceptedReferenceId: "clinicaltrials-api",
-        reviewNote: "Full-text reviewed."
+        reviewNote: "Full-text reviewed.",
+        reviewedBy: "human"
       })
     ).rejects.toThrow(
       "Accepted source candidate reference must match candidate source and external id."

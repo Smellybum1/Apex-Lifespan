@@ -25,7 +25,7 @@ describe("Australia regulatory verification summary", () => {
         Moderate: 0,
         "Very low": 2
       },
-      interventionLevelStatuses: 5,
+      interventionLevelStatuses: 6,
       productLevelStatuses: 2,
       productsMissingStatus: [],
       staleStatusIds: [],

@@ -29,12 +29,50 @@ export interface ProductionReadinessReport {
   worksheet: ProductionProvisioningWorksheet;
 }
 
+export interface ProductionReadinessSummary {
+  blockedChecks: ProductionProvisioningWorksheetItem[];
+  counts: Record<ProductionReadinessStatus, number>;
+  generatedAt: string;
+  humanOwned: true;
+  nextAction: string;
+  overall: "ready" | "blocked";
+  readOnly: true;
+  readyChecks: ProductionProvisioningWorksheetItem[];
+  sanitizedDatabaseTarget?: string;
+  warningChecks: ProductionProvisioningWorksheetItem[];
+}
+
+export type ProductionReadinessCheckReviewStatus =
+  | ProductionReadinessStatus
+  | "not-found";
+
+export interface ProductionReadinessCheckReviewPacket {
+  availableCheckIds: string[];
+  check: ProductionReadinessCheck | null;
+  checkId: string;
+  found: boolean;
+  humanOwned: true;
+  nextAction: string;
+  readOnly: true;
+  relatedCommand: ProductionProvisioningCommand | null;
+  status: ProductionReadinessCheckReviewStatus;
+}
+
 export interface ProductionProvisioningWorksheet {
   blocked: ProductionProvisioningWorksheetItem[];
+  copySafeCommands: ProductionProvisioningCommand[];
   humanOwned: true;
   nextOperatorAction: string;
   ready: ProductionProvisioningWorksheetItem[];
   warnings: ProductionProvisioningWorksheetItem[];
+}
+
+export interface ProductionProvisioningCommand {
+  command: string;
+  id: string;
+  label: string;
+  mode: "read-only" | "explicit-apply";
+  purpose: string;
 }
 
 export interface ProductionProvisioningWorksheetItem {
@@ -51,6 +89,9 @@ const LOCAL_ONLY_ENV_KEYS = [
   "APEX_CODEX_REVIEW_PORT",
   "APEX_CODEX_REVIEW_ORIGINS"
 ];
+const VERCEL_DATABASE_CONFIGURED_KEY = "APEX_VERCEL_DATABASE_CONFIGURED_AT";
+const VERCEL_DATABASE_MODE_CONFIGURED_KEY = "APEX_VERCEL_DATABASE_MODE_CONFIGURED_AT";
+const VERCEL_OPERATOR_AUTH_CONFIGURED_KEY = "APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT";
 const VERCEL_PROJECT_CONFIGURED_KEY = "APEX_VERCEL_PROJECT_CONFIGURED_AT";
 
 export function buildProductionReadinessReport(
@@ -63,8 +104,15 @@ export function buildProductionReadinessReport(
     .sort()
     .at(-1);
   const checks: ProductionReadinessCheck[] = [
-    databaseUrlCheck(databaseUrl, parsedDatabase),
-    dataSourceCheck(readEnv(context.env, "APEX_DATA_SOURCE")),
+    databaseUrlCheck(
+      databaseUrl,
+      parsedDatabase,
+      readEnv(context.env, VERCEL_DATABASE_CONFIGURED_KEY)
+    ),
+    dataSourceCheck(
+      readEnv(context.env, "APEX_DATA_SOURCE"),
+      readEnv(context.env, VERCEL_DATABASE_MODE_CONFIGURED_KEY)
+    ),
     migrationCheck(latestMigration),
     productionProvisioningChecklistCheck(context.productionProvisioningChecklistExists),
     migrationRehearsalCheck(readEnv(context.env, "APEX_MIGRATION_REHEARSAL_PASSED_AT")),
@@ -73,7 +121,7 @@ export function buildProductionReadinessReport(
       readEnv(context.env, VERCEL_PROJECT_CONFIGURED_KEY)
     ),
     vercelCliCheck(context.vercelCliAvailable),
-    operatorAuthCheck(context.env),
+    operatorAuthCheck(context.env, readEnv(context.env, VERCEL_OPERATOR_AUTH_CONFIGURED_KEY)),
     localOnlySecretCheck(context.env),
     trackedEnvFileCheck(context.trackedEnvFiles),
     operatorWriteFlagCheck(readEnv(context.env, "APEX_OPERATOR_WRITES_ENABLED")),
@@ -92,17 +140,92 @@ export function buildProductionReadinessReport(
   };
 }
 
+export function summarizeProductionReadinessCheck(
+  context: ProductionReadinessContext,
+  checkId: string
+): ProductionReadinessCheckReviewPacket {
+  const report = buildProductionReadinessReport(context);
+  const check = report.checks.find((item) => item.id === checkId) ?? null;
+  const availableCheckIds = report.checks.map((item) => item.id);
+
+  if (!check) {
+    return {
+      availableCheckIds,
+      check: null,
+      checkId,
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No production readiness check matched this id; rerun npm run production:readiness to inspect valid check ids.",
+      readOnly: true,
+      relatedCommand: null,
+      status: "not-found"
+    };
+  }
+
+  return {
+    availableCheckIds,
+    check,
+    checkId,
+    found: true,
+    humanOwned: true,
+    nextAction:
+      check.nextAction ??
+      "This production readiness check is ready; rerun aggregate launch readiness before changing scope.",
+    readOnly: true,
+    relatedCommand:
+      report.worksheet.copySafeCommands.find(
+        (command) => command.id === "production-readiness"
+      ) ?? null,
+    status: check.status
+  };
+}
+
+export function summarizeProductionReadinessReport(
+  report: ProductionReadinessReport
+): ProductionReadinessSummary {
+  return {
+    blockedChecks: report.worksheet.blocked,
+    counts: report.counts,
+    generatedAt: report.generatedAt,
+    humanOwned: true,
+    nextAction: report.worksheet.nextOperatorAction,
+    overall: report.overall,
+    readOnly: true,
+    readyChecks: report.worksheet.ready,
+    ...(report.sanitizedDatabaseTarget
+      ? {
+          sanitizedDatabaseTarget: report.sanitizedDatabaseTarget
+        }
+      : {}),
+    warningChecks: report.worksheet.warnings
+  };
+}
+
 function databaseUrlCheck(
   rawValue: string | undefined,
-  parsed: ReturnType<typeof parseDatabaseUrl>
+  parsed: ReturnType<typeof parseDatabaseUrl>,
+  vercelDatabaseConfiguredAt: string | undefined
 ): ProductionReadinessCheck {
   if (!rawValue) {
+    if (vercelDatabaseConfiguredAt) {
+      return {
+        evidenceKeys: [VERCEL_DATABASE_CONFIGURED_KEY],
+        id: "database-url",
+        label: "Managed database URL",
+        status: "ready",
+        detail:
+          "Vercel managed database evidence is recorded; DATABASE_URL value remains secret."
+      };
+    }
+
     return {
       id: "database-url",
       label: "Managed database URL",
       status: "blocked",
       detail: "DATABASE_URL is not configured.",
-      nextAction: "Configure a Neon/Vercel managed PostgreSQL DATABASE_URL in the target environment."
+      nextAction:
+        "Configure a Neon/Vercel managed PostgreSQL DATABASE_URL in the target environment, or record APEX_VERCEL_DATABASE_CONFIGURED_AT after dashboard review."
     };
   }
 
@@ -134,7 +257,10 @@ function databaseUrlCheck(
   };
 }
 
-function dataSourceCheck(value: string | undefined): ProductionReadinessCheck {
+function dataSourceCheck(
+  value: string | undefined,
+  vercelDatabaseModeConfiguredAt: string | undefined
+): ProductionReadinessCheck {
   if (value === "database") {
     return {
       id: "apex-data-source",
@@ -144,13 +270,24 @@ function dataSourceCheck(value: string | undefined): ProductionReadinessCheck {
     };
   }
 
+  if (!value && vercelDatabaseModeConfiguredAt) {
+    return {
+      evidenceKeys: [VERCEL_DATABASE_MODE_CONFIGURED_KEY],
+      id: "apex-data-source",
+      label: "Production data mode",
+      status: "ready",
+      detail:
+        "Vercel APEX_DATA_SOURCE=database evidence is recorded; local environment value remains unset."
+    };
+  }
+
   return {
     id: "apex-data-source",
     label: "Production data mode",
     status: "blocked",
     detail: `APEX_DATA_SOURCE is ${value ? JSON.stringify(value) : "not configured"}.`,
     nextAction:
-      "Set APEX_DATA_SOURCE=database for fully-live production after managed PostgreSQL is provisioned."
+      "Set APEX_DATA_SOURCE=database for fully-live production after managed PostgreSQL is provisioned, or record APEX_VERCEL_DATABASE_MODE_CONFIGURED_AT after dashboard review."
   };
 }
 
@@ -271,7 +408,10 @@ function vercelCliCheck(vercelCliAvailable: boolean): ProductionReadinessCheck {
       };
 }
 
-function operatorAuthCheck(env: Record<string, string | undefined>): ProductionReadinessCheck {
+function operatorAuthCheck(
+  env: Record<string, string | undefined>,
+  vercelOperatorAuthConfiguredAt: string | undefined
+): ProductionReadinessCheck {
   const missing = ["AUTH_SECRET", "AUTH_GITHUB_ID", "AUTH_GITHUB_SECRET"].filter(
     (key) => !readEnv(env, key)
   );
@@ -285,13 +425,24 @@ function operatorAuthCheck(env: Record<string, string | undefined>): ProductionR
     };
   }
 
+  if (vercelOperatorAuthConfiguredAt) {
+    return {
+      evidenceKeys: [VERCEL_OPERATOR_AUTH_CONFIGURED_KEY],
+      id: "operator-auth-secrets",
+      label: "Operator auth secrets",
+      status: "ready",
+      detail:
+        "Vercel operator auth evidence is recorded; Auth.js and GitHub OAuth secret values remain secret."
+    };
+  }
+
   return {
     id: "operator-auth-secrets",
     label: "Operator auth secrets",
     status: "blocked",
     detail: `Missing required operator auth variables: ${missing.join(", ")}.`,
     nextAction:
-      "Configure GitHub OAuth and Auth.js secrets only in the managed hosting environment or local non-production QA environment."
+      "Configure GitHub OAuth and Auth.js secrets only in the managed hosting environment or local non-production QA environment, or record APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT after dashboard review."
   };
 }
 
@@ -390,6 +541,7 @@ function productionProvisioningWorksheet(
 
   return {
     blocked,
+    copySafeCommands: productionProvisioningCopySafeCommands(),
     humanOwned: true,
     nextOperatorAction:
       blocked[0]?.nextAction ??
@@ -398,6 +550,88 @@ function productionProvisioningWorksheet(
     ready,
     warnings
   };
+}
+
+function productionProvisioningCopySafeCommands(): ProductionProvisioningCommand[] {
+  return [
+    {
+      command: "npm run production:readiness",
+      id: "production-readiness",
+      label: "Refresh production readiness",
+      mode: "read-only",
+      purpose: "Recheck production database, secrets, and evidence gates without printing secret values."
+    },
+    {
+      command: "npm run production:readiness -- --summary",
+      id: "production-readiness-summary",
+      label: "Refresh compact production summary",
+      mode: "read-only",
+      purpose:
+        "Print production readiness counts, blockers, warnings, ready checks, and next action without dumping all checks."
+    },
+    {
+      command: "npm run production:readiness -- --check <check-id>",
+      id: "production-readiness-check",
+      label: "Focus one production readiness check",
+      mode: "read-only",
+      purpose:
+        "Print one production readiness check with its evidence keys and next action for dashboard setup."
+    },
+    {
+      command: "npm run production:readiness -- --env-file <non-production-env-file> --summary",
+      id: "production-readiness-env-file-summary",
+      label: "Refresh production summary from env file",
+      mode: "read-only",
+      purpose:
+        "Check an approved non-production env file without printing secret values or changing databases."
+    },
+    {
+      command: "npm run production:migration-rehearsal",
+      id: "migration-rehearsal-plan",
+      label: "Plan non-production migration rehearsal",
+      mode: "read-only",
+      purpose: "Dry-run the migration rehearsal plan before any managed database changes."
+    },
+    {
+      command: "npm run production:migration-rehearsal -- --env-file <non-production-env-file>",
+      id: "migration-rehearsal-env-file-plan",
+      label: "Plan migration rehearsal from env file",
+      mode: "read-only",
+      purpose:
+        "Dry-run the rehearsal against an approved non-production env file without applying migrations."
+    },
+    {
+      command: "npm run production:migration-rehearsal -- --apply",
+      id: "migration-rehearsal-apply",
+      label: "Apply non-production migration rehearsal",
+      mode: "explicit-apply",
+      purpose:
+        "Run only after confirming a non-production managed DATABASE_URL and APEX_MIGRATION_REHEARSAL_TARGET=non-production."
+    },
+    {
+      command:
+        "npm run production:migration-rehearsal -- --env-file <non-production-env-file> --apply",
+      id: "migration-rehearsal-env-file-apply",
+      label: "Apply migration rehearsal from env file",
+      mode: "explicit-apply",
+      purpose:
+        "Run only after reviewing an approved non-production env file and confirming its database target is not production."
+    },
+    {
+      command: "npm run db:validate",
+      id: "database-schema-validate",
+      label: "Validate Prisma schema",
+      mode: "read-only",
+      purpose: "Validate the committed Prisma schema before and after managed environment setup."
+    },
+    {
+      command: "npm run launch:readiness",
+      id: "launch-readiness",
+      label: "Refresh aggregate launch readiness",
+      mode: "read-only",
+      purpose: "Recheck fully-live launch gates after production evidence changes."
+    }
+  ];
 }
 
 function productionProvisioningWorksheetItem(

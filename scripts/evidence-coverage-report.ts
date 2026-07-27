@@ -1,11 +1,115 @@
-import { getEvidenceDashboardData } from "@/lib/data/dashboard";
-import { summarizeEvidenceCoverage } from "@/lib/evidence-coverage";
+import { loadEnvFile, mergeEnv, withProcessEnv } from "@/lib/env-file";
 
 async function main() {
-  const data = await getEvidenceDashboardData();
-  const summary = summarizeEvidenceCoverage(data);
+  const args = readCoverageReviewArgs(process.argv.slice(2));
+  const envFile = args.envFilePath ? loadEnvFile(args.envFilePath) : undefined;
+  const env = mergeEnv(process.env, envFile?.env);
 
-  console.log(JSON.stringify(summary, null, 2));
+  await withProcessEnv(env, async () => {
+    const { getEvidenceDashboardData } = await import("@/lib/data/dashboard");
+    const {
+      summarizeEvidenceCoverage,
+      summarizeEvidenceCoverageClaimReview,
+      summarizeEvidenceCoverageReviewReport
+    } = await import("@/lib/evidence-coverage");
+    const data = await getEvidenceDashboardData();
+
+    if (args.claimId) {
+      const summary = summarizeEvidenceCoverageClaimReview(data, args.claimId);
+
+      if (!summary.found) {
+        process.exitCode = 1;
+      }
+
+      console.log(JSON.stringify(summary, null, 2));
+      return;
+    }
+
+    const summary = summarizeEvidenceCoverage(data);
+
+    console.log(
+      JSON.stringify(
+        args.compactSummary ? summarizeEvidenceCoverageReviewReport(summary) : summary,
+        null,
+        2
+      )
+    );
+  });
+}
+
+interface CoverageReviewCliArgs {
+  claimId?: string;
+  compactSummary: boolean;
+  envFilePath?: string;
+}
+
+function readCoverageReviewArgs(args: string[]): CoverageReviewCliArgs {
+  const parsed: CoverageReviewCliArgs = {
+    compactSummary: false
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === "--summary") {
+      parsed.compactSummary = true;
+      continue;
+    }
+
+    if (arg === "--claim") {
+      const value = args[index + 1]?.trim();
+
+      if (!value) {
+        throw new Error("--claim requires a claim id.");
+      }
+
+      parsed.claimId = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--claim=")) {
+      const value = arg.slice("--claim=".length).trim();
+
+      if (!value) {
+        throw new Error("--claim requires a claim id.");
+      }
+
+      parsed.claimId = value;
+      continue;
+    }
+
+    if (arg === "--env-file") {
+      const value = args[index + 1]?.trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--env-file=")) {
+      const value = arg.slice("--env-file=".length).trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
+      continue;
+    }
+
+    throw new Error(`Unknown coverage review argument: ${arg}`);
+  }
+
+  if (parsed.compactSummary && parsed.claimId) {
+    throw new Error("--summary cannot be combined with --claim.");
+  }
+
+  return parsed;
 }
 
 main().catch((error) => {

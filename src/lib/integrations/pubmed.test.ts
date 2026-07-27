@@ -43,6 +43,7 @@ describe("searchPubMed", () => {
 
     expect(result.ids).toEqual(["28615996"]);
     expect(result.count).toBe(42);
+    expect(result.retstart).toBe(0);
     expect(result.articles).toEqual([
       {
         pmid: "28615996",
@@ -64,6 +65,72 @@ describe("searchPubMed", () => {
         url: "https://pubmed.ncbi.nlm.nih.gov/28615996/"
       }
     ]);
+  });
+
+  it("captures abstract text only when explicitly requested", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        jsonResponse({
+          esearchresult: {
+            count: "1",
+            idlist: ["28615996"]
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          result: {
+            uids: ["28615996"],
+            "28615996": {
+              title: "Creatine position stand",
+              fulljournalname: "Journal of the International Society of Sports Nutrition",
+              pubdate: "2017 Jun 13",
+              pubtype: ["Review"],
+              hasabstract: "1",
+              authors: []
+            }
+          }
+        })
+      )
+      .mockResolvedValueOnce(
+        textResponse(`
+          <PubmedArticleSet>
+            <PubmedArticle>
+              <MedlineCitation>
+                <PMID>28615996</PMID>
+                <Article>
+                  <Abstract>
+                    <AbstractText Label="BACKGROUND">Creatine &amp; training context.</AbstractText>
+                    <AbstractText>Lean mass support with supervised training.</AbstractText>
+                  </Abstract>
+                </Article>
+              </MedlineCitation>
+            </PubmedArticle>
+          </PubmedArticleSet>
+        `)
+      );
+
+    const result = await searchPubMed("creatine", 10, {
+      includeAbstractText: true
+    });
+
+    expect(result.articles[0]).toMatchObject({
+      abstractText:
+        "BACKGROUND: Creatine & training context. Lean mass support with supervised training.",
+      pmid: "28615996"
+    });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    const abstractUrl = new URL(String(fetchSpy.mock.calls[2]?.[0]));
+    expect(abstractUrl.pathname).toContain("/efetch.fcgi");
+    expect(abstractUrl.searchParams.get("retmode")).toBe("xml");
+    expect(abstractUrl.searchParams.get("id")).toBe("28615996");
+    expect(fetchSpy.mock.calls[2]?.[1]).toMatchObject({
+      cache: "no-store",
+      headers: {
+        accept: "application/xml"
+      }
+    });
   });
 
   it("adds trial and recent-literature triage cues", async () => {
@@ -276,6 +343,23 @@ describe("searchPubMed", () => {
     expect(url.searchParams.get("retmax")).toBe("20");
   });
 
+  it("passes retstart for deeper PubMed pages", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      jsonResponse({
+        esearchresult: {
+          count: "42",
+          idlist: []
+        }
+      })
+    );
+
+    const result = await searchPubMed("berberine", 20, { retstart: 20 });
+
+    expect(result.retstart).toBe(20);
+    const url = new URL(String(fetchSpy.mock.calls[0]?.[0]));
+    expect(url.searchParams.get("retstart")).toBe("20");
+  });
+
   it("caps returned ids when PubMed over-returns despite the requested retmax", async () => {
     const fetchSpy = vi
       .spyOn(globalThis, "fetch")
@@ -316,5 +400,12 @@ function jsonResponse(body: unknown) {
   return {
     ok: true,
     json: async () => body
+  } as Response;
+}
+
+function textResponse(body: string) {
+  return {
+    ok: true,
+    text: async () => body
   } as Response;
 }

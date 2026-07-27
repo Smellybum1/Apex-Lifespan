@@ -1,5 +1,6 @@
 import {
   IngestionStatus as DbIngestionStatus,
+  InterventionCategory as DbInterventionCategory,
   OutcomeArea as DbOutcomeArea,
   SourceKind as DbSourceKind,
   type IngestionJob as DbIngestionJob,
@@ -13,8 +14,19 @@ import {
 } from "@/lib/data/source-candidate-ingestion";
 import { prisma } from "@/lib/db/prisma";
 import { MAX_LIVE_SOURCE_TERM_LENGTH } from "@/lib/live-source-request";
-import { buildSourceSearchQueries } from "@/lib/source-queries";
-import type { OutcomeArea, SourceCandidateSource } from "@/lib/types";
+import {
+  assessPubMedDeepeningPage,
+  DEFAULT_PUBMED_RETMAX,
+  hasEnoughUsefulPubMedCandidates,
+  normalisePubMedDeepeningCatchUpLimit,
+  normalisePubMedRetmax,
+  type PubMedDeepeningAssessment
+} from "@/lib/source-discovery-policy";
+import {
+  buildInterventionDiscoverySearchQueries,
+  buildSourceSearchQueries
+} from "@/lib/source-queries";
+import type { InterventionCategory, OutcomeArea, SourceCandidateSource } from "@/lib/types";
 
 type SupportedSourceCandidateJobSource =
   | typeof DbSourceKind.PUBMED
@@ -32,6 +44,7 @@ export interface SourceCandidateIngestionJobOptions {
 }
 
 export interface SourceCandidateIngestionJobRunResult {
+  deepening?: SourceCandidateIngestionJobDeepeningResult;
   jobId: string;
   source: DbSourceKind;
   query: string;
@@ -40,6 +53,28 @@ export interface SourceCandidateIngestionJobRunResult {
   recordsFound: number;
   recordsChanged: number;
   error?: string;
+}
+
+export interface SourceCandidateIngestionJobDeepeningResult {
+  candidateCount: number;
+  maxResults: number;
+  nextPageStart?: number;
+  pageSize: number;
+  pageStart: number;
+  queued: boolean;
+  reason: string;
+  totalCount?: number;
+  usefulCandidateCount: number;
+  usefulRatio: number;
+}
+
+export interface QueuedPubMedDeepeningCatchUpJobs {
+  eligibleJobs: number;
+  existingJobs: number;
+  jobCount: number;
+  newJobs: number;
+  sampleJobs: QueuedSourceCandidateIngestionJob[];
+  skippedJobs: number;
 }
 
 export interface SourceCandidateIngestionJobListOptions {
@@ -82,7 +117,10 @@ export interface SourceCandidateIngestionJobSummary {
 
 export interface QueueSourceCandidateIngestionJobInput {
   claimId?: string;
+  discoveryPriority?: SourceCandidateDiscoveryPriority;
+  fetchQuery?: string;
   interventionId?: string;
+  pubMedRetstart?: number;
   query: string;
   region?: string;
   source: SourceCandidateSource;
@@ -91,6 +129,12 @@ export interface QueueSourceCandidateIngestionJobInput {
 export interface QueueClaimSourceCandidateIngestionJobsInput {
   claimId: string;
   region?: string;
+}
+
+export interface QueueInterventionSourceCandidateDiscoveryJobsInput {
+  interventionId: string;
+  region?: string;
+  searchTerm?: string;
 }
 
 export interface QueuedSourceCandidateIngestionJob {
@@ -111,11 +155,23 @@ export interface QueuedClaimSourceCandidateIngestionJobs {
   jobs: QueuedSourceCandidateIngestionJob[];
   label: string;
   pubMedTerm: string;
+  pubMedTerms: string[];
   region: string;
   trialTerm: string;
 }
 
+export interface QueuedInterventionSourceCandidateDiscoveryJobs {
+  interventionId: string;
+  jobs: QueuedSourceCandidateIngestionJob[];
+  label: string;
+  pubMedTerms: string[];
+  region: string;
+  searchTerm: string;
+  trialTerm: string;
+}
+
 export type SourceCandidateJobContextField = "interventionId" | "claimId";
+export type SourceCandidateDiscoveryPriority = "supplement-name" | "pubmed-deepening";
 
 interface SourceCandidateJobContext {
   claimId?: string;
@@ -156,6 +212,20 @@ const outcomeMap: Record<DbOutcomeArea, OutcomeArea> = {
   FERTILITY_HORMONES: "Fertility/hormones",
   BIOLOGICAL_AGING_CLOCKS: "Biological aging clocks",
   SAFETY_ADVERSE_EFFECTS: "Safety/adverse effects"
+};
+
+const categoryMap: Record<DbInterventionCategory, InterventionCategory> = {
+  VITAMIN_MINERAL: "Vitamin/mineral",
+  FATTY_ACID: "Fatty acid",
+  AMINO_ACID: "Amino acid",
+  BOTANICAL_HERBAL: "Botanical/herbal",
+  FIBER_PREBIOTIC_PROBIOTIC: "Fiber/prebiotic/probiotic",
+  ERGOGENIC_PERFORMANCE_SUPPLEMENT: "Ergogenic/performance supplement",
+  NOOTROPIC: "Nootropic",
+  HORMONAL_ENDOCRINE_INTERVENTION: "Hormonal/endocrine intervention",
+  PEPTIDE_BIOLOGIC: "Peptide/biologic",
+  DRUG_GEROPROTECTOR_WATCHLIST: "Drug/geroprotector watchlist",
+  FOOD_BEVERAGE: "Food/beverage"
 };
 
 export async function listSourceCandidateIngestionJobs(
@@ -245,6 +315,7 @@ export async function queueClaimSourceCandidateIngestionJobs(
       intervention: {
         select: {
           id: true,
+          category: true,
           name: true,
           synonyms: true
         }
@@ -262,6 +333,7 @@ export async function queueClaimSourceCandidateIngestionJobs(
       outcome: outcomeMap[claim.outcome]
     },
     intervention: {
+      category: categoryMap[claim.intervention.category],
       name: claim.intervention.name,
       synonyms: claim.intervention.synonyms
     }
@@ -273,18 +345,25 @@ export async function queueClaimSourceCandidateIngestionJobs(
     region
   };
 
-  const jobs = [
-    await queueSourceCandidateIngestionJob({
-      ...queueContext,
-      source: "PubMed",
-      query: queries.pubMedTerm
-    }),
+  const jobs: QueuedSourceCandidateIngestionJob[] = [];
+
+  for (const pubMedTerm of queries.pubMedTerms) {
+    jobs.push(
+      await queueSourceCandidateIngestionJob({
+        ...queueContext,
+        source: "PubMed",
+        query: pubMedTerm
+      })
+    );
+  }
+
+  jobs.push(
     await queueSourceCandidateIngestionJob({
       ...queueContext,
       source: "ClinicalTrials.gov",
       query: queries.trialTerm
     })
-  ];
+  );
 
   return {
     claimId: claim.id,
@@ -292,7 +371,78 @@ export async function queueClaimSourceCandidateIngestionJobs(
     jobs,
     label: queries.label,
     pubMedTerm: queries.pubMedTerm,
+    pubMedTerms: queries.pubMedTerms,
     region,
+    trialTerm: queries.trialTerm
+  };
+}
+
+export async function queueInterventionSourceCandidateDiscoveryJobs(
+  input: QueueInterventionSourceCandidateDiscoveryJobsInput
+): Promise<QueuedInterventionSourceCandidateDiscoveryJobs> {
+  const interventionId = optionalTrimmedString(input.interventionId);
+
+  if (!interventionId) {
+    throw new Error("Intervention id is required to queue intervention discovery jobs.");
+  }
+
+  const intervention = await prisma.intervention.findUnique({
+    where: {
+      id: interventionId
+    },
+    select: {
+      id: true,
+      category: true,
+      name: true,
+      synonyms: true
+    }
+  });
+
+  if (!intervention) {
+    throw new Error(`Source-candidate discovery intervention not found: ${interventionId}.`);
+  }
+
+  const searchTerm = interventionDiscoverySearchTerm(input.searchTerm, intervention);
+  const queries = buildInterventionDiscoverySearchQueries({
+    intervention: {
+      category: categoryMap[intervention.category],
+      name: searchTerm,
+      synonyms: []
+    }
+  });
+  const region = normaliseRegion(input.region);
+  const queueContext = {
+    interventionId: intervention.id,
+    region
+  };
+  const jobs: QueuedSourceCandidateIngestionJob[] = [];
+
+  for (const pubMedTerm of queries.pubMedTerms) {
+    jobs.push(
+      await queueSourceCandidateIngestionJob({
+        ...queueContext,
+        discoveryPriority: sourceCandidateDiscoveryPriority(pubMedTerm, searchTerm),
+        source: "PubMed",
+        query: pubMedTerm
+      })
+    );
+  }
+
+  jobs.push(
+    await queueSourceCandidateIngestionJob({
+      ...queueContext,
+      source: "ClinicalTrials.gov",
+      query: queries.trialTerm
+    })
+  );
+
+  return {
+    interventionId: intervention.id,
+    jobs,
+    label: queries.label,
+    pubMedTerms: queries.pubMedTerms,
+    region,
+    searchTerm,
     trialTerm: queries.trialTerm
   };
 }
@@ -330,7 +480,11 @@ export async function queueSourceCandidateIngestionJob(
         region,
         interventionId: requestedContext.interventionId,
         claimId: requestedContext.claimId,
-        metadata: queueMetadata(requestedContext)
+        metadata: queueMetadata(requestedContext, {
+          discoveryPriority: input.discoveryPriority,
+          fetchQuery: input.fetchQuery,
+          pubMedRetstart: input.pubMedRetstart
+        })
       }
     });
   } catch (error) {
@@ -358,15 +512,7 @@ export async function runNextSourceCandidateIngestionJob(
   const now = options.now ?? (() => new Date());
 
   for (let attempt = 0; attempt < MAX_NEXT_JOB_CLAIM_ATTEMPTS; attempt += 1) {
-    const job = await prisma.ingestionJob.findFirst({
-      where: {
-        status: DbIngestionStatus.QUEUED,
-        source: {
-          in: SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES
-        }
-      },
-      orderBy: [{ createdAt: "asc" }]
-    });
+    const job = await findNextQueuedSourceCandidateIngestionJob();
 
     if (!job) {
       return null;
@@ -380,6 +526,128 @@ export async function runNextSourceCandidateIngestionJob(
   }
 
   return null;
+}
+
+export async function queuePubMedDeepeningCatchUpJobs({
+  limit,
+  pageSize
+}: {
+  limit?: number;
+  pageSize?: number;
+} = {}): Promise<QueuedPubMedDeepeningCatchUpJobs> {
+  const safePageSize = normalisePubMedRetmax(pageSize);
+  const sourceJobs = await prisma.ingestionJob.findMany({
+    where: {
+      source: DbSourceKind.PUBMED,
+      status: DbIngestionStatus.SUCCEEDED,
+      recordsFound: {
+        gte: safePageSize
+      }
+    },
+    orderBy: [{ updatedAt: "desc" }],
+    take: normalisePubMedDeepeningCatchUpLimit(limit)
+  });
+  const sampleJobs: QueuedSourceCandidateIngestionJob[] = [];
+  let eligibleJobs = 0;
+  let existingJobs = 0;
+  let newJobs = 0;
+  let skippedJobs = 0;
+
+  for (const job of sourceJobs) {
+    if (!isCatchUpPubMedDeepeningSourceJob(job)) {
+      continue;
+    }
+
+    eligibleJobs += 1;
+
+    const candidates = await prisma.sourceCandidate.findMany({
+      where: {
+        source: DbSourceKind.PUBMED,
+        query: sourceCandidateJobFetchQuery(job),
+        region: job.region,
+        interventionId: optionalTrimmedString(job.interventionId) ?? null,
+        claimId: optionalTrimmedString(job.claimId) ?? null
+      },
+      orderBy: [{ triageScore: "desc" }, { discoveredAt: "desc" }],
+      take: safePageSize,
+      select: {
+        metadata: true,
+        triageScore: true
+      }
+    });
+
+    if (!hasEnoughUsefulPubMedCandidates(candidates)) {
+      skippedJobs += 1;
+      continue;
+    }
+
+    const queued = await queueSourceCandidateIngestionJob({
+      claimId: optionalTrimmedString(job.claimId),
+      discoveryPriority: "pubmed-deepening",
+      fetchQuery: sourceCandidateJobFetchQuery(job),
+      interventionId: optionalTrimmedString(job.interventionId),
+      pubMedRetstart: safePageSize,
+      query: pubMedDeepeningJobQuery(
+        sourceCandidateJobFetchQuery(job),
+        safePageSize,
+        safePageSize
+      ),
+      region: job.region,
+      source: "PubMed"
+    });
+
+    if (queued.created) {
+      newJobs += 1;
+    } else {
+      existingJobs += 1;
+    }
+
+    if (sampleJobs.length < DEFAULT_JOB_LIST_LIMIT) {
+      sampleJobs.push(queued);
+    }
+  }
+
+  return {
+    eligibleJobs,
+    existingJobs,
+    jobCount: newJobs + existingJobs,
+    newJobs,
+    sampleJobs,
+    skippedJobs
+  };
+}
+
+async function findNextQueuedSourceCandidateIngestionJob() {
+  for (const priority of ["supplement-name", "pubmed-deepening"] as const) {
+    const priorityJob = await prisma.ingestionJob.findFirst({
+      where: {
+        ...queuedSupportedSourceCandidateJobWhere(),
+        metadata: {
+          path: ["sourceCandidateDiscoveryPriority"],
+          equals: priority
+        }
+      },
+      orderBy: [{ createdAt: "asc" }]
+    });
+
+    if (priorityJob) {
+      return priorityJob;
+    }
+  }
+
+  return prisma.ingestionJob.findFirst({
+    where: queuedSupportedSourceCandidateJobWhere(),
+    orderBy: [{ createdAt: "asc" }]
+  });
+}
+
+function queuedSupportedSourceCandidateJobWhere(): Prisma.IngestionJobWhereInput {
+  return {
+    status: DbIngestionStatus.QUEUED,
+    source: {
+      in: SUPPORTED_SOURCE_CANDIDATE_JOB_SOURCES
+    }
+  };
 }
 
 export async function runSourceCandidateIngestionJob(
@@ -428,8 +696,8 @@ async function runClaimedSourceCandidateIngestionJob(
 
   try {
     const result = await runSupportedSourceCandidateJob(job, options);
-
-    return completeJob({
+    const deepening = await maybeQueueSourceCandidateDeepeningJob(job, result, options);
+    const completed = await completeJob({
       job,
       completedAt: now(),
       status: DbIngestionStatus.SUCCEEDED,
@@ -437,6 +705,11 @@ async function runClaimedSourceCandidateIngestionJob(
       recordsChanged: result.upsert.upserted,
       error: null
     });
+
+    return {
+      ...completed,
+      ...(deepening ? { deepening } : {})
+    };
   } catch (error) {
     return completeJob({
       job,
@@ -459,8 +732,9 @@ async function runSupportedSourceCandidateJob(
     case DbSourceKind.PUBMED:
       return ingestPubMedSourceCandidates({
         ...context,
-        term: job.query,
-        retmax: options.pubMedRetmax
+        term: sourceCandidateJobFetchQuery(job),
+        retmax: options.pubMedRetmax ?? DEFAULT_PUBMED_RETMAX,
+        retstart: sourceCandidateJobPubMedRetstart(job)
       });
     case DbSourceKind.CLINICALTRIALS_GOV:
       return ingestClinicalTrialSourceCandidates({
@@ -482,6 +756,84 @@ function sourceCandidateContext(job: DbIngestionJob) {
   };
 }
 
+async function maybeQueueSourceCandidateDeepeningJob(
+  job: DbIngestionJob,
+  result: SourceCandidateIngestionResult,
+  options: SourceCandidateIngestionJobOptions
+): Promise<SourceCandidateIngestionJobDeepeningResult | undefined> {
+  if (job.source !== DbSourceKind.PUBMED || result.source !== "PubMed") {
+    return undefined;
+  }
+
+  const assessment = pubMedDeepeningDecision(job, result, options);
+
+  if (!assessment.shouldQueue) {
+    return {
+      ...pubMedDeepeningResultSummary(assessment),
+      queued: false,
+      reason: assessment.reason
+    };
+  }
+
+  try {
+    const nextJob = await queueSourceCandidateIngestionJob({
+      claimId: optionalTrimmedString(job.claimId),
+      discoveryPriority: "pubmed-deepening",
+      fetchQuery: sourceCandidateJobFetchQuery(job),
+      interventionId: optionalTrimmedString(job.interventionId),
+      pubMedRetstart: assessment.nextPageStart,
+      query: pubMedDeepeningJobQuery(
+        sourceCandidateJobFetchQuery(job),
+        assessment.nextPageStart,
+        normalisePubMedRetmax(options.pubMedRetmax)
+      ),
+      region: job.region,
+      source: "PubMed"
+    });
+
+    return {
+      ...pubMedDeepeningResultSummary(assessment),
+      nextPageStart: assessment.nextPageStart,
+      queued: nextJob.created,
+      reason: nextJob.created ? "queued next PubMed result page" : "next PubMed result page already exists"
+    };
+  } catch (error) {
+    return {
+      ...pubMedDeepeningResultSummary(assessment),
+      queued: false,
+      reason: `could not queue deeper PubMed page: ${normaliseErrorMessage(error)}`
+    };
+  }
+}
+
+function pubMedDeepeningDecision(
+  job: DbIngestionJob,
+  result: SourceCandidateIngestionResult,
+  options: SourceCandidateIngestionJobOptions
+): PubMedDeepeningAssessment {
+  const pageSize = normalisePubMedRetmax(options.pubMedRetmax);
+  const pageStart = result.pageStart ?? sourceCandidateJobPubMedRetstart(job);
+
+  return assessPubMedDeepeningPage({
+    candidates: result.candidates,
+    pageSize,
+    pageStart,
+    totalCount: result.totalCount
+  });
+}
+
+function pubMedDeepeningResultSummary(assessment: PubMedDeepeningAssessment) {
+  return {
+    candidateCount: assessment.candidateCount,
+    maxResults: assessment.maxResults,
+    pageSize: assessment.pageSize,
+    pageStart: assessment.pageStart,
+    ...(assessment.totalCount !== undefined ? { totalCount: assessment.totalCount } : {}),
+    usefulCandidateCount: assessment.usefulCandidateCount,
+    usefulRatio: assessment.usefulRatio
+  };
+}
+
 function sourceKindFromSourceCandidateSource(source: SourceCandidateSource) {
   switch (source) {
     case "PubMed":
@@ -489,6 +841,25 @@ function sourceKindFromSourceCandidateSource(source: SourceCandidateSource) {
     case "ClinicalTrials.gov":
       return DbSourceKind.CLINICALTRIALS_GOV;
   }
+}
+
+function interventionDiscoverySearchTerm(
+  requestedSearchTerm: string | undefined,
+  intervention: { name: string; synonyms: string[] }
+) {
+  const searchTerm = optionalTrimmedString(requestedSearchTerm);
+
+  if (!searchTerm) {
+    return intervention.name;
+  }
+
+  const allowedTerms = [intervention.name, ...intervention.synonyms].map(normaliseDiscoveryTerm);
+
+  if (!allowedTerms.includes(normaliseDiscoveryTerm(searchTerm))) {
+    throw new Error("Intervention discovery search term must be the intervention name or a saved synonym.");
+  }
+
+  return searchTerm;
 }
 
 function mapQueuedJob(
@@ -592,13 +963,94 @@ function normaliseRegion(region: string | undefined) {
   return normalised;
 }
 
-function queueMetadata(context: SourceCandidateJobContext) {
+function normaliseDiscoveryTerm(value: string) {
+  return value.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function sourceCandidateDiscoveryPriority(
+  query: string,
+  searchTerm: string
+): SourceCandidateDiscoveryPriority | undefined {
+  return normaliseDiscoveryTerm(query) === normaliseDiscoveryTerm(searchTerm)
+    ? "supplement-name"
+    : undefined;
+}
+
+function queueMetadata(
+  context: SourceCandidateJobContext,
+  options: {
+    discoveryPriority?: SourceCandidateDiscoveryPriority;
+    fetchQuery?: string;
+    pubMedRetstart?: number;
+  } = {}
+) {
   return Object.fromEntries(
     [
       ["interventionId", context.interventionId],
-      ["claimId", context.claimId]
+      ["claimId", context.claimId],
+      ["sourceCandidateDiscoveryPriority", options.discoveryPriority],
+      ["sourceCandidateSearchTerm", optionalTrimmedString(options.fetchQuery)],
+      ["pubMedRetstart", normaliseOptionalPubMedRetstart(options.pubMedRetstart)]
     ].filter(([, value]) => value !== undefined)
   ) as Prisma.InputJsonObject;
+}
+
+function normaliseOptionalPubMedRetstart(value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.trunc(value));
+}
+
+function sourceCandidateJobFetchQuery(job: DbIngestionJob) {
+  return sourceCandidateJobMetadataString(job, "sourceCandidateSearchTerm") ?? job.query;
+}
+
+function sourceCandidateJobPubMedRetstart(job: DbIngestionJob) {
+  return sourceCandidateJobMetadataNumber(job, "pubMedRetstart") ?? 0;
+}
+
+function sourceCandidateJobMetadataString(job: DbIngestionJob, key: string) {
+  const value = sourceCandidateJobMetadata(job)[key];
+
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function sourceCandidateJobMetadataNumber(job: DbIngestionJob, key: string) {
+  const value = sourceCandidateJobMetadata(job)[key];
+
+  return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : undefined;
+}
+
+function sourceCandidateJobMetadata(job: DbIngestionJob): Record<string, unknown> {
+  if (!job.metadata || typeof job.metadata !== "object" || Array.isArray(job.metadata)) {
+    return {};
+  }
+
+  return job.metadata as Record<string, unknown>;
+}
+
+function isCatchUpPubMedDeepeningSourceJob(job: DbIngestionJob) {
+  return (
+    sourceCandidateJobPubMedRetstart(job) === 0 &&
+    sourceCandidateJobMetadataString(job, "sourceCandidateDiscoveryPriority") ===
+      "supplement-name" &&
+    !/\[PubMed results \d+-\d+\]/i.test(job.query)
+  );
+}
+
+function pubMedDeepeningJobQuery(term: string, pageStart: number, pageSize: number) {
+  const marker = `PubMed results ${pageStart + 1}-${pageStart + pageSize}`;
+  const suffix = ` [${marker}]`;
+  const normalizedTerm = normaliseQueueQuery(term);
+  const maxTermLength = MAX_LIVE_SOURCE_TERM_LENGTH - suffix.length;
+  const displayTerm =
+    normalizedTerm.length > maxTermLength
+      ? normalizedTerm.slice(0, Math.max(maxTermLength - 1, 1)).trim()
+      : normalizedTerm;
+
+  return normaliseQueueQuery(`${displayTerm}${suffix}`);
 }
 
 function queueContext(input: QueueSourceCandidateIngestionJobInput) {

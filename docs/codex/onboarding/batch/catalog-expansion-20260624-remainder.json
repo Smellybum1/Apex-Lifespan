@@ -1,0 +1,26 @@
+{
+  "supplements": [
+    {
+      "name": "NMN/NR",
+      "category": "Drug/geroprotector watchlist",
+      "claimTemplateIds": ["safety", "aging-clocks", "lifespan"],
+      "synonyms": [
+        "nicotinamide mononucleotide",
+        "nicotinamide riboside",
+        "NAD+ precursor"
+      ]
+    },
+    {
+      "name": "Resveratrol",
+      "category": "Drug/geroprotector watchlist",
+      "claimTemplateIds": ["safety", "aging-clocks", "lipids", "cv-events"],
+      "synonyms": ["trans-resveratrol"]
+    },
+    {
+      "name": "Astaxanthin",
+      "category": "Botanical/herbal",
+      "claimTemplateIds": ["safety", "eye-health", "joint-skin", "inflammation"],
+      "synonyms": ["haematococcus algae", "carotenoid antioxidant"]
+    }
+  ]
+}

@@ -2,13 +2,44 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
-import { buildProductionReadinessReport } from "@/lib/production-readiness";
+import {
+  buildProductionReadinessReport,
+  summarizeProductionReadinessCheck,
+  summarizeProductionReadinessReport,
+  type ProductionReadinessContext
+} from "@/lib/production-readiness";
+import { loadEnvFile, mergeEnv } from "@/lib/env-file";
 
 const PRIVATE_ENV_FILES = [".env", ".env.local", ".env.production", ".env.production.local"];
 
 function main() {
-  const report = buildProductionReadinessReport({
-    env: process.env,
+  const args = readProductionReadinessArgs(process.argv.slice(2));
+  const envFile = args.envFilePath ? loadEnvFile(args.envFilePath) : undefined;
+  const context = readProductionReadinessContext(envFile?.env);
+
+  if (args.checkId) {
+    const packet = summarizeProductionReadinessCheck(context, args.checkId);
+
+    if (!packet.found) {
+      process.exitCode = 1;
+    }
+
+    console.log(JSON.stringify(packet, null, 2));
+    return;
+  }
+
+  const report = buildProductionReadinessReport(context);
+
+  console.log(
+    JSON.stringify(args.summary ? summarizeProductionReadinessReport(report) : report, null, 2)
+  );
+}
+
+function readProductionReadinessContext(
+  envFileValues?: Record<string, string | undefined>
+): ProductionReadinessContext {
+  return {
+    env: mergeEnv(process.env, envFileValues),
     migrationDirectories: readMigrationDirectories(),
     productionProvisioningChecklistExists: existsSync(
       path.join(process.cwd(), "docs", "codex", "production-provisioning-checklist.md")
@@ -16,9 +47,82 @@ function main() {
     trackedEnvFiles: readTrackedEnvFiles(),
     vercelCliAvailable: commandAvailable("vercel"),
     vercelProjectLinked: existsSync(path.join(process.cwd(), ".vercel", "project.json"))
-  });
+  };
+}
 
-  console.log(JSON.stringify(report, null, 2));
+interface ProductionReadinessCliArgs {
+  checkId?: string;
+  envFilePath?: string;
+  summary: boolean;
+}
+
+function readProductionReadinessArgs(args: string[]): ProductionReadinessCliArgs {
+  const parsed: ProductionReadinessCliArgs = {
+    summary: false
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === "--summary") {
+      parsed.summary = true;
+      continue;
+    }
+
+    if (arg === "--check") {
+      const value = args[index + 1]?.trim();
+
+      if (!value) {
+        throw new Error("--check requires a production readiness check id.");
+      }
+
+      parsed.checkId = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--check=")) {
+      const value = arg.slice("--check=".length).trim();
+
+      if (!value) {
+        throw new Error("--check requires a production readiness check id.");
+      }
+
+      parsed.checkId = value;
+      continue;
+    }
+
+    if (arg === "--env-file") {
+      const value = args[index + 1]?.trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--env-file=")) {
+      const value = arg.slice("--env-file=".length).trim();
+
+      if (!value) {
+        throw new Error("--env-file requires a path.");
+      }
+
+      parsed.envFilePath = value;
+      continue;
+    }
+
+    throw new Error(`Unknown production readiness argument: ${arg}`);
+  }
+
+  if (parsed.summary && parsed.checkId) {
+    throw new Error("--summary cannot be combined with --check.");
+  }
+
+  return parsed;
 }
 
 function readMigrationDirectories() {
@@ -59,4 +163,11 @@ function commandAvailable(command: string) {
   return result.status === 0;
 }
 
-main();
+try {
+  main();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+}
+// Legacy/reference process script. Not part of ordinary local product work.
+// Prefer the simplified local workflow unless the user explicitly asks for production readiness.

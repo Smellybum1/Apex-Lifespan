@@ -1,0 +1,29 @@
+{
+  "supplements": [
+    {
+      "category": "Vitamin/mineral",
+      "claimTemplateIds": ["sleep", "safety"],
+      "commonForms": ["capsule", "powder"],
+      "name": "Magnesium glycinate",
+      "synonyms": ["magnesium", "glycine magnesium"]
+    },
+    {
+      "category": "Fatty acid",
+      "claimTemplateIds": ["safety", "lipids", "cv-events"],
+      "name": "Omega-3 concentrate",
+      "product": {
+        "austNumber": "AUST L 123456",
+        "brand": "Example Brand",
+        "name": "Omega-3 Concentrate Plus",
+        "sourceUrl": "https://example.test/artg-result",
+        "sponsor": "Example Sponsor"
+      },
+      "synonyms": ["fish oil", "EPA DHA"]
+    },
+    {
+      "category": "Peptide/biologic",
+      "name": "Example peptide",
+      "synonyms": ["research chemical vial", "injectable cycle"]
+    }
+  ]
+}

@@ -1,0 +1,407 @@
+import { ReviewStatus as DbReviewStatus, SourceKind as DbSourceKind } from "@prisma/client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import {
+  buildScoreExtractionCandidatePreview,
+  formatScoreExtractionCandidatePreviewLines
+} from "@/lib/score-extraction-preview";
+import type { ScoreExtractionCandidatePreview } from "@/lib/score-extraction-preview";
+import type {
+  ScoreWorklistPendingReferenceGroup,
+  ScoreWorklistRepairSummary
+} from "@/lib/score-worklist";
+
+const prismaMocks = vi.hoisted(() => ({
+  claimReferenceFindManyMock: vi.fn(),
+  sourceCandidateFindManyMock: vi.fn(),
+  studyGroupByMock: vi.fn()
+}));
+
+vi.mock("@/lib/db/prisma", () => ({
+  prisma: {
+    claimReference: {
+      findMany: prismaMocks.claimReferenceFindManyMock
+    },
+    sourceCandidate: {
+      findMany: prismaMocks.sourceCandidateFindManyMock
+    },
+    study: {
+      groupBy: prismaMocks.studyGroupByMock
+    }
+  }
+}));
+
+beforeEach(() => {
+  prismaMocks.sourceCandidateFindManyMock.mockResolvedValue([]);
+  prismaMocks.claimReferenceFindManyMock.mockResolvedValue([]);
+  prismaMocks.studyGroupByMock.mockResolvedValue([]);
+});
+
+describe("buildScoreExtractionCandidatePreview", () => {
+  it("scans identity-clean extraction references before identity-warning references", async () => {
+    const summary = scoreRepairSummary([
+      pendingReferenceGroup("ready-reference", []),
+      pendingReferenceGroup("identity-warning-reference", ["Identity needs review."])
+    ]);
+    prismaMocks.sourceCandidateFindManyMock.mockResolvedValue([
+      {
+        acceptedReferenceId: "ready-reference",
+        claimId: "wrong-claim",
+        dedupeKey: "blocked-candidate",
+        externalId: "99999999",
+        interventionId: "creatine",
+        metadata: {},
+        query: "creatine randomized trial",
+        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        source: DbSourceKind.PUBMED,
+        sourceType: "Journal Article, Randomized Controlled Trial",
+        title: "Higher triage but blocked candidate",
+        triageScore: 99
+      },
+      {
+        acceptedReferenceId: "ready-reference",
+        claimId: "creatine-strength",
+        dedupeKey: "clean-ready-candidate",
+        externalId: "34610730",
+        interventionId: "creatine",
+        metadata: {
+          abstractText: "Creatine abstract."
+        },
+        query: "creatine randomized trial",
+        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        source: DbSourceKind.PUBMED,
+        sourceType: "Journal Article, Randomized Controlled Trial",
+        title: "Clean ready creatine candidate",
+        triageScore: 70
+      },
+      {
+        acceptedReferenceId: "ready-reference",
+        claimId: "creatine-strength",
+        dedupeKey: "ready-candidate",
+        externalId: "34610729",
+        interventionId: "creatine",
+        metadata: {
+          abstractText: "Creatine abstract."
+        },
+        query: "calcium randomized trial",
+        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        source: DbSourceKind.PUBMED,
+        sourceType: "Journal Article, Randomized Controlled Trial",
+        title: "Ready creatine candidate",
+        triageScore: 75
+      }
+    ]);
+    prismaMocks.claimReferenceFindManyMock.mockResolvedValue([
+      {
+        claimId: "creatine-strength",
+        referenceId: "ready-reference"
+      }
+    ]);
+
+    const preview = await buildScoreExtractionCandidatePreview(summary, {
+      referenceLimit: 5
+    });
+
+    expect(prismaMocks.sourceCandidateFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          acceptedReferenceId: {
+            in: ["ready-reference"]
+          }
+        })
+      })
+    );
+    expect(preview.scannedReferences).toBe(1);
+    expect(preview.totalPendingReferences).toBe(1);
+    expect(preview.identityBlockedReferences).toBe(1);
+    expect(preview.identityBlockedClaimLinks).toBe(1);
+    expect(preview.references[0]?.repairReferenceCommand).toBe(
+      "npx tsx scripts/local-score-worklist.ts --repair-reference ready-reference"
+    );
+    expect(preview.references[0]?.primaryCandidate).toMatchObject({
+      curationDraftCommand: `npm run ingest:sources -- --candidate-curation-draft ${safeCandidateKey(
+        "clean-ready-candidate"
+      )}`,
+      label: "PubMed 34610730",
+      reason: "ready, source text captured, Human reviewed; verify before extraction"
+    });
+    expect(preview.references[0]?.candidateCount).toBe(3);
+    expect(preview.references[0]?.hiddenCandidates).toBe(2);
+    expect(preview.cleanReadyCandidates).toBe(1);
+    expect(preview.readyQueryWarningCandidates).toBe(1);
+    expect(preview.references[0]?.cleanReadyCandidates).toBe(1);
+    expect(preview.references[0]?.readyQueryWarningCandidates).toBe(1);
+    expect(preview.queryWarningCandidates).toBe(1);
+    expect(preview.references[0]?.queryWarningCandidates).toBe(1);
+    expect(preview.references[0]?.candidates).toHaveLength(1);
+    expect(preview.references[0]?.candidates[0]?.dedupeKey).toBe(
+      safeCandidateKey("clean-ready-candidate")
+    );
+    expect(preview.references[0]?.candidates[0]?.extractionDraftCoverage).toMatchObject({
+      prefillCues: ["source type", "source text"],
+      summary: expect.stringContaining("manual verify: sample size, population, intervention")
+    });
+    expect(preview.references[0]?.candidates[0]?.queryOriginWarning).toBeNull();
+    expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
+      "2 extra same-reference candidate(s) hidden; counts above include them."
+    );
+    expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
+      "3 accepted candidate(s) are attached to the scanned references: 2 ready (1 clean, 1 with query warning), 1 blocked."
+    );
+    expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
+      "3 accepted candidate(s), 2 ready (1 clean, 1 with query warning), 1 blocked"
+    );
+    expect(formatScoreExtractionCandidatePreviewLines(preview).join("\n")).toContain(
+      "Warnings: query-origin 1."
+    );
+  });
+
+  it("surfaces query-origin warning in the start-draft reason when no clean ready candidate exists", async () => {
+    const summary = scoreRepairSummary([pendingReferenceGroup("ready-reference", [])]);
+    prismaMocks.sourceCandidateFindManyMock.mockResolvedValue([
+      {
+        acceptedReferenceId: "ready-reference",
+        claimId: "wrong-claim",
+        dedupeKey: "blocked-candidate",
+        externalId: "99999999",
+        interventionId: "creatine",
+        metadata: {},
+        query: "creatine randomized trial",
+        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        source: DbSourceKind.PUBMED,
+        sourceType: "Journal Article, Randomized Controlled Trial",
+        title: "Higher triage but blocked candidate",
+        triageScore: 99
+      },
+      {
+        acceptedReferenceId: "ready-reference",
+        claimId: "creatine-strength",
+        dedupeKey: "ready-candidate",
+        externalId: "34610729",
+        interventionId: "creatine",
+        metadata: {
+          abstractText: "Creatine abstract."
+        },
+        query: "calcium randomized trial",
+        reviewStatus: DbReviewStatus.HUMAN_REVIEWED,
+        source: DbSourceKind.PUBMED,
+        sourceType: "Journal Article, Randomized Controlled Trial",
+        title: "Ready creatine candidate",
+        triageScore: 75
+      }
+    ]);
+    prismaMocks.claimReferenceFindManyMock.mockResolvedValue([
+      {
+        claimId: "creatine-strength",
+        referenceId: "ready-reference"
+      }
+    ]);
+
+    const preview = await buildScoreExtractionCandidatePreview(summary, {
+      referenceLimit: 5
+    });
+    const lines = formatScoreExtractionCandidatePreviewLines(preview).join("\n");
+
+    expect(preview.references[0]?.primaryCandidate).toMatchObject({
+      curationDraftCommand: `npm run ingest:sources -- --candidate-curation-draft ${safeCandidateKey(
+        "ready-candidate"
+      )}`,
+      reason: "ready, source text captured, query warning, Human reviewed; verify before extraction"
+    });
+    expect(preview.cleanReadyCandidates).toBe(0);
+    expect(preview.readyQueryWarningCandidates).toBe(1);
+    expect(preview.references[0]?.cleanReadyCandidates).toBe(0);
+    expect(preview.references[0]?.readyQueryWarningCandidates).toBe(1);
+    expect(preview.references[0]?.candidates[0]?.queryOriginWarning).toBe(
+      "Original query does not visibly mention Creatine monohydrate; verify accepted reference identity before extraction."
+    );
+    expect(lines).toContain(
+      "Start draft: npm run ingest:sources -- --candidate-curation-draft"
+    );
+    expect(lines).toContain("query warning, Human reviewed; verify before extraction");
+    expect(lines).toContain(
+      "Query warning: Original query does not visibly mention Creatine monohydrate; verify accepted reference identity before extraction."
+    );
+  });
+});
+
+describe("formatScoreExtractionCandidatePreviewLines", () => {
+  it("includes study source-type flag hints for accepted extraction candidates", () => {
+    const preview: ScoreExtractionCandidatePreview = {
+      acceptedCandidates: 1,
+      blockedCandidates: 0,
+      blockerCounts: {
+        "claim-link-missing": 0,
+        "claim-missing": 0,
+        "context-mismatch": 0,
+        "existing-extraction": 0,
+        "identity-warning": 0
+      },
+      cleanReadyCandidates: 1,
+      identityBlockedClaimLinks: 2,
+      identityBlockedReferences: 2,
+      queryWarningCandidates: 0,
+      readyCandidates: 1,
+      readyQueryWarningCandidates: 0,
+      referenceLimit: 1,
+      references: [
+        {
+          blockedCandidates: 0,
+          blockerCounts: {
+            "claim-link-missing": 0,
+            "claim-missing": 0,
+            "context-mismatch": 0,
+            "existing-extraction": 0,
+            "identity-warning": 0
+          },
+          candidateCount: 1,
+          candidates: [
+            {
+              acceptedReferenceId: "ref-creatine-rct",
+              blockers: [],
+              claimId: "creatine-strength",
+              claimLinkReady: true,
+              curationDraftCommand:
+                "npm run ingest:sources -- --candidate-curation-draft b64:creatine",
+              dedupeKey: "b64:creatine",
+              externalId: "34610729",
+              extractionReady: true,
+              extractionDraftCoverage: {
+                manualVerifyFields: [
+                  "sample size",
+                  "population",
+                  "intervention",
+                  "outcomes",
+                  "adverse events",
+                  "funding/conflicts",
+                  "risk of bias"
+                ],
+                prefillCues: ["source type", "source text"],
+                summary:
+                  "prefill cues: source type, source text; manual verify: sample size, population, intervention, outcomes, adverse events, funding/conflicts, risk of bias"
+              },
+              interventionId: "creatine",
+              nextAction: "Ready for operator-reviewed study extraction.",
+              query: "creatine randomized trial",
+              queryOriginWarning: null,
+              reviewStatus: "AI reviewed",
+              sourceLabel: "PubMed",
+              sourceTextStatus: "Abstract text captured for prefill review.",
+              sourceType: "Journal Article, Randomized Controlled Trial",
+              studySourceTypeFlagHint: "randomized-controlled-trial",
+              title: "Creatine randomized controlled trial",
+              triageScore: 75
+            }
+          ],
+          claimCount: 1,
+          cleanReadyCandidates: 1,
+          extractionGaps: ["source type"],
+          hiddenCandidates: 0,
+          primaryCandidate: {
+            curationDraftCommand:
+              "npm run ingest:sources -- --candidate-curation-draft b64:creatine",
+            label: "PubMed 34610729",
+            reason: "ready, source text captured, AI reviewed; verify before extraction"
+          },
+          queryWarningCandidates: 0,
+          readyCandidates: 1,
+          readyQueryWarningCandidates: 0,
+          repairReferenceCommand:
+            "npx tsx scripts/local-score-worklist.ts --repair-reference ref-creatine-rct",
+          reference: {
+            id: "ref-creatine-rct",
+            label: "PubMed PMID: 34610729 2021",
+            title: "Creatine randomized controlled trial"
+          },
+          studyCount: 0
+        }
+      ],
+      scannedReferences: 1,
+      totalPendingReferences: 1
+    };
+    const lines = formatScoreExtractionCandidatePreviewLines(preview).join("\n");
+
+    expect(lines).toContain(
+      "Study-type flag hint: randomized-controlled-trial; verify before writing extraction."
+    );
+    expect(lines).toContain(
+      "Draft coverage: prefill cues: source type, source text; manual verify: sample size, population, intervention, outcomes, adverse events, funding/conflicts, risk of bias"
+    );
+    expect(lines).toContain(
+      'Context: intervention creatine; claim creatine-strength; query "creatine randomized trial"'
+    );
+    expect(lines).toContain(
+      "Repair brief: npx tsx scripts/local-score-worklist.ts --repair-reference ref-creatine-rct"
+    );
+    expect(lines).toContain(
+      "Start draft: npm run ingest:sources -- --candidate-curation-draft b64:creatine (ready, source text captured, AI reviewed; verify before extraction)"
+    );
+    expect(lines).toContain("scanned 1/1 extraction-ready reference(s); 2 identity-blocked skipped");
+    expect(lines).toContain("Skipped identity cleanup: 2 reference group(s) / 2 claim-link(s).");
+  });
+});
+
+function scoreRepairSummary(
+  pendingReferenceGroups: ScoreWorklistPendingReferenceGroup[]
+): ScoreWorklistRepairSummary {
+  const identityWarningGroups = pendingReferenceGroups.filter(
+    (group) => group.identityWarnings.length > 0
+  );
+
+  return {
+    blockerBreakdown: [],
+    extractionBatchGroups: [],
+    extractionPendingRows: pendingReferenceGroups.length,
+    extractionReadyReferenceClaimLinks: pendingReferenceGroups.length - identityWarningGroups.length,
+    extractionReadyReferenceGroups: pendingReferenceGroups.length - identityWarningGroups.length,
+    identityWarningReferenceClaimLinks: identityWarningGroups.length,
+    identityWarningReferenceGroups: identityWarningGroups.length,
+    missingReferenceGroups: [],
+    missingSourceRows: 0,
+    pendingReferenceGroups,
+    sourceBlockedRows: pendingReferenceGroups.length,
+    unlinkedInterventionGroups: [],
+    unlinkedRows: 0
+  };
+}
+
+function safeCandidateKey(dedupeKey: string) {
+  return `b64:${Buffer.from(dedupeKey, "utf8").toString("base64url")}`;
+}
+
+function pendingReferenceGroup(
+  referenceId: string,
+  identityWarnings: string[]
+): ScoreWorklistPendingReferenceGroup {
+  return {
+    claimCount: 1,
+    extractionGaps: [],
+    highestPriority: 100,
+    identityWarnings,
+    interventions: [
+      {
+        claimCount: 1,
+        id: "creatine",
+        name: "Creatine monohydrate",
+        slug: "creatine"
+      }
+    ],
+    outcomes: ["Muscle/strength"],
+    priority: 100,
+    reference: {
+      id: referenceId,
+      label: referenceId,
+      source: "PubMed",
+      title: `${referenceId} title`,
+      url: `https://example.test/${referenceId}`
+    },
+    sampleClaims: [
+      {
+        claimId: "creatine-strength",
+        interventionName: "Creatine monohydrate",
+        outcome: "Muscle/strength",
+        priorityLabel: "High"
+      }
+    ]
+  };
+}

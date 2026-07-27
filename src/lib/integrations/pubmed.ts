@@ -1,4 +1,10 @@
+import {
+  fetchLiveSource,
+  LIVE_SOURCE_JSON_FETCH_INIT
+} from "@/lib/live-source-fetch";
+
 export interface PubMedArticleSummary {
+  abstractText?: string;
   pmid: string;
   title: string | null;
   journal: string | null;
@@ -17,30 +23,36 @@ export interface PubMedSearchResult {
   query: string;
   ids: string[];
   count: number;
+  retstart: number;
   source: string;
   articles: PubMedArticleSummary[];
+}
+
+export interface PubMedSearchOptions {
+  includeAbstractText?: boolean;
+  retstart?: number;
 }
 
 type PubMedSummaryRecord = Record<string, unknown>;
 
 const PUBMED_EUTILS_BASE_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
 const PUBMED_SOURCE = "NCBI E-utilities";
-const LIVE_SOURCE_FETCH_INIT = {
-  headers: {
-    accept: "application/json"
-  },
-  cache: "no-store"
-} satisfies RequestInit;
 
-export async function searchPubMed(term: string, retmax = 10): Promise<PubMedSearchResult> {
+export async function searchPubMed(
+  term: string,
+  retmax = 10,
+  options: PubMedSearchOptions = {}
+): Promise<PubMedSearchResult> {
   const url = new URL(`${PUBMED_EUTILS_BASE_URL}/esearch.fcgi`);
   const safeRetmax = normaliseRetmax(retmax);
+  const safeRetstart = normaliseRetstart(options.retstart);
   url.searchParams.set("db", "pubmed");
   url.searchParams.set("retmode", "json");
   url.searchParams.set("retmax", String(safeRetmax));
+  url.searchParams.set("retstart", String(safeRetstart));
   url.searchParams.set("term", term);
 
-  const response = await fetch(url, LIVE_SOURCE_FETCH_INIT);
+  const response = await fetchLiveSource("PubMed", url, LIVE_SOURCE_JSON_FETCH_INIT);
 
   if (!response.ok) {
     throw new Error(`PubMed search failed with ${response.status}`);
@@ -56,13 +68,22 @@ export async function searchPubMed(term: string, retmax = 10): Promise<PubMedSea
 
   const ids = readStringArray(searchResult.idlist).slice(0, safeRetmax);
   const summaryById = await fetchPubMedSummaries(ids, term);
+  const abstractById = options.includeAbstractText
+    ? await fetchPubMedAbstractTexts(ids)
+    : new Map<string, string>();
 
   return {
     query: term,
     ids,
     count: readNonNegativeInteger(searchResult.count),
+    retstart: safeRetstart,
     source: PUBMED_SOURCE,
-    articles: ids.map((id) => summaryById.get(id) ?? createPubMedArticleFallback(id))
+    articles: ids.map((id) =>
+      withPubMedAbstractText(
+        summaryById.get(id) ?? createPubMedArticleFallback(id),
+        abstractById.get(id)
+      )
+    )
   };
 }
 
@@ -80,7 +101,7 @@ async function fetchPubMedSummaries(
   url.searchParams.set("id", ids.join(","));
 
   try {
-    const response = await fetch(url, LIVE_SOURCE_FETCH_INIT);
+    const response = await fetchLiveSource("PubMed", url, LIVE_SOURCE_JSON_FETCH_INIT);
 
     if (!response.ok) {
       return new Map();
@@ -104,6 +125,46 @@ async function fetchPubMedSummaries(
   } catch {
     return new Map();
   }
+}
+
+async function fetchPubMedAbstractTexts(ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) {
+    return new Map();
+  }
+
+  const url = new URL(`${PUBMED_EUTILS_BASE_URL}/efetch.fcgi`);
+  url.searchParams.set("db", "pubmed");
+  url.searchParams.set("retmode", "xml");
+  url.searchParams.set("id", ids.join(","));
+
+  try {
+    const response = await fetchLiveSource("PubMed", url, {
+      ...LIVE_SOURCE_JSON_FETCH_INIT,
+      headers: {
+        accept: "application/xml"
+      }
+    });
+
+    if (!response.ok) {
+      return new Map();
+    }
+
+    return parsePubMedAbstractXml(await response.text());
+  } catch {
+    return new Map();
+  }
+}
+
+function withPubMedAbstractText(
+  article: PubMedArticleSummary,
+  abstractText: string | undefined
+): PubMedArticleSummary {
+  return abstractText
+    ? {
+        ...article,
+        abstractText
+      }
+    : article;
 }
 
 function mapPubMedSummary(
@@ -130,6 +191,61 @@ function mapPubMedSummary(
     relevanceScore: triage.score,
     relevanceReasons: triage.reasons
   };
+}
+
+function parsePubMedAbstractXml(xml: string): Map<string, string> {
+  const abstractsById = new Map<string, string>();
+  const articleMatches = xml.match(/<PubmedArticle\b[\s\S]*?<\/PubmedArticle>/g) ?? [];
+
+  for (const articleXml of articleMatches) {
+    const pmid = decodeXmlText(articleXml.match(/<PMID\b[^>]*>([\s\S]*?)<\/PMID>/)?.[1]);
+
+    if (!pmid) {
+      continue;
+    }
+
+    const abstractParts = Array.from(
+      articleXml.matchAll(/<AbstractText\b([^>]*)>([\s\S]*?)<\/AbstractText>/g)
+    )
+      .map((match) => {
+        const label = decodeXmlText((match[1] ?? "").match(/\bLabel="([^"]+)"/)?.[1]);
+        const text = decodeXmlText(stripXmlTags(match[2]));
+
+        if (!text) {
+          return undefined;
+        }
+
+        return label ? `${label}: ${text}` : text;
+      })
+      .filter((part): part is string => Boolean(part));
+    const abstractText = normaliseAbstractText(abstractParts.join(" "));
+
+    if (abstractText) {
+      abstractsById.set(pmid, abstractText);
+    }
+  }
+
+  return abstractsById;
+}
+
+function stripXmlTags(value: string | undefined) {
+  return (value ?? "").replace(/<[^>]+>/g, " ");
+}
+
+function decodeXmlText(value: string | undefined) {
+  return (value ?? "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normaliseAbstractText(value: string) {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  return trimmed.length > 0 ? trimmed.slice(0, 4000) : undefined;
 }
 
 function createPubMedArticleFallback(pmid: string): PubMedArticleSummary {
@@ -328,6 +444,14 @@ function normaliseRetmax(retmax: number) {
   }
 
   return Math.min(Math.max(Math.trunc(retmax), 1), 20);
+}
+
+function normaliseRetstart(retstart: number | undefined) {
+  if (retstart === undefined || !Number.isFinite(retstart)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.trunc(retstart));
 }
 
 function isPubMedSearchResultRecord(value: unknown): value is PubMedSummaryRecord {

@@ -21,19 +21,25 @@ describe("operator auth controls", () => {
   it("keeps source-candidate persistence behind the browser write gate", () => {
     expect(OPERATOR_PAGE_SOURCE).toContain("Promotion readiness");
     expect(OPERATOR_PAGE_SOURCE).toContain("Audit trail");
+    expect(OPERATOR_PAGE_SOURCE).toContain("OperatorOnboardingWizard");
     expect(OPERATOR_PAGE_SOURCE).toContain("getOperatorAuditTrailSnapshot");
     expect(OPERATOR_PAGE_SOURCE).toContain('canOperatorAccess(principal.role, "audit:read")');
     expect(OPERATOR_PAGE_SOURCE).toContain("getOperatorBrowserWriteControlState");
     expect(OPERATOR_PAGE_SOURCE).toContain("candidateReviewControl.enabled");
     expect(OPERATOR_PAGE_SOURCE).toContain("claimLinkControl.enabled");
+    expect(OPERATOR_PAGE_SOURCE).toContain("onboardingDraftControl.enabled");
+    expect(OPERATOR_PAGE_SOURCE).toContain("onboardingImportControl.enabled");
     expect(OPERATOR_PAGE_SOURCE).toContain("promotionControl.enabled");
     expect(OPERATOR_PAGE_SOURCE).toContain("studyExtractionControl.enabled");
+    expect(OPERATOR_PAGE_SOURCE).toContain("importOnboardingDraftFromBrowserForm");
     expect(OPERATOR_PAGE_SOURCE).toContain("promoteCandidateFromBrowserForm");
+    expect(OPERATOR_PAGE_SOURCE).toContain("saveOnboardingDraftFromBrowserForm");
     expect(OPERATOR_PAGE_SOURCE).toContain("promotionControl.enabled && row.ready");
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/recordSourceCandidateDecision/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/linkSourceCandidateClaim/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/extractSourceCandidateStudy/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/promoteSourceCandidatePublicEvidence/);
+    expect(OPERATOR_PAGE_SOURCE).not.toMatch(/importSupplementOnboardingDraftAsOperator/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/assessSourceCandidatePublicPromotion/);
     expect(OPERATOR_PAGE_SOURCE).not.toMatch(/source-candidate-actions/);
     expect(OPERATOR_PAGE_SOURCE).toContain("Read-only");

@@ -9,7 +9,8 @@ import {
 import { listSourceCandidateIdentityGroups } from "@/lib/data/source-candidates";
 import {
   planScheduledSourceIngestionDryRun,
-  runScheduledSourceIngestionBatch
+  runScheduledSourceIngestionBatch,
+  summarizeScheduledSourceIngestionDryRun
 } from "@/lib/data/scheduled-ingestion";
 import type { SourceCandidate } from "@/lib/types";
 
@@ -84,6 +85,15 @@ describe("scheduled source ingestion dry run", () => {
           retryMode: "manual-reviewed-retry"
         }
       },
+      hostedRunGate: {
+        localCliUnchanged: true,
+        ready: true,
+        routeExposed: false,
+        runOption: "requireHostedRunReadiness",
+        requiresExplicitApply: true,
+        requiresHostedCronReady: true,
+        requiresRetryAutomationReady: true
+      },
       maxJobsPerRun: 2,
       nextAction: "Scheduled run would process 2 queued job(s).",
       noAutoPromotion: true,
@@ -122,6 +132,77 @@ describe("scheduled source ingestion dry run", () => {
               "Review docs/codex/scheduled-ingestion-retry-policy.md, then record APEX_INGESTION_RETRY_POLICY_APPROVED_AT."
           }
         ],
+        copySafeCommands: [
+          {
+            command: "npm run ingest:scheduled-dry-run",
+            id: "scheduled-ingestion-dry-run",
+            label: "Refresh scheduled ingestion dry run",
+            mode: "dry-run",
+            purpose:
+              "Recheck queue state, hosted-cron evidence, retry policy, dedupe review, and no-auto-promotion controls without running writes."
+          },
+          {
+            command: "npm run ingest:scheduled-dry-run -- --summary",
+            id: "scheduled-ingestion-summary",
+            label: "Summarize scheduled ingestion readiness",
+            mode: "read-only",
+            purpose:
+              "Print compact scheduler counts, readiness gates, warnings, and next action without dumping full queue details."
+          },
+          {
+            command:
+              "npm run ingest:scheduled-dry-run -- --env-file <operations-env-file> --summary",
+            id: "scheduled-ingestion-env-file-summary",
+            label: "Summarize scheduled ingestion from env file",
+            mode: "read-only",
+            purpose:
+              "Recheck scheduler evidence from an approved ignored env file without printing secret values."
+          },
+          {
+            command: "npm run ingest:sources -- --db-status",
+            id: "source-candidate-db-status",
+            label: "Check source-candidate database",
+            mode: "read-only",
+            purpose: "Confirm local source-candidate storage connectivity without reading review data."
+          },
+          {
+            command: "npm run ingest:sources -- --jobs --jobs-status queued",
+            id: "queued-ingestion-jobs",
+            label: "Review queued ingestion jobs",
+            mode: "read-only",
+            purpose: "Inspect queued source-candidate jobs before any scheduled batch is enabled."
+          },
+          {
+            command: "npm run ingest:sources -- --jobs --jobs-status failed",
+            id: "failed-ingestion-jobs",
+            label: "Review failed ingestion jobs",
+            mode: "read-only",
+            purpose: "Inspect failed source-candidate jobs before any manual retry decision."
+          },
+          {
+            command: "npm run ingest:sources -- --candidates --candidate-duplicates",
+            id: "duplicate-source-candidates",
+            label: "Review duplicate source identities",
+            mode: "read-only",
+            purpose: "Inspect duplicate source/external-id groups before unattended scheduled ingestion."
+          },
+          {
+            command:
+              "npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10",
+            id: "candidate-review-overview",
+            label: "Review pending candidate overview",
+            mode: "read-only",
+            purpose: "Inspect the next human review groups without changing candidate decisions."
+          },
+          {
+            command: "npm run launch:readiness -- --env-file <operations-env-file> --summary",
+            id: "launch-readiness",
+            label: "Refresh aggregate launch readiness",
+            mode: "read-only",
+            purpose:
+              "Recheck fully-live launch gates after scheduled-ingestion evidence changes without printing secret values."
+          }
+        ],
         humanOwned: true,
         nextOperatorAction:
           "Review docs/codex/scheduled-ingestion-retry-policy.md, then record APEX_INGESTION_RETRY_POLICY_APPROVED_AT.",
@@ -156,6 +237,12 @@ describe("scheduled source ingestion dry run", () => {
             label: "Automatic retries disabled"
           },
           {
+            detail:
+              "Future hosted runs can require hosted cron and retry-policy readiness before processing queued jobs; no hosted write route is exposed.",
+            id: "hosted-run-gate",
+            label: "Hosted-run gate"
+          },
+          {
             detail: "NCBI_TOOL and NCBI_EMAIL are configured.",
             evidenceKeys: ["NCBI_TOOL", "NCBI_EMAIL"],
             id: "ncbi-metadata",
@@ -188,6 +275,113 @@ describe("scheduled source ingestion dry run", () => {
     });
     expect(listDuplicateIdentityGroupsMock).toHaveBeenCalledWith({
       limit: 5
+    });
+  });
+
+  it("emits only dry-run and read-only commands for scheduler handoff", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [],
+      total: 0
+    });
+    listJobsMock.mockResolvedValue([]);
+
+    const plan = await planScheduledSourceIngestionDryRun();
+
+    expect(plan.worksheet.copySafeCommands).toHaveLength(9);
+    expect(plan.worksheet.copySafeCommands.map((item) => item.mode)).toEqual([
+      "dry-run",
+      "read-only",
+      "read-only",
+      "read-only",
+      "read-only",
+      "read-only",
+      "read-only",
+      "read-only",
+      "read-only"
+    ]);
+    expect(plan.worksheet.copySafeCommands.some((item) => item.command.includes("--apply"))).toBe(
+      false
+    );
+  });
+
+  it("summarizes scheduler readiness without full queue detail", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [
+        {
+          count: 1,
+          region: "AU",
+          source: SourceKind.PUBMED,
+          status: IngestionStatus.QUEUED
+        }
+      ],
+      total: 1
+    });
+    listJobsMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([queuedJob("job-1")])
+      .mockResolvedValueOnce([]);
+    listDuplicateIdentityGroupsMock.mockResolvedValue([
+      {
+        externalId: "42141930",
+        source: "PubMed",
+        candidates: [
+          sourceCandidate({
+            dedupeKey: "pubmed|au|creatine-meta|42141930||",
+            decision: "Pending review"
+          })
+        ]
+      }
+    ]);
+
+    const plan = await planScheduledSourceIngestionDryRun({
+      env: {},
+      maxJobsPerRun: 1
+    });
+
+    expect(summarizeScheduledSourceIngestionDryRun(plan)).toMatchObject({
+      counts: {
+        duplicateIdentityGroups: 1,
+        queuedJobs: 1,
+        recentFailures: 0,
+        runningJobs: 0,
+        wouldRunJobs: 1
+      },
+      hostedCronReady: false,
+      hostedRunGateReady: true,
+      humanOwned: true,
+      nextAction:
+        "Configure missing NCBI metadata before unattended PubMed ingestion: NCBI_TOOL, NCBI_EMAIL.",
+      noAutoPromotion: true,
+      readOnly: true,
+      retryAutomationReady: false
+    });
+  });
+
+  it("reports the future hosted-run gate without exposing a hosted write route", async () => {
+    summarizeJobsMock.mockResolvedValue({
+      groups: [],
+      total: 0
+    });
+    listJobsMock.mockResolvedValue([]);
+
+    await expect(planScheduledSourceIngestionDryRun()).resolves.toMatchObject({
+      hostedRunGate: {
+        localCliUnchanged: true,
+        ready: true,
+        routeExposed: false,
+        runOption: "requireHostedRunReadiness",
+        requiresExplicitApply: true,
+        requiresHostedCronReady: true,
+        requiresRetryAutomationReady: true
+      },
+      worksheet: {
+        ready: expect.arrayContaining([
+          expect.objectContaining({
+            id: "hosted-run-gate",
+            label: "Hosted-run gate"
+          })
+        ])
+      }
     });
   });
 
@@ -613,6 +807,50 @@ describe("scheduled source ingestion batch runner", () => {
     expect(runNextJobMock).not.toHaveBeenCalled();
   });
 
+  it("blocks hosted-run apply mode until hosted cron evidence is ready", async () => {
+    mockQueuedSchedulerState(1);
+
+    const result = await runScheduledSourceIngestionBatch({
+      apply: true,
+      env: {
+        APEX_SCHEDULED_INGESTION_WRITES_ENABLED: "true",
+        NCBI_EMAIL: "operator@example.com",
+        NCBI_TOOL: "apex-lifespan"
+      },
+      requireHostedRunReadiness: true
+    });
+
+    expect(result).toMatchObject({
+      applied: false,
+      blocked: true,
+      dryRun: true,
+      executedJobs: [],
+      nextAction:
+        "Hosted scheduled ingestion readiness is required when hosted-run mode is used: DATABASE_URL, APEX_DATA_SOURCE=database, APEX_INGESTION_ALERTS_CONFIGURED=true, APEX_SCHEDULED_INGESTION_CRON_APPROVED=true."
+    });
+    expect(runNextJobMock).not.toHaveBeenCalled();
+  });
+
+  it("blocks hosted-run apply mode until retry policy is ready", async () => {
+    mockQueuedSchedulerState(1);
+
+    const result = await runScheduledSourceIngestionBatch({
+      apply: true,
+      env: readySchedulerEnv(),
+      requireHostedRunReadiness: true
+    });
+
+    expect(result).toMatchObject({
+      applied: false,
+      blocked: true,
+      dryRun: true,
+      executedJobs: [],
+      nextAction:
+        "Scheduled ingestion retry policy must be ready when hosted-run mode is used: APEX_INGESTION_RETRY_POLICY_APPROVED_AT."
+    });
+    expect(runNextJobMock).not.toHaveBeenCalled();
+  });
+
   it("runs a bounded batch with source caps and no automatic promotion", async () => {
     mockQueuedSchedulerState(3);
     runNextJobMock
@@ -639,6 +877,27 @@ describe("scheduled source ingestion batch runner", () => {
       clinicalTrialPageSize: 20,
       pubMedRetmax: 20
     });
+  });
+
+  it("runs hosted-ready batches only after hosted cron and retry evidence are ready", async () => {
+    mockQueuedSchedulerState(1);
+    runNextJobMock.mockResolvedValueOnce(runResult("job-1"));
+
+    await expect(
+      runScheduledSourceIngestionBatch({
+        apply: true,
+        env: approvedRetrySchedulerEnv(),
+        requireHostedRunReadiness: true
+      })
+    ).resolves.toMatchObject({
+      applied: true,
+      blocked: false,
+      dryRun: false,
+      executedJobs: [{ jobId: "job-1" }],
+      nextAction: "Scheduled run processed 1 queued job(s).",
+      noAutoPromotion: true
+    });
+    expect(runNextJobMock).toHaveBeenCalledTimes(1);
   });
 
   it("does not apply while another scheduled job is running", async () => {

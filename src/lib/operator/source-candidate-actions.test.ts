@@ -47,6 +47,19 @@ vi.mock("@/lib/operator/curation-promotion", () => ({
   assessSourceCandidatePublicPromotion: vi.fn()
 }));
 
+vi.mock("@/lib/data/evidence-review-sync", () => ({
+  recordHumanClaimEvidenceReview: vi.fn().mockResolvedValue({
+    snapshot: { created: true, snapshotId: "snapshot-1" },
+    sync: { created: false, sourcePacketId: "packet-1" }
+  }),
+  recordSourcePacketMutationReview: vi.fn().mockResolvedValue({
+    created: false,
+    sourcePacketId: "packet-1",
+    status: "COMPLETE",
+    studySync: { created: 0, studyCount: 1, updated: 0 }
+  })
+}));
+
 const getSourceCandidateByDedupeKeyMock = vi.mocked(getSourceCandidateByDedupeKey);
 const getSourceCandidateCurationStatusMock = vi.mocked(getSourceCandidateCurationStatus);
 const recordSourceCandidateDecisionMock = vi.mocked(recordSourceCandidateDecision);
@@ -124,7 +137,8 @@ describe("operator source-candidate actions", () => {
           acceptedReferenceId: reference.id,
           decision: "Accepted",
           dedupeKey: pendingCandidate.dedupeKey,
-          reviewNote: "Matches PMID and claim context."
+          reviewNote: "Matches PMID and claim context.",
+          reviewedBy: "human"
         },
         writesEnabled
       )
@@ -134,7 +148,8 @@ describe("operator source-candidate actions", () => {
       acceptedReferenceId: reference.id,
       decision: "Accepted",
       dedupeKey: pendingCandidate.dedupeKey,
-      reviewNote: "Matches PMID and claim context."
+      reviewNote: "Matches PMID and claim context.",
+      reviewedBy: "human"
     });
     expect(operatorAuditCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -157,7 +172,8 @@ describe("operator source-candidate actions", () => {
         {
           decision: "Rejected",
           dedupeKey: pendingCandidate.dedupeKey,
-          reviewNote: "Out of scope."
+          reviewNote: "Out of scope.",
+          reviewedBy: "human"
         },
         {}
       )

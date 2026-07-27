@@ -19,166 +19,7 @@ const LOW_TITLE_OVERLAP_CAUTION =
 const DUPLICATE_IDENTITY_CAUTION =
   "Same source/external id appears in multiple candidate contexts; compare duplicate identity rows before accepting or rejecting any candidate.";
 
-describe("commandUsage", () => {
-  it("describes source-candidate review guardrails", () => {
-    expect(commandUsage()).toContain(
-      "--candidate-detail <dedupe-key>   Print one source-candidate detail record with review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-reference-matches <dedupe-key> Print accepted-reference matches and review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-review-flags        Print read-only flagged pending review groups with review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-review-flag <flag>  With --candidate-review-flags, filter by broad-safety-query or low-title-query-overlap."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-review-overview     Print read-only pending review groups with review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-region <region>       Filter candidates, overview, flags, or handoff by region."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-claim-missing         Filter candidates, overview, flags, or handoff to rows without claim id."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-intervention-missing  Filter candidates, overview, flags, or handoff to rows without intervention id."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-review-packet <dedupe-key> Print detail, accepted-reference matches, sibling/duplicate context, and curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidates                      Print read-only source-candidate review rows with review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-siblings <dedupe-key> Print source-candidate siblings with match reasons and review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-curation-draft <dedupe-key> Print read-only claim-link/study draft fields with command hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-curation-status <dedupe-key> Print curation handoff status, next action, and command hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-curation-handoff      Print accepted source-candidate curation handoff rows, next actions, and command hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-curation-handoff-status <status> Filter handoff by missing-reference, reference-mismatch, candidate-claim-missing, claim-link-missing, extraction-pending, or ready."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-duplicates            With --candidates, print read-only duplicate source/external-id groups with review/curation hints."
-    );
-    expect(commandUsage()).toContain(
-      "--candidate-external-id <id>      Filter --candidates by source external id such as PMID or NCT id."
-    );
-    expect(commandUsage()).toContain(
-      "<dedupe-key> also accepts emitted key=b64:... values for shell-safe reuse."
-    );
-    expect(commandUsage()).toContain(
-      "--review-note <note>              Human review note; required for --accept-candidate and --reject-candidate."
-    );
-    expect(commandUsage()).toContain(
-      "--link-candidate-claim <dedupe-key> Link an accepted candidate reference to its claim."
-    );
-    expect(commandUsage()).toContain(
-      "--extract-candidate-study <dedupe-key> Write structured Study extraction for an accepted, claim-linked candidate."
-    );
-    expect(commandUsage()).toContain(
-      "--study-source-type <type>        Optional study type override: meta-analysis, systematic-review, randomized-controlled-trial, observational-cohort, case-report, animal-study, in-vitro-mechanistic, clinical-trial-record, or regulatory-safety-warning."
-    );
-    expect(commandUsage()).toContain(
-      "--queue-claim-sources <claim-id>  Queue PubMed and ClinicalTrials.gov jobs from claim context."
-    );
-    expect(commandUsage()).toContain(
-      "--jobs-status <status>            Filter --jobs by queued, running, succeeded, failed, or skipped."
-    );
-    expect(commandUsage()).toContain(
-      "--jobs                            Print recent source-candidate ingestion jobs with read-only hints."
-    );
-    expect(commandUsage()).toContain(
-      "--jobs-claim-id <id>              Filter --jobs by claim id."
-    );
-    expect(commandUsage()).toContain(
-      "--run-next                        Run queued PubMed/ClinicalTrials.gov jobs."
-    );
-    expect(commandUsage()).toContain(
-      "--limit <count>                   With --run-next, run up to count queued jobs (default 1, max 25)."
-    );
-    expect(commandUsage()).toContain(
-      "--db-status                       Check local PostgreSQL connectivity without reading review data."
-    );
-  });
-});
-
 describe("parseSourceCandidateJobCommandArgs", () => {
-  it("uses a read-only summary default for the local ingestion command", () => {
-    expect(parseSourceCandidateJobCommandArgs([])).toEqual({
-      help: false,
-      limit: 1,
-      summary: true
-    });
-  });
-
-  it("parses explicit job, batch, and source-specific run limits", () => {
-    expect(
-      parseSourceCandidateJobCommandArgs([
-        "--run-next",
-        "--limit",
-        "99",
-        "--pubmed-retmax",
-        "50",
-        "--clinical-trial-page-size",
-        "3"
-      ])
-    ).toEqual({
-      help: false,
-      limit: 25,
-      summary: false,
-      runNextJobs: true,
-      pubMedRetmax: 20,
-      clinicalTrialPageSize: 3
-    });
-
-    expect(parseSourceCandidateJobCommandArgs(["--job-id", "job-pubmed"])).toEqual({
-      help: false,
-      jobId: "job-pubmed",
-      limit: 1,
-      summary: false
-    });
-
-    expect(() =>
-      parseSourceCandidateJobCommandArgs(["--limit", "2"])
-    ).toThrow("--limit requires --run-next.");
-
-    expect(() =>
-      parseSourceCandidateJobCommandArgs(["--pubmed-retmax", "3"])
-    ).toThrow(
-      "--pubmed-retmax and --clinical-trial-page-size require --run-next or --job-id."
-    );
-
-    expect(() =>
-      parseSourceCandidateJobCommandArgs(["--run-next", "--job-id", "job-pubmed"])
-    ).toThrow("--run-next cannot be combined with --job-id.");
-  });
-
-  it("parses read-only summary mode", () => {
-    expect(parseSourceCandidateJobCommandArgs(["--summary"])).toEqual({
-      help: false,
-      limit: 1,
-      summary: true
-    });
-  });
-
-  it("parses read-only database status mode", () => {
-    expect(parseSourceCandidateJobCommandArgs(["--db-status"])).toEqual({
-      dbStatus: true,
-      help: false,
-      limit: 1,
-      summary: false
-    });
-  });
-
   it("parses read-only source-candidate detail mode", () => {
     const encodedKey = safeCandidateKey("pubmed|au|creatine|28615996");
 
@@ -499,6 +340,23 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       )
     ).toThrow(
       "--study-source-type must be meta-analysis, systematic-review, randomized-controlled-trial, observational-cohort, case-report, animal-study, in-vitro-mechanistic, clinical-trial-record, or regulatory-safety-warning."
+    );
+  });
+
+  it("rejects unchanged source-candidate study extraction placeholders", () => {
+    expect(() =>
+      parseSourceCandidateJobCommandArgs(
+        studyCommandArgs([
+          "--study-sample-size",
+          "Human-entered sample size.",
+          "--study-population",
+          "Human-reviewed population.",
+          "--study-outcome",
+          "Human-reviewed outcome."
+        ])
+      )
+    ).toThrow(
+      "Study extraction fields require human edits before saving: --study-sample-size, --study-population, --study-outcome. Replace draft placeholder text from --candidate-curation-draft."
     );
   });
 
@@ -1998,6 +1856,20 @@ describe("parseSourceCandidateJobCommandArgs", () => {
   });
 
   it("does not combine queue mode with other command modes", () => {
+    expect(
+      parseSourceCandidateJobCommandArgs([
+        "--queue-intervention-sources",
+        "astaxanthin",
+        "--region",
+        "au"
+      ])
+    ).toEqual({
+      help: false,
+      limit: 1,
+      queueInterventionSourcesInterventionId: "astaxanthin",
+      region: "au",
+      summary: false
+    });
     expect(() =>
       parseSourceCandidateJobCommandArgs([
         "--queue-pubmed",
@@ -2039,11 +1911,29 @@ describe("parseSourceCandidateJobCommandArgs", () => {
       parseSourceCandidateJobCommandArgs([
         "--queue-claim-sources",
         "creatine-strength",
+        "--queue-intervention-sources",
+        "creatine"
+      ])
+    ).toThrow("Only one queue option can be used at a time.");
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--queue-claim-sources",
+        "creatine-strength",
         "--claim-id",
         "different-claim"
       ])
     ).toThrow(
       "--intervention-id and --claim-id cannot be combined with --queue-claim-sources."
+    );
+    expect(() =>
+      parseSourceCandidateJobCommandArgs([
+        "--queue-intervention-sources",
+        "creatine",
+        "--claim-id",
+        "different-claim"
+      ])
+    ).toThrow(
+      "--intervention-id and --claim-id cannot be combined with --queue-intervention-sources."
     );
     expect(() =>
       parseSourceCandidateJobCommandArgs(["--region", "AU"])
@@ -3242,11 +3132,42 @@ describe("runSourceCandidateJobCommand", () => {
           }
         ],
         pmid: "28615996",
+        prefillFields: [
+          {
+            confidence: "candidate-metadata",
+            field: "sampleSize",
+            note:
+              "Enrollment/sample-size metadata may describe planned rather than analyzed sample; verify actual analyzed sample before writing.",
+            value: "120 actual",
+            writeFlag: "--study-sample-size"
+          },
+          {
+            confidence: "derived",
+            field: "riskOfBias",
+            note:
+              "Risk of bias requires protocol/results/full-text review; this is only a starting note.",
+            value:
+              "Review-level source; assess search strategy, inclusion criteria, bias appraisal, and funding/conflicts.",
+            writeFlag: "--study-risk-of-bias"
+          },
+          {
+            confidence: "manual-required",
+            field: "comparator",
+            note:
+              "Comparator is not currently a Study write field, but it should inform claim-level extraction.",
+            value:
+              "Not available in candidate metadata; review full text or registry arms before describing comparator."
+          }
+        ],
         referenceId: "ref-creatine-position-stand",
         source: "PubMed",
         sourceTypeSuggestion: "SYSTEMATIC_REVIEW",
         title: "Creatine position stand",
+        uncertaintyNotes: [
+          "Prefill values are decision support only; do not write extraction fields without checking the source packet."
+        ],
         url: "https://pubmed.ncbi.nlm.nih.gov/28615996/",
+        whatWouldChangeScore: "Reviewed extraction fields would improve scoring.",
         year: 2017
       }
     });
@@ -3270,18 +3191,29 @@ describe("runSourceCandidateJobCommand", () => {
         ]
       })
     );
+    const previewIdentityResolution = vi.fn().mockResolvedValue([
+      sourceCandidateIdentityDecision({
+        action: "confirm-target",
+        dedupeKey: candidateKey,
+        reasons: [
+          "Search query contains the current supplement identity.",
+          "Captured metadata has a loose current-supplement identity match."
+        ]
+      })
+    ]);
     const runNextJob = vi.fn();
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-draft", candidateKey],
         { stdout },
-        { getCurationDraft, listSiblings, runNextJob }
+        { getCurationDraft, listSiblings, previewIdentityResolution, runNextJob }
       )
     ).resolves.toBe(0);
 
     expect(getCurationDraft).toHaveBeenCalledWith(candidateKey);
     expect(listSiblings).toHaveBeenCalledWith(candidateKey, {});
+    expect(previewIdentityResolution).toHaveBeenCalledWith([candidateKey]);
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       [
@@ -3289,6 +3221,7 @@ describe("runSourceCandidateJobCommand", () => {
         "readOnly=true",
         `dedupe="${candidateKey}"`,
         `key=${safeKey}`,
+        'query="creatine strength"',
         `packet="--candidate-review-packet ${safeKey}"`,
         `referenceMatches="--candidate-reference-matches ${safeKey}"`,
         `siblings="--candidate-siblings ${safeKey}"`,
@@ -3306,6 +3239,10 @@ describe("runSourceCandidateJobCommand", () => {
         `duplicateCaution="${DUPLICATE_IDENTITY_CAUTION}"`,
         "duplicateIdentityMixedDecision=true",
         'duplicateIdentityNextAction="Review duplicate identity rows together before changing any candidate decision."',
+        'identityPreview="source-led resolver would confirm the current supplement identity."',
+        "identityReasons:",
+        '  - "Search query contains the current supplement identity."',
+        '  - "Captured metadata has a loose current-supplement identity match."',
         "acceptedReference=ref-creatine-position-stand",
         'acceptedReferenceTitle="Creatine position stand"',
         'acceptedReferenceSource="PubMed"',
@@ -3339,19 +3276,33 @@ describe("runSourceCandidateJobCommand", () => {
         '  doi="10.1186/s12970-017-0173-z"',
         "  abstractAvailable=true",
         '  manualFields="sampleSize, population, interventionName, outcomes, adverseEvents, fundingConflicts, riskOfBias"',
+        '  fieldReadiness="command-prefill candidates 2/7; human-required fields 5/7; review-only cues 1; uncertainty notes 1"',
+        "  prefillFields:",
+        '    sampleSize="120 actual" confidence=candidate-metadata writeFlag=--study-sample-size note="Enrollment/sample-size metadata may describe planned rather than analyzed sample; verify actual analyzed sample before writing."',
+        '    riskOfBias="Review-level source; assess search strategy, inclusion criteria, bias appraisal, and funding/conflicts." confidence=derived writeFlag=--study-risk-of-bias note="Risk of bias requires protocol/results/full-text review; this is only a starting note."',
+        '    comparator="Not available in candidate metadata; review full text or registry arms before describing comparator." confidence=manual-required note="Comparator is not currently a Study write field, but it should inform claim-level extraction."',
+        "  uncertaintyNotes:",
+        '    - "Prefill values are decision support only; do not write extraction fields without checking the source packet."',
+        '  whatWouldChangeScore="Reviewed extraction fields would improve scoring."',
         `  commandTemplate=${JSON.stringify(
           [
             `--extract-candidate-study ${safeKey}`,
             "--study-source-type systematic-review",
-            '--study-sample-size "Human-entered sample size."',
+            '--study-sample-size "120 actual"',
             '--study-population "Human-reviewed population."',
             '--study-intervention-name "Human-reviewed intervention."',
             '--study-outcome "Human-reviewed outcome."',
             '--study-adverse-events "Human-reviewed adverse event summary."',
             '--study-funding-conflicts "Human-reviewed funding/conflict note."',
-            '--study-risk-of-bias "Human-reviewed risk-of-bias assessment."'
+            '--study-risk-of-bias "Review-level source; assess search strategy, inclusion criteria, bias appraisal, and funding/conflicts."'
           ].join(" ")
         )}`,
+        "  commandTemplateRequiresHumanEdits=true",
+        '  humanRequiredCommandFields="population, interventionName, outcomes, adverseEvents, fundingConflicts"',
+        "  scoreRepairFollowup:",
+        '    referenceBrief="npx tsx scripts/local-score-worklist.ts --repair-reference ref-creatine-position-stand"',
+        '    readyCheck="npx tsx scripts/local-score-worklist.ts --state ready_to_score --limit 20"',
+        '    scoreDraft="npx tsx scripts/local-score-draft.ts --limit 15"',
         "  metadataFields:",
         '    journal="Journal of the International Society of Sports Nutrition"',
         '    publicationTypes="Journal Article, Review"'
@@ -3372,14 +3323,18 @@ describe("runSourceCandidateJobCommand", () => {
       }
     });
     const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
+    const previewIdentityResolution = vi.fn().mockResolvedValue([]);
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-draft", "pubmed|au|creatine|28615996"],
         { stdout },
-        { getCurationDraft, listSiblings }
+        { getCurationDraft, listSiblings, previewIdentityResolution }
       )
     ).resolves.toBe(0);
+    expect(previewIdentityResolution).toHaveBeenCalledWith([
+      "pubmed|au|creatine|28615996"
+    ]);
 
     expect(stdout).toHaveBeenCalledWith(
       [
@@ -3387,6 +3342,7 @@ describe("runSourceCandidateJobCommand", () => {
         "readOnly=true",
         'dedupe="pubmed|au|creatine|28615996"',
         `key=${safeCandidateKey("pubmed|au|creatine|28615996")}`,
+        'query="creatine strength"',
         `packet="--candidate-review-packet ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
         `siblings="--candidate-siblings ${safeCandidateKey("pubmed|au|creatine|28615996")}"`,
@@ -3399,6 +3355,7 @@ describe("runSourceCandidateJobCommand", () => {
         "publicSourcePacketReady=false",
         "acceptRequiresMatchingCuratedReference=true",
         "reviewDecisionRequiresHumanNote=true",
+        'identityPreview="source-led identity preview unavailable; inspect accepted reference identity before extraction."',
         "claimLinkDraft: unavailable",
         "studyExtractionDraft: unavailable"
       ].join("\n")
@@ -3434,14 +3391,25 @@ describe("runSourceCandidateJobCommand", () => {
       }
     });
     const listSiblings = vi.fn().mockResolvedValue(sourceCandidateSiblings());
+    const previewIdentityResolution = vi.fn().mockResolvedValue([
+      sourceCandidateIdentityDecision({
+        action: "reject-wrong-supplement",
+        dedupeKey: candidateKey,
+        reasons: [
+          "Captured metadata appears to mention Calcium.",
+          "Target supplement is not visible in captured title/source metadata."
+        ]
+      })
+    ]);
 
     await expect(
       runSourceCandidateJobCommand(
         ["--candidate-curation-draft", candidateKey],
         { stdout },
-        { getCurationDraft, listSiblings }
+        { getCurationDraft, listSiblings, previewIdentityResolution }
       )
     ).resolves.toBe(0);
+    expect(previewIdentityResolution).toHaveBeenCalledWith([candidateKey]);
 
     expect(stdout).toHaveBeenCalledWith(
       [
@@ -3449,6 +3417,7 @@ describe("runSourceCandidateJobCommand", () => {
         "readOnly=true",
         `dedupe="${candidateKey}"`,
         `key=${safeCandidateKey(candidateKey)}`,
+        'query="Vitamin D safety adverse effects"',
         `packet="--candidate-review-packet ${safeCandidateKey(candidateKey)}"`,
         `referenceMatches="--candidate-reference-matches ${safeCandidateKey(candidateKey)}"`,
         `siblings="--candidate-siblings ${safeCandidateKey(candidateKey)}"`,
@@ -3459,6 +3428,10 @@ describe("runSourceCandidateJobCommand", () => {
         'status="Accepted reference missing"',
         'nextAction="Attach or restore the matching curated reference before public packet review."',
         "publicSourcePacketReady=false",
+        'identityPreview="source-led resolver would reject this as the wrong supplement."',
+        "identityReasons:",
+        '  - "Captured metadata appears to mention Calcium."',
+        '  - "Target supplement is not visible in captured title/source metadata."',
         'reviewFlags="broad-safety-query, low-title-query-overlap"',
         'flags="--candidate-review-flags --candidate-review-flags-limit 10"',
         'flagFocus="--candidate-review-flags --candidate-review-flag broad-safety-query --candidate-claim-id vitamin-d-deficiency --candidate-intervention-id vitamin-d --candidate-region AU --candidate-source clinical-trials --candidate-review-flags-limit 10"',
@@ -4099,7 +4072,10 @@ describe("runSourceCandidateJobCommand", () => {
       dedupeKey: "pubmed|au|creatine|28615996",
       decision: "Accepted",
       acceptedReferenceId: "ref-creatine-position-stand",
-      reviewNote: "Full-text reviewed."
+      reviewNote: "Full-text reviewed.",
+      // The CLI review flags are driven by a person, so this path is the one
+      // that may still write HUMAN_REVIEWED.
+      reviewedBy: "human"
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
@@ -4142,7 +4118,8 @@ describe("runSourceCandidateJobCommand", () => {
       dedupeKey: "clinicaltrials.gov|au|creatine|nct123",
       decision: "Rejected",
       acceptedReferenceId: undefined,
-      reviewNote: "Not relevant to the consumer claim."
+      reviewNote: "Not relevant to the consumer claim.",
+      reviewedBy: "human"
     });
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
@@ -4360,6 +4337,29 @@ describe("runSourceCandidateJobCommand", () => {
     expect(runNextJob).not.toHaveBeenCalled();
     expect(stdout).toHaveBeenCalledWith(
       `[STUDY_EXTRACTED] source-candidate PubMed AU dedupe="pubmed|au|creatine|28615996" key=${safeCandidateKey("pubmed|au|creatine|28615996")} reference=ref-creatine-position-stand study=study-creatine-issn created=true status="Public source packet ready" publicSourcePacketReady=true nextAction="Review for public source packet inclusion." nextWrite="none" writeReady=false title="Creatine position stand extraction" candidateClaim=creatine-strength year=2017`
+    );
+  });
+
+  it("does not write source-candidate study extraction placeholders", async () => {
+    const stderr = vi.fn();
+    const extractCandidateStudy = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        studyCommandArgs([
+          "--study-intervention-name",
+          "Human-reviewed intervention.",
+          "--study-risk-of-bias",
+          "Human-reviewed risk-of-bias assessment."
+        ]),
+        { stderr },
+        { extractCandidateStudy }
+      )
+    ).resolves.toBe(1);
+
+    expect(extractCandidateStudy).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(
+      "Study extraction fields require human edits before saving: --study-intervention-name, --study-risk-of-bias. Replace draft placeholder text from --candidate-curation-draft."
     );
   });
 
@@ -5406,6 +5406,65 @@ describe("runSourceCandidateJobCommand", () => {
     );
   });
 
+  it("queues broad intervention discovery jobs without running jobs", async () => {
+    const stdout = vi.fn();
+    const queueInterventionSources = vi.fn().mockResolvedValue({
+      interventionId: "astaxanthin",
+      label: "Astaxanthin - broad benefit discovery",
+      pubMedTerms: [
+        "Astaxanthin randomized placebo clinical trial",
+        "Astaxanthin eye strain randomized placebo"
+      ],
+      region: "AU",
+      searchTerm: "Astaxanthin",
+      trialTerm: "Astaxanthin",
+      jobs: [
+        {
+          contextMismatchFields: [],
+          created: true,
+          interventionId: "astaxanthin",
+          jobId: "job-astaxanthin-eye-strain",
+          source: "PUBMED",
+          query: "Astaxanthin eye strain randomized placebo",
+          region: "AU",
+          status: "QUEUED"
+        },
+        {
+          contextMismatchFields: [],
+          created: false,
+          interventionId: "astaxanthin",
+          jobId: "job-astaxanthin-trials",
+          source: "CLINICALTRIALS_GOV",
+          query: "Astaxanthin",
+          region: "AU",
+          status: "QUEUED"
+        }
+      ]
+    });
+    const runNextJob = vi.fn();
+
+    await expect(
+      runSourceCandidateJobCommand(
+        ["--queue-intervention-sources", "astaxanthin", "--region", "au"],
+        { stdout },
+        { queueInterventionSources, runNextJob }
+      )
+    ).resolves.toBe(0);
+
+    expect(queueInterventionSources).toHaveBeenCalledWith({
+      interventionId: "astaxanthin",
+      region: "au"
+    });
+    expect(runNextJob).not.toHaveBeenCalled();
+    expect(stdout).toHaveBeenCalledWith(
+      [
+        'Intervention discovery jobs: "Astaxanthin - broad benefit discovery" intervention=astaxanthin searchTerm="Astaxanthin" region=AU',
+        '- [QUEUED] job-astaxanthin-eye-strain PUBMED AU "Astaxanthin eye strain randomized placebo" created=true candidates="--candidates --candidate-job-id job-astaxanthin-eye-strain --candidates-limit 10" contextJobs="--jobs --jobs-source pubmed --jobs-region AU --jobs-intervention-id astaxanthin --jobs-limit 10" statusJobs="--jobs --jobs-status queued --jobs-limit 10" intervention=astaxanthin',
+        '- [QUEUED] job-astaxanthin-trials CLINICALTRIALS_GOV AU "Astaxanthin" created=false candidates="--candidates --candidate-job-id job-astaxanthin-trials --candidates-limit 10" contextJobs="--jobs --jobs-source clinical-trials --jobs-region AU --jobs-intervention-id astaxanthin --jobs-limit 10" statusJobs="--jobs --jobs-status queued --jobs-limit 10" intervention=astaxanthin'
+      ].join("\n")
+    );
+  });
+
   it("reports existing queued jobs without claiming them", async () => {
     const stdout = vi.fn();
     const queueJob = vi.fn().mockResolvedValue({
@@ -5566,6 +5625,45 @@ describe("runSourceCandidateJobCommand", () => {
     expect(stdout).toHaveBeenCalledTimes(2);
   });
 
+  it("watches queued jobs with a sleep between jobs and idle polls", async () => {
+    const stdout = vi.fn();
+    const sleep = vi.fn().mockResolvedValue(undefined);
+    const runNextJob = vi
+      .fn()
+      .mockResolvedValueOnce(jobResult({ jobId: "job-1" }))
+      .mockResolvedValueOnce(jobResult({ jobId: "job-2" }))
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+
+    await expect(
+      runSourceCandidateJobCommand(
+        [
+          "--run-next",
+          "--watch",
+          "--limit",
+          "2",
+          "--watch-interval-ms",
+          "1000",
+          "--watch-idle-exit",
+          "2"
+        ],
+        { stdout },
+        { runNextJob, sleep }
+      )
+    ).resolves.toBe(0);
+
+    expect(runNextJob).toHaveBeenCalledTimes(4);
+    expect(sleep).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledWith(1000);
+    expect(stdout).toHaveBeenCalledWith(
+      "Watching queued PubMed/ClinicalTrials.gov source-candidate jobs intervalMs=1000 batchLimit=2"
+    );
+    expect(stdout).toHaveBeenCalledWith(
+      '[SUCCEEDED] job-1 PUBMED AU "creatine strength" found=1 changed=1 candidates="--candidates --candidate-job-id job-1 --candidates-limit 10" contextJobs="--jobs --jobs-source pubmed --jobs-region AU --jobs-limit 10" statusJobs="--jobs --jobs-status succeeded --jobs-limit 10"'
+    );
+    expect(stdout).toHaveBeenCalledWith("No queued source-candidate jobs found idlePoll=2");
+  });
+
   it("runs a specific job id exactly once", async () => {
     const stdout = vi.fn();
     const runJobById = vi.fn().mockResolvedValue(jobResult({ jobId: "job-target" }));
@@ -5710,6 +5808,22 @@ function sourceCandidate(overrides: Record<string, unknown> = {}) {
     decision: "Pending review",
     reviewStatus: "Unreviewed AI draft",
     metadata: {},
+    ...overrides
+  };
+}
+
+function sourceCandidateIdentityDecision(overrides: Record<string, unknown> = {}) {
+  return {
+    action: "confirm-target",
+    applied: false,
+    dedupeKey: "pubmed|au|creatine|28615996",
+    externalId: "28615996",
+    interventionId: "creatine",
+    interventionName: "Creatine monohydrate",
+    query: "creatine strength",
+    reasons: ["Search query contains the current supplement identity."],
+    source: "PUBMED",
+    title: "Creatine position stand",
     ...overrides
   };
 }

@@ -1,4 +1,10 @@
-import type { Claim, Reference, Study } from "@/lib/types";
+import type {
+  Claim,
+  NormalizedSourcePacketRow,
+  Reference,
+  SourceTypeTaxonomy,
+  Study
+} from "@/lib/types";
 
 export interface ClaimSourcePacket {
   referenceIds: string[];
@@ -7,6 +13,7 @@ export interface ClaimSourcePacket {
   pendingReferences: Reference[];
   missingReferenceIds: string[];
   completeness: ClaimSourcePacketCompleteness;
+  evidenceDepth: EvidenceDepthSummary;
 }
 
 export type ClaimSourcePacketCompletenessStatus =
@@ -38,6 +45,42 @@ export interface ClaimSourcePacketSummary {
   unlinkedClaims: number;
 }
 
+export type EvidenceDepthBadgeKind =
+  | "animal-mechanistic-only"
+  | "case-report"
+  | "clinical-trial-record"
+  | "human-trials-none"
+  | "meta-analysis"
+  | "observational-cohort"
+  | "regulatory-only"
+  | "regulatory-warning-source"
+  | "review-position-stand"
+  | "rct"
+  | "source-packet"
+  | "systematic-review";
+
+export interface EvidenceDepthBadge {
+  detail: string;
+  kind: EvidenceDepthBadgeKind;
+  label: string;
+}
+
+export interface EvidenceDepthSummary {
+  animalMechanisticStudies: number;
+  caseReports: number;
+  clinicalTrialRecords: number;
+  directHumanTrials: number;
+  metaAnalyses: number;
+  observationalCohorts: number;
+  randomizedControlledTrials: number;
+  reviewPositionStandSources: number;
+  regulatorySafetyWarnings: number;
+  sourcePackets: number;
+  systematicReviews: number;
+  totalExtractedStudies: number;
+  badges: EvidenceDepthBadge[];
+}
+
 export function buildClaimSourcePacket({
   claim,
   referencesById,
@@ -53,8 +96,9 @@ export function buildClaimSourcePacket({
     .map((referenceId) => referencesById.get(referenceId))
     .filter((reference): reference is Reference => Boolean(reference));
   const studiesForClaim = studies.filter((study) => referenceIdSet.has(study.referenceId));
+  const substantiveStudiesForClaim = studiesForClaim.filter(isSubstantiveStudyExtraction);
   const extractedReferenceIds = new Set(
-    studiesForClaim
+    substantiveStudiesForClaim
       .map((study) => study.referenceId)
       .filter((referenceId) => referencesById.has(referenceId))
   );
@@ -70,6 +114,10 @@ export function buildClaimSourcePacket({
     pendingReferences,
     missingReferenceIds
   });
+  const evidenceDepth = summarizeEvidenceDepth({
+    completeness,
+    studies: substantiveStudiesForClaim
+  });
 
   return {
     referenceIds,
@@ -77,9 +125,352 @@ export function buildClaimSourcePacket({
     studies: studiesForClaim,
     pendingReferences,
     missingReferenceIds,
-    completeness
+    completeness,
+    evidenceDepth
   };
 }
+
+export function buildClaimSourcePacketFromSnapshot({
+  claim,
+  packet,
+  referencesById = new Map()
+}: {
+  claim: Pick<Claim, "keyReferenceIds">;
+  packet?: NormalizedSourcePacketRow;
+  referencesById?: Map<string, Reference>;
+}): ClaimSourcePacket {
+  const referenceIds = Array.from(new Set(packet?.referenceIds ?? claim.keyReferenceIds));
+  const references = referenceIds
+    .map((referenceId) => referencesById.get(referenceId))
+    .filter((reference): reference is Reference => Boolean(reference));
+  const status = packet?.status ?? (referenceIds.length > 0 ? "extraction_pending" : "not_linked");
+  const totalReferences = Math.max(referenceIds.length, packet?.referenceIds.length ?? 0);
+  const extractedReferences =
+    packet?.extractedReferenceCount ?? (status === "complete" ? totalReferences : 0);
+  const pendingReferences =
+    packet?.pendingReferenceCount ??
+    (status === "extraction_pending"
+      ? Math.max(totalReferences - extractedReferences, 0)
+      : 0);
+  const missingReferences =
+    packet?.missingReferenceCount ?? (status === "missing_sources" ? 1 : 0);
+  const completeness = claimSourcePacketCompletenessFromSnapshot({
+    extractedReferences,
+    missingReferences,
+    pendingReferences,
+    status,
+    totalReferences
+  });
+
+  return {
+    referenceIds,
+    references,
+    studies: [],
+    pendingReferences: [],
+    missingReferenceIds: [],
+    completeness,
+    evidenceDepth: summarizeEvidenceDepth({ completeness, studies: [] })
+  };
+}
+
+export function summarizeEvidenceDepth({
+  completeness,
+  studies
+}: {
+  completeness: ClaimSourcePacketCompleteness;
+  studies: Study[];
+}): EvidenceDepthSummary {
+  const taxonomyRows = studies.map(sourceTypeForStudy);
+  const metaAnalyses = taxonomyRows.filter((sourceType) => sourceType === "meta-analysis").length;
+  const systematicReviews = taxonomyRows.filter(
+    (sourceType) => sourceType === "systematic review"
+  ).length;
+  const randomizedControlledTrials = studies.filter(
+    (study, index) => taxonomyRows[index] === "RCT" && study.studyType !== "Clinical trial record"
+  ).length;
+  const observationalCohorts = taxonomyRows.filter(
+    (sourceType) => sourceType === "observational study"
+  ).length;
+  const caseReports = taxonomyRows.filter((sourceType) => sourceType === "case report").length;
+  const clinicalTrialRecords = studies.filter(
+    (study) => study.studyType === "Clinical trial record"
+  ).length;
+  const regulatorySafetyWarnings = taxonomyRows.filter(
+    (sourceType) => sourceType === "regulatory warning"
+  ).length;
+  const reviewPositionStandSources = taxonomyRows.filter((sourceType) =>
+    ["narrative review", "position stand", "guideline"].includes(sourceType)
+  ).length;
+  const animalMechanisticStudies = taxonomyRows.filter((sourceType) =>
+    ["animal study", "in vitro/mechanistic"].includes(sourceType)
+  ).length;
+  const totalExtractedStudies = studies.length;
+  const directHumanTrials = randomizedControlledTrials + clinicalTrialRecords;
+  const sourcePackets = completeness.totalReferences > 0 ? 1 : 0;
+  const isRegulatoryOnly =
+    totalExtractedStudies > 0 && regulatorySafetyWarnings === totalExtractedStudies;
+  const isAnimalMechanisticOnly =
+    totalExtractedStudies > 0 && animalMechanisticStudies === totalExtractedStudies;
+
+  const badges: EvidenceDepthBadge[] = [
+    {
+      detail:
+        sourcePackets > 0
+          ? "This claim has a curated source packet linking references to extracted study or source records."
+          : "No curated source packet is linked to this claim yet.",
+      kind: "source-packet",
+      label: `${sourcePackets} source ${sourcePackets === 1 ? "packet" : "packets"}`
+    }
+  ];
+
+  if (randomizedControlledTrials > 0) {
+    badges.push({
+      detail: "Randomized controlled trial extractions are direct human intervention evidence.",
+      kind: "rct",
+      label: `${randomizedControlledTrials} RCT ${pluralize(randomizedControlledTrials, "row")} extracted`
+    });
+  }
+
+  if (metaAnalyses > 0) {
+    badges.push({
+      detail: "Meta-analysis extractions summarize multiple studies and should stay citation-linked.",
+      kind: "meta-analysis",
+      label: `${metaAnalyses} ${metaAnalyses === 1 ? "meta-analysis" : "meta-analyses"} extracted`
+    });
+  }
+
+  if (systematicReviews > 0) {
+    badges.push({
+      detail:
+        "Verified systematic-review sources synthesize evidence across studies and should stay citation-linked.",
+      kind: "systematic-review",
+      label: `${systematicReviews} systematic ${pluralize(systematicReviews, "review")} extracted`
+    });
+  }
+
+  if (reviewPositionStandSources > 0) {
+    badges.push({
+      detail:
+        "Narrative reviews, guidelines, and position stands synthesize evidence but are not automatically systematic reviews.",
+      kind: "review-position-stand",
+      label: `${reviewPositionStandSources} review/position-stand ${pluralize(
+        reviewPositionStandSources,
+        "source"
+      )} extracted`
+    });
+  }
+
+  if (regulatorySafetyWarnings > 0) {
+    badges.push({
+      detail:
+        "Regulatory warning sources are safety or product-status evidence; they do not establish clinical benefit.",
+      kind: "regulatory-warning-source",
+      label: `${regulatorySafetyWarnings} regulatory warning ${pluralize(
+        regulatorySafetyWarnings,
+        "source"
+      )}`
+    });
+  }
+
+  if (observationalCohorts > 0) {
+    badges.push({
+      detail: "Observational cohorts can support associations but are not randomized trials.",
+      kind: "observational-cohort",
+      label: `${observationalCohorts} observational ${pluralize(
+        observationalCohorts,
+        "cohort"
+      )} extracted`
+    });
+  }
+
+  if (caseReports > 0) {
+    badges.push({
+      detail: "Case reports are low-depth clinical signals and should not drive broad claims alone.",
+      kind: "case-report",
+      label: `${caseReports} case ${pluralize(caseReports, "report")} extracted`
+    });
+  }
+
+  if (clinicalTrialRecords > 0) {
+    badges.push({
+      detail: "Clinical trial records are registry records, not necessarily completed results.",
+      kind: "clinical-trial-record",
+      label: `${clinicalTrialRecords} clinical trial ${pluralize(
+        clinicalTrialRecords,
+        "record"
+      )} extracted`
+    });
+  }
+
+  if (directHumanTrials === 0) {
+    badges.push({
+      detail:
+        "No extracted individual human trial row is attached to this claim packet yet. This does not mean no human trials exist; reviews, guidelines, position stands, or regulatory sources may still be present.",
+      kind: "human-trials-none",
+      label: "0 individual human trial rows extracted"
+    });
+  }
+
+  if (isRegulatoryOnly) {
+    badges.push({
+      detail: "All extracted records for this packet are regulatory or safety-warning sources.",
+      kind: "regulatory-only",
+      label: `${regulatorySafetyWarnings} regulatory-only ${pluralize(
+        regulatorySafetyWarnings,
+        "source"
+      )}`
+    });
+  }
+
+  if (isAnimalMechanisticOnly) {
+    badges.push({
+      detail:
+        "All extracted records for this packet are animal or mechanistic sources; no direct human evidence is extracted.",
+      kind: "animal-mechanistic-only",
+      label: "Animal/mechanistic only"
+    });
+  }
+
+  return {
+    animalMechanisticStudies,
+    badges,
+    caseReports,
+    clinicalTrialRecords,
+    directHumanTrials,
+    metaAnalyses,
+    observationalCohorts,
+    randomizedControlledTrials,
+    reviewPositionStandSources,
+    regulatorySafetyWarnings,
+    sourcePackets,
+    systematicReviews,
+    totalExtractedStudies
+  };
+}
+
+function claimSourcePacketCompletenessFromSnapshot({
+  extractedReferences,
+  missingReferences,
+  pendingReferences,
+  status,
+  totalReferences
+}: {
+  extractedReferences: number;
+  missingReferences: number;
+  pendingReferences: number;
+  status: ClaimSourcePacketCompletenessStatus;
+  totalReferences: number;
+}): ClaimSourcePacketCompleteness {
+  switch (status) {
+    case "complete":
+      return {
+        status,
+        label: "Extraction complete",
+        detail: "The current source-packet snapshot marks linked references as extracted.",
+        nextStep: "Keep source links reviewed as new evidence or regulatory updates appear.",
+        totalReferences,
+        extractedReferences: Math.max(extractedReferences, totalReferences),
+        pendingReferences: 0,
+        missingReferences: 0
+      };
+    case "missing_sources":
+      return {
+        status,
+        label: "Source records missing",
+        detail: "The current source-packet snapshot reports one or more missing source records.",
+        nextStep: "Restore the missing curated source records before relying on this packet.",
+        totalReferences,
+        extractedReferences,
+        pendingReferences,
+        missingReferences: Math.max(missingReferences, 1)
+      };
+    case "extraction_pending":
+      return {
+        status,
+        label: "Extraction pending",
+        detail: "The current source-packet snapshot reports linked references awaiting extraction.",
+        nextStep: "Add structured extraction for the pending references before treating this packet as complete.",
+        totalReferences,
+        extractedReferences,
+        pendingReferences: Math.max(
+          pendingReferences,
+          Math.max(totalReferences - extractedReferences, 0)
+        ),
+        missingReferences
+      };
+    case "not_linked":
+      return {
+        status,
+        label: "No curated sources",
+        detail: "This claim does not have curated reference links yet.",
+        nextStep: "Add curated reference links before treating this claim as source-backed.",
+        totalReferences: 0,
+        extractedReferences: 0,
+        pendingReferences: 0,
+        missingReferences: 0
+      };
+  }
+}
+
+function sourceTypeForStudy(study: Study): SourceTypeTaxonomy {
+  if (study.sourceTypeTaxonomy) {
+    return study.sourceTypeTaxonomy;
+  }
+
+  switch (study.studyType) {
+    case "Meta-analysis":
+      return "meta-analysis";
+    case "Systematic review":
+      return "systematic review";
+    case "Randomized controlled trial":
+      return "RCT";
+    case "Observational cohort":
+      return "observational study";
+    case "Case report":
+      return "case report";
+    case "Animal study":
+      return "animal study";
+    case "In vitro/mechanistic":
+      return "in vitro/mechanistic";
+    case "Regulatory safety warning":
+      return "regulatory warning";
+    case "Clinical trial record":
+      return "RCT";
+    case "Unclassified":
+      return "unclassified";
+  }
+}
+
+function isSubstantiveStudyExtraction(study: Study) {
+  return (
+    hasSubstantiveExtractionText(study.sampleSize) &&
+    hasSubstantiveExtractionText(study.population) &&
+    hasSubstantiveExtractionText(study.intervention) &&
+    study.outcomes.some(hasSubstantiveExtractionText) &&
+    hasSubstantiveExtractionText(study.riskOfBias)
+  );
+}
+
+function hasSubstantiveExtractionText(value: string) {
+  const normalized = value.trim();
+
+  if (normalized.length < 3) {
+    return false;
+  }
+
+  return !PLACEHOLDER_EXTRACTION_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+const PLACEHOLDER_EXTRACTION_PATTERNS = [
+  /^see source record\.?$/i,
+  /^not assessed(?: yet)?\.?$/i,
+  /^not reviewed yet\.?$/i,
+  /^not extracted\.?$/i,
+  /^human-reviewed .+ required\.?$/i,
+  /^verify .+ linked source record\.?$/i,
+  /^check source record(?: for .*)?\.?$/i,
+  /^review design and heterogeneity in linked source record\.?$/i
+];
 
 export function summarizeClaimSourcePackets({
   claims,
@@ -129,6 +520,10 @@ export function summarizeClaimSourcePackets({
       unlinkedClaims: 0
     }
   );
+}
+
+function pluralize(count: number, singular: string) {
+  return count === 1 ? singular : `${singular}s`;
 }
 
 function summarizeClaimSourcePacket({

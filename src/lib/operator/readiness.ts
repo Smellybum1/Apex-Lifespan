@@ -42,13 +42,51 @@ export interface OperatorReadinessReport {
   worksheet: OperatorReadinessWorksheet;
 }
 
+export interface OperatorReadinessSummary {
+  blockedChecks: OperatorReadinessWorksheetItem[];
+  counts: Record<OperatorReadinessStatus, number>;
+  generatedAt: string;
+  humanOwned: true;
+  nextAction: string;
+  overall: "ready" | "blocked";
+  readOnly: true;
+  readyEvidence: OperatorReadinessWorksheetItem[];
+  readyLocalArtifacts: OperatorReadinessWorksheetItem[];
+  warningChecks: OperatorReadinessWorksheetItem[];
+}
+
+export type OperatorReadinessCheckReviewStatus =
+  | OperatorReadinessStatus
+  | "not-found";
+
+export interface OperatorReadinessCheckReviewPacket {
+  availableCheckIds: string[];
+  check: OperatorReadinessCheck | null;
+  checkId: string;
+  found: boolean;
+  humanOwned: true;
+  nextAction: string;
+  readOnly: true;
+  relatedCommand: OperatorReadinessCommand | null;
+  status: OperatorReadinessCheckReviewStatus;
+}
+
 export interface OperatorReadinessWorksheet {
   blocked: OperatorReadinessWorksheetItem[];
+  copySafeCommands: OperatorReadinessCommand[];
   humanOwned: true;
   nextOperatorAction: string;
   readyEvidence: OperatorReadinessWorksheetItem[];
   readyLocalArtifacts: OperatorReadinessWorksheetItem[];
   warnings: OperatorReadinessWorksheetItem[];
+}
+
+export interface OperatorReadinessCommand {
+  command: string;
+  id: string;
+  label: string;
+  mode: "read-only" | "dry-run";
+  purpose: string;
 }
 
 export interface OperatorReadinessWorksheetItem {
@@ -71,6 +109,8 @@ const FILE_PATHS: Record<keyof OperatorReadinessFiles, string> = {
   promotionReadiness: "src/lib/operator/curation-promotion.ts",
   reviewQueue: "src/lib/operator/review-queue.ts"
 };
+const VERCEL_DATABASE_CONFIGURED_KEY = "APEX_VERCEL_DATABASE_CONFIGURED_AT";
+const VERCEL_OPERATOR_AUTH_CONFIGURED_KEY = "APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT";
 
 export function buildOperatorReadinessReport(
   context: OperatorReadinessContext
@@ -192,6 +232,64 @@ export function buildOperatorReadinessReport(
   };
 }
 
+export function summarizeOperatorReadinessCheck(
+  context: OperatorReadinessContext,
+  checkId: string
+): OperatorReadinessCheckReviewPacket {
+  const report = buildOperatorReadinessReport(context);
+  const check = report.checks.find((item) => item.id === checkId) ?? null;
+  const availableCheckIds = report.checks.map((item) => item.id);
+
+  if (!check) {
+    return {
+      availableCheckIds,
+      check: null,
+      checkId,
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No operator readiness check matched this id; rerun npm run operator:readiness to inspect valid check ids.",
+      readOnly: true,
+      relatedCommand: null,
+      status: "not-found"
+    };
+  }
+
+  return {
+    availableCheckIds,
+    check,
+    checkId,
+    found: true,
+    humanOwned: true,
+    nextAction:
+      check.nextAction ??
+      "This operator readiness check is ready; rerun aggregate launch readiness before changing scope.",
+    readOnly: true,
+    relatedCommand:
+      report.worksheet.copySafeCommands.find(
+        (command) => command.id === "operator-readiness"
+      ) ?? null,
+    status: check.status
+  };
+}
+
+export function summarizeOperatorReadinessReport(
+  report: OperatorReadinessReport
+): OperatorReadinessSummary {
+  return {
+    blockedChecks: report.worksheet.blocked,
+    counts: report.counts,
+    generatedAt: report.generatedAt,
+    humanOwned: true,
+    nextAction: report.worksheet.nextOperatorAction,
+    overall: report.overall,
+    readOnly: true,
+    readyEvidence: report.worksheet.readyEvidence,
+    readyLocalArtifacts: report.worksheet.readyLocalArtifacts,
+    warningChecks: report.worksheet.warnings
+  };
+}
+
 export function readOperatorReadinessFiles(cwd = process.cwd()): OperatorReadinessFiles {
   return {
     auditTrail: existsSync(path.join(cwd, FILE_PATHS.auditTrail)),
@@ -241,6 +339,8 @@ function authConfigurationCheck(env: OperatorReadinessContext["env"]): OperatorR
   const missing = ["DATABASE_URL", "AUTH_SECRET", "AUTH_GITHUB_ID", "AUTH_GITHUB_SECRET"].filter(
     (key) => !readEnv(env, key)
   );
+  const vercelDatabaseConfiguredAt = readEnv(env, VERCEL_DATABASE_CONFIGURED_KEY);
+  const vercelOperatorAuthConfiguredAt = readEnv(env, VERCEL_OPERATOR_AUTH_CONFIGURED_KEY);
 
   if (operatorAuthConfigured(env)) {
     return {
@@ -252,14 +352,32 @@ function authConfigurationCheck(env: OperatorReadinessContext["env"]): OperatorR
     };
   }
 
+  if (vercelDatabaseConfiguredAt && vercelOperatorAuthConfiguredAt) {
+    return {
+      id: "operator-auth-config",
+      label: "Database-backed GitHub auth",
+      status: "ready",
+      detail:
+        "Vercel dashboard database and operator auth evidence are recorded; secret values remain dashboard-managed.",
+      evidenceKeys: [VERCEL_DATABASE_CONFIGURED_KEY, VERCEL_OPERATOR_AUTH_CONFIGURED_KEY]
+    };
+  }
+
   return {
     id: "operator-auth-config",
     label: "Database-backed GitHub auth",
     status: "blocked",
     detail: `Missing operator auth variables: ${missing.join(", ")}.`,
-    evidenceKeys: ["DATABASE_URL", "AUTH_SECRET", "AUTH_GITHUB_ID", "AUTH_GITHUB_SECRET"],
+    evidenceKeys: [
+      "DATABASE_URL",
+      "AUTH_SECRET",
+      "AUTH_GITHUB_ID",
+      "AUTH_GITHUB_SECRET",
+      VERCEL_DATABASE_CONFIGURED_KEY,
+      VERCEL_OPERATOR_AUTH_CONFIGURED_KEY
+    ],
     nextAction:
-      "Configure database-backed GitHub OAuth in a non-production environment before manual operator-flow QA."
+      "Configure database-backed GitHub OAuth in a non-production environment, or record APEX_VERCEL_DATABASE_CONFIGURED_AT and APEX_VERCEL_OPERATOR_AUTH_CONFIGURED_AT after dashboard review, before manual operator-flow QA."
   };
 }
 
@@ -381,6 +499,7 @@ function operatorReadinessWorksheet(
 
   return {
     blocked,
+    copySafeCommands: operatorReadinessCopySafeCommands(),
     humanOwned: true,
     nextOperatorAction:
       blocked[0]?.nextAction ??
@@ -390,6 +509,86 @@ function operatorReadinessWorksheet(
     readyLocalArtifacts,
     warnings
   };
+}
+
+function operatorReadinessCopySafeCommands(): OperatorReadinessCommand[] {
+  return [
+    {
+      command: "npm run operator:readiness",
+      id: "operator-readiness",
+      label: "Refresh operator readiness",
+      mode: "read-only",
+      purpose: "Recheck operator auth, local artifacts, and manual QA evidence without printing secret values."
+    },
+    {
+      command: "npm run operator:readiness -- --summary",
+      id: "operator-readiness-summary",
+      label: "Refresh compact operator summary",
+      mode: "read-only",
+      purpose:
+        "Print compact operator readiness counts, blockers, warnings, and the next action without dumping all checks."
+    },
+    {
+      command: "npm run operator:readiness -- --check <check-id>",
+      id: "operator-readiness-check",
+      label: "Focus one operator readiness check",
+      mode: "read-only",
+      purpose:
+        "Print one operator readiness check with its evidence keys and next action for auth or QA setup."
+    },
+    {
+      command: "npm run operator:readiness -- --env-file <non-production-env-file> --summary",
+      id: "operator-readiness-env-file-summary",
+      label: "Refresh operator summary from env file",
+      mode: "read-only",
+      purpose:
+        "Check approved non-production operator evidence without printing secret values or enabling writes."
+    },
+    {
+      command: "npm run operator:smoke -- <base-url>",
+      id: "operator-smoke-closed",
+      label: "Smoke anonymous operator boundary",
+      mode: "read-only",
+      purpose: "Verify /operator stays closed to anonymous users and does not expose review content."
+    },
+    {
+      command: "npm run operator:smoke -- <base-url> --expect-auth-unavailable",
+      id: "operator-smoke-auth-unavailable",
+      label: "Smoke auth-unavailable operator boundary",
+      mode: "read-only",
+      purpose: "Verify an environment without auth secrets shows the closed auth-unavailable state."
+    },
+    {
+      command: "npm run operator:smoke -- <base-url> --expect-auth-required",
+      id: "operator-smoke-auth-required",
+      label: "Smoke auth-required operator boundary",
+      mode: "read-only",
+      purpose: "Verify configured auth shows the closed sign-in-required state before operator login."
+    },
+    {
+      command:
+        'npm run operator:bootstrap -- --email operator@example.com --role REVIEWER --note "Non-production operator QA bootstrap"',
+      id: "operator-bootstrap-plan",
+      label: "Plan operator bootstrap",
+      mode: "dry-run",
+      purpose: "Preview a local operator account bootstrap plan without writing to the database."
+    },
+    {
+      command: "npm run launch:readiness",
+      id: "launch-readiness",
+      label: "Refresh aggregate launch readiness",
+      mode: "read-only",
+      purpose: "Recheck fully-live launch gates after operator evidence changes."
+    },
+    {
+      command: "npm run launch:readiness -- --env-file <non-production-env-file> --summary",
+      id: "launch-readiness-env-file-summary",
+      label: "Refresh aggregate launch summary from env file",
+      mode: "read-only",
+      purpose:
+        "Recheck launch gates with approved non-production evidence without printing secret values."
+    }
+  ];
 }
 
 function operatorReadinessWorksheetItem(

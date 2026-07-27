@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   type ColumnDef,
   flexRender,
@@ -11,25 +11,135 @@ import {
 } from "@tanstack/react-table";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   ArrowUpDown,
+  Bookmark,
+  Check,
+  ChevronDown,
+  CircleHelp,
   ClipboardCheck,
+  DatabaseZap,
   ExternalLink,
-  FileSearch,
   Filter,
   FlaskConical,
+  LoaderCircle,
+  Play,
+  RefreshCw,
   Search,
-  ShieldCheck
+  Square,
+  X
 } from "lucide-react";
+import { TrialClassificationBadge } from "@/components/trial-classification-badge";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
+  DASHBOARD_MAIN_TABS,
+  LOCAL_CANDIDATE_BUCKET_OPTIONS,
+  LOCAL_DASHBOARD_TABS
+} from "@/components/local-ingestion/types";
+import { InlineConfirmation } from "@/components/local-ingestion/inline-confirmation";
+import {
+  formatLocalIngestionDelay,
+  localBenefitDiscoveryAutomationMessage,
+  localBenefitDiscoveryAutomationScopeLabel,
+  localBenefitDiscoveryAutomationStrategyLabel,
+  localCandidateBulkResultMessage,
+  localCandidateReviewAutomationResultMessage,
+  localCandidateReviewAutomationStrategyLabel,
+  localIdentityResolutionAutomationMessage,
+  localIdentityResolutionAutomationScopeLabel,
+  localIdentityResolutionAutomationStrategyLabel,
+  localIngestionDeepeningCatchUpSummary,
+  localIngestionDeepeningRunSummary,
+  localIngestionQueueCount,
+  localIngestionSourceLabel,
+  localIngestionStatusLabel,
+  sleep
+} from "@/lib/pipeline/messages";
+import { runLocalUpdatePipeline } from "@/lib/pipeline/run-local-update-pipeline";
+import {
+  LOCAL_ACCEPTED_PROCESSING_BATCH_SIZE,
+  LOCAL_UPDATE_PIPELINE_STAGE_DEFINITIONS,
+  type LocalUpdatePipelineOperations,
+  type LocalUpdatePipelineStage,
+  type LocalUpdatePipelineStageId,
+  type LocalUpdatePipelineStageStatus
+} from "@/lib/pipeline/types";
 
+// Re-exported so the dashboard stays the entry point callers already import
+// from; the implementation now lives in @/lib/pipeline so it can run headless.
+export { runLocalUpdatePipeline };
+import {
+  LocalNextActionStrip,
+  acceptedCandidateProcessingNextAction,
+  benefitDiscoveryNextAction,
+  candidateReviewNextAction,
+  identityResolutionNextAction,
+  localIngestionNextAction
+} from "@/components/local-ingestion/next-action";
+import type {
+  DashboardMainTab,
+  LocalAcceptedCandidateProcessingResult,
+  LocalAcceptedCandidateProcessingRunResponse,
+  LocalAcceptedCandidateProcessingStatusResponse,
+  LocalBenefitDiscoveryAction,
+  LocalBenefitDiscoveryActionResponse,
+  LocalBenefitDiscoveryAutomationAction,
+  LocalBenefitDiscoveryAutomationDecision,
+  LocalBenefitDiscoveryAutomationResponse,
+  LocalBenefitDiscoveryAutomationScope,
+  LocalBenefitDiscoveryAutomationStrategy,
+  LocalBenefitDiscoveryCluster,
+  LocalBenefitDiscoveryQueueResponse,
+  LocalBenefitDiscoverySource,
+  LocalCandidateReviewBucket,
+  LocalCandidateReviewAutomationAction,
+  LocalCandidateReviewAutomationDecision,
+  LocalCandidateReviewAutomationResponse,
+  LocalCandidateReviewAutomationStrategy,
+  LocalCandidateReviewBulkAction,
+  LocalCandidateReviewBulkResponse,
+  LocalCandidateReviewCandidate,
+  LocalCandidateReviewDecisionResponse,
+  LocalCandidateReviewOutcomeSignal,
+  LocalCandidateReviewResponse,
+  LocalCandidateReviewSignalApplyAction,
+  LocalCandidateReviewSignalApplyResponse,
+  LocalCandidateReviewSignalDecision,
+  LocalCandidateReviewSignalKind,
+  LocalCandidateReviewSignalMiningResponse,
+  LocalCandidateReviewSignalSample,
+  LocalCandidateReviewSignalSummary,
+  LocalCandidateReviewSourceFilter,
+  LocalCandidateReviewStudyFilter,
+  LocalIdentityResolutionAction,
+  LocalIdentityResolutionActionResponse,
+  LocalIdentityResolutionAutomationAction,
+  LocalIdentityResolutionAutomationDecision,
+  LocalIdentityResolutionAutomationResponse,
+  LocalIdentityResolutionAutomationScope,
+  LocalIdentityResolutionAutomationStrategy,
+  LocalIdentityResolutionCandidate,
+  LocalIdentityResolutionQueueResponse,
+  LocalIngestionCandidateReadout,
+  LocalIngestionDiscoveryClassificationReadout,
+  LocalIngestionJobReadout,
+  LocalIngestionJobStatus,
+  LocalIngestionLogEntry,
+  LocalIngestionRunResponse,
+  LocalIngestionStartResponse,
+  LocalIngestionStatusReadout,
+  LocalClaimExpansionResponse,
+  LocalScoreFinalizationResponse,
+  LocalSourceWorkRepairResponse
+} from "@/components/local-ingestion/types";
+
+import {
+  buildCatalogTrustSummary,
+  isNctIdFormat,
+  type CatalogTrustSummary
+} from "@/lib/catalog-trust";
+import { claimEvidenceDirectionLabel } from "@/lib/claim-direction";
+import { labelTrialWatchItem } from "@/lib/trial-registry-labels";
 import { projectConfig } from "@/lib/config/project";
 import type {
   ClinicalTrialSearchItem,
@@ -44,10 +154,11 @@ import {
   publicLiveSourceDisplayError
 } from "@/lib/live-source-request";
 import {
-  australiaRegulatoryKindDescription,
-  australiaRegulatoryTone,
-  getPrimaryAustraliaStatus
-} from "@/lib/regulatory";
+  isLocalIngestionWriteMethod,
+  LOCAL_INGESTION_WRITE_HEADER,
+  LOCAL_INGESTION_WRITE_HEADER_VALUE
+} from "@/lib/local-ingestion-security";
+import { australiaRegulatoryTone } from "@/lib/regulatory";
 import {
   buildProductAustraliaRegulatoryVerifications,
   type ProductAustraliaRegulatoryVerification
@@ -55,17 +166,29 @@ import {
 import {
   analyzeLabel,
   compositeScore,
-  getClaimScoreRows,
   labelTone,
   scoreBand,
   severityTone
 } from "@/lib/scoring";
+import {
+  buildScoreReadinessRows,
+  buildScoreReadinessSummary,
+  formatScoreReadinessSourceBlockers,
+  isScorePlaceholderClaim,
+  scoreReadinessNextAction,
+  scoreReadinessStateLabel,
+  type ScoreReadinessPriority,
+  type ScoreReadinessRow,
+  type ScoreReadinessState,
+  type ScoreReadinessSummary
+} from "@/lib/score-readiness";
 import { summarizeReviewStatus } from "@/lib/review-summary";
 import {
   buildClaimSourcePacket,
+  buildClaimSourcePacketFromSnapshot,
   summarizeClaimSourcePackets,
   type ClaimSourcePacket,
-  type ClaimSourcePacketSummary
+  type EvidenceDepthBadge
 } from "@/lib/source-packet";
 import { buildSourceSearchQueries } from "@/lib/source-queries";
 import { formatProductRegionLabel } from "@/lib/product-signals";
@@ -73,8 +196,8 @@ import type {
   Claim,
   EvidenceDashboardData,
   EvidenceLabel,
-  AustraliaRegulatoryStatus,
   Intervention,
+  NormalizedSourcePacketRow,
   OutcomeArea,
   ProductSignal,
   Reference,
@@ -83,6 +206,7 @@ import type {
   TrialWatchItem
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { SUPPLEMENT_ONBOARDING_CLAIM_TEMPLATES } from "@/lib/supplement-onboarding";
 
 type ClaimTableRow = {
   id: string;
@@ -91,11 +215,96 @@ type ClaimTableRow = {
   label: EvidenceLabel;
   sourcePacketStatus: ClaimSourcePacket["completeness"]["status"];
   sourcePacketLabel: string;
-  composite: number;
+  composite: number | null;
+  scoreStatusLabel: string;
   safety: number;
   regulatoryRisk: number;
   confidence: string;
   updated: string;
+};
+
+type PracticalPriorityBucketId =
+  | "best"
+  | "context"
+  | "performance"
+  | "overhyped"
+  | "source-work"
+  | "emerging"
+  | "watchlist";
+
+type PracticalGuideItem = {
+  bucketId: PracticalPriorityBucketId;
+  caveat: string;
+  claim: Claim;
+  confidenceLabel: string;
+  evidenceMaturity: string;
+  href: string;
+  intervention: Intervention;
+  priorityScore: number;
+  readinessLabel: string;
+  reason: string;
+  score: number | null;
+  scoreLabel: string;
+  sourceBasis: string;
+  sourcePacketLabel: string;
+  sourcePacketStatus: ClaimSourcePacket["completeness"]["status"];
+  summary: string;
+};
+
+type PracticalPriorityBucket = {
+  description: string;
+  empty: string;
+  id: PracticalPriorityBucketId;
+  items: PracticalGuideItem[];
+  label: string;
+  tone: string;
+};
+
+type PracticalLongevityLensCard = {
+  id: "direct" | "healthspan" | "biomarker" | "mechanistic" | "speculative";
+  items: PracticalGuideItem[];
+  label: string;
+  summary: string;
+};
+
+type PracticalRadarTrialLead = {
+  evidenceImpact: string;
+  href: string;
+  id: string;
+  interventionName: string;
+  status: string;
+  title: string;
+};
+
+type PracticalRadar = {
+  momentumBadges: string[];
+  rankingImpactLeads: PracticalRadarRankingLead[];
+  sourceLeads: PracticalGuideItem[];
+  trialLeads: PracticalRadarTrialLead[];
+};
+
+type PracticalRadarRankingLead = {
+  item: PracticalGuideItem;
+  reason: string;
+};
+
+type PracticalGuideModel = {
+  buckets: PracticalPriorityBucket[];
+  claimCount: number;
+  entryCount: number;
+  longevityLens: PracticalLongevityLensCard[];
+  quickTakes: PracticalQuickTake[];
+  radar: PracticalRadar;
+  scoredCount: number;
+  sourceWorkCount: number;
+};
+
+type PracticalQuickTake = {
+  detail: string;
+  href?: string;
+  label: string;
+  title: string;
+  tone: string;
 };
 
 type LivePreviewStatus = "idle" | "loading" | "ready" | "error";
@@ -105,11 +314,585 @@ type SourceSearchSubmission = {
 };
 
 const CODEX_REVIEW_SIDECAR_URL_KEY = "apexCodexReviewSidecarUrl";
-const CODEX_REVIEW_TOKEN_KEY = "apexCodexReviewToken";
 const DEFAULT_CODEX_REVIEW_SIDECAR_URL = "http://127.0.0.1:3217/codex/review";
-const scoreColors = ["#1d4ed8", "#0f766e", "#b7791f", "#334155", "#7c3aed", "#b91c1c"];
+const HUMAN_REVIEWED_TOOLTIP =
+  "Human reviewed means a human reviewer checked the source packet against the scoped claim. It does not mean clinical guideline endorsement.";
+const DRAFT_LEAD_EVIDENCE_GRADE = "Draft lead";
+const SOURCE_PACKET_REVIEW_EVIDENCE_GRADE = "Insufficient until source packets are reviewed.";
+const compositeScoreFormula =
+  "Composite = directness + rigor + impact + safety + measurability - hype/regulatory penalty.";
+const compositeScoreDetail =
+  "Weighted 0-10 review aid: directness 22%, rigor 22%, impact 18%, safety 14%, low regulatory risk 10%, low hype 8%, and measurability 6%. The formula is partly heuristic and is not medical advice.";
 
-export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
+const PRACTICAL_GUIDE_BUCKET_PREVIEW_LIMIT = 6;
+
+const PRACTICAL_PRIORITY_BUCKET_CONFIG: Array<
+  Omit<PracticalPriorityBucket, "items">
+> = [
+  {
+    description: "Stronger human-use signals with cleaner source packets and fewer immediate caveats.",
+    empty: "No local-catalog items meet the stronger practical-priority threshold.",
+    id: "best",
+    label: "Best practical bets now",
+    tone: "border-spruce/30 bg-teal-50 text-spruce"
+  },
+  {
+    description: "Useful only when the person, biomarker, product form, or goal matches the evidence.",
+    empty: "No context-dependent items are prominent in the local catalog.",
+    id: "context",
+    label: "Worth considering if relevant",
+    tone: "border-signal/25 bg-blue-50 text-signal"
+  },
+  {
+    description: "Mostly performance, training, or narrow-use outcomes rather than broad health advice.",
+    empty: "No performance-focused items are prominent in the local catalog.",
+    id: "performance",
+    label: "Niche / performance-focused",
+    tone: "border-indigo-200 bg-indigo-50 text-indigo-700"
+  },
+  {
+    description: "Common claims where the current evidence does not support broad conclusions.",
+    empty: "No overhyped or unsupported items are prominent in the local catalog.",
+    id: "overhyped",
+    label: "Popular but not well-backed",
+    tone: "border-slate-300 bg-slate-50 text-slate-700"
+  },
+  {
+    description: "Linked claims that still need source extraction, identity cleanup, or curated references before interpretation.",
+    empty: "No source-work items are waiting in the local catalog.",
+    id: "source-work",
+    label: "Source work needed",
+    tone: "border-amberline/30 bg-amber-50 text-amberline"
+  },
+  {
+    description: "Signals or trials that may matter later but are not settled evidence.",
+    empty: "No emerging-evidence items are prominent in the local catalog.",
+    id: "emerging",
+    label: "Emerging but not settled",
+    tone: "border-amberline/30 bg-amber-50 text-amberline"
+  },
+  {
+    description: "Safety, clinician-only, peptide, or regulatory items that should not be treated as routine supplements.",
+    empty: "No safety or regulatory watchlist items are prominent in the local catalog.",
+    id: "watchlist",
+    label: "Safety / clinician-only / regulatory watchlist",
+    tone: "border-danger/30 bg-red-50 text-danger"
+  }
+];
+
+const HEALTHSPAN_OUTCOMES = new Set<OutcomeArea>([
+  "Cardiovascular events",
+  "Blood pressure",
+  "Cognition",
+  "Eye health",
+  "Glucose/insulin/HbA1c",
+  "Immune/respiratory",
+  "Inflammation",
+  "Joint/tendon/skin",
+  "Mood/stress",
+  "Muscle/strength",
+  "Sleep",
+  "VO2 max/endurance"
+]);
+
+const BIOMARKER_OUTCOMES = new Set<OutcomeArea>([
+  "Blood pressure",
+  "Biological aging clocks",
+  "Glucose/insulin/HbA1c",
+  "Inflammation",
+  "LDL/ApoB/lipids"
+]);
+
+const PERFORMANCE_OUTCOMES = new Set<OutcomeArea>([
+  "Muscle/strength",
+  "VO2 max/endurance"
+]);
+
+type ScoreExplanationKind =
+  | "claimRisk"
+  | "composite"
+  | "directness"
+  | "lowHypeRisk"
+  | "impact"
+  | "measurability"
+  | "productQuality"
+  | "regulatoryRisk"
+  | "lowRegulatoryRisk"
+  | "reviewPriority"
+  | "rigor"
+  | "safety";
+
+type ScoreExplanation = {
+  detail: string;
+  formula?: string;
+  title: string;
+};
+
+const scoreExplanations: Record<ScoreExplanationKind, ScoreExplanation> = {
+  claimRisk: {
+    detail:
+      "Label claim risk is a heuristic product-label screen. Higher values mean stronger marketing or therapeutic-claim concern and need product-level review.",
+    title: "Claim-risk score"
+  },
+  composite: {
+    detail: compositeScoreDetail,
+    formula: compositeScoreFormula,
+    title: "Composite score"
+  },
+  directness: {
+    detail:
+      "Directness is higher when the cited human evidence matches the exact intervention, outcome, population, and form instead of relying on indirect proxies.",
+    title: "Directness score"
+  },
+  lowHypeRisk: {
+    detail:
+      "Low hype risk is 10 minus the hype penalty. Higher is better: fewer promotional overclaims, cure-all claims, or lifespan extrapolations in the reviewed packet.",
+    title: "Low-hype-risk score"
+  },
+  impact: {
+    detail:
+      "Impact reflects the observed or plausible outcome magnitude for the scoped claim, while preserving uncertainty and study limitations.",
+    title: "Impact score"
+  },
+  measurability: {
+    detail:
+      "Measurability is higher when the claim can be checked with clear endpoints, biomarkers, or trial outcomes rather than vague wellness language.",
+    title: "Measurability score"
+  },
+  productQuality: {
+    detail:
+      "Product quality is a product-signal score from captured label/certification quality cues. It is not ARTG/AUST status or proof of efficacy.",
+    title: "Product-quality score"
+  },
+  lowRegulatoryRisk: {
+    detail:
+      "Low regulatory risk is 10 minus the raw regulatory-risk concern. Higher is better: fewer captured AU/TGA, product-status, supply, or legal concerns. It is not guaranteed clearance.",
+    title: "Low-regulatory-risk score"
+  },
+  regulatoryRisk: {
+    detail:
+      "Regulatory risk is a raw concern score. Higher values mean more AU/TGA, product-status, or supply-context uncertainty; the composite subtracts this as a penalty.",
+    title: "Regulatory-risk score"
+  },
+  reviewPriority: {
+    detail:
+      "Review priority is a live-search triage score based on source metadata and query relevance. It ranks what to inspect next; it is not evidence quality.",
+    title: "Review-priority score"
+  },
+  rigor: {
+    detail:
+      "Rigor is higher when the evidence uses stronger study designs, cleaner comparators, better extraction detail, and lower bias concerns.",
+    title: "Rigor score"
+  },
+  safety: {
+    detail:
+      "Safety reflects captured adverse-event, interaction, population-risk, and regulator-signal context for the scoped claim. It is not individualized advice.",
+    title: "Safety score"
+  }
+};
+
+type DashboardTabId =
+  | "claim-scores"
+  | "evidence-cards"
+  | "product-labels"
+  | "safety-center"
+  | "sources"
+  | "trial-watcher";
+
+const EVIDENCE_CARD_PREVIEW_LIMIT = 5;
+
+type SelectClaimHandler = (claimId: string, options?: { scrollToDetail?: boolean }) => void;
+
+function dashboardPanelShellClassName(embedded?: boolean) {
+  return cn("min-w-0", !embedded && "rounded-lg border border-line bg-white p-4 shadow-panel");
+}
+
+function formatEvidenceMapFilterSummary({
+  filteredClaimCount,
+  filteredInterventionCount,
+  totalClaimCount,
+  totalInterventionCount
+}: {
+  filteredClaimCount: number;
+  filteredInterventionCount: number;
+  totalClaimCount: number;
+  totalInterventionCount: number;
+}) {
+  const interventionsLabel =
+    filteredInterventionCount === totalInterventionCount
+      ? `${totalInterventionCount} interventions`
+      : `${filteredInterventionCount} of ${totalInterventionCount} interventions`;
+  const claimsLabel =
+    filteredClaimCount === totalClaimCount
+      ? `${totalClaimCount} scoped claims`
+      : `${filteredClaimCount} of ${totalClaimCount} scoped claims`;
+
+  return `Showing ${interventionsLabel} · ${claimsLabel}`;
+}
+
+function ActiveClaimContextBar({
+  activeClaim,
+  activeIntervention,
+  readinessRow
+}: {
+  activeClaim: Claim;
+  activeIntervention?: Intervention;
+  readinessRow?: ScoreReadinessRow;
+}) {
+  const score = evidenceMapSortableScore(activeClaim, readinessRow);
+
+  return (
+    <div className="mb-3 rounded-lg border border-signal/25 bg-blue-50 px-3 py-2">
+      <p className="text-xs font-semibold uppercase tracking-wide text-signal">Selected claim</p>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-700">
+        <span className="font-semibold text-ink">
+          {activeIntervention?.name ?? "Unknown intervention"} · {shortOutcome(activeClaim.outcome)}
+        </span>
+        <span>
+          {score === null
+            ? evidenceMapScoreStatusLabel(activeClaim, readinessRow)
+            : `${compositeLabel(activeClaim)} ${score.toFixed(1)}/10`}
+        </span>
+        <span className={cn("rounded-md border px-2 py-0.5 text-xs font-semibold", labelTone(activeClaim.finalLabel))}>
+          {activeClaim.finalLabel}
+        </span>
+        <span className="text-xs text-slate-600">{reviewStatusLabel(activeClaim.reviewStatus)}</span>
+        {activeIntervention ? (
+          <a
+            className="text-xs font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+            href={`/interventions/${activeIntervention.slug}`}
+          >
+            Intervention detail
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function dashboardSourcePacketSnapshotMap(data: EvidenceDashboardData) {
+  return new Map((data.normalizedSourcePackets ?? []).map((packet) => [packet.claimId, packet]));
+}
+
+function shouldUseDashboardSourcePacketSnapshots({
+  references,
+  sourcePacketSnapshotsByClaimId,
+  studies
+}: {
+  references: Reference[];
+  sourcePacketSnapshotsByClaimId: Map<string, NormalizedSourcePacketRow>;
+  studies: Study[];
+}) {
+  return references.length === 0 && studies.length === 0 && sourcePacketSnapshotsByClaimId.size > 0;
+}
+
+function buildDashboardClaimSourcePacket({
+  claim,
+  referencesById,
+  sourcePacketSnapshotsByClaimId,
+  studies,
+  useSourcePacketSnapshots
+}: {
+  claim: Claim;
+  referencesById: Map<string, Reference>;
+  sourcePacketSnapshotsByClaimId: Map<string, NormalizedSourcePacketRow>;
+  studies: Study[];
+  useSourcePacketSnapshots: boolean;
+}) {
+  if (useSourcePacketSnapshots) {
+    return buildClaimSourcePacketFromSnapshot({
+      claim,
+      packet: sourcePacketSnapshotsByClaimId.get(claim.id),
+      referencesById
+    });
+  }
+
+  return buildClaimSourcePacket({ claim, referencesById, studies });
+}
+
+function summarizeDashboardClaimSourcePackets({
+  claims,
+  referencesById,
+  sourcePacketSnapshotsByClaimId,
+  studies,
+  useSourcePacketSnapshots
+}: {
+  claims: Claim[];
+  referencesById: Map<string, Reference>;
+  sourcePacketSnapshotsByClaimId: Map<string, NormalizedSourcePacketRow>;
+  studies: Study[];
+  useSourcePacketSnapshots: boolean;
+}) {
+  if (!useSourcePacketSnapshots) {
+    return summarizeClaimSourcePackets({ claims, referencesById, studies });
+  }
+
+  return claims.reduce(
+    (summary, claim) => {
+      const packet = buildDashboardClaimSourcePacket({
+        claim,
+        referencesById,
+        sourcePacketSnapshotsByClaimId,
+        studies,
+        useSourcePacketSnapshots
+      });
+
+      summary.totalClaims += 1;
+      summary.totalReferences += packet.completeness.totalReferences;
+      summary.extractedReferences += packet.completeness.extractedReferences;
+      summary.pendingReferences += packet.completeness.pendingReferences;
+      summary.missingReferences += packet.completeness.missingReferences;
+
+      switch (packet.completeness.status) {
+        case "complete":
+          summary.completeClaims += 1;
+          break;
+        case "extraction_pending":
+          summary.extractionPendingClaims += 1;
+          break;
+        case "missing_sources":
+          summary.missingSourceClaims += 1;
+          break;
+        case "not_linked":
+          summary.unlinkedClaims += 1;
+          break;
+      }
+
+      return summary;
+    },
+    {
+      completeClaims: 0,
+      extractionPendingClaims: 0,
+      extractedReferences: 0,
+      missingReferences: 0,
+      missingSourceClaims: 0,
+      pendingReferences: 0,
+      totalClaims: 0,
+      totalReferences: 0,
+      unlinkedClaims: 0
+    }
+  );
+}
+
+function EvidenceDashboardTabbedPanels({
+  activeClaim,
+  activeClaimId,
+  activeIntervention,
+  filteredClaims,
+  hasFilteredClaims,
+  interventionsById,
+  labelFindings,
+  labelText,
+  onOpenChange,
+  onSelectClaim,
+  open,
+  productAustraliaVerificationById,
+  productSignals,
+  referencesById,
+  readinessByClaimId,
+  safetyAlerts,
+  setLabelText,
+  studies,
+  tableRows,
+  trialWatchItems
+}: {
+  activeClaim: Claim | null;
+  activeClaimId: string;
+  activeIntervention?: Intervention;
+  filteredClaims: Claim[];
+  hasFilteredClaims: boolean;
+  interventionsById: Map<string, Intervention>;
+  labelFindings: ReturnType<typeof analyzeLabel>;
+  labelText: string;
+  onOpenChange: (open: boolean) => void;
+  onSelectClaim: SelectClaimHandler;
+  open: boolean;
+  productAustraliaVerificationById: Map<string, ProductAustraliaRegulatoryVerification>;
+  productSignals: ProductSignal[];
+  referencesById: Map<string, Reference>;
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
+  safetyAlerts: SafetyAlert[];
+  setLabelText: (value: string) => void;
+  studies: Study[];
+  tableRows: ClaimTableRow[];
+  trialWatchItems: TrialWatchItem[];
+}) {
+  const [activeTab, setActiveTab] = useState<DashboardTabId>("claim-scores");
+  const tabs: Array<{
+    badge?: string;
+    id: DashboardTabId;
+    label: string;
+  }> = [
+    { badge: String(tableRows.length), id: "claim-scores", label: "Score Index" },
+    { badge: String(safetyAlerts.length), id: "safety-center", label: "Safety Center" },
+    { badge: String(filteredClaims.length), id: "evidence-cards", label: "Evidence Notes" },
+    { id: "product-labels", label: "Product Labels" },
+    { badge: String(trialWatchItems.length), id: "trial-watcher", label: "Trial Watcher" },
+    { id: "sources", label: "Sources" }
+  ];
+
+  return (
+    <section className="min-w-0 rounded-lg border border-line bg-white shadow-panel">
+      <button
+        type="button"
+        aria-controls="dashboard-detail-panels"
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left outline-none transition hover:bg-mist focus:ring-4 focus:ring-inset focus:ring-signal/20"
+        onClick={() => onOpenChange(!open)}
+      >
+        <div className="min-w-0">
+          <p className="text-base font-semibold text-ink">Evidence notes</p>
+          <p className="mt-0.5 text-xs text-slate-600">
+            Claim notes, source trails, safety, product labels, trials, and score audit fields
+          </p>
+        </div>
+        <ChevronDown
+          aria-hidden="true"
+          className={cn("h-4 w-4 shrink-0 text-slate-600 transition", open && "rotate-180")}
+        />
+      </button>
+
+      {open ? (
+        <div id="dashboard-detail-panels">
+      <div
+        aria-label="Dashboard detail sections"
+        className="flex flex-wrap gap-1 border-t border-line p-2"
+        role="tablist"
+      >
+        {tabs.map((tab) => {
+          const selected = activeTab === tab.id;
+
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              id={`dashboard-tab-button-${tab.id}`}
+              role="tab"
+              aria-controls={`dashboard-tab-panel-${tab.id}`}
+              aria-selected={selected}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-semibold outline-none transition focus:ring-4 focus:ring-signal/20",
+                selected
+                  ? "border-signal bg-blue-50 text-signal"
+                  : "border-transparent bg-white text-slate-700 hover:border-line hover:bg-mist"
+              )}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <span>{tab.label}</span>
+              {tab.badge ? (
+                <span
+                  className={cn(
+                    "rounded-full px-1.5 py-0.5 text-[11px] font-semibold",
+                    selected ? "bg-white text-signal" : "bg-mist text-slate-600"
+                  )}
+                >
+                  {tab.badge}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="p-4">
+        <div
+          aria-labelledby="dashboard-tab-button-claim-scores"
+          hidden={activeTab !== "claim-scores"}
+          id="dashboard-tab-panel-claim-scores"
+          role="tabpanel"
+        >
+          <ClaimTable
+            embedded
+            rows={tableRows}
+            onSelectClaim={onSelectClaim}
+            activeClaimId={activeClaimId}
+          />
+        </div>
+        <div
+          aria-labelledby="dashboard-tab-button-safety-center"
+          hidden={activeTab !== "safety-center"}
+          id="dashboard-tab-panel-safety-center"
+          role="tabpanel"
+        >
+          <SafetyPanel embedded interventionsById={interventionsById} safetyAlerts={safetyAlerts} />
+        </div>
+        <div
+          aria-labelledby="dashboard-tab-button-evidence-cards"
+          hidden={activeTab !== "evidence-cards"}
+          id="dashboard-tab-panel-evidence-cards"
+          role="tabpanel"
+        >
+          <EvidenceCards
+            embedded
+            claims={filteredClaims}
+            interventionsById={interventionsById}
+            referencesById={referencesById}
+            readinessByClaimId={readinessByClaimId}
+            studies={studies}
+            activeClaimId={activeClaimId}
+            onSelectClaim={onSelectClaim}
+          />
+        </div>
+        <div
+          aria-labelledby="dashboard-tab-button-product-labels"
+          hidden={activeTab !== "product-labels"}
+          id="dashboard-tab-panel-product-labels"
+          role="tabpanel"
+        >
+          <LabelAnalyzer
+            embedded
+            labelText={labelText}
+            setLabelText={setLabelText}
+            findings={labelFindings}
+            productSignals={productSignals}
+            productAustraliaVerificationById={productAustraliaVerificationById}
+          />
+        </div>
+        <div
+          aria-labelledby="dashboard-tab-button-trial-watcher"
+          hidden={activeTab !== "trial-watcher"}
+          id="dashboard-tab-panel-trial-watcher"
+          role="tabpanel"
+        >
+          <TrialWatcher embedded interventionsById={interventionsById} trialWatchItems={trialWatchItems} />
+        </div>
+        <div
+          aria-labelledby="dashboard-tab-button-sources"
+          hidden={activeTab !== "sources"}
+          id="dashboard-tab-panel-sources"
+          role="tabpanel"
+        >
+          {hasFilteredClaims && activeClaim ? (
+            <SourceAndStudyPanel
+              embedded
+              key={activeClaim.id}
+              activeClaim={activeClaim}
+              activeIntervention={activeIntervention}
+              referencesById={referencesById}
+              studies={studies}
+            />
+          ) : (
+            <FilteredClaimDetailEmptyState
+              embedded
+              title="Sources and Review Queue"
+              detail="Source packets and live search suggestions appear after the current filters match a local scored claim."
+            />
+          )}
+        </div>
+      </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export function EvidenceDashboard({ data: initialData }: { data: EvidenceDashboardData }) {
+  const [detailData, setDetailData] = useState<EvidenceDashboardData | null>(null);
+  const [detailDataStatus, setDetailDataStatus] = useState<"idle" | "loading" | "ready" | "error">(
+    initialData.references.length > 0 || initialData.studies.length > 0 ? "ready" : "idle"
+  );
+  const [detailDataError, setDetailDataError] = useState<string | null>(null);
+  const data = detailData ?? initialData;
   const {
     claims,
     interventions,
@@ -119,16 +902,90 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     studies,
     trialWatchItems
   } = data;
+  const hasDetailData =
+    detailDataStatus === "ready" || references.length > 0 || studies.length > 0;
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
+  const [labelFilter, setLabelFilter] = useState("All");
+  const [outcomeFilter, setOutcomeFilter] = useState("All");
+  const [evidenceMapStatusFilter, setEvidenceMapStatusFilter] =
+    useState<EvidenceMapStatusFilter>("all");
   const [activeClaimId, setActiveClaimId] = useState(claims[0]?.id ?? "");
   const [labelText, setLabelText] = useState(
     "Creatine monohydrate 5 g\nNSF Certified for Sport\nNo proprietary blend"
   );
+  const detailSectionRef = useRef<HTMLElement>(null);
+  const [detailPanelsOpen, setDetailPanelsOpen] = useState(false);
+  const [mainTab, setMainTab] = useState<DashboardMainTab>("evidence-map");
+  const [localToolsVisible, setLocalToolsVisible] = useState(false);
+  const catalogTrustSummary = useMemo(() => buildCatalogTrustSummary(data), [data]);
+  const loadDetailData = useCallback(async () => {
+    if (detailDataStatus === "loading" || detailDataStatus === "ready") {
+      return;
+    }
+
+    setDetailDataStatus("loading");
+    setDetailDataError(null);
+
+    try {
+      const response = await fetch("/api/evidence-dashboard/details", {
+        cache: "no-store"
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Evidence detail data could not be loaded.");
+      }
+
+      setDetailData(payload as EvidenceDashboardData);
+      setDetailDataStatus("ready");
+    } catch (error) {
+      setDetailDataStatus("error");
+      setDetailDataError(
+        error instanceof Error ? error.message : "Evidence detail data could not be loaded."
+      );
+    }
+  }, [detailDataStatus]);
+
+  const handleSelectClaim = useCallback<SelectClaimHandler>((claimId, options) => {
+    setActiveClaimId(claimId);
+
+    if (options?.scrollToDetail) {
+      setMainTab("claim-details");
+      setDetailPanelsOpen(true);
+      requestAnimationFrame(() => {
+        detailSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
+  }, []);
 
   const referencesById = useMemo(
     () => new Map(references.map((reference) => [reference.id, reference])),
     [references]
+  );
+  const sourcePacketSnapshotsByClaimId = useMemo(
+    () => dashboardSourcePacketSnapshotMap(data),
+    [data]
+  );
+  const useSourcePacketSnapshots = useMemo(
+    () =>
+      shouldUseDashboardSourcePacketSnapshots({
+        references,
+        sourcePacketSnapshotsByClaimId,
+        studies
+      }),
+    [references, sourcePacketSnapshotsByClaimId, studies]
+  );
+  const buildSourcePacketForClaim = useCallback(
+    (claim: Claim) =>
+      buildDashboardClaimSourcePacket({
+        claim,
+        referencesById,
+        sourcePacketSnapshotsByClaimId,
+        studies,
+        useSourcePacketSnapshots
+      }),
+    [referencesById, sourcePacketSnapshotsByClaimId, studies, useSourcePacketSnapshots]
   );
 
   const interventionsById = useMemo(
@@ -139,6 +996,16 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const categories = useMemo(
     () => ["All", ...Array.from(new Set(interventions.map((item) => item.category)))],
     [interventions]
+  );
+
+  const evidenceLabels = useMemo(
+    () => ["All", ...Array.from(new Set(claims.map((claim) => claim.finalLabel))).sort()],
+    [claims]
+  );
+
+  const outcomeAreas = useMemo(
+    () => ["All", ...Array.from(new Set(claims.map((claim) => claim.outcome))).sort()],
+    [claims]
   );
 
   const filteredInterventions = useMemo(() => {
@@ -161,10 +1028,78 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   );
 
   const filteredClaims = useMemo(
-    () => claims.filter((claim) => visibleInterventionIds.has(claim.interventionId)),
-    [claims, visibleInterventionIds]
+    () =>
+      claims.filter((claim) => {
+        const labelMatch = labelFilter === "All" || claim.finalLabel === labelFilter;
+        const outcomeMatch = outcomeFilter === "All" || claim.outcome === outcomeFilter;
+
+        return labelMatch && outcomeMatch && visibleInterventionIds.has(claim.interventionId);
+      }),
+    [claims, labelFilter, outcomeFilter, visibleInterventionIds]
   );
   const hasFilteredClaims = filteredClaims.length > 0;
+  const evidenceMapReadinessRows = useMemo(
+    () =>
+      buildScoreReadinessRows({
+        ...data,
+        claims: filteredClaims
+      }),
+    [data, filteredClaims]
+  );
+  const evidenceMapReadinessByClaimId = useMemo(
+    () => new Map(evidenceMapReadinessRows.map((row) => [row.claim.id, row])),
+    [evidenceMapReadinessRows]
+  );
+  const practicalGuideReadinessRows = useMemo(
+    () =>
+      buildScoreReadinessRows({
+        ...data,
+        claims
+      }),
+    [claims, data]
+  );
+  const practicalGuideReadinessByClaimId = useMemo(
+    () => new Map(practicalGuideReadinessRows.map((row) => [row.claim.id, row])),
+    [practicalGuideReadinessRows]
+  );
+  const evidenceMapClaims = useMemo(
+    () =>
+      filteredClaims.filter((claim) =>
+        claimMatchesEvidenceMapStatusFilter(
+          claim,
+          evidenceMapStatusFilter,
+          evidenceMapReadinessByClaimId.get(claim.id)
+        )
+      ),
+    [evidenceMapReadinessByClaimId, evidenceMapStatusFilter, filteredClaims]
+  );
+  const evidenceMapInterventions = useMemo(() => {
+    if (evidenceMapStatusFilter === "all") {
+      return filteredInterventions;
+    }
+
+    const visibleIds = new Set(evidenceMapClaims.map((claim) => claim.interventionId));
+    return filteredInterventions.filter((intervention) => visibleIds.has(intervention.id));
+  }, [evidenceMapClaims, evidenceMapStatusFilter, filteredInterventions]);
+  const evidenceMapReadinessSummary = useMemo(
+    () =>
+      buildEvidenceMapReadinessSummary({
+        claims: filteredClaims,
+        readinessRows: evidenceMapReadinessRows,
+        referencesById,
+        sourcePacketSnapshotsByClaimId,
+        studies,
+        useSourcePacketSnapshots
+      }),
+    [
+      evidenceMapReadinessRows,
+      filteredClaims,
+      referencesById,
+      sourcePacketSnapshotsByClaimId,
+      studies,
+      useSourcePacketSnapshots
+    ]
+  );
 
   useEffect(() => {
     if (filteredClaims.length === 0) {
@@ -178,6 +1113,22 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     setActiveClaimId(filteredClaims[0].id);
   }, [activeClaimId, filteredClaims]);
 
+  useEffect(() => {
+    setLocalToolsVisible(isLocalDashboardHost());
+  }, []);
+
+  useEffect(() => {
+    if (!localToolsVisible && LOCAL_DASHBOARD_TABS.has(mainTab)) {
+      setMainTab("evidence-map");
+    }
+  }, [localToolsVisible, mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "claim-details" || mainTab === "catalog-trust") {
+      void loadDetailData();
+    }
+  }, [loadDetailData, mainTab]);
+
   const activeClaim =
     filteredClaims.find((claim) => claim.id === activeClaimId) ??
     filteredClaims[0] ??
@@ -187,9 +1138,6 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
   const activeClaimIdForDisplay = activeClaim?.id ?? "";
   const activeIntervention = activeClaim
     ? interventionsById.get(activeClaim.interventionId)
-    : undefined;
-  const activeAustraliaStatus = activeIntervention
-    ? getPrimaryAustraliaStatus(data.australiaRegulatoryStatuses, activeIntervention.id)
     : undefined;
   const productAustraliaVerifications = useMemo(
     () => buildProductAustraliaRegulatoryVerifications(data),
@@ -206,25 +1154,11 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
     [productAustraliaVerifications]
   );
   const labelFindings = analyzeLabel(labelText);
-  const reviewSummary = useMemo(() => summarizeReviewStatus(claims), [claims]);
-  const sourcePacketSummary = useMemo(
-    () =>
-      summarizeClaimSourcePackets({
-        claims,
-        referencesById,
-        studies
-      }),
-    [claims, referencesById, studies]
-  );
-
   const tableRows = useMemo(
     () =>
       filteredClaims.map((claim) => {
-        const sourcePacket = buildClaimSourcePacket({
-          claim,
-          referencesById,
-          studies
-        });
+        const readinessRow = evidenceMapReadinessByClaimId.get(claim.id);
+        const sourcePacket = buildSourcePacketForClaim(claim);
 
         return {
           id: claim.id,
@@ -233,179 +1167,6811 @@ export function EvidenceDashboard({ data }: { data: EvidenceDashboardData }) {
           label: claim.finalLabel,
           sourcePacketStatus: sourcePacket.completeness.status,
           sourcePacketLabel: sourcePacket.completeness.label,
-          composite: compositeScore(claim.scores),
+          composite: evidenceMapSortableScore(claim, readinessRow),
+          scoreStatusLabel: evidenceMapScoreStatusLabel(claim, readinessRow),
           safety: claim.scores.safety,
           regulatoryRisk: claim.scores.regulatoryRisk,
           confidence: claim.confidenceLevel,
           updated: claim.lastUpdated
         };
       }),
-    [filteredClaims, interventionsById, referencesById, studies]
+    [buildSourcePacketForClaim, evidenceMapReadinessByClaimId, filteredClaims, interventionsById]
+  );
+  const practicalGuide = useMemo(
+    () =>
+      buildPracticalGuide({
+        claims,
+        interventionsById,
+        readinessByClaimId: practicalGuideReadinessByClaimId,
+        referencesById,
+        safetyAlerts,
+        sourcePacketSnapshotsByClaimId,
+        studies,
+        trialWatchItems,
+        useSourcePacketSnapshots
+      }),
+    [
+      claims,
+      interventionsById,
+      practicalGuideReadinessByClaimId,
+      referencesById,
+      safetyAlerts,
+      sourcePacketSnapshotsByClaimId,
+      studies,
+      trialWatchItems,
+      useSourcePacketSnapshots
+    ]
   );
 
   return (
-    <main className="min-h-screen px-4 py-4 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-[1500px] flex-col gap-4">
+    <main className="min-h-screen overflow-x-hidden px-4 py-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full min-w-0 max-w-[1500px] flex-col gap-4">
         <Header data={data} />
+        <DashboardMainTabs
+          activeTab={mainTab}
+          includeLocalTools={localToolsVisible}
+          onChange={setMainTab}
+        />
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <MetricPanel
-            icon={<FileSearch aria-hidden="true" className="h-4 w-4" />}
-            label="Interventions"
-            value={interventions.length}
-            detail={`${claims.length} scored claims`}
-          />
-          <MetricPanel
-            icon={<ShieldCheck aria-hidden="true" className="h-4 w-4" />}
-            label="Human-reviewed"
-            value={reviewSummary.humanReviewed}
-            detail={`${reviewSummary.unreviewedDrafts} drafts awaiting review`}
-          />
-          <MetricPanel
-            icon={<AlertTriangle aria-hidden="true" className="h-4 w-4" />}
-            label="Safety alerts"
-            value={safetyAlerts.length}
-            detail={`${safetyAlerts.filter((alert) => alert.severity !== "Low").length} moderate+`}
-          />
-          <MetricPanel
-            icon={<FlaskConical aria-hidden="true" className="h-4 w-4" />}
-            label="Source packets"
-            value={`${sourcePacketSummary.completeClaims}/${sourcePacketSummary.totalClaims}`}
-            detail={sourcePacketSummaryDetail(sourcePacketSummary)}
-          />
-        </section>
+        {mainTab === "evidence-map" ? (
+          <section className="min-w-0 space-y-4">
+            <div className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h2 className="text-base font-semibold text-ink">
+                    Ranked evidence by outcome
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Top-ranked supplements appear first within each outcome, using scored local
+                    evidence signals, confidence, and source readiness. Open source-work rows when
+                    you want to audit unfinished evidence trails.
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {formatEvidenceMapFilterSummary({
+                      filteredClaimCount: evidenceMapClaims.length,
+                      filteredInterventionCount: evidenceMapInterventions.length,
+                      totalClaimCount: claims.length,
+                      totalInterventionCount: interventions.length
+                    })}
+                  </p>
+                </div>
+                <div className="grid min-w-0 gap-2 lg:grid-cols-2 xl:grid-cols-4">
+                  <label className="relative" htmlFor="evidence-map-search">
+                    <Search
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                    />
+                    <span className="sr-only">Search interventions</span>
+                    <input
+                      id="evidence-map-search"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      className="h-10 w-full rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                      placeholder="Search interventions"
+                    />
+                  </label>
+                  <label className="relative" htmlFor="evidence-map-category">
+                    <Filter
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                    />
+                    <span className="sr-only">Filter category</span>
+                    <select
+                      id="evidence-map-category"
+                      value={category}
+                      onChange={(event) => setCategory(event.target.value)}
+                      className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                    >
+                      {categories.map((item) => (
+                        <option key={item}>{item}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="relative" htmlFor="evidence-map-label">
+                    <Filter
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                    />
+                    <span className="sr-only">Filter by evidence label</span>
+                    <select
+                      id="evidence-map-label"
+                      value={labelFilter}
+                      onChange={(event) => setLabelFilter(event.target.value)}
+                      className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                    >
+                      {evidenceLabels.map((item) => (
+                        <option key={item} value={item}>
+                          {item === "All" ? "All labels" : item}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="relative" htmlFor="evidence-map-outcome">
+                    <Filter
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
+                    />
+                    <span className="sr-only">Filter by outcome area</span>
+                    <select
+                      id="evidence-map-outcome"
+                      value={outcomeFilter}
+                      onChange={(event) => setOutcomeFilter(event.target.value)}
+                      className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
+                    >
+                      {outcomeAreas.map((item) => (
+                        <option key={item} value={item}>
+                          {item === "All" ? "All outcomes" : shortOutcome(item as OutcomeArea)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
 
-        <section className="grid items-start gap-4 xl:grid-cols-[1.35fr_0.65fr]">
-          <div className="rounded-lg border border-line bg-white p-4 shadow-panel">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h2 className="text-base font-semibold text-ink">Evidence Map</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Claim cells show composite evidence confidence, with safety and hype penalties included.
-                </p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-[minmax(220px,1fr)_220px]">
-                <label className="relative">
-                  <Search
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
-                  />
-                  <span className="sr-only">Search interventions</span>
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    className="h-10 w-full rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
-                    placeholder="Search interventions"
-                  />
-                </label>
-                <label className="relative">
-                  <Filter
-                    aria-hidden="true"
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600"
-                  />
-                  <span className="sr-only">Filter category</span>
-                  <select
-                    value={category}
-                    onChange={(event) => setCategory(event.target.value)}
-                    className="h-10 w-full appearance-none rounded-md border border-line bg-white pl-9 pr-3 text-sm outline-none ring-signal/20 transition focus:border-signal focus:ring-4"
-                  >
-                    {categories.map((item) => (
-                      <option key={item}>{item}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+              <EvidenceMap
+                claims={evidenceMapClaims}
+                readinessByClaimId={evidenceMapReadinessByClaimId}
+                interventions={evidenceMapInterventions}
+                activeClaimId={activeClaimIdForDisplay}
+              />
+
+              <EvidenceMapReadinessStrip
+                onStatusFilterChange={setEvidenceMapStatusFilter}
+                statusFilter={evidenceMapStatusFilter}
+                summary={evidenceMapReadinessSummary}
+              />
             </div>
+            <PracticalGuideSection guide={practicalGuide} />
+          </section>
+        ) : null}
 
-            <EvidenceMap
-              claims={filteredClaims}
-              interventions={filteredInterventions}
-              activeClaimId={activeClaimIdForDisplay}
-              onSelectClaim={setActiveClaimId}
-            />
+        {mainTab === "claim-details" ? (
+          <section
+            ref={detailSectionRef}
+            aria-label="Selected claim details"
+            className="min-w-0 scroll-mt-4"
+          >
+            {activeClaim ? (
+              <ActiveClaimContextBar
+                activeClaim={activeClaim}
+                activeIntervention={activeIntervention}
+                readinessRow={evidenceMapReadinessByClaimId.get(activeClaim.id)}
+              />
+            ) : null}
+            {hasDetailData ? (
+              <EvidenceDashboardTabbedPanels
+                activeClaim={activeClaim}
+                activeClaimId={activeClaimIdForDisplay}
+                activeIntervention={activeIntervention}
+                filteredClaims={filteredClaims}
+                hasFilteredClaims={hasFilteredClaims}
+                interventionsById={interventionsById}
+                labelFindings={labelFindings}
+                labelText={labelText}
+                onOpenChange={setDetailPanelsOpen}
+                onSelectClaim={handleSelectClaim}
+                open={detailPanelsOpen}
+                productAustraliaVerificationById={productAustraliaVerificationById}
+                productSignals={productSignals}
+                referencesById={referencesById}
+                readinessByClaimId={evidenceMapReadinessByClaimId}
+                safetyAlerts={safetyAlerts}
+                setLabelText={setLabelText}
+                studies={studies}
+                tableRows={tableRows}
+                trialWatchItems={trialWatchItems}
+              />
+            ) : (
+              <DashboardDetailDataGate
+                detail="Source trails, extracted study rows, product-label review, and trial detail load only when this section is opened."
+                error={detailDataError}
+                onRetry={loadDetailData}
+                status={detailDataStatus}
+                title="Loading evidence notes"
+              />
+            )}
+          </section>
+        ) : null}
+
+        {mainTab === "candidate-review" ? (
+          <div className="grid gap-4">
+            <LocalUpdatePipelineControl />
+            <LocalCandidateReviewWorkbench />
           </div>
-
-          {hasFilteredClaims && activeClaim ? (
-            <ScorePanel
-              australiaStatus={activeAustraliaStatus}
-              claim={activeClaim}
-              intervention={activeIntervention}
-            />
+        ) : null}
+        {mainTab === "local-ingestion" ? (
+          <div className="grid gap-4">
+            <LocalUpdatePipelineControl />
+            <LocalIngestionControl />
+          </div>
+        ) : null}
+        {mainTab === "catalog-trust" ? (
+          hasDetailData ? (
+            <CatalogTrustPanel data={data} summary={catalogTrustSummary} />
           ) : (
-            <FilteredClaimDetailEmptyState
-              title="Active Evidence Card"
-              detail="No active evidence card is selected because the current filters do not match local scored claims."
+            <DashboardDetailDataGate
+              detail="Catalog Trust uses full source, study, product, and score-audit rows, so it loads after the main ranked board."
+              error={detailDataError}
+              onRetry={loadDetailData}
+              status={detailDataStatus}
+              title="Loading catalog trust"
             />
-          )}
-        </section>
-
-        <section className="grid items-start gap-4 xl:grid-cols-[1fr_0.8fr]">
-          <ClaimTable
-            rows={tableRows}
-            onSelectClaim={setActiveClaimId}
-            activeClaimId={activeClaimIdForDisplay}
-          />
-          <SafetyPanel interventionsById={interventionsById} safetyAlerts={safetyAlerts} />
-        </section>
-
-        <section className="grid items-start gap-4 xl:grid-cols-[1fr_1fr]">
-          <EvidenceCards
-            claims={filteredClaims}
-            interventionsById={interventionsById}
-            referencesById={referencesById}
-            studies={studies}
-            activeClaimId={activeClaimIdForDisplay}
-            onSelectClaim={setActiveClaimId}
-          />
-          <LabelAnalyzer
-            labelText={labelText}
-            setLabelText={setLabelText}
-            findings={labelFindings}
-            productSignals={productSignals}
-            productAustraliaVerificationById={productAustraliaVerificationById}
-          />
-        </section>
-
-        <section className="grid items-start gap-4 xl:grid-cols-[0.8fr_1fr]">
-          <TrialWatcher
-            interventionsById={interventionsById}
-            trialWatchItems={trialWatchItems}
-          />
-          {hasFilteredClaims && activeClaim ? (
-            <SourceAndStudyPanel
-              key={activeClaim.id}
-              activeClaim={activeClaim}
-              activeIntervention={activeIntervention}
-              referencesById={referencesById}
-              studies={studies}
-            />
-          ) : (
-            <FilteredClaimDetailEmptyState
-              title="Sources and Review Queue"
-              detail="Source packets and live search suggestions appear after the current filters match a local scored claim."
-            />
-          )}
-        </section>
+          )
+        ) : null}
       </div>
     </main>
   );
 }
 
-function FilteredClaimDetailEmptyState({
+function buildPracticalGuide({
+  claims,
+  interventionsById,
+  readinessByClaimId,
+  referencesById,
+  safetyAlerts,
+  sourcePacketSnapshotsByClaimId,
+  studies,
+  trialWatchItems,
+  useSourcePacketSnapshots
+}: {
+  claims: Claim[];
+  interventionsById: Map<string, Intervention>;
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
+  referencesById: Map<string, Reference>;
+  safetyAlerts: SafetyAlert[];
+  sourcePacketSnapshotsByClaimId: Map<string, NormalizedSourcePacketRow>;
+  studies: Study[];
+  trialWatchItems: TrialWatchItem[];
+  useSourcePacketSnapshots: boolean;
+}): PracticalGuideModel {
+  const safetyAlertsByInterventionId = new Map<string, SafetyAlert[]>();
+
+  safetyAlerts.forEach((alert) => {
+    const alerts = safetyAlertsByInterventionId.get(alert.interventionId) ?? [];
+    alerts.push(alert);
+    safetyAlertsByInterventionId.set(alert.interventionId, alerts);
+  });
+
+  const items = claims
+    .map((claim) => {
+      const intervention = interventionsById.get(claim.interventionId);
+
+      if (!intervention) {
+        return null;
+      }
+
+      return buildPracticalGuideItem({
+        claim,
+        intervention,
+        readinessRow: readinessByClaimId.get(claim.id),
+        referencesById,
+        safetyAlerts: safetyAlertsByInterventionId.get(claim.interventionId) ?? [],
+        sourcePacketSnapshotsByClaimId,
+        studies,
+        useSourcePacketSnapshots
+      });
+    })
+    .filter((item): item is PracticalGuideItem => Boolean(item))
+    .sort(sortPracticalGuideItems);
+
+  const bucketItems = new Map<PracticalPriorityBucketId, PracticalGuideItem[]>(
+    PRACTICAL_PRIORITY_BUCKET_CONFIG.map((bucket) => [bucket.id, []])
+  );
+
+  items.forEach((item) => {
+    bucketItems.get(item.bucketId)?.push(item);
+  });
+
+  return {
+    buckets: PRACTICAL_PRIORITY_BUCKET_CONFIG.map((bucket) => ({
+      ...bucket,
+      items: bucketItems.get(bucket.id) ?? []
+    })),
+    claimCount: claims.length,
+    entryCount: items.length,
+    longevityLens: buildPracticalLongevityLens(items),
+    quickTakes: buildPracticalQuickTakes(bucketItems, items),
+    radar: buildPracticalRadar({
+      items,
+      interventionsById,
+      trialWatchItems
+    }),
+    scoredCount: items.filter((item) => item.score !== null).length,
+    sourceWorkCount: items.filter((item) => item.sourcePacketStatus !== "complete").length
+  };
+}
+
+function buildPracticalGuideItem({
+  claim,
+  intervention,
+  readinessRow,
+  referencesById,
+  safetyAlerts,
+  sourcePacketSnapshotsByClaimId,
+  studies,
+  useSourcePacketSnapshots
+}: {
+  claim: Claim;
+  intervention: Intervention;
+  readinessRow?: ScoreReadinessRow;
+  referencesById: Map<string, Reference>;
+  safetyAlerts: SafetyAlert[];
+  sourcePacketSnapshotsByClaimId: Map<string, NormalizedSourcePacketRow>;
+  studies: Study[];
+  useSourcePacketSnapshots: boolean;
+}): PracticalGuideItem {
+  const sourcePacket = buildDashboardClaimSourcePacket({
+    claim,
+    referencesById,
+    sourcePacketSnapshotsByClaimId,
+    studies,
+    useSourcePacketSnapshots
+  });
+  const score = evidenceMapSortableScore(claim, readinessRow);
+  const bucketId = classifyPracticalPriorityBucket({
+    claim,
+    intervention,
+    readinessRow,
+    safetyAlerts,
+    score,
+    sourcePacket
+  });
+  const scoreLabel = practicalScoreLabel({
+    bucketId,
+    claim,
+    readinessRow,
+    score,
+    sourcePacket
+  });
+  const summary = practicalClaimSummary({
+    bucketId,
+    claim,
+    intervention,
+    sourcePacket
+  });
+
+  return {
+    bucketId,
+    caveat: practicalClaimCaveat(claim, safetyAlerts),
+    claim,
+    confidenceLabel: `${claim.confidenceLevel} confidence`,
+    evidenceMaturity: practicalEvidenceMaturity(claim, sourcePacket),
+    href: `/interventions/${intervention.slug}#claim-${claim.id}`,
+    intervention,
+    priorityScore: practicalPriorityScore({
+      bucketId,
+      claim,
+      readinessRow,
+      safetyAlerts,
+      score,
+      sourcePacket
+    }),
+    readinessLabel: readinessRow
+      ? scoreReadinessStateLabel(readinessRow.state)
+      : sourcePacket.completeness.label,
+    reason: practicalBucketReason(bucketId, claim, sourcePacket),
+    score,
+    scoreLabel,
+    sourceBasis: practicalSourceBasis(sourcePacket),
+    sourcePacketLabel: sourcePacket.completeness.label,
+    sourcePacketStatus: sourcePacket.completeness.status,
+    summary
+  };
+}
+
+function practicalScoreLabel({
+  bucketId,
+  claim,
+  readinessRow,
+  score,
+  sourcePacket
+}: {
+  bucketId: PracticalPriorityBucketId;
+  claim: Claim;
+  readinessRow?: ScoreReadinessRow;
+  score: number | null;
+  sourcePacket: ClaimSourcePacket;
+}) {
+  if (bucketId === "watchlist") {
+    return claim.outcome === "Safety/adverse effects" ? "Safety context" : "Watchlist";
+  }
+
+  if (sourcePacket.completeness.status !== "complete") {
+    return "Source work";
+  }
+
+  if (bucketId === "emerging" && !isModerateOrHighConfidence(claim)) {
+    return "Source lead";
+  }
+
+  if (bucketId === "overhyped" && claim.outcome === "Mortality/lifespan") {
+    return "Not proven";
+  }
+
+  return score === null
+    ? evidenceMapScoreStatusLabel(claim, readinessRow)
+    : `${score.toFixed(1)} ${scoreBand(score)}`;
+}
+
+function buildPracticalQuickTakes(
+  bucketItems: Map<PracticalPriorityBucketId, PracticalGuideItem[]>,
+  items: PracticalGuideItem[]
+): PracticalQuickTake[] {
+  const best = bucketItems.get("best")?.[0];
+  const context = bucketItems.get("context")?.[0];
+  const performance = bucketItems.get("performance")?.[0];
+  const overhyped = bucketItems.get("overhyped")?.[0];
+  const watchlist = bucketItems.get("watchlist")?.[0];
+  const directLifespanItems = items.filter((item) => item.claim.outcome === "Mortality/lifespan");
+  const strongDirectLifespanItems = directLifespanItems.filter(
+    (item) =>
+      item.claim.finalLabel === "Core Evidence-Based" &&
+      item.claim.confidenceLevel === "High" &&
+      item.score !== null &&
+      item.score >= 8
+  );
+  const quickTakes: PracticalQuickTake[] = [];
+
+  quickTakes.push(
+    best
+      ? {
+          detail: `${best.intervention.name} currently stands out most for ${shortOutcome(
+            best.claim.outcome
+          ).toLowerCase()} (${best.scoreLabel}).`,
+          href: best.href,
+          label: "Most worth attention",
+          title: best.intervention.name,
+          tone: "border-spruce/30 bg-teal-50 text-spruce"
+        }
+      : {
+          detail: "No local-catalog supplement reaches the strongest practical-priority threshold.",
+          label: "Most worth attention",
+          title: "No clear top item",
+          tone: "border-slate-300 bg-slate-50 text-slate-700"
+        }
+  );
+
+  quickTakes.push(
+    context
+      ? {
+          detail: `${context.intervention.name} may be relevant only when the person, baseline status, product form, or goal matches the evidence.`,
+          href: context.href,
+          label: "Context-dependent",
+          title: context.intervention.name,
+          tone: "border-signal/25 bg-blue-50 text-signal"
+        }
+      : {
+          detail: "No context-dependent item is prominent in the local catalog.",
+          label: "Context-dependent",
+          title: "None prominent",
+          tone: "border-slate-300 bg-slate-50 text-slate-700"
+        }
+  );
+
+  quickTakes.push(
+    performance
+      ? {
+          detail: `${performance.intervention.name} is mainly a narrow performance or training-context signal, not broad health advice.`,
+          href: performance.href,
+          label: "Niche use",
+          title: performance.intervention.name,
+          tone: "border-indigo-200 bg-indigo-50 text-indigo-700"
+        }
+      : {
+          detail: "No moderate-or-better confidence performance item is prominent in the local catalog.",
+          label: "Niche use",
+          title: "None prominent",
+          tone: "border-slate-300 bg-slate-50 text-slate-700"
+        }
+  );
+
+  quickTakes.push(
+    overhyped
+      ? {
+          detail: `${overhyped.intervention.name} ${shortOutcome(
+            overhyped.claim.outcome
+          ).toLowerCase()} should not be read as proven from the current evidence.`,
+          href: overhyped.href,
+          label: "Overhyped claim",
+          title: overhyped.intervention.name,
+          tone: "border-slate-300 bg-slate-50 text-slate-700"
+        }
+      : {
+          detail: "No overhyped claim is prominent in the local catalog.",
+          label: "Overhyped claim",
+          title: "None prominent",
+          tone: "border-slate-300 bg-slate-50 text-slate-700"
+        }
+  );
+
+  quickTakes.push(
+    watchlist
+      ? {
+          detail: `${watchlist.intervention.name} should be read caution-first because safety, clinician-review, or regulatory context dominates.`,
+          href: watchlist.href,
+          label: "Caution first",
+          title: watchlist.intervention.name,
+          tone: "border-danger/30 bg-red-50 text-danger"
+        }
+      : {
+          detail: "No caution-first item is prominent in the local catalog.",
+          label: "Caution first",
+          title: "None prominent",
+          tone: "border-slate-300 bg-slate-50 text-slate-700"
+        }
+  );
+
+  quickTakes.push({
+    detail:
+      strongDirectLifespanItems.length > 0
+        ? `${strongDirectLifespanItems.length} direct lifespan claim(s) meet the strict high-confidence/core threshold.`
+        : "Most current signals are healthspan, biomarker, performance, or source-radar signals rather than direct lifespan proof.",
+    label: "Longevity reality check",
+    title: "No broad lifespan shortcut",
+    tone: "border-amberline/30 bg-amber-50 text-amberline"
+  });
+
+  return quickTakes;
+}
+
+function classifyPracticalPriorityBucket({
+  claim,
+  intervention,
+  readinessRow,
+  safetyAlerts,
+  score,
+  sourcePacket
+}: {
+  claim: Claim;
+  intervention: Intervention;
+  readinessRow?: ScoreReadinessRow;
+  safetyAlerts: SafetyAlert[];
+  score: number | null;
+  sourcePacket: ClaimSourcePacket;
+}): PracticalPriorityBucketId {
+  if (claim.outcome === "Safety/adverse effects") {
+    return "watchlist";
+  }
+
+  if (isPracticalWatchlistItem({ claim, intervention, safetyAlerts })) {
+    return "watchlist";
+  }
+
+  if (isUnsupportedLongevityOrAgingClaim(claim)) {
+    return "overhyped";
+  }
+
+  if (sourcePacket.completeness.status !== "complete") {
+    return "source-work";
+  }
+
+  if (isPracticalEmergingItem(claim, readinessRow)) {
+    return "emerging";
+  }
+
+  if (claim.finalLabel === "Insufficient Evidence") {
+    return "overhyped";
+  }
+
+  if (
+    claim.finalLabel === "Core Evidence-Based" &&
+    score !== null &&
+    score >= 7.5 &&
+    isModerateOrHighConfidence(claim)
+  ) {
+    return "best";
+  }
+
+  if (
+    isPerformanceClaim(claim, intervention) &&
+    score !== null &&
+    score >= 6 &&
+    isModerateOrHighConfidence(claim) &&
+    claim.finalLabel !== "Conditional / Biomarker-Gated"
+  ) {
+    return "performance";
+  }
+
+  if (
+    (claim.finalLabel === "Conditional / Biomarker-Gated" ||
+      claim.finalLabel === "Useful for Specific Use Case" ||
+      claim.finalLabel === "Reasonable N-of-1 Experiment") &&
+    isModerateOrHighConfidence(claim)
+  ) {
+    return "context";
+  }
+
+  if (score !== null && score >= 7 && isModerateOrHighConfidence(claim)) {
+    return "context";
+  }
+
+  return "emerging";
+}
+
+function practicalPriorityScore({
+  bucketId,
+  claim,
+  readinessRow,
+  safetyAlerts,
+  score,
+  sourcePacket
+}: {
+  bucketId: PracticalPriorityBucketId;
+  claim: Claim;
+  readinessRow?: ScoreReadinessRow;
+  safetyAlerts: SafetyAlert[];
+  score: number | null;
+  sourcePacket: ClaimSourcePacket;
+}) {
+  const labelWeights: Record<PracticalPriorityBucketId, number> = {
+    best: 30,
+    context: 20,
+    performance: 16,
+    overhyped: 12,
+    "source-work": 18,
+    emerging: 14,
+    watchlist: 22
+  };
+  const confidenceWeights: Record<Claim["confidenceLevel"], number> = {
+    High: 5,
+    Moderate: 3,
+    Low: 1,
+    "Very low": 0
+  };
+  const sourcePacketWeight =
+    sourcePacket.completeness.status === "complete"
+      ? 4
+      : sourcePacket.completeness.status === "extraction_pending"
+        ? 2
+        : 0;
+  const readinessWeight =
+    readinessRow?.state === "scored"
+      ? 3
+      : readinessRow?.state === "ready_to_score"
+        ? 1
+        : 0;
+  const safetyAlertWeight = safetyAlerts.some((alert) =>
+    ["Avoid", "Clinician review recommended", "High"].includes(alert.severity)
+  )
+    ? 5
+    : safetyAlerts.length > 0
+      ? 2
+      : 0;
+  const momentumWeight =
+    claim.momentum === "Increasing"
+      ? 2
+      : claim.momentum === "Conflicting"
+        ? 1
+        : claim.momentum === "Safety concern emerging"
+          ? 4
+          : 0;
+
+  return (
+    labelWeights[bucketId] +
+    (score ?? 0) +
+    confidenceWeights[claim.confidenceLevel] +
+    sourcePacketWeight +
+    readinessWeight +
+    safetyAlertWeight +
+    momentumWeight +
+    claim.scores.hypePenalty * (bucketId === "overhyped" ? 0.7 : 0.15) +
+    claim.scores.regulatoryRisk * (bucketId === "watchlist" ? 0.8 : 0.1)
+  );
+}
+
+function sortPracticalGuideItems(left: PracticalGuideItem, right: PracticalGuideItem) {
+  if (right.priorityScore !== left.priorityScore) {
+    return right.priorityScore - left.priorityScore;
+  }
+
+  return `${left.intervention.name}-${left.claim.outcome}`.localeCompare(
+    `${right.intervention.name}-${right.claim.outcome}`
+  );
+}
+
+function isPracticalWatchlistItem({
+  claim,
+  intervention,
+  safetyAlerts
+}: {
+  claim: Claim;
+  intervention: Intervention;
+  safetyAlerts: SafetyAlert[];
+}) {
+  return (
+    intervention.category === "Peptide/biologic" ||
+    intervention.category === "Drug/geroprotector watchlist" ||
+    claim.finalLabel === "Safety Concern" ||
+    claim.finalLabel === "Avoid / Not Recommended" ||
+    claim.finalLabel === "Requires Clinician Oversight" ||
+    claim.finalLabel === "Regulatory Concern" ||
+    claim.momentum === "Safety concern emerging" ||
+    safetyAlerts.some((alert) =>
+      ["Avoid", "Clinician review recommended", "High"].includes(alert.severity)
+    )
+  );
+}
+
+function isUnsupportedLongevityOrAgingClaim(claim: Claim) {
+  return (
+    claim.finalLabel === "Insufficient Evidence" &&
+    (claim.outcome === "Mortality/lifespan" ||
+      claim.outcome === "Biological aging clocks" ||
+      claim.scores.hypePenalty >= 7)
+  );
+}
+
+function isPracticalEmergingItem(claim: Claim, readinessRow?: ScoreReadinessRow) {
+  return (
+    claim.finalLabel === "Speculative Watchlist" ||
+    claim.momentum === "Increasing" ||
+    isDraftLeadClaim(claim) ||
+    isEvidenceMapReviewWorkRow(readinessRow) ||
+    isEvidenceMapSourceWorkRow(readinessRow)
+  );
+}
+
+function isModerateOrHighConfidence(claim: Claim) {
+  return claim.confidenceLevel === "High" || claim.confidenceLevel === "Moderate";
+}
+
+function isPerformanceClaim(claim: Claim, intervention: Intervention) {
+  return (
+    intervention.category === "Ergogenic/performance supplement" ||
+    PERFORMANCE_OUTCOMES.has(claim.outcome)
+  );
+}
+
+function practicalBucketReason(
+  bucketId: PracticalPriorityBucketId,
+  claim: Claim,
+  sourcePacket: ClaimSourcePacket
+) {
+  if (bucketId === "source-work") {
+    return `${shortOutcome(claim.outcome)} still needs source links, identity cleanup, or structured extraction before it should influence practical rankings.`;
+  }
+
+  if (sourcePacket.completeness.status !== "complete" && bucketId !== "watchlist") {
+    return `${shortOutcome(claim.outcome)} needs source links or extraction before it should influence practical rankings.`;
+  }
+
+  if (bucketId === "best") {
+    return `${shortOutcome(claim.outcome)} is one of the stronger practical signals in the current catalog.`;
+  }
+
+  if (bucketId === "context") {
+    return `${shortOutcome(claim.outcome)} depends on the right person, baseline status, product form, or goal.`;
+  }
+
+  if (bucketId === "performance") {
+    return `${shortOutcome(claim.outcome)} is mainly a training or narrow-use signal, not broad health advice.`;
+  }
+
+  if (bucketId === "overhyped") {
+    return `${shortOutcome(claim.outcome)} should not be treated as proven from the current evidence.`;
+  }
+
+  if (bucketId === "watchlist") {
+    return `${shortOutcome(claim.outcome)} is dominated by safety, clinician-review, or regulatory caveats.`;
+  }
+
+  return `${shortOutcome(claim.outcome)} has movement or source leads, but conclusions are not settled.`;
+}
+
+function practicalClaimSummary({
+  bucketId,
+  claim,
+  intervention,
+  sourcePacket
+}: {
+  bucketId: PracticalPriorityBucketId;
+  claim: Claim;
+  intervention: Intervention;
+  sourcePacket: ClaimSourcePacket;
+}) {
+  if (sourcePacket.completeness.status !== "complete") {
+    if (sourcePacket.completeness.totalReferences === 0) {
+      return `${intervention.name} has this public claim in the catalog, but no curated local source packet is linked yet. Treat it as a sourcing task, not an evidence-backed conclusion.`;
+    }
+
+    return `${intervention.name} has linked source material for this claim, but extraction is not complete enough for a practical conclusion yet.`;
+  }
+
+  if (claim.outcome === "Safety/adverse effects") {
+    if (
+      intervention.category === "Peptide/biologic" ||
+      intervention.category === "Drug/geroprotector watchlist"
+    ) {
+      return `${intervention.name} is shown here as regulatory and safety tracking, not as routine supplement evidence or self-use guidance.`;
+    }
+
+    return `${intervention.name} has safety and tolerability context attached to this outcome; read it as caution and product-context review, not as a benefit claim.`;
+  }
+
+  if (
+    bucketId === "watchlist" &&
+    (intervention.category === "Peptide/biologic" ||
+      intervention.category === "Drug/geroprotector watchlist")
+  ) {
+    return `${intervention.name} is a regulatory or clinician-review watchlist item; the local record tracks evidence and risk boundaries rather than routine supplement use.`;
+  }
+
+  return normaliseSentence(claim.summary ?? claim.claimText);
+}
+
+function practicalClaimCaveat(claim: Claim, safetyAlerts: SafetyAlert[]) {
+  if (safetyAlerts.length > 0) {
+    return normaliseSentence(safetyAlerts[0].summary);
+  }
+
+  if (claim.uncertainty) {
+    return normaliseSentence(claim.uncertainty);
+  }
+
+  const nonProof = claim.doesNotProve?.find((statement) => statement.trim().length > 0);
+
+  if (nonProof) {
+    return normaliseSentence(nonProof);
+  }
+
+  return normaliseSentence(claim.applicabilityNotes || claim.safetyNotes);
+}
+
+function practicalSourceBasis(sourcePacket: ClaimSourcePacket) {
+  const { completeness } = sourcePacket;
+
+  if (completeness.totalReferences === 0) {
+    return "No source packet linked yet";
+  }
+
+  return `${completeness.extractedReferences}/${completeness.totalReferences} source refs extracted`;
+}
+
+function practicalEvidenceMaturity(claim: Claim, sourcePacket: ClaimSourcePacket) {
+  const depth = sourcePacket.evidenceDepth;
+
+  if (depth.randomizedControlledTrials > 0 || depth.metaAnalyses > 0) {
+    return "Human trial or synthesis evidence";
+  }
+
+  if (depth.systematicReviews > 0 || depth.reviewPositionStandSources > 0) {
+    return "Review or position-stand evidence";
+  }
+
+  if (depth.regulatorySafetyWarnings > 0) {
+    return "Safety/regulatory evidence";
+  }
+
+  if (depth.animalMechanisticStudies > 0) {
+    return "Mechanistic or animal evidence";
+  }
+
+  if (sourcePacket.completeness.status !== "complete") {
+    return sourcePacket.completeness.label;
+  }
+
+  return `${claim.confidenceLevel} confidence source packet`;
+}
+
+function buildPracticalLongevityLens(
+  items: PracticalGuideItem[]
+): PracticalLongevityLensCard[] {
+  const directItems = items.filter((item) => item.claim.outcome === "Mortality/lifespan");
+  const strongDirectItems = directItems.filter(
+    (item) =>
+      item.score !== null &&
+      item.score >= 7 &&
+      item.claim.finalLabel !== "Insufficient Evidence" &&
+      isModerateOrHighConfidence(item.claim)
+  );
+  const healthspanItems = items.filter(
+    (item) =>
+      HEALTHSPAN_OUTCOMES.has(item.claim.outcome) &&
+      ["best", "context", "performance"].includes(item.bucketId)
+  );
+  const biomarkerItems = items.filter(
+    (item) => BIOMARKER_OUTCOMES.has(item.claim.outcome) && item.bucketId !== "watchlist"
+  );
+  const mechanisticItems = items.filter(
+    (item) =>
+      item.claim.outcome === "Biological aging clocks" ||
+      item.evidenceMaturity === "Mechanistic or animal evidence" ||
+      /mechanistic|animal/i.test(item.claim.evidenceGrade)
+  );
+  const speculativeItems = items.filter(
+    (item) =>
+      item.claim.finalLabel === "Speculative Watchlist" ||
+      isUnsupportedLongevityOrAgingClaim(item.claim) ||
+      item.claim.scores.hypePenalty >= 7
+  );
+
+  return [
+    {
+      id: "direct",
+      items: directItems.slice(0, 2),
+      label: "Direct lifespan evidence",
+      summary:
+        strongDirectItems.length > 0
+          ? `${strongDirectItems.length} direct lifespan claim(s) have moderate-or-better support in the current filters.`
+          : directItems.length > 0
+            ? `${directItems.length} direct lifespan claim(s) are tracked, but none are presented as strong direct lifespan proof.`
+            : "No direct lifespan claims match the current filters."
+    },
+    {
+      id: "healthspan",
+      items: healthspanItems.slice(0, 3),
+      label: "Healthspan evidence",
+      summary:
+        healthspanItems.length > 0
+          ? `${healthspanItems.length} practical item(s) map to function, sleep, mood, cognition, cardiovascular, immune, or musculoskeletal outcomes.`
+          : "No current-filter items stand out on healthspan outcomes."
+    },
+    {
+      id: "biomarker",
+      items: biomarkerItems.slice(0, 3),
+      label: "Biomarker evidence",
+      summary:
+        biomarkerItems.length > 0
+          ? `${biomarkerItems.length} item(s) are best read as biomarkers or measured-risk signals, not broad health promises.`
+          : "No biomarker-led items match the current filters."
+    },
+    {
+      id: "mechanistic",
+      items: mechanisticItems.slice(0, 2),
+      label: "Mechanistic / animal evidence",
+      summary:
+        mechanisticItems.length > 0
+          ? `${mechanisticItems.length} item(s) rely on mechanistic, animal, or aging-clock-adjacent signals.`
+          : "No mechanistic-only longevity signals match the current filters."
+    },
+    {
+      id: "speculative",
+      items: speculativeItems.slice(0, 3),
+      label: "Speculative hype",
+      summary:
+        speculativeItems.length > 0
+          ? `${speculativeItems.length} item(s) need extra caution because the claim is speculative, unsupported, or hype-sensitive.`
+          : "No hype-sensitive longevity items match the current filters."
+    }
+  ];
+}
+
+function buildPracticalRadar({
+  items,
+  interventionsById,
+  trialWatchItems
+}: {
+  items: PracticalGuideItem[];
+  interventionsById: Map<string, Intervention>;
+  trialWatchItems: TrialWatchItem[];
+}): PracticalRadar {
+  const visibleInterventionIds = new Set(items.map((item) => item.claim.interventionId));
+  const trialLeads = trialWatchItems
+    .filter(
+      (trial) => visibleInterventionIds.size === 0 || visibleInterventionIds.has(trial.interventionId)
+    )
+    .map((trial) => ({
+      evidenceImpact: trial.evidenceImpact,
+      href: trial.url,
+      id: trial.id,
+      interventionName: interventionsById.get(trial.interventionId)?.name ?? "Unknown",
+      status: [trial.status, trial.phase].filter(Boolean).join(" - "),
+      title: trial.title
+    }))
+    .slice(0, 3);
+  const sourceLeads = items
+    .filter(
+      (item) =>
+        item.sourcePacketStatus !== "complete" ||
+        item.bucketId === "emerging" ||
+        item.readinessLabel !== "Scored"
+    )
+    .sort(sortPracticalRadarSourceLeads)
+    .slice(0, 3);
+  const rankingImpactLeads = buildRankingImpactLeads(items);
+  const momentumBadges = buildPracticalMomentumBadges(items);
+
+  return {
+    momentumBadges,
+    rankingImpactLeads,
+    sourceLeads,
+    trialLeads
+  };
+}
+
+function buildRankingImpactLeads(items: PracticalGuideItem[]) {
+  return items
+    .map((item): PracticalRadarRankingLead | null => {
+      const storedScore = compositeScore(item.claim.scores);
+      const lowConfidence =
+        item.claim.confidenceLevel === "Low" || item.claim.confidenceLevel === "Very low";
+      const scoreLooksHigh = storedScore >= 7;
+
+      if (item.sourcePacketStatus !== "complete") {
+        return {
+          item,
+          reason: "Source packet is incomplete, so this row is kept out of strong practical picks until source links and extraction are complete."
+        };
+      }
+
+      if (item.readinessLabel !== "Scored") {
+        return {
+          item,
+          reason: `${item.readinessLabel} status means the stored score is not treated as settled ranking evidence.`
+        };
+      }
+
+      if (item.bucketId === "emerging" && scoreLooksHigh && lowConfidence) {
+        return {
+          item,
+          reason:
+            "The stored score looks high, but confidence is low or very low, so this stays in source-lead territory instead of a top practical readout."
+        };
+      }
+
+      if (item.bucketId === "watchlist" && scoreLooksHigh) {
+        return {
+          item,
+          reason:
+            "The numeric score is not promoted because safety, clinician-review, or regulatory context dominates the practical interpretation."
+        };
+      }
+
+      return null;
+    })
+    .filter((row): row is PracticalRadarRankingLead => Boolean(row))
+    .sort((left, right) => {
+      const priorityDelta =
+        rankingImpactLeadPriority(right.item) - rankingImpactLeadPriority(left.item);
+
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+
+      const leftScore = compositeScore(left.item.claim.scores);
+      const rightScore = compositeScore(right.item.claim.scores);
+
+      return rightScore - leftScore || left.item.intervention.name.localeCompare(right.item.intervention.name);
+    })
+    .slice(0, 4);
+}
+
+function sortPracticalRadarSourceLeads(left: PracticalGuideItem, right: PracticalGuideItem) {
+  const priorityDelta = sourceLeadPriority(right) - sourceLeadPriority(left);
+
+  if (priorityDelta !== 0) {
+    return priorityDelta;
+  }
+
+  return sortPracticalGuideItems(left, right);
+}
+
+function sourceLeadPriority(item: PracticalGuideItem) {
+  if (item.sourcePacketStatus !== "complete") {
+    return 4;
+  }
+
+  if (item.readinessLabel !== "Scored") {
+    return 3;
+  }
+
+  if (item.bucketId === "emerging") {
+    return 2;
+  }
+
+  return 1;
+}
+
+function rankingImpactLeadPriority(item: PracticalGuideItem) {
+  if (item.sourcePacketStatus !== "complete") {
+    return 4;
+  }
+
+  if (item.readinessLabel !== "Scored") {
+    return 3;
+  }
+
+  if (item.bucketId === "watchlist") {
+    return 2;
+  }
+
+  return 1;
+}
+
+function buildPracticalMomentumBadges(items: PracticalGuideItem[]) {
+  const increasing = items.filter((item) => item.claim.momentum === "Increasing").length;
+  const conflicting = items.filter((item) => item.claim.momentum === "Conflicting").length;
+  const weakening = items.filter((item) => item.claim.momentum === "Weakening").length;
+  const safety = items.filter((item) => item.claim.momentum === "Safety concern emerging").length;
+
+  return [
+    increasing > 0 ? `${increasing} improving` : "0 improving",
+    conflicting > 0 ? `${conflicting} mixed` : "0 mixed",
+    weakening > 0 ? `${weakening} weakening` : "0 weakening",
+    safety > 0 ? `${safety} safety concern emerging` : "0 safety concern emerging"
+  ];
+}
+
+function PracticalGuideSection({ guide }: { guide: PracticalGuideModel }) {
+  return (
+    <section
+      aria-label="Start here practical supplement guide"
+      className="min-w-0 rounded-lg border border-line bg-white p-4 shadow-panel"
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="max-w-4xl">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Start here
+          </p>
+          <h2 className="mt-1 text-base font-semibold text-ink">
+            Plain-language evidence guide
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            A full-local-catalog readout of what the evidence appears to say, why it may matter,
+            and where the interpretation is still conditional, speculative, source-blocked, or
+            safety-limited. The filters below change the ranked board and coverage matrix; these
+            are not clinical recommendations or personal medical advice.
+          </p>
+        </div>
+        <div className="grid w-full grid-cols-2 gap-2 text-xs text-slate-600 sm:min-w-[20rem] lg:w-auto">
+          <MiniStat label="Claim cells scanned" value={guide.claimCount.toLocaleString()} />
+          <MiniStat label="Guide entries" value={guide.entryCount.toLocaleString()} />
+          <MiniStat label="Scored entries" value={guide.scoredCount.toLocaleString()} />
+          <MiniStat label="Source-work entries" value={guide.sourceWorkCount.toLocaleString()} />
+          <MiniStat
+            label="Evidence groups"
+            value={`${guide.buckets.filter((bucket) => bucket.items.length > 0).length}/${guide.buckets.length} active`}
+          />
+        </div>
+      </div>
+
+      <PracticalQuickTakeStrip quickTakes={guide.quickTakes} />
+
+      <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-3">
+        {guide.buckets.map((bucket) => (
+          <PracticalPriorityBucketPanel bucket={bucket} key={bucket.id} />
+        ))}
+      </div>
+
+      <div className="mt-4 grid min-w-0 gap-3 xl:grid-cols-[1.25fr_0.75fr]">
+        <PracticalLongevityLens cards={guide.longevityLens} />
+        <PracticalEvidenceRadar radar={guide.radar} />
+      </div>
+    </section>
+  );
+}
+
+function PracticalQuickTakeStrip({ quickTakes }: { quickTakes: PracticalQuickTake[] }) {
+  return (
+    <section className="mt-4 rounded-md border border-line bg-mist p-3">
+      <h3 className="text-sm font-semibold text-ink">Quick answer for friends</h3>
+      <p className="mt-1 text-xs leading-5 text-slate-600">
+        A plain-language first pass: attention, context, caution, and longevity reality check
+        before anyone reads a score as a recommendation.
+      </p>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {quickTakes.map((item) => {
+          const body = (
+            <>
+              <span className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                {item.label}
+              </span>
+              <span className="mt-1 block text-sm font-semibold text-ink">{item.title}</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-700">{item.detail}</span>
+            </>
+          );
+
+          return item.href ? (
+            <a
+              className={cn(
+                "block rounded-md border p-3 transition hover:border-signal hover:bg-white focus:outline-none focus:ring-4 focus:ring-signal/20",
+                item.tone
+              )}
+              href={item.href}
+              key={`${item.label}-${item.title}`}
+            >
+              {body}
+            </a>
+          ) : (
+            <div
+              className={cn("rounded-md border p-3", item.tone)}
+              key={`${item.label}-${item.title}`}
+            >
+              {body}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PracticalPriorityBucketPanel({ bucket }: { bucket: PracticalPriorityBucket }) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleItems = expanded
+    ? bucket.items
+    : bucket.items.slice(0, PRACTICAL_GUIDE_BUCKET_PREVIEW_LIMIT);
+  const hiddenCount = bucket.items.length - visibleItems.length;
+
+  return (
+    <section className="min-w-0 rounded-md border border-line bg-white p-3">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-ink">{bucket.label}</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">{bucket.description}</p>
+        </div>
+        <span className={cn("shrink-0 rounded-md border px-2 py-1 text-xs font-semibold", bucket.tone)}>
+          {bucket.items.length}
+        </span>
+      </div>
+
+      <div className="mt-3 space-y-2">
+        {visibleItems.length > 0 ? (
+          visibleItems.map((item) => <PracticalGuideItemCard item={item} key={item.claim.id} />)
+        ) : (
+          <p className="rounded-md border border-dashed border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+            {bucket.empty}
+          </p>
+        )}
+      </div>
+      {bucket.items.length > PRACTICAL_GUIDE_BUCKET_PREVIEW_LIMIT ? (
+        <button
+          className="mt-3 h-8 w-full rounded-md border border-line bg-white px-3 text-xs font-semibold text-signal transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20"
+          type="button"
+          onClick={() => setExpanded((current) => !current)}
+        >
+          {expanded
+            ? `Show top ${PRACTICAL_GUIDE_BUCKET_PREVIEW_LIMIT}`
+            : `Show all ${bucket.items.length.toLocaleString()} (${hiddenCount.toLocaleString()} more)`}
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function PracticalGuideItemCard({ item }: { item: PracticalGuideItem }) {
+  return (
+    <a
+      className="block min-w-0 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20"
+      href={item.href}
+    >
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-ink">{item.intervention.name}</p>
+          <p className="text-slate-600">{shortOutcome(item.claim.outcome)}</p>
+        </div>
+        <span className={cn("shrink-0 rounded-md border px-2 py-1 font-semibold", labelTone(item.claim.finalLabel))}>
+          {item.scoreLabel}
+        </span>
+      </div>
+      <p className="mt-2 font-medium text-slate-700">{item.reason}</p>
+      <p className="mt-1 text-slate-600">{item.summary}</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <span className="rounded-md border border-line bg-white px-2 py-0.5 text-slate-600">
+          {item.confidenceLabel}
+        </span>
+        <span className={cn("rounded-md border px-2 py-0.5", sourcePacketCompletenessTone(item.sourcePacketStatus))}>
+          {item.sourceBasis}
+        </span>
+        <span className="rounded-md border border-line bg-white px-2 py-0.5 text-slate-600">
+          {item.evidenceMaturity}
+        </span>
+      </div>
+      <p className="mt-2 text-slate-600">
+        <span className="font-semibold text-ink">Caveat:</span> {item.caveat}
+      </p>
+    </a>
+  );
+}
+
+function PracticalLongevityLens({ cards }: { cards: PracticalLongevityLensCard[] }) {
+  return (
+    <section className="min-w-0 rounded-md border border-line bg-white p-3">
+      <div>
+        <h3 className="text-sm font-semibold text-ink">Longevity lens</h3>
+        <p className="mt-1 text-xs leading-5 text-slate-600">
+          Direct lifespan evidence is separated from healthspan, biomarker, mechanistic,
+          and speculative signals so longevity claims stay conservative.
+        </p>
+      </div>
+      <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+        {cards.map((card) => (
+          <section className="min-w-0 rounded-md border border-line bg-mist p-2" key={card.id}>
+            <h4 className="text-xs font-semibold text-ink">{card.label}</h4>
+            <p className="mt-1 text-xs leading-5 text-slate-600">{card.summary}</p>
+            {card.items.length > 0 ? (
+              <ul className="mt-2 space-y-1">
+                {card.items.map((item) => (
+                  <li key={`${card.id}-${item.claim.id}`}>
+                    <a
+                      className="block truncate text-xs font-medium text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+                      href={item.href}
+                    >
+                      {item.intervention.name} - {shortOutcome(item.claim.outcome)}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </section>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PracticalEvidenceRadar({ radar }: { radar: PracticalRadar }) {
+  return (
+    <section className="min-w-0 rounded-md border border-line bg-white p-3">
+      <h3 className="text-sm font-semibold text-ink">Emerging evidence radar</h3>
+      <p className="mt-1 text-xs leading-5 text-slate-600">
+        Trial and source leads are shown separately from settled evidence so new signals do
+        not become recommendations by accident.
+      </p>
+
+      <div className="mt-3 space-y-3">
+        <div>
+          <h4 className="text-xs font-semibold text-ink">Clinical trials to watch</h4>
+          {radar.trialLeads.length > 0 ? (
+            <ul className="mt-2 space-y-2">
+              {radar.trialLeads.map((trial) => (
+                <li className="rounded-md border border-line bg-mist px-3 py-2 text-xs" key={trial.id}>
+                  <a
+                    className="font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+                    href={trial.href}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {trial.interventionName}
+                  </a>
+                  <p className="mt-1 text-slate-700">{trial.title}</p>
+                  <p className="mt-1 text-slate-600">
+                    {trial.status} - momentum {trial.evidenceImpact}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 rounded-md border border-dashed border-line bg-mist px-3 py-2 text-xs text-slate-600">
+              No trial leads are prominent in the local catalog.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <h4 className="text-xs font-semibold text-ink">Ranking-impacting source gaps</h4>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            High-looking, low-confidence, source-work, or caution-first rows are kept out of
+            top practical picks until the evidence trail can support that interpretation.
+          </p>
+          {radar.rankingImpactLeads.length > 0 ? (
+            <ul className="mt-2 space-y-2">
+              {radar.rankingImpactLeads.map(({ item, reason }) => (
+                <li className="rounded-md border border-line bg-mist px-3 py-2 text-xs" key={`ranking-impact-${item.claim.id}`}>
+                  <a
+                    className="font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+                    href={item.href}
+                  >
+                    {item.intervention.name} - {shortOutcome(item.claim.outcome)}
+                  </a>
+                  <p className="mt-1 text-slate-700">{reason}</p>
+                  <p className="mt-1 text-slate-600">
+                    {item.confidenceLabel} - {item.sourceBasis} - {item.readinessLabel}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 rounded-md border border-dashed border-line bg-mist px-3 py-2 text-xs text-slate-600">
+              No ranking-impacting source gaps are prominent in the local catalog.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <h4 className="text-xs font-semibold text-ink">Newer studies or source leads</h4>
+          {radar.sourceLeads.length > 0 ? (
+            <ul className="mt-2 space-y-1.5">
+              {radar.sourceLeads.map((item) => (
+                <li key={`source-lead-${item.claim.id}`}>
+                  <a
+                    className="block truncate text-xs font-medium text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+                    href={item.href}
+                  >
+                    {item.intervention.name} - {shortOutcome(item.claim.outcome)} - {item.sourcePacketLabel}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 rounded-md border border-dashed border-line bg-mist px-3 py-2 text-xs text-slate-600">
+              No source-work leads are prominent in the local catalog.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <h4 className="text-xs font-semibold text-ink">Evidence momentum</h4>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {radar.momentumBadges.map((badge) => (
+              <span
+                className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-medium text-slate-600"
+                key={badge}
+              >
+                {badge}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DashboardDetailDataGate({
   detail,
+  error,
+  onRetry,
+  status,
   title
 }: {
   detail: string;
+  error: string | null;
+  onRetry: () => void;
+  status: "idle" | "loading" | "ready" | "error";
   title: string;
 }) {
   return (
     <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Detail data
+          </p>
+          <h2 className="mt-1 text-base font-semibold text-ink">{title}</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{detail}</p>
+          {error ? (
+            <p className="mt-2 rounded-md border border-danger/25 bg-red-50 px-3 py-2 text-sm leading-6 text-danger">
+              {error}
+            </p>
+          ) : null}
+        </div>
+        <button
+          className="inline-flex h-9 w-fit items-center gap-2 rounded-md border border-signal/30 bg-blue-50 px-3 text-sm font-semibold text-signal transition hover:border-signal disabled:cursor-wait disabled:border-slate-300 disabled:bg-slate-50 disabled:text-slate-500"
+          disabled={status === "loading"}
+          onClick={onRetry}
+          type="button"
+        >
+          {status === "loading" ? (
+            <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw aria-hidden="true" className="h-4 w-4" />
+          )}
+          {status === "loading" ? "Loading" : "Load details"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function DashboardMainTabs({
+  activeTab,
+  includeLocalTools,
+  onChange
+}: {
+  activeTab: DashboardMainTab;
+  includeLocalTools: boolean;
+  onChange: (tab: DashboardMainTab) => void;
+}) {
+  const visibleTabs = DASHBOARD_MAIN_TABS.filter(
+    (tab) => includeLocalTools || !LOCAL_DASHBOARD_TABS.has(tab.value)
+  );
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Dashboard sections"
+      className="flex flex-wrap gap-2 rounded-lg border border-line bg-white p-2 shadow-panel"
+    >
+      {visibleTabs.map((tab) => (
+        <button
+          key={tab.value}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === tab.value}
+          onClick={() => onChange(tab.value)}
+          className={cn(
+            "h-9 rounded-md border px-3 text-sm font-semibold transition",
+            activeTab === tab.value
+              ? "border-signal bg-blue-50 text-signal"
+              : "border-transparent bg-white text-slate-700 hover:border-line hover:bg-mist"
+          )}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const LOCAL_INGESTION_RUN_DELAY_DEFAULT_MS = 5000;
+const LOCAL_INGESTION_RUN_DELAY_MAX_MS = 60000;
+const LOCAL_INGESTION_RUN_DELAY_MIN_MS = 1000;
+const LOCAL_INGESTION_SESSION_JOB_LIMIT_DEFAULT = 100;
+const LOCAL_INGESTION_SESSION_JOB_LIMIT_MAX = 500;
+const LOCAL_UPDATE_PIPELINE_REFRESH_DELAY_MS = 900;
+
+function LocalUpdatePipelineControl() {
+  const [visible, setVisible] = useState(false);
+  const [active, setActive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState(false);
+  const [message, setMessage] = useState(
+    "Ready to run the recommended local evidence update."
+  );
+  const [logEntries, setLogEntries] = useState<LocalIngestionLogEntry[]>([]);
+  const [stages, setStages] = useState<LocalUpdatePipelineStage[]>(
+    initialLocalUpdatePipelineStages
+  );
+  const [runDelayMs, setRunDelayMs] = useState(LOCAL_INGESTION_RUN_DELAY_DEFAULT_MS);
+  const [sessionJobLimit, setSessionJobLimit] = useState(
+    LOCAL_INGESTION_SESSION_JOB_LIMIT_DEFAULT
+  );
+  const [leadThreshold, setLeadThreshold] = useState(70);
+  const [rejectThreshold, setRejectThreshold] = useState(40);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const stopRequestedRef = useRef(false);
+  const runIdRef = useRef(0);
+
+  const appendLog = useCallback((entry: Omit<LocalIngestionLogEntry, "id" | "timestamp">) => {
+    setLogEntries((current) =>
+      [
+        {
+          ...entry,
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          timestamp: new Date().toISOString()
+        },
+        ...current
+      ].slice(0, 24)
+    );
+  }, []);
+
+  const setStageStatus = useCallback(
+    (id: LocalUpdatePipelineStageId, status: LocalUpdatePipelineStageStatus, detail?: string) => {
+      setStages((current) =>
+        current.map((stage) =>
+          stage.id === id
+            ? {
+                ...stage,
+                detail,
+                status
+              }
+            : stage
+        )
+      );
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!isLocalDashboardHost()) {
+      return;
+    }
+
+    setVisible(true);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopRequestedRef.current = true;
+      runIdRef.current += 1;
+    };
+  }, []);
+
+  const resetRecommendedSettings = useCallback(() => {
+    setRunDelayMs(LOCAL_INGESTION_RUN_DELAY_DEFAULT_MS);
+    setSessionJobLimit(LOCAL_INGESTION_SESSION_JOB_LIMIT_DEFAULT);
+    setLeadThreshold(70);
+    setRejectThreshold(40);
+    setAutoRefresh(true);
+  }, []);
+
+  const stopUpdate = useCallback(() => {
+    stopRequestedRef.current = true;
+    setMessage("Stopping after the current update request finishes.");
+    appendLog({
+      detail: "The dashboard will not start the next UPDATE stage after the current request.",
+      level: "info",
+      message: "Stop requested"
+    });
+  }, [appendLog]);
+
+  const startUpdate = useCallback(async () => {
+    if (active || busy) {
+      return;
+    }
+
+    const runId = runIdRef.current + 1;
+    runIdRef.current = runId;
+    stopRequestedRef.current = false;
+    setPendingUpdate(false);
+    setActive(true);
+    setBusy(true);
+    setStages(initialLocalUpdatePipelineStages());
+    setLogEntries([]);
+    setMessage("Running the recommended local evidence update.");
+
+    try {
+      const result = await runLocalUpdatePipeline({
+        appendLog,
+        // The browser run keeps going over the API routes; only the headless
+        // runner swaps in the in-process operations.
+        operations: defaultLocalUpdatePipelineOperations(),
+        setStageStatus,
+        settings: {
+          leadThreshold,
+          rejectThreshold,
+          runDelayMs,
+          sessionJobLimit
+        },
+        shouldStop: () => stopRequestedRef.current || runIdRef.current !== runId,
+        sleepFor: sleep
+      });
+
+      if (result.status === "stopped") {
+        setMessage("UPDATE stopped before the next stage.");
+        return;
+      }
+
+      if (autoRefresh) {
+        setMessage("UPDATE finished. Reloading the dashboard with the refreshed local catalog.");
+        window.setTimeout(() => {
+          window.location.reload();
+        }, LOCAL_UPDATE_PIPELINE_REFRESH_DELAY_MS);
+      } else {
+        setMessage("UPDATE finished. Refresh the dashboard when you are ready to see new views.");
+      }
+    } catch (error) {
+      const nextMessage = localIngestionErrorMessage(error);
+      setMessage(nextMessage);
+      setStages((current) =>
+        current.map((stage) =>
+          stage.status === "running"
+            ? {
+                ...stage,
+                detail: nextMessage,
+                status: "error"
+              }
+            : stage
+        )
+      );
+      appendLog({
+        detail: nextMessage,
+        level: "error",
+        message: "UPDATE stopped"
+      });
+    } finally {
+      if (runIdRef.current === runId) {
+        setActive(false);
+        setBusy(false);
+        stopRequestedRef.current = false;
+      }
+    }
+  }, [
+    active,
+    appendLog,
+    autoRefresh,
+    busy,
+    leadThreshold,
+    rejectThreshold,
+    runDelayMs,
+    sessionJobLimit,
+    setStageStatus
+  ]);
+
+  const controlsBusy = active || busy;
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-lg border border-signal/25 bg-white p-4 shadow-panel">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Local update
+            </p>
+            <span className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">
+              <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
+              Recommended preset
+            </span>
+          </div>
+          <h2 className="mt-1 text-lg font-semibold text-ink">Run the evidence pipeline</h2>
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-slate-600">
+            Queues searches, catches up already accepted candidates, runs local source ingestion,
+            reviews new candidates, checks accepted processing again, clears eligible identity
+            blocks, builds score {leadThreshold}+ evidence leads, parks score{" "}
+            {rejectThreshold}-{leadThreshold - 1} backlog leads, rejects lower lead scores, then
+            drafts conservative source extraction from captured abstracts/registry summaries, applies
+            ready source-packet scores, and refreshes the derived heatmap with remaining blockers called out.
+          </p>
+          <p aria-live="polite" className="mt-2 text-sm font-semibold text-ink">
+            {message}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={resetRecommendedSettings}
+            disabled={controlsBusy}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
+            Recommended
+          </button>
+          <button
+            type="button"
+            onClick={stopUpdate}
+            disabled={!active}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-mist px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Square aria-hidden="true" className="h-3.5 w-3.5" />
+            Stop
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(12rem,15rem)_1fr]">
+        <button
+          type="button"
+          onClick={() => setPendingUpdate(true)}
+          disabled={controlsBusy}
+          className="inline-flex min-h-24 items-center justify-center gap-3 rounded-md border border-signal bg-signal px-5 py-4 text-lg font-bold text-white shadow-sm transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {active ? (
+            <LoaderCircle aria-hidden="true" className="h-5 w-5 animate-spin" />
+          ) : (
+            <Play aria-hidden="true" className="h-5 w-5" />
+          )}
+          {active ? "UPDATING" : "UPDATE"}
+        </button>
+
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          <label className="grid gap-1 rounded-md border border-line bg-mist p-3 text-xs font-semibold text-slate-700">
+            Source pause
+            <input
+              type="range"
+              min={LOCAL_INGESTION_RUN_DELAY_MIN_MS}
+              max={LOCAL_INGESTION_RUN_DELAY_MAX_MS}
+              step={1000}
+              value={runDelayMs}
+              onChange={(event) => setRunDelayMs(Number(event.currentTarget.value))}
+              disabled={controlsBusy}
+              className="h-2 accent-signal"
+            />
+            <span className="text-sm text-ink">{formatLocalIngestionDelay(runDelayMs)}</span>
+          </label>
+          <label className="grid gap-1 rounded-md border border-line bg-mist p-3 text-xs font-semibold text-slate-700">
+            Ingestion cap
+            <input
+              type="number"
+              min={1}
+              max={LOCAL_INGESTION_SESSION_JOB_LIMIT_MAX}
+              step={1}
+              value={sessionJobLimit}
+              onChange={(event) =>
+                setSessionJobLimit(
+                  clampNumberInput(
+                    event.currentTarget.value,
+                    LOCAL_INGESTION_SESSION_JOB_LIMIT_DEFAULT,
+                    1,
+                    LOCAL_INGESTION_SESSION_JOB_LIMIT_MAX
+                  )
+                )
+              }
+              disabled={controlsBusy}
+              className="h-9 rounded-md border border-line bg-white px-2 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-60"
+            />
+          </label>
+          <label className="grid gap-1 rounded-md border border-line bg-mist p-3 text-xs font-semibold text-slate-700">
+            Build leads at
+            <input
+              type="range"
+              min="55"
+              max="95"
+              value={leadThreshold}
+              onChange={(event) => {
+                const nextThreshold = Number(event.currentTarget.value);
+                setLeadThreshold(nextThreshold);
+                setRejectThreshold((current) =>
+                  Math.min(current, Math.max(0, nextThreshold - 1))
+                );
+              }}
+              disabled={controlsBusy}
+              className="h-2 accent-signal"
+            />
+            <span className="text-sm text-ink">{leadThreshold}%</span>
+          </label>
+          <label className="grid gap-1 rounded-md border border-line bg-mist p-3 text-xs font-semibold text-slate-700">
+            Park / reject floor
+            <input
+              type="range"
+              min="0"
+              max={Math.max(0, leadThreshold - 1)}
+              value={rejectThreshold}
+              onChange={(event) =>
+                setRejectThreshold(
+                  Math.min(
+                    Math.max(0, leadThreshold - 1),
+                    Math.max(0, Number(event.currentTarget.value) || 0)
+                  )
+                )
+              }
+              disabled={controlsBusy}
+              className="h-2 accent-danger"
+            />
+            <span className="text-sm text-ink">
+              Park {rejectThreshold}-{Math.max(0, leadThreshold - 1)}, reject under{" "}
+              {rejectThreshold}
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <label className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+        <input
+          type="checkbox"
+          checked={autoRefresh}
+          onChange={(event) => setAutoRefresh(event.currentTarget.checked)}
+          disabled={controlsBusy}
+          className="h-4 w-4 rounded border-line text-signal focus:ring-signal disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        Reload dashboard when UPDATE finishes
+      </label>
+
+      {pendingUpdate ? (
+        <InlineConfirmation
+          busy={controlsBusy}
+          confirmLabel="Run UPDATE"
+          message={localUpdatePipelineConfirmMessage({
+            leadThreshold,
+            rejectThreshold,
+            runDelayMs,
+            sessionJobLimit
+          })}
+          onCancel={() => setPendingUpdate(false)}
+          onConfirm={() => startUpdate()}
+          tone="warn"
+        />
+      ) : null}
+
+      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-9">
+        {stages.map((stage) => (
+          <div
+            key={stage.id}
+            className={cn(
+              "rounded-md border px-3 py-2",
+              localUpdatePipelineStageTone(stage.status)
+            )}
+          >
+            <div className="flex items-center gap-2">
+              {stage.status === "running" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : stage.status === "done" ? (
+                <Check aria-hidden="true" className="h-3.5 w-3.5" />
+              ) : stage.status === "error" ? (
+                <AlertTriangle aria-hidden="true" className="h-3.5 w-3.5" />
+              ) : (
+                <CircleHelp aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              <span className="text-xs font-semibold">{stage.label}</span>
+            </div>
+            <p className="mt-1 text-xs leading-5">
+              {stage.detail ?? localUpdatePipelineStageStatusLabel(stage.status)}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {logEntries.length > 0 ? (
+        <div className="mt-4 max-h-64 overflow-y-auto rounded-md border border-line bg-mist p-3">
+          <div className="grid gap-2">
+            {logEntries.map((entry) => (
+              <div key={entry.id} className="rounded-md border border-line bg-white px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={cn(
+                      "rounded-md border px-2 py-0.5 text-xs font-semibold",
+                      entry.level === "success"
+                        ? "border-green-200 bg-green-50 text-green-700"
+                        : entry.level === "error"
+                          ? "border-danger/20 bg-red-50 text-danger"
+                          : "border-line bg-mist text-slate-600"
+                    )}
+                  >
+                    {entry.level}
+                  </span>
+                  <span className="text-xs font-semibold text-ink">{entry.message}</span>
+                  <span className="text-xs text-slate-500">
+                    {formatLocalIngestionTime(entry.timestamp)}
+                  </span>
+                </div>
+                {entry.detail ? (
+                  <p className="mt-1 break-words text-xs leading-5 text-slate-600">
+                    {entry.detail}
+                  </p>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function defaultLocalUpdatePipelineOperations(): LocalUpdatePipelineOperations {
+  return {
+    fetchAcceptedCandidateProcessingStatus: fetchLocalAcceptedCandidateProcessingStatus,
+    fetchBenefitDiscoveryQueue: fetchLocalBenefitDiscoveryQueue,
+    fetchIngestionStatus: fetchLocalIngestionStatus,
+    postAcceptedCandidateProcessingRun: postLocalAcceptedCandidateProcessingRun,
+    postBenefitDiscoveryAutomation: postLocalBenefitDiscoveryAutomation,
+    postCandidateReviewAutomation: postLocalCandidateReviewAutomation,
+    postCandidateReviewBulkDecision: postLocalCandidateReviewBulkDecision,
+    postClaimExpansion: postLocalClaimExpansion,
+    postIdentityResolutionAutomation: postLocalIdentityResolutionAutomation,
+    postIngestionRun: postLocalIngestionRun,
+    postIngestionStart: postLocalIngestionStart,
+    postIngestionSynonyms: postLocalIngestionSynonyms,
+    postScoreFinalization: postLocalScoreFinalization,
+    postSourceWorkRepair: postLocalSourceWorkRepair
+  };
+}
+
+function initialLocalUpdatePipelineStages(): LocalUpdatePipelineStage[] {
+  return LOCAL_UPDATE_PIPELINE_STAGE_DEFINITIONS.map((stage) => ({
+    ...stage,
+    status: "pending"
+  }));
+}
+
+function localUpdatePipelineConfirmMessage({
+  leadThreshold,
+  rejectThreshold,
+  runDelayMs,
+  sessionJobLimit
+}: {
+  leadThreshold: number;
+  rejectThreshold: number;
+  runDelayMs: number;
+  sessionJobLimit: number;
+}) {
+  return `Run the local evidence UPDATE now? This will write to the local development database: catch up accepted candidates in ${LOCAL_ACCEPTED_PROCESSING_BATCH_SIZE.toLocaleString()}-row batches before source ingestion, queue and run up to ${sessionJobLimit.toLocaleString()} ingestion job(s) with ${formatLocalIngestionDelay(runDelayMs)} between source requests, accept high-confidence candidates, check accepted processing again, auto-resolve eligible identity rows, build/link score ${leadThreshold}+ leads, park score ${rejectThreshold}-${leadThreshold - 1} leads, reject lower lead-score clusters, draft conservative source extraction from captured abstracts/registry summaries, and apply ready source-packet scores as Unreviewed AI Drafts. It will not mark Human reviewed or infer product-level AU/TGA clearance.`;
+}
+
+function localUpdatePipelineStageStatusLabel(status: LocalUpdatePipelineStageStatus) {
+  switch (status) {
+    case "pending":
+      return "Waiting";
+    case "running":
+      return "Running";
+    case "done":
+      return "Done";
+    case "skipped":
+      return "Skipped";
+    case "error":
+      return "Needs attention";
+  }
+}
+
+function localUpdatePipelineStageTone(status: LocalUpdatePipelineStageStatus) {
+  switch (status) {
+    case "done":
+      return "border-green-200 bg-green-50 text-green-700";
+    case "error":
+      return "border-danger/20 bg-red-50 text-danger";
+    case "running":
+      return "border-signal/25 bg-blue-50 text-signal";
+    case "skipped":
+      return "border-amberline/30 bg-amber-50 text-amberline";
+    case "pending":
+      return "border-line bg-white text-slate-600";
+  }
+}
+
+function LocalIngestionControl() {
+  const [visible, setVisible] = useState(false);
+  const [active, setActive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<LocalIngestionStatusReadout | null>(null);
+  const [statusMessage, setStatusMessage] = useState(
+    "Idle. Press Start ingestion to queue broad supplement discovery."
+  );
+  const [logEntries, setLogEntries] = useState<LocalIngestionLogEntry[]>([]);
+  const [runDelayMs, setRunDelayMs] = useState(LOCAL_INGESTION_RUN_DELAY_DEFAULT_MS);
+  const [sessionJobLimit, setSessionJobLimit] = useState(
+    LOCAL_INGESTION_SESSION_JOB_LIMIT_DEFAULT
+  );
+  const stopRequestedRef = useRef(false);
+  const runIdRef = useRef(0);
+
+  const appendLog = useCallback((entry: Omit<LocalIngestionLogEntry, "id" | "timestamp">) => {
+    setLogEntries((current) =>
+      [
+        {
+          ...entry,
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          timestamp: new Date().toISOString()
+        },
+        ...current
+      ].slice(0, 20)
+    );
+  }, []);
+
+  const refreshStatus = useCallback(async () => {
+    const nextStatus = await fetchLocalIngestionStatus();
+    setStatus(nextStatus);
+    return nextStatus;
+  }, []);
+
+  useEffect(() => {
+    if (!isLocalDashboardHost()) {
+      return;
+    }
+
+    setVisible(true);
+    refreshStatus()
+      .then((nextStatus) => {
+        setStatusMessage(localIngestionIdleMessage(nextStatus));
+      })
+      .catch((error) => {
+        setStatusMessage(localIngestionErrorMessage(error));
+      });
+  }, [refreshStatus]);
+
+  useEffect(() => {
+    return () => {
+      stopRequestedRef.current = true;
+      runIdRef.current += 1;
+    };
+  }, []);
+
+  const stopIngestion = useCallback(() => {
+    stopRequestedRef.current = true;
+    setActive(false);
+    setStatusMessage("Stopping after the current ingestion request finishes.");
+    appendLog({
+      level: "info",
+      message: "Stop requested",
+      detail: "The dashboard will not start another batch after the current request."
+    });
+  }, [appendLog]);
+
+  const startIngestion = useCallback(async () => {
+    if (active || busy) {
+      return;
+    }
+
+    const runId = runIdRef.current + 1;
+    runIdRef.current = runId;
+    stopRequestedRef.current = false;
+    setActive(true);
+    setBusy(true);
+    setStatusMessage(
+      `Queuing broad discovery searches with ${formatLocalIngestionDelay(runDelayMs)} between pulses and a ${sessionJobLimit.toLocaleString()} job session cap.`
+    );
+
+    try {
+      const startResult = await postLocalIngestionStart();
+      setStatus(startResult.status);
+      appendLog({
+        level: "success",
+        message: `Queued ${startResult.newJobs.toLocaleString()} new ingestion job(s)`,
+        detail: `${startResult.existingJobs.toLocaleString()} existing job(s), ${startResult.interventionCount.toLocaleString()} interventions scanned. ${localIngestionDeepeningCatchUpSummary(startResult.deepeningCatchUp)}`
+      });
+
+      let nextStatus = startResult.status;
+      let synonymExpansionQueued = false;
+      let processedThisSession = 0;
+
+      while (!stopRequestedRef.current && runIdRef.current === runId) {
+        const queued = localIngestionQueueCount(nextStatus, "QUEUED");
+        const running = localIngestionQueueCount(nextStatus, "RUNNING");
+
+        if (queued <= 0 && running <= 0) {
+          if (!synonymExpansionQueued) {
+            synonymExpansionQueued = true;
+            setStatusMessage("Primary searches are exhausted. Queueing saved supplement synonyms.");
+            const synonymResult = await postLocalIngestionSynonyms();
+            nextStatus = synonymResult.status;
+            setStatus(nextStatus);
+            appendLog({
+              level: synonymResult.newJobs > 0 ? "success" : "info",
+              message: `Synonym pass queued ${synonymResult.newJobs.toLocaleString()} new ingestion job(s)`,
+              detail: `${synonymResult.searchTermCount.toLocaleString()} saved synonym term(s), ${synonymResult.existingJobs.toLocaleString()} existing job(s). ${localIngestionDeepeningCatchUpSummary(synonymResult.deepeningCatchUp)}`
+            });
+
+            if (
+              localIngestionQueueCount(nextStatus, "QUEUED") > 0 ||
+              localIngestionQueueCount(nextStatus, "RUNNING") > 0
+            ) {
+              continue;
+            }
+          }
+
+          setStatusMessage("Ingestion queue is empty.");
+          appendLog({
+            level: "success",
+            message: "Ingestion queue finished",
+            detail: `${nextStatus.candidates.total.toLocaleString()} source candidate(s) are now in the local database.`
+          });
+          break;
+        }
+
+        if (processedThisSession >= sessionJobLimit) {
+          setStatusMessage(
+            `Session safety cap reached after ${processedThisSession.toLocaleString()} job(s).`
+          );
+          appendLog({
+            level: "info",
+            message: "Session cap reached",
+            detail:
+              "Queued jobs were left in the local database so you can resume later without re-downloading completed sources."
+          });
+          break;
+        }
+
+        setStatusMessage(`Processing next source search. ${queued.toLocaleString()} queued.`);
+        const batch = await postLocalIngestionRun(1, runDelayMs);
+        nextStatus = batch.status;
+        setStatus(nextStatus);
+        processedThisSession += batch.processed;
+
+        if (batch.results.length === 0) {
+          setStatusMessage(localIngestionIdleMessage(nextStatus));
+          appendLog({
+            level: "info",
+            message: "No queued job was available",
+            detail: "The runner did not claim a job on this pulse."
+          });
+          break;
+        }
+
+        for (const result of batch.results) {
+          const deepeningDetail = result.deepening
+            ? ` ${localIngestionDeepeningRunSummary(result.deepening)}`
+            : "";
+          appendLog({
+            level: result.status === "FAILED" ? "error" : "success",
+            message: `${localIngestionSourceLabel(result.source)} ${localIngestionStatusLabel(result.status)}: ${result.recordsFound.toLocaleString()} found, ${result.recordsChanged.toLocaleString()} saved`,
+            detail: result.error
+              ? `${result.query} - ${result.error}${deepeningDetail}`
+              : `${result.query}${deepeningDetail}`
+          });
+        }
+
+        if (!batch.hasMoreQueued) {
+          setStatusMessage(localIngestionIdleMessage(nextStatus));
+          break;
+        }
+
+        await sleep(batch.safety.minDelayMs);
+      }
+    } catch (error) {
+      const message = localIngestionErrorMessage(error);
+      setStatusMessage(message);
+      appendLog({
+        level: "error",
+        message: "Ingestion stopped",
+        detail: message
+      });
+    } finally {
+      if (runIdRef.current === runId) {
+        setActive(false);
+        setBusy(false);
+        stopRequestedRef.current = false;
+        refreshStatus().catch(() => undefined);
+      }
+    }
+  }, [active, appendLog, busy, refreshStatus, runDelayMs, sessionJobLimit]);
+
+  const queued = status ? localIngestionQueueCount(status, "QUEUED") : 0;
+  const running = status ? localIngestionQueueCount(status, "RUNNING") : 0;
+  const succeeded = status ? localIngestionQueueCount(status, "SUCCEEDED") : 0;
+  const failed = status ? localIngestionQueueCount(status, "FAILED") : 0;
+  const pendingCandidates = status?.candidates.counts.PENDING_REVIEW ?? 0;
+  const acceptedCandidates = status?.candidates.counts.ACCEPTED ?? 0;
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Local ingestion
+          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <h2 className="text-base font-semibold text-ink">Supplement discovery runner</h2>
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-semibold",
+                active
+                  ? "border-signal/30 bg-blue-50 text-signal"
+                  : "border-line bg-mist text-slate-600"
+              )}
+            >
+              {active ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <DatabaseZap aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              {active ? "Active" : "Idle"}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-slate-600">
+            Starts with supplement-only PubMed searches, then broad PubMed and ClinicalTrials.gov
+            discovery for local interventions. Saved synonyms are queued after the main-name searches
+            are exhausted.
+          </p>
+          <p aria-live="polite" className="mt-2 text-sm font-semibold text-ink">
+            {statusMessage}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={startIngestion}
+            disabled={active || busy}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {active ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            {active ? "Ingesting" : "Start ingestion"}
+          </button>
+          <button
+            type="button"
+            onClick={stopIngestion}
+            disabled={!active}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-mist px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Square aria-hidden="true" className="h-3.5 w-3.5" />
+            Stop
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setStatusMessage("Refreshing local ingestion status.");
+              refreshStatus()
+                .then((nextStatus) => {
+                  setStatusMessage(localIngestionIdleMessage(nextStatus));
+                })
+                .catch((error) => {
+                  setStatusMessage(localIngestionErrorMessage(error));
+                });
+            }}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal"
+          >
+            <RefreshCw aria-hidden="true" className="h-3.5 w-3.5" />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 rounded-md border border-line bg-mist p-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,12rem)_minmax(0,12rem)_1fr]">
+        <label className="grid gap-1 text-xs font-semibold text-slate-700">
+          Pause between jobs
+          <input
+            type="number"
+            min={LOCAL_INGESTION_RUN_DELAY_MIN_MS}
+            max={LOCAL_INGESTION_RUN_DELAY_MAX_MS}
+            step={1000}
+            value={runDelayMs}
+            onChange={(event) =>
+              setRunDelayMs(
+                clampNumberInput(
+                  event.currentTarget.value,
+                  LOCAL_INGESTION_RUN_DELAY_DEFAULT_MS,
+                  LOCAL_INGESTION_RUN_DELAY_MIN_MS,
+                  LOCAL_INGESTION_RUN_DELAY_MAX_MS
+                )
+              )
+            }
+            disabled={active || busy}
+            className="h-9 rounded-md border border-line bg-white px-2 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-60"
+          />
+        </label>
+        <label className="grid gap-1 text-xs font-semibold text-slate-700">
+          Session job cap
+          <input
+            type="number"
+            min={1}
+            max={LOCAL_INGESTION_SESSION_JOB_LIMIT_MAX}
+            step={1}
+            value={sessionJobLimit}
+            onChange={(event) =>
+              setSessionJobLimit(
+                clampNumberInput(
+                  event.currentTarget.value,
+                  LOCAL_INGESTION_SESSION_JOB_LIMIT_DEFAULT,
+                  1,
+                  LOCAL_INGESTION_SESSION_JOB_LIMIT_MAX
+                )
+              )
+            }
+            disabled={active || busy}
+            className="h-9 rounded-md border border-line bg-white px-2 text-sm text-ink disabled:cursor-not-allowed disabled:opacity-60"
+          />
+        </label>
+        <p className="text-xs leading-5 text-slate-600 xl:self-end">
+          Provider safety is always on: PubMed and ClinicalTrials.gov requests are serialized,
+          throttled, and retried after 429/503-style slowdowns.
+        </p>
+      </div>
+
+      <LocalNextActionStrip
+        action={localIngestionNextAction({
+          active,
+          busy,
+          status
+        })}
+      />
+
+      <div className="mt-4 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <MiniStat label="Queued" value={queued.toLocaleString()} />
+        <MiniStat label="Running" value={running.toLocaleString()} />
+        <MiniStat label="Succeeded" value={succeeded.toLocaleString()} />
+        <MiniStat label="Failed" value={failed.toLocaleString()} />
+        <MiniStat label="Pending candidates" value={pendingCandidates.toLocaleString()} />
+        <MiniStat label="Accepted candidates" value={acceptedCandidates.toLocaleString()} />
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="rounded-lg border border-line bg-mist p-3">
+          <h3 className="text-sm font-semibold text-ink">Activity</h3>
+          <div className="mt-3 grid gap-2">
+            {logEntries.length > 0 ? (
+              logEntries.map((entry) => (
+                <LocalIngestionLogRow key={entry.id} entry={entry} />
+              ))
+            ) : (
+              <p className="rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+                No ingestion pulses have run in this browser session yet.
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="rounded-lg border border-line bg-mist p-3">
+          <h3 className="text-sm font-semibold text-ink">Recent database activity</h3>
+          <div className="mt-3 grid gap-2">
+            {status?.queue.recentJobs.length ? (
+              status.queue.recentJobs.slice(0, 5).map((job) => (
+                <LocalIngestionJobRow key={job.jobId} job={job} />
+              ))
+            ) : (
+              <p className="rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+                No source ingestion jobs found in the local database.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-ink">Newly discovered candidates</h3>
+          <p className="text-xs text-slate-600">
+            {status ? `Updated ${formatLocalIngestionTime(status.updatedAt)}` : "Not loaded"}
+          </p>
+        </div>
+        <div className="mt-3 grid gap-2">
+          {status?.candidates.recent.length ? (
+            status.candidates.recent.slice(0, 5).map((candidate) => (
+              <LocalIngestionCandidateRow
+                key={`${candidate.source}-${candidate.externalId}-${candidate.query}`}
+                candidate={candidate}
+              />
+            ))
+          ) : (
+            <p className="rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+              No source candidates have been discovered yet.
+            </p>
+          )}
+        </div>
+      </div>
+
+    </section>
+  );
+}
+
+function LocalCandidateReviewWorkbench({
+  onCandidateDecision
+}: {
+  onCandidateDecision?: () => Promise<LocalIngestionStatusReadout | void>;
+} = {}) {
+  const [bucket, setBucket] = useState<LocalCandidateReviewBucket>("likely-useful");
+  const [source, setSource] = useState<LocalCandidateReviewSourceFilter>("ALL");
+  const [studyFilter, setStudyFilter] = useState<LocalCandidateReviewStudyFilter>("all");
+  const [queryDraft, setQueryDraft] = useState("");
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [actionKey, setActionKey] = useState<string | null>(null);
+  const [autoBusy, setAutoBusy] = useState<"preview" | "apply" | null>(null);
+  const [autoPreview, setAutoPreview] =
+    useState<LocalCandidateReviewAutomationResponse | null>(null);
+  const [candidateAutoStrategy, setCandidateAutoStrategy] =
+    useState<LocalCandidateReviewAutomationStrategy>("strict");
+  const [signalBusy, setSignalBusy] = useState<"mine" | "park" | "reject" | null>(null);
+  const [signalPreview, setSignalPreview] =
+    useState<LocalCandidateReviewSignalMiningResponse | null>(null);
+  const [message, setMessage] = useState("Loading review candidates.");
+  const [pendingBulkAction, setPendingBulkAction] =
+    useState<LocalCandidateReviewBulkAction | null>(null);
+  const [pendingAutoTriage, setPendingAutoTriage] = useState(false);
+  const [pendingSignalAction, setPendingSignalAction] =
+    useState<LocalCandidateReviewSignalApplyAction | null>(null);
+  const [review, setReview] = useState<LocalCandidateReviewResponse | null>(null);
+  const activeBulkAction = actionKey?.startsWith("bulk:")
+    ? (actionKey.slice(5) as LocalCandidateReviewBulkAction)
+    : null;
+  const currentBucketCount = localCandidateBucketCount(review, bucket);
+  const controlsBusy = busy || Boolean(actionKey) || Boolean(autoBusy) || Boolean(signalBusy);
+
+  const loadReviewCandidates = useCallback(async () => {
+    setBusy(true);
+    setMessage("Loading review candidates.");
+
+    try {
+      const nextReview = await fetchLocalCandidateReview({
+        bucket,
+        q: query,
+        source,
+        studyFilter
+      });
+      setReview(nextReview);
+      setMessage(
+        `${nextReview.candidates.length.toLocaleString()} candidate(s) shown from ${nextReview.counts.all.toLocaleString()} pending local candidate(s).`
+      );
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }, [bucket, query, source, studyFilter]);
+
+  useEffect(() => {
+    loadReviewCandidates().catch(() => undefined);
+  }, [loadReviewCandidates]);
+
+  useEffect(() => {
+    setAutoPreview(null);
+    setPendingAutoTriage(false);
+    setPendingSignalAction(null);
+    setSignalPreview(null);
+  }, [candidateAutoStrategy, query, source, studyFilter]);
+
+  const recordDecision = useCallback(
+    async (candidate: LocalCandidateReviewCandidate, decision: "Accepted" | "Rejected") => {
+      const nextActionKey = `${candidate.dedupeKey}:${decision}`;
+      setActionKey(nextActionKey);
+      setMessage(`${decision === "Accepted" ? "Accepting" : "Rejecting"} candidate.`);
+
+      try {
+        await postLocalCandidateReviewDecision({
+          decision,
+          dedupeKey: candidate.dedupeKey,
+          reviewNote:
+            decision === "Accepted"
+              ? "Accepted from local candidate review dashboard after user click."
+              : "Rejected from local candidate review dashboard after user click."
+        });
+        await onCandidateDecision?.();
+        await loadReviewCandidates();
+        setMessage(`${decision === "Accepted" ? "Accepted" : "Rejected"} ${candidate.externalId}.`);
+      } catch (error) {
+        setMessage(localIngestionErrorMessage(error));
+      } finally {
+        setActionKey(null);
+      }
+    },
+    [loadReviewCandidates, onCandidateDecision]
+  );
+
+  const recordBulkDecision = useCallback(
+    async (bulkAction: LocalCandidateReviewBulkAction) => {
+      const nextActionKey = `bulk:${bulkAction}`;
+      setActionKey(nextActionKey);
+      setBusy(true);
+      setMessage(`${localCandidateBulkActionProgressLabel(bulkAction)}.`);
+
+      try {
+        const result = await postLocalCandidateReviewBulkDecision({
+          bucket,
+          bulkAction,
+          q: query,
+          reviewNote: localCandidateBulkReviewNote(bulkAction),
+          source,
+          studyFilter
+        });
+        await onCandidateDecision?.();
+        await loadReviewCandidates();
+        setMessage(localCandidateBulkResultMessage(result));
+      } catch (error) {
+        setMessage(localIngestionErrorMessage(error));
+      } finally {
+        setActionKey(null);
+        setPendingBulkAction(null);
+        setBusy(false);
+      }
+    },
+    [bucket, loadReviewCandidates, onCandidateDecision, query, source, studyFilter]
+  );
+
+  const previewMaybeUsefulAutomation = useCallback(async () => {
+    setAutoBusy("preview");
+    setMessage("Previewing maybe-useful auto-triage.");
+
+    try {
+      const result = await postLocalCandidateReviewAutomation({
+        apply: false,
+        q: query,
+        source,
+        strategy: candidateAutoStrategy,
+        studyFilter
+      });
+      setAutoPreview(result);
+      setMessage(localCandidateReviewAutomationResultMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setAutoBusy(null);
+    }
+  }, [candidateAutoStrategy, query, source, studyFilter]);
+
+  const applyMaybeUsefulAutomation = useCallback(async () => {
+    setAutoBusy("apply");
+    setMessage("Applying maybe-useful auto-triage.");
+
+    try {
+      const result = await postLocalCandidateReviewAutomation({
+        apply: true,
+        q: query,
+        source,
+        strategy: candidateAutoStrategy,
+        studyFilter
+      });
+      setAutoPreview(result);
+      await onCandidateDecision?.();
+      await loadReviewCandidates();
+      setMessage(localCandidateReviewAutomationResultMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setAutoBusy(null);
+      setPendingAutoTriage(false);
+    }
+  }, [candidateAutoStrategy, loadReviewCandidates, onCandidateDecision, query, source, studyFilter]);
+
+  const mineMaybeUsefulSignals = useCallback(async () => {
+    setSignalBusy("mine");
+    setMessage("Mining held maybe-useful signals.");
+
+    try {
+      const result = await postLocalCandidateReviewSignalMining({
+        q: query,
+        source,
+        studyFilter
+      });
+      setSignalPreview(result);
+      setMessage(localCandidateReviewSignalMiningResultMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setSignalBusy(null);
+    }
+  }, [query, source, studyFilter]);
+
+  const applyMinedSignals = useCallback(
+    async (signalAction: LocalCandidateReviewSignalApplyAction) => {
+      setSignalBusy(signalAction === "reject-mismatches" ? "reject" : "park");
+      setMessage(localCandidateReviewSignalApplyProgressMessage(signalAction));
+
+      try {
+        const result = await postLocalCandidateReviewSignalApply({
+          q: query,
+          signalAction,
+          source,
+          studyFilter
+        });
+        await onCandidateDecision?.();
+        await loadReviewCandidates();
+        const nextPreview = await postLocalCandidateReviewSignalMining({
+          q: query,
+          source,
+          studyFilter
+        });
+        setSignalPreview(nextPreview);
+        setMessage(localCandidateReviewSignalApplyResultMessage(result));
+      } catch (error) {
+        setMessage(localIngestionErrorMessage(error));
+      } finally {
+        setPendingSignalAction(null);
+        setSignalBusy(null);
+      }
+    },
+    [loadReviewCandidates, onCandidateDecision, query, source, studyFilter]
+  );
+
+  return (
+    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Local candidates
+          </p>
+          <h2 className="mt-1 text-base font-semibold text-ink">Candidate review workbench</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            Review local draft candidates from the ingestion run. Accept creates or reuses a
+            traceable local reference; reject removes noisy rows from the review queue.
+          </p>
+          <p aria-live="polite" className="mt-2 text-sm font-semibold text-slate-700">
+            {message}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => loadReviewCandidates()}
+          disabled={busy}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw
+            aria-hidden="true"
+            className={cn("h-3.5 w-3.5", busy ? "animate-spin" : "")}
+          />
+          Refresh
+        </button>
+      </div>
+
+      <LocalNextActionStrip
+        action={candidateReviewNextAction({
+          bucket,
+          review
+        })}
+      />
+
+      <AcceptedCandidateProcessor />
+      <BenefitDiscoveryQueue />
+
+      <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-7">
+        <MiniStat label="Likely useful" value={(review?.counts.likelyUseful ?? 0).toLocaleString()} />
+        <MiniStat label="Maybe useful" value={(review?.counts.maybeUseful ?? 0).toLocaleString()} />
+        <MiniStat label="All useful" value={(review?.counts.allUseful ?? 0).toLocaleString()} />
+        <MiniStat label="Likely noise" value={(review?.counts.likelyNoise ?? 0).toLocaleString()} />
+        <MiniStat
+          label="Parked research"
+          value={(review?.counts.parkedResearch ?? 0).toLocaleString()}
+        />
+        <MiniStat label="Unclassified" value={(review?.counts.unclassified ?? 0).toLocaleString()} />
+        <MiniStat label="Pending" value={(review?.counts.all ?? 0).toLocaleString()} />
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {LOCAL_CANDIDATE_BUCKET_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setBucket(option.value)}
+            className={cn(
+              "h-8 rounded-md border px-3 text-xs font-semibold transition",
+              bucket === option.value
+                ? "border-signal bg-blue-50 text-signal"
+                : "border-line bg-mist text-slate-700 hover:border-signal"
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <label className="flex min-w-0 items-center gap-2 rounded-md border border-line bg-white px-3">
+          <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-slate-500" />
+          <input
+            value={queryDraft}
+            onChange={(event) => setQueryDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                setQuery(queryDraft.trim());
+              }
+            }}
+            placeholder="Search title, query, PMID/NCT, or intervention"
+            className="h-9 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-slate-400"
+          />
+        </label>
+        <select
+          value={source}
+          onChange={(event) => setSource(event.target.value as LocalCandidateReviewSourceFilter)}
+          className="h-9 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700"
+        >
+          <option value="ALL">All sources</option>
+          <option value="PUBMED">PubMed</option>
+          <option value="CLINICALTRIALS_GOV">ClinicalTrials.gov</option>
+        </select>
+        <select
+          value={studyFilter}
+          onChange={(event) =>
+            setStudyFilter(event.target.value as LocalCandidateReviewStudyFilter)
+          }
+          className="h-9 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700"
+        >
+          <option value="all">All study types</option>
+          <option value="reviews">Reviews</option>
+          <option value="trials">Trials</option>
+          <option value="results-posted">Results posted</option>
+        </select>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setQuery(queryDraft.trim())}
+          className="inline-flex h-8 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90"
+        >
+          <Search aria-hidden="true" className="h-3.5 w-3.5" />
+          Search
+        </button>
+        {query ? (
+          <button
+            type="button"
+            onClick={() => {
+              setQuery("");
+              setQueryDraft("");
+            }}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-mist px-3 text-xs font-semibold text-slate-700 transition hover:border-signal"
+          >
+            <X aria-hidden="true" className="h-3.5 w-3.5" />
+            Clear
+          </button>
+        ) : null}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2 rounded-lg border border-line bg-mist p-3">
+        <button
+          type="button"
+          onClick={() => setPendingBulkAction("accept-all")}
+          disabled={controlsBusy || currentBucketCount === 0}
+          title="Accept every visible candidate in the currently selected bucket and filters. Use sparingly."
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-green-600 bg-green-600 px-3 text-xs font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {activeBulkAction === "accept-all" ? (
+            <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Check aria-hidden="true" className="h-3.5 w-3.5" />
+          )}
+          Accept all
+        </button>
+        <button
+          type="button"
+          onClick={() => setPendingBulkAction("accept-likely-useful")}
+          disabled={controlsBusy || !review?.counts.likelyUseful}
+          title="Accept candidates classified as likely useful under the current source/search/study filters."
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {activeBulkAction === "accept-likely-useful" ? (
+            <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
+          )}
+          Accept likely useful
+        </button>
+        <button
+          type="button"
+          onClick={() => setPendingBulkAction("reject-not-useful")}
+          disabled={controlsBusy || !review?.counts.likelyNoise}
+          title="Reject candidates classified as likely noise under the current source/search/study filters."
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {activeBulkAction === "reject-not-useful" ? (
+            <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <X aria-hidden="true" className="h-3.5 w-3.5" />
+          )}
+          Reject not useful
+        </button>
+      </div>
+
+      <div className="mt-3 rounded-lg border border-line bg-mist p-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-ink">Maybe-useful auto-triage</h3>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Accepts priority review/trial rows with visible intervention identity, rejects only
+              low-signal rows, and holds ambiguous candidates.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <div className="inline-flex h-8 overflow-hidden rounded-md border border-line bg-white">
+              {(["strict", "query-backed"] as LocalCandidateReviewAutomationStrategy[]).map(
+                (strategy) => (
+                  <button
+                    key={strategy}
+                    type="button"
+                    onClick={() => setCandidateAutoStrategy(strategy)}
+                    disabled={controlsBusy}
+                    title={localCandidateReviewAutomationStrategyTooltip(strategy)}
+                    className={cn(
+                      "px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+                      candidateAutoStrategy === strategy
+                        ? "bg-signal text-white"
+                        : "text-slate-700 hover:bg-mist"
+                    )}
+                  >
+                    {localCandidateReviewAutomationStrategyLabel(strategy)}
+                  </button>
+                )
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => previewMaybeUsefulAutomation()}
+              disabled={controlsBusy || !review?.counts.maybeUseful}
+              title="Preview what the selected maybe-useful auto-triage pass would accept, reject, or hold."
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {autoBusy === "preview" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Search aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Preview
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingAutoTriage(true)}
+              disabled={controlsBusy || !review?.counts.maybeUseful}
+              title="Apply the selected maybe-useful auto-triage pass after reviewing the preview."
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {autoBusy === "apply" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Apply auto-triage
+            </button>
+            <button
+              type="button"
+              onClick={() => mineMaybeUsefulSignals()}
+              disabled={controlsBusy || !review?.counts.maybeUseful}
+              title="Read-only scan of held maybe-useful rows. Groups them into spot-check, research, mismatch, and low-signal buckets without changing data."
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {signalBusy === "mine" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <DatabaseZap aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Mine held signals
+            </button>
+          </div>
+        </div>
+
+        {pendingAutoTriage ? (
+          <InlineConfirmation
+            busy={autoBusy === "apply"}
+            confirmLabel="Apply"
+            message={localCandidateReviewAutomationConfirmMessage(autoPreview, review)}
+            onCancel={() => setPendingAutoTriage(false)}
+            onConfirm={() => applyMaybeUsefulAutomation()}
+            tone="warn"
+          />
+        ) : null}
+
+        {autoPreview ? (
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-2 md:grid-cols-5">
+              <MiniStat label="Scanned" value={autoPreview.counts.scanned.toLocaleString()} />
+              <MiniStat label="Accept" value={autoPreview.counts.accepted.toLocaleString()} />
+              <MiniStat label="Reject" value={autoPreview.counts.rejected.toLocaleString()} />
+              <MiniStat label="Hold" value={autoPreview.counts.held.toLocaleString()} />
+              <MiniStat
+                label="Applied"
+                value={
+                  autoPreview.applied
+                    ? autoPreview.counts.appliedActions.toLocaleString()
+                    : "preview"
+                }
+              />
+            </div>
+            <div className="grid gap-2 lg:grid-cols-2">
+              {autoPreview.decisions.slice(0, 6).map((decision) => (
+                <CandidateReviewAutomationDecisionRow
+                  key={decision.dedupeKey}
+                  decision={decision}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {signalPreview ? (
+          <div className="mt-3 grid gap-3 rounded-md border border-line bg-white p-3">
+            <div className="grid gap-2 md:grid-cols-5">
+              <MiniStat label="Scanned" value={signalPreview.counts.scanned.toLocaleString()} />
+              <MiniStat
+                label="Spot-check"
+                value={signalPreview.counts.spotCheck.toLocaleString()}
+              />
+              <MiniStat
+                label="Research"
+                value={signalPreview.counts.parkResearch.toLocaleString()}
+              />
+              <MiniStat
+                label="Mismatch"
+                value={signalPreview.counts.identityMismatch.toLocaleString()}
+              />
+              <MiniStat
+                label="Low signal"
+                value={signalPreview.counts.lowSignal.toLocaleString()}
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingSignalAction("reject-mismatches")}
+                disabled={controlsBusy || signalPreview.counts.identityMismatch === 0}
+                title="Reject mined mismatch rows where the captured source points at another supplement or non-supplement context. Does not create claims or public evidence scores."
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-danger/30 bg-white px-3 text-xs font-semibold text-danger transition hover:border-danger disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {signalBusy === "reject" ? (
+                  <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <X aria-hidden="true" className="h-3.5 w-3.5" />
+                )}
+                Reject mined mismatches
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingSignalAction("park-research")}
+                disabled={controlsBusy || signalPreview.counts.parkResearch === 0}
+                title="Park broad research/backlog signals so they stop appearing in active Maybe useful review. Rows remain pending locally; no claim or score is created."
+                className="inline-flex h-8 items-center gap-2 rounded-md border border-amberline/30 bg-white px-3 text-xs font-semibold text-amberline transition hover:border-amberline disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {signalBusy === "park" ? (
+                  <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Bookmark aria-hidden="true" className="h-3.5 w-3.5" />
+                )}
+                Park mined research
+              </button>
+            </div>
+
+            {pendingSignalAction ? (
+              <InlineConfirmation
+                busy={Boolean(signalBusy)}
+                confirmLabel="Apply"
+                message={localCandidateReviewSignalApplyConfirmMessage(
+                  pendingSignalAction,
+                  signalPreview
+                )}
+                onCancel={() => setPendingSignalAction(null)}
+                onConfirm={() => applyMinedSignals(pendingSignalAction)}
+                tone={pendingSignalAction === "reject-mismatches" ? "danger" : "warn"}
+              />
+            ) : null}
+
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Top held interventions
+                </h4>
+                <div className="mt-2 grid gap-2">
+                  {signalPreview.interventions.slice(0, 6).map((signal) => (
+                    <CandidateReviewSignalSummaryRow key={signal.key} signal={signal} />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Top area signals
+                </h4>
+                <div className="mt-2 grid gap-2">
+                  {signalPreview.outcomes.slice(0, 6).map((signal) => (
+                    <CandidateReviewOutcomeSignalRow key={signal.outcome} signal={signal} />
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-2 lg:grid-cols-2">
+              {signalPreview.decisions.slice(0, 4).map((decision) => (
+                <CandidateReviewSignalDecisionRow
+                  key={decision.dedupeKey}
+                  decision={decision}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {pendingBulkAction ? (
+        <InlineConfirmation
+          busy={Boolean(activeBulkAction)}
+          confirmLabel="Apply"
+          message={localCandidateBulkConfirmMessage({
+            action: pendingBulkAction,
+            bucket,
+            review
+          })}
+          onCancel={() => setPendingBulkAction(null)}
+          onConfirm={() => recordBulkDecision(pendingBulkAction)}
+          tone={pendingBulkAction === "reject-not-useful" ? "danger" : "warn"}
+        />
+      ) : null}
+
+      <div className="mt-3 grid gap-2">
+        {review?.candidates.length ? (
+          review.candidates.map((candidate) => (
+            <LocalCandidateReviewRow
+              key={candidate.dedupeKey}
+              actionKey={actionKey}
+              candidate={candidate}
+              onDecision={recordDecision}
+            />
+          ))
+        ) : (
+          <p className="rounded-md border border-line bg-mist p-3 text-sm text-slate-600">
+            No candidates match the current filters.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function AcceptedCandidateProcessor() {
+  const [active, setActive] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<LocalAcceptedCandidateProcessingStatusResponse | null>(
+    null
+  );
+  const [message, setMessage] = useState("Loading accepted candidate processor status.");
+  const [logEntries, setLogEntries] = useState<LocalIngestionLogEntry[]>([]);
+  const stopRequestedRef = useRef(false);
+  const runIdRef = useRef(0);
+
+  const appendLog = useCallback((entry: Omit<LocalIngestionLogEntry, "id" | "timestamp">) => {
+    setLogEntries((current) =>
+      [
+        {
+          ...entry,
+          id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          timestamp: new Date().toISOString()
+        },
+        ...current
+      ].slice(0, 20)
+    );
+  }, []);
+
+  const refreshStatus = useCallback(async () => {
+    const nextStatus = await fetchLocalAcceptedCandidateProcessingStatus();
+    setStatus(nextStatus);
+    setMessage(localAcceptedProcessorIdleMessage(nextStatus));
+    return nextStatus;
+  }, []);
+
+  useEffect(() => {
+    refreshStatus().catch((error) => {
+      setMessage(localIngestionErrorMessage(error));
+    });
+  }, [refreshStatus]);
+
+  useEffect(() => {
+    return () => {
+      stopRequestedRef.current = true;
+      runIdRef.current += 1;
+    };
+  }, []);
+
+  const stopProcessing = useCallback(() => {
+    stopRequestedRef.current = true;
+    setActive(false);
+    setMessage("Stopping after the current processing batch finishes.");
+    appendLog({
+      detail: "The dashboard will not start another accepted-candidate batch.",
+      level: "info",
+      message: "Stop requested"
+    });
+  }, [appendLog]);
+
+  const startProcessing = useCallback(async () => {
+    if (active || busy) {
+      return;
+    }
+
+    const runId = runIdRef.current + 1;
+    runIdRef.current = runId;
+    stopRequestedRef.current = false;
+    setActive(true);
+    setBusy(true);
+    setMessage("Processing accepted candidates in local batches.");
+
+    try {
+      while (!stopRequestedRef.current && runIdRef.current === runId) {
+        const batch = await postLocalAcceptedCandidateProcessingRun(
+          LOCAL_ACCEPTED_PROCESSING_BATCH_SIZE
+        );
+        setStatus(batch.status);
+
+        if (batch.processed === 0) {
+          setMessage(localAcceptedProcessorIdleMessage(batch.status));
+          appendLog({
+            detail: "No unprocessed accepted candidates were available.",
+            level: "success",
+            message: "Accepted candidate queue finished"
+          });
+          break;
+        }
+
+        const linked = batch.results.filter((result) => result.linkedClaim).length;
+        const needsClaim = batch.results.filter((result) => !result.claimId).length;
+        appendLog({
+          detail: `${linked.toLocaleString()} linked to existing claim(s), ${needsClaim.toLocaleString()} need claim/outcome review.`,
+          level: batch.errors.length > 0 ? "error" : "success",
+          message: `Processed ${batch.processed.toLocaleString()} accepted candidate(s)`
+        });
+        setMessage(localAcceptedProcessorIdleMessage(batch.status));
+
+        if (!batch.hasMore) {
+          appendLog({
+            detail: `${batch.status.counts.processed.toLocaleString()} accepted candidate(s) processed.`,
+            level: "success",
+            message: "Accepted candidate queue finished"
+          });
+          break;
+        }
+
+        await sleep(750);
+      }
+    } catch (error) {
+      const nextMessage = localIngestionErrorMessage(error);
+      setMessage(nextMessage);
+      appendLog({
+        detail: nextMessage,
+        level: "error",
+        message: "Accepted candidate processing stopped"
+      });
+    } finally {
+      if (runIdRef.current === runId) {
+        setActive(false);
+        setBusy(false);
+        stopRequestedRef.current = false;
+        refreshStatus().catch(() => undefined);
+      }
+    }
+  }, [active, appendLog, busy, refreshStatus]);
+
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Accepted candidate processor</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Processes accepted references before the maybe-useful queue: links claim-scoped
+            candidates, tags broad candidates with benefit-area suggestions, and leaves claim
+            drafting for review.
+          </p>
+          <p aria-live="polite" className="mt-2 text-xs font-semibold text-slate-700">
+            {message}
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={startProcessing}
+            disabled={active || busy || (status?.counts.unprocessed ?? 0) <= 0}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {active ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            {active ? "Processing" : "Process accepted"}
+          </button>
+          <button
+            type="button"
+            onClick={stopProcessing}
+            disabled={!active}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Square aria-hidden="true" className="h-3.5 w-3.5" />
+            Stop
+          </button>
+          <button
+            type="button"
+            onClick={() => refreshStatus().catch((error) => setMessage(localIngestionErrorMessage(error)))}
+            disabled={busy}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={cn("h-3.5 w-3.5", busy && !active ? "animate-spin" : "")}
+            />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <LocalNextActionStrip action={acceptedCandidateProcessingNextAction(status)} />
+
+      <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <MiniStat label="Accepted" value={(status?.counts.accepted ?? 0).toLocaleString()} />
+        <MiniStat label="With reference" value={(status?.counts.acceptedWithReference ?? 0).toLocaleString()} />
+        <MiniStat label="Processed" value={(status?.counts.processed ?? 0).toLocaleString()} />
+        <MiniStat label="Unprocessed" value={(status?.counts.unprocessed ?? 0).toLocaleString()} />
+        <MiniStat label="Needs claim" value={(status?.counts.needsClaim ?? 0).toLocaleString()} />
+        <MiniStat label="Claim linked" value={(status?.counts.claimLinked ?? 0).toLocaleString()} />
+      </div>
+
+      <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="rounded-lg border border-line bg-white p-3">
+          <h4 className="text-sm font-semibold text-ink">Activity</h4>
+          <div className="mt-3 grid gap-2">
+            {logEntries.length > 0 ? (
+              logEntries.slice(0, 5).map((entry) => (
+                <LocalIngestionLogRow key={entry.id} entry={entry} />
+              ))
+            ) : (
+              <p className="rounded-md border border-line bg-mist p-3 text-sm text-slate-600">
+                No accepted-candidate batches have run in this browser session yet.
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="rounded-lg border border-line bg-white p-3">
+          <h4 className="text-sm font-semibold text-ink">Recently processed</h4>
+          <div className="mt-3 grid gap-2">
+            {status?.recent.length ? (
+              status.recent.slice(0, 5).map((candidate) => (
+                <LocalAcceptedProcessingRow
+                  key={candidate.dedupeKey}
+                  candidate={candidate}
+                />
+              ))
+            ) : (
+              <p className="rounded-md border border-line bg-mist p-3 text-sm text-slate-600">
+                No accepted candidates have been processed yet.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LocalAcceptedProcessingRow({
+  candidate
+}: {
+  candidate: LocalAcceptedCandidateProcessingResult;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <a
+            href={candidate.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-w-0 items-center gap-1 text-sm font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+          >
+            <span className="min-w-0 break-words">{candidate.title}</span>
+            <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          </a>
+          <p className="mt-1 text-xs text-slate-600">
+            {candidate.interventionName ?? "Unlinked intervention"} -{" "}
+            {localIngestionSourceLabel(candidate.source)} {candidate.externalId} -{" "}
+            {candidate.sourceTypeSuggestion}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">{candidate.nextAction}</p>
+          {candidate.topicLabels.length > 0 ? (
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Suggested topics: {candidate.topicLabels.join(", ")}
+            </p>
+          ) : candidate.outcomeLabels.length > 0 ? (
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Suggested legacy areas: {candidate.outcomeLabels.join(", ")}
+            </p>
+          ) : null}
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            candidate.linkedClaim
+              ? "border-green-200 bg-green-50 text-green-700"
+              : "border-amberline/25 bg-amber-50 text-amberline"
+          )}
+        >
+          {candidate.linkedClaim ? "claim linked" : "needs claim"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function BenefitDiscoveryQueue() {
+  const [busy, setBusy] = useState(false);
+  const [actionKey, setActionKey] = useState<string | null>(null);
+  const [autoBusy, setAutoBusy] = useState<"preview" | "apply" | null>(null);
+  const [autoPreview, setAutoPreview] =
+    useState<LocalBenefitDiscoveryAutomationResponse | null>(null);
+  const [autoScope, setAutoScope] =
+    useState<LocalBenefitDiscoveryAutomationScope>("batch");
+  const [autoStrategy, setAutoStrategy] =
+    useState<LocalBenefitDiscoveryAutomationStrategy>("build-leads");
+  const [autoThreshold, setAutoThreshold] = useState(80);
+  const [autoRejectThreshold, setAutoRejectThreshold] = useState(40);
+  const [queue, setQueue] = useState<LocalBenefitDiscoveryQueueResponse | null>(null);
+  const [message, setMessage] = useState("Loading benefit discovery clusters.");
+  const [pendingAutoBuild, setPendingAutoBuild] = useState(false);
+  const [pendingClusterAction, setPendingClusterAction] = useState<{
+    action: LocalBenefitDiscoveryAction;
+    cluster: LocalBenefitDiscoveryCluster;
+  } | null>(null);
+  const autoConfirmationRef = useRef<HTMLDivElement>(null);
+  const clusterConfirmationRef = useRef<HTMLDivElement>(null);
+
+  const loadQueue = useCallback(async () => {
+    setBusy(true);
+
+    try {
+      const nextQueue = await fetchLocalBenefitDiscoveryQueue();
+      setQueue(nextQueue);
+      setMessage(localBenefitDiscoveryQueueMessage(nextQueue));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadQueue().catch(() => undefined);
+  }, [loadQueue]);
+
+  useEffect(() => {
+    setAutoPreview(null);
+    setPendingAutoBuild(false);
+  }, [autoRejectThreshold, autoScope, autoStrategy, autoThreshold]);
+
+  useEffect(() => {
+    setAutoRejectThreshold((current) => Math.min(current, Math.max(0, autoThreshold - 1)));
+  }, [autoThreshold]);
+
+  useEffect(() => {
+    if (!pendingAutoBuild) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      autoConfirmationRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest"
+      });
+      autoConfirmationRef.current?.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingAutoBuild]);
+
+  useEffect(() => {
+    if (!pendingClusterAction) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      clusterConfirmationRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest"
+      });
+      clusterConfirmationRef.current?.focus({ preventScroll: true });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [pendingClusterAction]);
+
+  const controlsBusy = busy || Boolean(actionKey) || Boolean(autoBusy);
+
+  const requestAutoBuild = useCallback(() => {
+    setPendingClusterAction(null);
+    setPendingAutoBuild(true);
+    setMessage(
+      localBenefitDiscoveryAutomationPendingMessage(
+        autoRejectThreshold,
+        autoStrategy,
+        autoThreshold
+      )
+    );
+  }, [autoRejectThreshold, autoStrategy, autoThreshold]);
+
+  const requestClusterAction = useCallback(
+    (cluster: LocalBenefitDiscoveryCluster, action: LocalBenefitDiscoveryAction) => {
+      setPendingAutoBuild(false);
+      setPendingClusterAction({
+        action,
+        cluster
+      });
+      setMessage(localBenefitDiscoveryActionPendingMessage(cluster, action));
+    },
+    []
+  );
+
+  const recordAction = useCallback(
+    async (cluster: LocalBenefitDiscoveryCluster, action: LocalBenefitDiscoveryAction) => {
+      const nextActionKey = `${cluster.clusterKey}:${action}`;
+      setActionKey(nextActionKey);
+      setMessage(localBenefitDiscoveryActionProgress(action));
+
+      try {
+        const result = await postLocalBenefitDiscoveryAction({
+          action,
+          clusterKey: cluster.clusterKey
+        });
+        await loadQueue();
+        setMessage(result.message);
+      } catch (error) {
+        setMessage(localIngestionErrorMessage(error));
+      } finally {
+        setActionKey(null);
+        setPendingClusterAction(null);
+      }
+    },
+    [loadQueue]
+  );
+
+  const previewAutoBuild = useCallback(async () => {
+    setAutoBusy("preview");
+    setMessage("Previewing scored benefit-discovery actions.");
+
+    try {
+      const result = await postLocalBenefitDiscoveryAutomation({
+        apply: false,
+        rejectThreshold: autoRejectThreshold,
+        scope: autoScope,
+        strategy: autoStrategy,
+        threshold: autoThreshold
+      });
+      setAutoPreview(result);
+      setMessage(localBenefitDiscoveryAutomationMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setAutoBusy(null);
+    }
+  }, [autoRejectThreshold, autoScope, autoStrategy, autoThreshold]);
+
+  const applyAutoBuild = useCallback(async () => {
+    setAutoBusy("apply");
+    setMessage("Applying high-confidence benefit-discovery actions.");
+
+    try {
+      const result = await postLocalBenefitDiscoveryAutomation({
+        apply: true,
+        rejectThreshold: autoRejectThreshold,
+        scope: autoScope,
+        strategy: autoStrategy,
+        threshold: autoThreshold
+      });
+      setAutoPreview(result);
+      await loadQueue();
+      setMessage(localBenefitDiscoveryAutomationMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setPendingAutoBuild(false);
+      setAutoBusy(null);
+    }
+  }, [autoRejectThreshold, autoScope, autoStrategy, autoThreshold, loadQueue]);
+
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-mist p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Benefit discovery queue</h3>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Groups processed accepted candidates by supplement and suggested benefit area. Park
+            middle-confidence leads instead of drafting weak public evidence claims.
+          </p>
+          <p aria-live="polite" className="mt-2 text-xs font-semibold text-slate-700">
+            {message}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => loadQueue()}
+          disabled={controlsBusy}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw
+            aria-hidden="true"
+            className={cn("h-3.5 w-3.5", busy ? "animate-spin" : "")}
+          />
+          Refresh
+        </button>
+      </div>
+
+      <LocalNextActionStrip action={benefitDiscoveryNextAction(queue)} />
+
+      <div className="mt-3 grid gap-2 md:grid-cols-5">
+        <MiniStat label="Active clusters" value={(queue?.counts.activeClusters ?? 0).toLocaleString()} />
+        <MiniStat label="Active candidates" value={(queue?.counts.activeCandidates ?? 0).toLocaleString()} />
+        <MiniStat label="Mismatch flags" value={(queue?.counts.mismatchCandidates ?? 0).toLocaleString()} />
+        <MiniStat label="Parked leads" value={(queue?.counts.parkedClusters ?? 0).toLocaleString()} />
+        <MiniStat label="Decided clusters" value={(queue?.counts.decidedClusters ?? 0).toLocaleString()} />
+      </div>
+
+      <IdentityResolutionQueue onResolved={loadQueue} />
+
+      <div className="mt-3 rounded-md border border-line bg-white p-3">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <h4 className="text-sm font-semibold text-ink">Evidence lead score</h4>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Auto-build drafts or links only high-confidence local leads. Middle scores stay in
+              the queue.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+              Threshold
+              <input
+                type="range"
+                min="55"
+                max="95"
+                value={autoThreshold}
+                onChange={(event) => setAutoThreshold(Number(event.target.value))}
+                disabled={controlsBusy}
+                className="h-2 w-32 accent-signal"
+              />
+              <input
+                type="number"
+                min="55"
+                max="95"
+                value={autoThreshold}
+                onChange={(event) =>
+                  setAutoThreshold(Math.min(95, Math.max(55, Number(event.target.value) || 80)))
+                }
+                disabled={controlsBusy}
+                className="h-8 w-16 rounded-md border border-line bg-white px-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+            <div className="inline-flex h-8 overflow-hidden rounded-md border border-line bg-white">
+              {(["build-leads", "link-existing", "park-backlog"] as LocalBenefitDiscoveryAutomationStrategy[]).map(
+                (strategy) => (
+                  <button
+                    key={strategy}
+                    type="button"
+                    onClick={() => setAutoStrategy(strategy)}
+                    disabled={controlsBusy}
+                    className={cn(
+                      "px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+                      autoStrategy === strategy
+                        ? "bg-signal text-white"
+                        : "text-slate-700 hover:bg-mist"
+                    )}
+                  >
+                    {localBenefitDiscoveryAutomationStrategyButtonLabel(strategy)}
+                  </button>
+                )
+              )}
+            </div>
+            <div className="inline-flex h-8 overflow-hidden rounded-md border border-line bg-white">
+              {(["batch", "all-eligible"] as LocalBenefitDiscoveryAutomationScope[]).map(
+                (scope) => (
+                  <button
+                    key={scope}
+                    type="button"
+                    onClick={() => setAutoScope(scope)}
+                    disabled={controlsBusy}
+                    className={cn(
+                      "px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+                      autoScope === scope
+                        ? "bg-ink text-white"
+                        : "text-slate-700 hover:bg-mist"
+                    )}
+                  >
+                    {scope === "batch" ? "Batch" : "All eligible"}
+                  </button>
+                )
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => previewAutoBuild()}
+              disabled={controlsBusy || !queue?.clusters.length}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {autoBusy === "preview" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Search aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Preview
+            </button>
+            <button
+              type="button"
+              onClick={() => requestAutoBuild()}
+              disabled={controlsBusy || !queue?.clusters.length}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {autoBusy === "apply" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Apply automation
+            </button>
+          </div>
+        </div>
+
+        <p className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+          <span className="font-semibold text-ink">
+            {localBenefitDiscoveryAutomationStrategyButtonLabel(autoStrategy)} mode:
+          </span>{" "}
+          {localBenefitDiscoveryAutomationStrategyDescription(
+            autoStrategy,
+            autoRejectThreshold,
+            autoThreshold
+          )}
+        </p>
+
+        {autoStrategy === "park-backlog" ? (
+          <div className="mt-3 grid gap-2 rounded-md border border-amberline/25 bg-amber-50/50 p-2 lg:grid-cols-[1fr_auto] lg:items-center">
+            <label className="flex min-w-0 items-center gap-2 text-xs font-semibold text-slate-700">
+              <span className="w-24 shrink-0">Reject below</span>
+              <input
+                type="range"
+                min="0"
+                max={Math.max(0, autoThreshold - 1)}
+                value={autoRejectThreshold}
+                onChange={(event) =>
+                  setAutoRejectThreshold(
+                    Math.min(
+                      Math.max(0, autoThreshold - 1),
+                      Math.max(0, Number(event.target.value) || 0)
+                    )
+                  )
+                }
+                disabled={controlsBusy}
+                className="h-2 min-w-0 flex-1 accent-danger"
+              />
+              <input
+                type="number"
+                min="0"
+                max={Math.max(0, autoThreshold - 1)}
+                value={autoRejectThreshold}
+                onChange={(event) =>
+                  setAutoRejectThreshold(
+                    Math.min(
+                      Math.max(0, autoThreshold - 1),
+                      Math.max(0, Number(event.target.value) || 0)
+                    )
+                  )
+                }
+                disabled={controlsBusy}
+                className="h-8 w-16 rounded-md border border-line bg-white px-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </label>
+            <span className="rounded-md border border-amberline/25 bg-white px-2 py-1 text-xs font-semibold text-amberline">
+              Park {autoRejectThreshold}-{Math.max(0, autoThreshold - 1)}
+            </span>
+          </div>
+        ) : null}
+
+        {pendingAutoBuild ? (
+          <div ref={autoConfirmationRef} tabIndex={-1} className="scroll-mt-4 outline-none">
+            <InlineConfirmation
+              busy={autoBusy === "apply"}
+              confirmLabel="Apply"
+              message={localBenefitDiscoveryAutomationConfirmMessage(
+                autoPreview,
+                autoRejectThreshold,
+                autoScope,
+                autoStrategy,
+                autoThreshold
+              )}
+              onCancel={() => setPendingAutoBuild(false)}
+              onConfirm={() => applyAutoBuild()}
+              tone="warn"
+            />
+          </div>
+        ) : null}
+
+        {autoPreview ? (
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-2 md:grid-cols-7">
+              <MiniStat
+                label="Scanned"
+                value={autoPreview.counts.scannedClusters.toLocaleString()}
+              />
+              <MiniStat label="Draft" value={autoPreview.counts.draftClaims.toLocaleString()} />
+              <MiniStat
+                label="Link existing"
+                value={autoPreview.counts.linkExistingClaims.toLocaleString()}
+              />
+              <MiniStat label="Park" value={autoPreview.counts.parkLeadClusters.toLocaleString()} />
+              <MiniStat label="Hold" value={autoPreview.counts.holdClusters.toLocaleString()} />
+              <MiniStat
+                label="Reject"
+                value={autoPreview.counts.rejectClusters.toLocaleString()}
+              />
+              <MiniStat
+                label="References"
+                value={autoPreview.applied
+                  ? autoPreview.counts.linkedReferences.toLocaleString()
+                  : "preview"}
+              />
+            </div>
+            <p className="text-xs leading-5 text-slate-600">
+              {localBenefitDiscoveryAutomationPreviewRowsMessage(autoPreview)}
+            </p>
+            <div className="grid gap-2 lg:grid-cols-2">
+              {localBenefitDiscoveryAutomationPreviewRows(autoPreview).map((decision) => (
+                <BenefitDiscoveryAutomationDecisionRow
+                  key={decision.clusterKey}
+                  decision={decision}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {pendingClusterAction ? (
+        <div ref={clusterConfirmationRef} tabIndex={-1} className="scroll-mt-4 outline-none">
+          <InlineConfirmation
+            busy={Boolean(actionKey)}
+            confirmLabel="Apply"
+            message={localBenefitDiscoveryConfirmMessage(
+              pendingClusterAction.cluster,
+              pendingClusterAction.action
+            )}
+            onCancel={() => setPendingClusterAction(null)}
+            onConfirm={() =>
+              recordAction(pendingClusterAction.cluster, pendingClusterAction.action)
+            }
+            tone={pendingClusterAction.action === "reject-cluster" ? "danger" : "warn"}
+          />
+        </div>
+      ) : null}
+
+      <div className="mt-3 grid gap-3">
+        {queue?.clusters.length ? (
+          queue.clusters.map((cluster) => (
+            <BenefitDiscoveryClusterCard
+              key={cluster.clusterKey}
+              actionKey={actionKey}
+              cluster={cluster}
+              onAction={requestClusterAction}
+            />
+          ))
+        ) : (
+          <p className="rounded-md border border-line bg-white p-3 text-sm text-slate-600">
+            No active benefit discovery clusters are ready. Process accepted candidates first, or
+            move on to the maybe-useful queue.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function IdentityResolutionQueue({ onResolved }: { onResolved: () => Promise<void> }) {
+  const [queue, setQueue] = useState<LocalIdentityResolutionQueueResponse | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionKey, setActionKey] = useState<string | null>(null);
+  const [autoBusy, setAutoBusy] = useState<"preview" | "apply" | null>(null);
+  const [autoPreview, setAutoPreview] =
+    useState<LocalIdentityResolutionAutomationResponse | null>(null);
+  const [autoScope, setAutoScope] =
+    useState<LocalIdentityResolutionAutomationScope>("all-eligible");
+  const [autoStrategy, setAutoStrategy] =
+    useState<LocalIdentityResolutionAutomationStrategy>("source-led");
+  const [message, setMessage] = useState("Loading identity resolver.");
+  const [pendingAutoResolve, setPendingAutoResolve] = useState(false);
+  const [reassignTargets, setReassignTargets] = useState<Record<string, string>>({});
+  const [synonyms, setSynonyms] = useState<Record<string, string>>({});
+  const [pendingIdentityAction, setPendingIdentityAction] = useState<{
+    action: LocalIdentityResolutionAction;
+    candidate: LocalIdentityResolutionCandidate;
+    input: {
+      action: LocalIdentityResolutionAction;
+      dedupeKey: string;
+      interventionId?: string;
+      synonym?: string;
+    };
+  } | null>(null);
+
+  const loadQueue = useCallback(async () => {
+    setBusy(true);
+
+    try {
+      const nextQueue = await fetchLocalIdentityResolutionQueue();
+      setQueue(nextQueue);
+      setMessage(localIdentityResolutionQueueMessage(nextQueue));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadQueue().catch(() => undefined);
+  }, [loadQueue]);
+
+  useEffect(() => {
+    setAutoPreview(null);
+    setPendingAutoResolve(false);
+  }, [autoScope, autoStrategy]);
+
+  const controlsBusy = busy || Boolean(actionKey) || Boolean(autoBusy);
+
+  const requestAction = useCallback(
+    (
+      candidate: LocalIdentityResolutionCandidate,
+      action: LocalIdentityResolutionAction
+    ) => {
+      const input: {
+        action: LocalIdentityResolutionAction;
+        dedupeKey: string;
+        interventionId?: string;
+        synonym?: string;
+      } = {
+        action,
+        dedupeKey: candidate.dedupeKey
+      };
+
+      if (action === "reassign-intervention") {
+        input.interventionId =
+          reassignTargets[candidate.dedupeKey] ?? candidate.matchedInterventions[0]?.id;
+
+        if (!input.interventionId) {
+          setMessage("Choose a target supplement before reassigning.");
+          return;
+        }
+      }
+
+      if (action === "add-synonym") {
+        input.synonym = synonyms[candidate.dedupeKey]?.trim();
+
+        if (!input.synonym) {
+          setMessage("Enter an alias before adding it.");
+          return;
+        }
+      }
+
+      setPendingIdentityAction({
+        action,
+        candidate,
+        input
+      });
+    },
+    [reassignTargets, synonyms]
+  );
+
+  const recordAction = useCallback(
+    async ({
+      action,
+      candidate,
+      input
+    }: {
+      action: LocalIdentityResolutionAction;
+      candidate: LocalIdentityResolutionCandidate;
+      input: {
+        action: LocalIdentityResolutionAction;
+        dedupeKey: string;
+        interventionId?: string;
+        synonym?: string;
+      };
+    }) => {
+      setActionKey(`${candidate.dedupeKey}:${action}`);
+      setMessage(localIdentityResolutionProgressMessage(action));
+
+      try {
+        const result = await postLocalIdentityResolutionAction(input);
+        setMessage(result.message);
+        await loadQueue();
+        await onResolved();
+      } catch (error) {
+        setMessage(localIngestionErrorMessage(error));
+      } finally {
+        setActionKey(null);
+        setPendingIdentityAction(null);
+      }
+    },
+    [loadQueue, onResolved]
+  );
+
+  const previewAutoResolve = useCallback(async () => {
+    setAutoBusy("preview");
+    setMessage("Previewing identity auto-resolution.");
+
+    try {
+      const result = await postLocalIdentityResolutionAutomation({
+        apply: false,
+        scope: autoScope,
+        strategy: autoStrategy
+      });
+      setAutoPreview(result);
+      setMessage(localIdentityResolutionAutomationMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setAutoBusy(null);
+    }
+  }, [autoScope, autoStrategy]);
+
+  const applyAutoResolve = useCallback(async () => {
+    setAutoBusy("apply");
+    setMessage("Applying identity auto-resolution.");
+
+    try {
+      const result = await postLocalIdentityResolutionAutomation({
+        apply: true,
+        scope: autoScope,
+        strategy: autoStrategy
+      });
+      setAutoPreview(result);
+      await loadQueue();
+      await onResolved();
+      setMessage(localIdentityResolutionAutomationMessage(result));
+    } catch (error) {
+      setMessage(localIngestionErrorMessage(error));
+    } finally {
+      setPendingAutoResolve(false);
+      setAutoBusy(null);
+    }
+  }, [autoScope, autoStrategy, loadQueue, onResolved]);
+
+  return (
+    <div className="mt-3 rounded-md border border-line bg-white p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h4 className="text-sm font-semibold text-ink">Identity resolver</h4>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Clears blocked source identity rows before auto-build. Multi-supplement matches are
+            warnings when the target is visible.
+          </p>
+          <p aria-live="polite" className="mt-2 text-xs font-semibold text-slate-700">
+            {message}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => loadQueue()}
+          disabled={controlsBusy}
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw
+            aria-hidden="true"
+            className={cn("h-3.5 w-3.5", busy ? "animate-spin" : "")}
+          />
+          Refresh
+        </button>
+      </div>
+
+      <div className="mt-3 grid gap-2 md:grid-cols-2">
+        <MiniStat
+          label="Blocked identity rows"
+          value={(queue?.counts.blockedCandidates ?? 0).toLocaleString()}
+        />
+        <MiniStat label="Shown" value={(queue?.candidates.length ?? 0).toLocaleString()} />
+      </div>
+
+      <LocalNextActionStrip action={identityResolutionNextAction(queue)} />
+
+      <div className="mt-3 border-t border-line pt-3">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0">
+            <h5 className="text-sm font-semibold text-ink">Auto-resolve</h5>
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Exact query matches can be confirmed; competing supplement matches stay held or
+              routed.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex h-8 overflow-hidden rounded-md border border-line bg-white">
+              {(["strict", "source-led"] as LocalIdentityResolutionAutomationStrategy[]).map(
+                (strategy) => (
+                  <button
+                    key={strategy}
+                    type="button"
+                    onClick={() => setAutoStrategy(strategy)}
+                    disabled={controlsBusy}
+                    className={cn(
+                      "px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+                      autoStrategy === strategy
+                        ? "bg-signal text-white"
+                        : "text-slate-700 hover:bg-mist"
+                    )}
+                  >
+                    {strategy === "strict" ? "Strict" : "Source-led"}
+                  </button>
+                )
+              )}
+            </div>
+            <div className="inline-flex h-8 overflow-hidden rounded-md border border-line bg-white">
+              {(["batch", "all-eligible"] as LocalIdentityResolutionAutomationScope[]).map(
+                (scope) => (
+                  <button
+                    key={scope}
+                    type="button"
+                    onClick={() => setAutoScope(scope)}
+                    disabled={controlsBusy}
+                    className={cn(
+                      "px-3 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60",
+                      autoScope === scope
+                        ? "bg-ink text-white"
+                        : "text-slate-700 hover:bg-mist"
+                    )}
+                  >
+                    {scope === "batch" ? "Batch" : "All eligible"}
+                  </button>
+                )
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => previewAutoResolve()}
+              disabled={controlsBusy || !queue?.counts.blockedCandidates}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {autoBusy === "preview" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Search aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Preview
+            </button>
+            <button
+              type="button"
+              onClick={() => setPendingAutoResolve(true)}
+              disabled={controlsBusy || !queue?.counts.blockedCandidates}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {autoBusy === "apply" ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Apply auto-resolve
+            </button>
+          </div>
+        </div>
+
+        {pendingAutoResolve ? (
+          <InlineConfirmation
+            busy={autoBusy === "apply"}
+            confirmLabel="Apply"
+            message={localIdentityResolutionAutomationConfirmMessage(
+              autoPreview,
+              autoStrategy,
+              autoScope
+            )}
+            onCancel={() => setPendingAutoResolve(false)}
+            onConfirm={() => applyAutoResolve()}
+            tone="warn"
+          />
+        ) : null}
+
+        {autoPreview ? (
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-2 md:grid-cols-6">
+              <MiniStat
+                label="Scanned"
+                value={autoPreview.counts.scannedCandidates.toLocaleString()}
+              />
+              <MiniStat
+                label="Confirm"
+                value={autoPreview.counts.confirmTarget.toLocaleString()}
+              />
+              <MiniStat
+                label="Reassign"
+                value={autoPreview.counts.reassignIntervention.toLocaleString()}
+              />
+              <MiniStat
+                label="Reject"
+                value={autoPreview.counts.rejectWrongSupplement.toLocaleString()}
+              />
+              <MiniStat label="Hold" value={autoPreview.counts.hold.toLocaleString()} />
+              <MiniStat
+                label="Applied"
+                value={
+                  autoPreview.applied
+                    ? autoPreview.counts.appliedActions.toLocaleString()
+                    : "preview"
+                }
+              />
+            </div>
+            <div className="grid gap-2 lg:grid-cols-2">
+              {autoPreview.decisions.slice(0, 6).map((decision) => (
+                <IdentityResolutionAutomationDecisionRow
+                  key={decision.dedupeKey}
+                  decision={decision}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {pendingIdentityAction ? (
+        <InlineConfirmation
+          busy={Boolean(actionKey)}
+          confirmLabel="Apply"
+          message={localIdentityResolutionConfirmMessage(
+            pendingIdentityAction.candidate,
+            pendingIdentityAction.action
+          )}
+          onCancel={() => setPendingIdentityAction(null)}
+          onConfirm={() => recordAction(pendingIdentityAction)}
+          tone={
+            pendingIdentityAction.action === "reject-wrong-supplement"
+              ? "danger"
+              : "warn"
+          }
+        />
+      ) : null}
+
+      <div className="mt-3 grid gap-2">
+        {queue?.candidates.length ? (
+          queue.candidates.map((candidate) => (
+            <IdentityResolutionCandidateRow
+              key={candidate.dedupeKey}
+              actionKey={actionKey}
+              candidate={candidate}
+              interventions={queue.interventions}
+              onAction={requestAction}
+              onSynonymChange={(value) =>
+                setSynonyms((current) => ({
+                  ...current,
+                  [candidate.dedupeKey]: value
+                }))
+              }
+              onTargetChange={(value) =>
+                setReassignTargets((current) => ({
+                  ...current,
+                  [candidate.dedupeKey]: value
+                }))
+              }
+              synonym={synonyms[candidate.dedupeKey] ?? ""}
+              targetInterventionId={
+                reassignTargets[candidate.dedupeKey] ??
+                candidate.matchedInterventions[0]?.id ??
+                ""
+              }
+            />
+          ))
+        ) : (
+          <p className="rounded-md border border-line bg-mist p-3 text-sm text-slate-600">
+            No blocked identity rows are waiting.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function IdentityResolutionCandidateRow({
+  actionKey,
+  candidate,
+  interventions,
+  onAction,
+  onSynonymChange,
+  onTargetChange,
+  synonym,
+  targetInterventionId
+}: {
+  actionKey: string | null;
+  candidate: LocalIdentityResolutionCandidate;
+  interventions: LocalIdentityResolutionQueueResponse["interventions"];
+  onAction: (
+    candidate: LocalIdentityResolutionCandidate,
+    action: LocalIdentityResolutionAction
+  ) => void;
+  onSynonymChange: (value: string) => void;
+  onTargetChange: (value: string) => void;
+  synonym: string;
+  targetInterventionId: string;
+}) {
+  const busy = actionKey?.startsWith(`${candidate.dedupeKey}:`) ?? false;
+
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+              {candidate.interventionName}
+            </span>
+            <span className="rounded-md border border-danger/20 bg-red-50 px-2 py-1 text-xs font-semibold text-danger">
+              check identity
+            </span>
+          </div>
+          <a
+            href={candidate.url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex min-w-0 items-center gap-1 text-sm font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+          >
+            <span className="min-w-0 break-words">{candidate.title}</span>
+            <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          </a>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {localIngestionSourceLabel(candidate.source)} {candidate.externalId}
+            {candidate.publishedYear ? ` - ${candidate.publishedYear}` : ""} -{" "}
+            {candidate.sourceTypeSuggestion} - triage {candidate.triageScore}
+          </p>
+          <p className="mt-1 break-words text-xs leading-5 text-slate-500">
+            Query: {candidate.query}
+          </p>
+          <p className="mt-2 text-xs leading-5 text-danger">
+            {candidate.mismatchReasons.join(" ")}
+          </p>
+          {candidate.matchedInterventions.length > 0 ? (
+            <p className="mt-1 text-xs leading-5 text-slate-600">
+              Possible match: {candidate.matchedInterventions.map((item) => item.name).join(", ")}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="grid shrink-0 gap-2 sm:min-w-80">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onAction(candidate, "confirm-target")}
+              disabled={busy}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-green-600 bg-green-600 px-3 text-xs font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {actionKey === `${candidate.dedupeKey}:confirm-target` ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Check aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Confirm
+            </button>
+            <button
+              type="button"
+              onClick={() => onAction(candidate, "reject-wrong-supplement")}
+              disabled={busy}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {actionKey === `${candidate.dedupeKey}:reject-wrong-supplement` ? (
+                <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <X aria-hidden="true" className="h-3.5 w-3.5" />
+              )}
+              Reject wrong
+            </button>
+          </div>
+
+          <div className="flex gap-2">
+            <select
+              value={targetInterventionId}
+              onChange={(event) => onTargetChange(event.target.value)}
+              disabled={busy}
+              className="h-8 min-w-0 flex-1 rounded-md border border-line bg-white px-2 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <option value="">Choose supplement</option>
+              {interventions.map((intervention) => (
+                <option key={intervention.id} value={intervention.id}>
+                  {intervention.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => onAction(candidate, "reassign-intervention")}
+              disabled={busy}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Reassign
+            </button>
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              value={synonym}
+              onChange={(event) => onSynonymChange(event.target.value)}
+              disabled={busy}
+              placeholder="Alias for current supplement"
+              className="h-8 min-w-0 flex-1 rounded-md border border-line bg-white px-2 text-xs text-slate-700 outline-none ring-signal/20 transition focus:border-signal focus:ring-4 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+            <button
+              type="button"
+              onClick={() => onAction(candidate, "add-synonym")}
+              disabled={busy}
+              className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Add alias
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IdentityResolutionAutomationDecisionRow({
+  decision
+}: {
+  decision: LocalIdentityResolutionAutomationDecision;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">{decision.interventionName}</p>
+          <p className="mt-1 break-words text-xs leading-5 text-slate-600">
+            {localIngestionSourceLabel(decision.source)} {decision.externalId} - Query:{" "}
+            {decision.query}
+          </p>
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            localIdentityResolutionAutomationTone(decision.action)
+          )}
+        >
+          {localIdentityResolutionAutomationActionLabel(decision.action)}
+        </span>
+      </div>
+      <p className="mt-2 break-words text-xs font-semibold text-signal">{decision.title}</p>
+      <p className="mt-2 text-xs leading-5 text-slate-600">
+        {decision.reasons.join(" ")}
+      </p>
+      {decision.matchedInterventionName ? (
+        <p className="mt-1 text-xs leading-5 text-slate-600">
+          Target: {decision.matchedInterventionName}
+        </p>
+      ) : null}
+      {decision.error ? (
+        <p className="mt-2 text-xs leading-5 text-danger">{decision.error}</p>
+      ) : null}
+      {decision.applied ? (
+        <p className="mt-2 text-xs font-semibold text-green-700">Applied.</p>
+      ) : null}
+    </div>
+  );
+}
+
+function BenefitDiscoveryAutomationDecisionRow({
+  decision
+}: {
+  decision: LocalBenefitDiscoveryAutomationDecision;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">
+            {decision.interventionName} - {decision.topicLabel}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Score {decision.leadScore}. {decision.usableCandidateCount.toLocaleString()} usable /{" "}
+            {decision.candidateCount.toLocaleString()} candidate(s).
+          </p>
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            localBenefitDiscoveryAutomationTone(decision.action)
+          )}
+        >
+          {localBenefitDiscoveryAutomationActionLabel(decision.action)}
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-600">
+        {decision.leadReasons.join(" ")}
+      </p>
+      {decision.error ? (
+        <p className="mt-2 text-xs leading-5 text-danger">{decision.error}</p>
+      ) : null}
+      {decision.applied ? (
+        <p className="mt-2 text-xs font-semibold text-green-700">
+          Applied
+          {decision.claimId ? (
+            <>
+              {" to claim "}
+              <span className="break-all font-mono text-[11px] text-green-800">
+                {decision.claimId}
+              </span>
+            </>
+          ) : null}
+          {decision.linkedReferences > 0
+            ? `, ${decision.linkedReferences.toLocaleString()} reference(s) linked`
+            : ""}
+          .
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function BenefitDiscoveryClusterCard({
+  actionKey,
+  cluster,
+  onAction
+}: {
+  actionKey: string | null;
+  cluster: LocalBenefitDiscoveryCluster;
+  onAction: (
+    cluster: LocalBenefitDiscoveryCluster,
+    action: LocalBenefitDiscoveryAction
+  ) => void;
+}) {
+  const busy = actionKey?.startsWith(`${cluster.clusterKey}:`) ?? false;
+  const hasExistingClaim = cluster.existingClaims.length > 0;
+  const hasUsableCandidates = cluster.usableCandidateCount > 0;
+
+  return (
+    <div className="rounded-lg border border-line bg-white p-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="text-sm font-semibold text-ink">
+              {cluster.interventionName} - {cluster.topicLabel}
+            </h4>
+            <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-700">
+              lead {cluster.score}
+            </span>
+            {cluster.existingClaims.length > 0 ? (
+              <span className="rounded-md border border-green-200 bg-green-50 px-2 py-1 text-xs font-semibold text-green-700">
+                existing claim
+              </span>
+            ) : (
+              <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+                novel area
+              </span>
+            )}
+            {cluster.mismatchCount > 0 ? (
+              <span className="rounded-md border border-danger/20 bg-red-50 px-2 py-1 text-xs font-semibold text-danger">
+                {cluster.mismatchCount.toLocaleString()} mismatch flag(s)
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-600">
+            {cluster.candidateCount.toLocaleString()} candidate(s),{" "}
+            {cluster.usableCandidateCount.toLocaleString()} usable after mismatch flags.
+            {hasExistingClaim
+              ? ` Existing: ${cluster.existingClaims[0]?.claimText}`
+              : " No existing claim for this supplement/topic yet."}
+          </p>
+          {cluster.leadReasons.length > 0 ? (
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              {cluster.leadReasons.join(" ")}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => onAction(cluster, "draft-claim")}
+            disabled={busy || !hasUsableCandidates}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-signal bg-signal px-3 text-xs font-semibold text-white transition hover:bg-signal/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {actionKey === `${cluster.clusterKey}:draft-claim` ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            Draft claim
+          </button>
+          <button
+            type="button"
+            onClick={() => onAction(cluster, "link-existing-claim")}
+            disabled={busy || !hasExistingClaim || !hasUsableCandidates}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-signal disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {actionKey === `${cluster.clusterKey}:link-existing-claim` ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            Link existing
+          </button>
+          <button
+            type="button"
+            onClick={() => onAction(cluster, "park-lead")}
+            disabled={busy}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-amberline hover:text-amberline disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {actionKey === `${cluster.clusterKey}:park-lead` ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Bookmark aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            Park lead
+          </button>
+          <button
+            type="button"
+            onClick={() => onAction(cluster, "reject-cluster")}
+            disabled={busy}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {actionKey === `${cluster.clusterKey}:reject-cluster` ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <X aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            Reject cluster
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2">
+        {cluster.topSources.map((source) => (
+          <BenefitDiscoverySourceRow
+            key={source.dedupeKey}
+            source={source}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BenefitDiscoverySourceRow({ source }: { source: LocalBenefitDiscoverySource }) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <a
+            href={source.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-w-0 items-center gap-1 text-sm font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+          >
+            <span className="min-w-0 break-words">{source.title}</span>
+            <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          </a>
+          <p className="mt-1 text-xs text-slate-600">
+            {localIngestionSourceLabel(source.source)} {source.externalId}
+            {source.publishedYear ? ` - ${source.publishedYear}` : ""} -{" "}
+            {source.sourceTypeSuggestion} - triage {source.triageScore}
+          </p>
+          {source.mismatchReasons.length > 0 ? (
+            <p className="mt-1 text-xs leading-5 text-danger">
+              {source.mismatchReasons.join(" ")}
+            </p>
+          ) : null}
+          {source.identityCautions.length > 0 ? (
+            <p className="mt-1 text-xs leading-5 text-amberline">
+              {source.identityCautions.join(" ")}
+            </p>
+          ) : null}
+        </div>
+        <span
+          className={cn(
+            "shrink-0 rounded-md border px-2 py-1 text-xs font-semibold",
+            source.mismatchReasons.length > 0
+              ? "border-danger/20 bg-red-50 text-danger"
+              : source.identityCautions.length > 0
+                ? "border-amberline/25 bg-amber-50 text-amberline"
+              : "border-green-200 bg-green-50 text-green-700"
+          )}
+        >
+          {source.mismatchReasons.length > 0
+            ? "check identity"
+            : source.identityCautions.length > 0
+              ? "caution"
+              : "usable"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function LocalIngestionLogRow({ entry }: { entry: LocalIngestionLogEntry }) {
+  return (
+    <div className="rounded-md border border-line bg-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p
+          className={cn(
+            "text-sm font-semibold",
+            entry.level === "error" ? "text-danger" : entry.level === "success" ? "text-signal" : "text-ink"
+          )}
+        >
+          {entry.message}
+        </p>
+        <span className="text-xs text-slate-500">{formatLocalIngestionTime(entry.timestamp)}</span>
+      </div>
+      {entry.detail ? (
+        <p className="mt-1 break-words text-xs leading-5 text-slate-600">{entry.detail}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function LocalIngestionJobRow({ job }: { job: LocalIngestionJobReadout }) {
+  return (
+    <div className="rounded-md border border-line bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">
+            {localIngestionSourceLabel(job.source)} - {job.recordsFound.toLocaleString()} found,{" "}
+            {job.recordsChanged.toLocaleString()} saved
+          </p>
+          <p className="mt-1 break-words text-xs leading-5 text-slate-600">{job.query}</p>
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            localIngestionStatusTone(job.status)
+          )}
+        >
+          {localIngestionStatusLabel(job.status)}
+        </span>
+      </div>
+      <p className="mt-2 text-xs text-slate-500">Updated {formatLocalIngestionTime(job.updatedAt)}</p>
+      {job.error ? <p className="mt-1 text-xs text-danger">{job.error}</p> : null}
+    </div>
+  );
+}
+
+function LocalIngestionCandidateRow({
+  candidate
+}: {
+  candidate: LocalIngestionCandidateReadout;
+}) {
+  const classification = candidate.discoveryClassification;
+
+  return (
+    <div className="rounded-md border border-line bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <a
+            href={candidate.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-w-0 items-center gap-1 text-sm font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+          >
+            <span className="truncate">{candidate.title}</span>
+            <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          </a>
+          <p className="mt-1 text-xs text-slate-600">
+            {localIngestionSourceLabel(candidate.source)} {candidate.externalId}
+            {candidate.publishedYear ? ` - ${candidate.publishedYear}` : ""} - triage{" "}
+            {candidate.triageScore}
+          </p>
+          <p className="mt-1 break-words text-xs leading-5 text-slate-500">{candidate.query}</p>
+          {classification ? (
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              <span className="font-semibold text-slate-700">Classifier:</span>{" "}
+              {localIngestionClassificationSummary(classification)}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex flex-col items-end gap-1">
+          {classification ? (
+            <span
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-semibold",
+                localIngestionClassificationTone(classification.bucket)
+              )}
+            >
+              {classification.label} {classification.score}
+            </span>
+          ) : null}
+          <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs font-semibold text-slate-700">
+            {candidate.decision.replace(/_/g, " ").toLowerCase()}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LocalCandidateReviewRow({
+  actionKey,
+  candidate,
+  onDecision
+}: {
+  actionKey: string | null;
+  candidate: LocalCandidateReviewCandidate;
+  onDecision: (
+    candidate: LocalCandidateReviewCandidate,
+    decision: "Accepted" | "Rejected"
+  ) => Promise<void>;
+}) {
+  const classification = candidate.discoveryClassification;
+  const acceptKey = `${candidate.dedupeKey}:Accepted`;
+  const rejectKey = `${candidate.dedupeKey}:Rejected`;
+  const accepting = actionKey === acceptKey;
+  const rejecting = actionKey === rejectKey;
+  const actionDisabled = Boolean(actionKey);
+
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+              {candidate.interventionName ?? candidate.interventionId ?? "Unlinked intervention"}
+            </span>
+            {classification ? (
+              <span
+                className={cn(
+                  "rounded-md border px-2 py-1 text-xs font-semibold",
+                  localIngestionClassificationTone(classification.bucket)
+                )}
+              >
+                {classification.label} {classification.score}
+              </span>
+            ) : (
+              <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-600">
+                Unclassified
+              </span>
+            )}
+          </div>
+          <a
+            href={candidate.url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex min-w-0 items-center gap-1 text-sm font-semibold text-signal underline decoration-signal/30 underline-offset-2 hover:decoration-signal"
+          >
+            <span className="min-w-0 break-words">{candidate.title}</span>
+            <ExternalLink aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+          </a>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {localIngestionSourceLabel(candidate.source)} {candidate.externalId}
+            {candidate.publishedYear ? ` - ${candidate.publishedYear}` : ""}
+            {candidate.sourceType ? ` - ${candidate.sourceType}` : ""} - triage{" "}
+            {candidate.triageScore}
+          </p>
+          <p className="mt-1 break-words text-xs leading-5 text-slate-500">{candidate.query}</p>
+          {classification ? (
+            <p className="mt-2 text-xs leading-5 text-slate-600">
+              <span className="font-semibold text-slate-700">Why shown:</span>{" "}
+              {localIngestionClassificationSummary(classification)}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2 xl:justify-end">
+          <button
+            type="button"
+            onClick={() => onDecision(candidate, "Accepted")}
+            disabled={actionDisabled}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-green-600 bg-green-600 px-3 text-xs font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {accepting ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            Accept
+          </button>
+          <button
+            type="button"
+            onClick={() => onDecision(candidate, "Rejected")}
+            disabled={actionDisabled}
+            className="inline-flex h-8 items-center gap-2 rounded-md border border-line bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-danger hover:text-danger disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {rejecting ? (
+              <LoaderCircle aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <X aria-hidden="true" className="h-3.5 w-3.5" />
+            )}
+            Reject
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CandidateReviewAutomationDecisionRow({
+  decision
+}: {
+  decision: LocalCandidateReviewAutomationDecision;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">{decision.interventionName ?? "Unlinked intervention"}</p>
+          <p className="mt-1 break-words text-xs font-semibold text-signal">
+            {decision.title}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {localIngestionSourceLabel(decision.source)} {decision.externalId} -{" "}
+            {decision.sourceTypeSuggestion} - triage {decision.triageScore}
+            {decision.classificationScore !== undefined
+              ? ` - classifier ${decision.classificationScore}`
+              : ""}
+          </p>
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            localCandidateReviewAutomationTone(decision.action)
+          )}
+        >
+          {localCandidateReviewAutomationActionLabel(decision.action)}
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-600">
+        {decision.reasons.join(" ")}
+      </p>
+      {decision.error ? (
+        <p className="mt-2 text-xs leading-5 text-danger">{decision.error}</p>
+      ) : null}
+      {decision.applied ? (
+        <p className="mt-2 text-xs font-semibold text-green-700">Applied.</p>
+      ) : null}
+    </div>
+  );
+}
+
+function CandidateReviewSignalSummaryRow({
+  signal
+}: {
+  signal: LocalCandidateReviewSignalSummary;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">{signal.label}</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {signal.count.toLocaleString()} held row(s), avg score {signal.averageScore}.
+          </p>
+        </div>
+        <span className="rounded-md border border-line bg-white px-2 py-1 text-xs font-semibold text-slate-700">
+          {signal.priorityStudyCount.toLocaleString()} priority
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-600">
+        Query-backed {signal.queryBackedCount.toLocaleString()} / visible identity{" "}
+        {signal.identityVisibleCount.toLocaleString()} / mismatch{" "}
+        {signal.sourcePointsElsewhereCount.toLocaleString()} / low signal{" "}
+        {signal.lowScoreCount.toLocaleString()}.
+      </p>
+      {signal.topOutcomes.length > 0 ? (
+        <p className="mt-1 text-xs leading-5 text-slate-500">
+          Areas:{" "}
+          {signal.topOutcomes
+            .map((outcome) => `${outcome.label} ${outcome.count}`)
+            .join(", ")}
+        </p>
+      ) : null}
+      <CandidateReviewSignalSamples samples={signal.samples} />
+    </div>
+  );
+}
+
+function CandidateReviewOutcomeSignalRow({
+  signal
+}: {
+  signal: LocalCandidateReviewOutcomeSignal;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">{signal.label}</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {signal.count.toLocaleString()} held row(s) across{" "}
+            {signal.interventionCount.toLocaleString()} intervention(s).
+          </p>
+        </div>
+      </div>
+      <CandidateReviewSignalSamples samples={signal.samples} />
+    </div>
+  );
+}
+
+function CandidateReviewSignalDecisionRow({
+  decision
+}: {
+  decision: LocalCandidateReviewSignalDecision;
+}) {
+  return (
+    <div className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-ink">
+            {decision.interventionName ?? "Unlinked intervention"}
+          </p>
+          <p className="mt-1 break-words text-xs font-semibold text-signal">
+            {decision.title}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {localIngestionSourceLabel(decision.source)} {decision.externalId} -{" "}
+            {decision.sourceTypeSuggestion} - triage {decision.triageScore}
+          </p>
+        </div>
+        <span
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold",
+            localCandidateReviewSignalTone(decision.kind)
+          )}
+        >
+          {localCandidateReviewSignalKindLabel(decision.kind)}
+        </span>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-slate-600">
+        {decision.reasons.join(" ")}
+      </p>
+    </div>
+  );
+}
+
+function CandidateReviewSignalSamples({
+  samples
+}: {
+  samples: LocalCandidateReviewSignalSample[];
+}) {
+  if (samples.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 grid gap-1">
+      {samples.map((sample) => (
+        <p
+          key={sample.dedupeKey}
+          className="break-words text-xs leading-5 text-slate-500"
+        >
+          {localIngestionSourceLabel(sample.source)} {sample.externalId} -{" "}
+          {sample.sourceTypeSuggestion} - {sample.title}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+async function fetchLocalIngestionStatus() {
+  return localIngestionFetch<LocalIngestionStatusReadout>("/api/local-ingestion/status");
+}
+
+async function fetchLocalAcceptedCandidateProcessingStatus() {
+  return localIngestionFetch<LocalAcceptedCandidateProcessingStatusResponse>(
+    "/api/local-ingestion/process-accepted"
+  );
+}
+
+async function postLocalAcceptedCandidateProcessingRun(limit: number) {
+  return localIngestionFetch<LocalAcceptedCandidateProcessingRunResponse>(
+    "/api/local-ingestion/process-accepted",
+    {
+      body: JSON.stringify({ limit }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function fetchLocalBenefitDiscoveryQueue() {
+  return localIngestionFetch<LocalBenefitDiscoveryQueueResponse>(
+    "/api/local-ingestion/benefit-discovery?limit=20"
+  );
+}
+
+async function postLocalBenefitDiscoveryAction(input: {
+  action: LocalBenefitDiscoveryAction;
+  clusterKey: string;
+}) {
+  return localIngestionFetch<LocalBenefitDiscoveryActionResponse>(
+    "/api/local-ingestion/benefit-discovery",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalBenefitDiscoveryAutomation(input: {
+  apply: boolean;
+  rejectThreshold: number;
+  scope: LocalBenefitDiscoveryAutomationScope;
+  strategy: LocalBenefitDiscoveryAutomationStrategy;
+  threshold: number;
+}) {
+  return localIngestionFetch<LocalBenefitDiscoveryAutomationResponse>(
+    "/api/local-ingestion/benefit-discovery",
+    {
+      body: JSON.stringify({
+        action: "auto-build",
+        apply: input.apply,
+        rejectThreshold: input.rejectThreshold,
+        scope: input.scope,
+        strategy: input.strategy,
+        threshold: input.threshold
+      }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function fetchLocalIdentityResolutionQueue() {
+  return localIngestionFetch<LocalIdentityResolutionQueueResponse>(
+    "/api/local-ingestion/identity-resolution?limit=12"
+  );
+}
+
+async function postLocalIdentityResolutionAction(input: {
+  action: LocalIdentityResolutionAction;
+  dedupeKey: string;
+  interventionId?: string;
+  synonym?: string;
+}) {
+  return localIngestionFetch<LocalIdentityResolutionActionResponse>(
+    "/api/local-ingestion/identity-resolution",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalIdentityResolutionAutomation(input: {
+  apply: boolean;
+  scope: LocalIdentityResolutionAutomationScope;
+  strategy: LocalIdentityResolutionAutomationStrategy;
+}) {
+  return localIngestionFetch<LocalIdentityResolutionAutomationResponse>(
+    "/api/local-ingestion/identity-resolution",
+    {
+      body: JSON.stringify({
+        action: "auto-resolve",
+        apply: input.apply,
+        scope: input.scope,
+        strategy: input.strategy
+      }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalClaimExpansion(input: { apply: boolean; limit?: number }) {
+  return localIngestionFetch<LocalClaimExpansionResponse>(
+    "/api/local-ingestion/claim-expansion",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalScoreFinalization(input: { apply: boolean; limit?: number }) {
+  return localIngestionFetch<LocalScoreFinalizationResponse>(
+    "/api/local-ingestion/score-finalization",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalSourceWorkRepair(input: { apply: boolean; limit?: number }) {
+  return localIngestionFetch<LocalSourceWorkRepairResponse>(
+    "/api/local-ingestion/source-work-repair",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function fetchLocalCandidateReview({
+  bucket,
+  q,
+  source,
+  studyFilter
+}: {
+  bucket: LocalCandidateReviewBucket;
+  q: string;
+  source: LocalCandidateReviewSourceFilter;
+  studyFilter: LocalCandidateReviewStudyFilter;
+}) {
+  const searchParams = new URLSearchParams({
+    bucket,
+    limit: "12",
+    source,
+    studyFilter
+  });
+
+  if (q) {
+    searchParams.set("q", q);
+  }
+
+  return localIngestionFetch<LocalCandidateReviewResponse>(
+    `/api/local-ingestion/candidates?${searchParams.toString()}`
+  );
+}
+
+async function postLocalCandidateReviewDecision(input: {
+  decision: "Accepted" | "Rejected";
+  dedupeKey: string;
+  reviewNote: string;
+}) {
+  return localIngestionFetch<LocalCandidateReviewDecisionResponse>(
+    "/api/local-ingestion/candidates",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalCandidateReviewBulkDecision(input: {
+  bucket: LocalCandidateReviewBucket;
+  bulkAction: LocalCandidateReviewBulkAction;
+  q: string;
+  reviewNote: string;
+  source: LocalCandidateReviewSourceFilter;
+  studyFilter: LocalCandidateReviewStudyFilter;
+}) {
+  return localIngestionFetch<LocalCandidateReviewBulkResponse>(
+    "/api/local-ingestion/candidates",
+    {
+      body: JSON.stringify(input),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalCandidateReviewAutomation(input: {
+  apply: boolean;
+  q: string;
+  source: LocalCandidateReviewSourceFilter;
+  strategy: LocalCandidateReviewAutomationStrategy;
+  studyFilter: LocalCandidateReviewStudyFilter;
+}) {
+  return localIngestionFetch<LocalCandidateReviewAutomationResponse>(
+    "/api/local-ingestion/candidates",
+    {
+      body: JSON.stringify({
+        action: "auto-triage-maybe-useful",
+        apply: input.apply,
+        q: input.q,
+        source: input.source,
+        strategy: input.strategy,
+        studyFilter: input.studyFilter
+      }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalCandidateReviewSignalMining(input: {
+  q: string;
+  source: LocalCandidateReviewSourceFilter;
+  studyFilter: LocalCandidateReviewStudyFilter;
+}) {
+  return localIngestionFetch<LocalCandidateReviewSignalMiningResponse>(
+    "/api/local-ingestion/candidates",
+    {
+      body: JSON.stringify({
+        action: "mine-maybe-useful-signals",
+        q: input.q,
+        source: input.source,
+        studyFilter: input.studyFilter
+      }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+async function postLocalCandidateReviewSignalApply(input: {
+  q: string;
+  signalAction: LocalCandidateReviewSignalApplyAction;
+  source: LocalCandidateReviewSourceFilter;
+  studyFilter: LocalCandidateReviewStudyFilter;
+}) {
+  return localIngestionFetch<LocalCandidateReviewSignalApplyResponse>(
+    "/api/local-ingestion/candidates",
+    {
+      body: JSON.stringify({
+        action: "apply-mined-signals",
+        q: input.q,
+        signalAction: input.signalAction,
+        source: input.source,
+        studyFilter: input.studyFilter
+      }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      method: "POST"
+    }
+  );
+}
+
+function localCandidateReviewAutomationConfirmMessage(
+  preview: LocalCandidateReviewAutomationResponse | null,
+  review: LocalCandidateReviewResponse | null
+) {
+  if (!preview) {
+    return `Auto-triage maybe-useful candidates matching the current source/search/study filters? Preview first when possible. Up to ${(review?.counts.maybeUseful ?? 0).toLocaleString()} maybe-useful candidate(s) may be scanned.`;
+  }
+
+  return `Apply ${localCandidateReviewAutomationStrategyLabel(preview.strategy).toLowerCase()} maybe-useful auto-triage? This will accept ${preview.counts.accepted.toLocaleString()}, reject ${preview.counts.rejected.toLocaleString()}, and hold ${preview.counts.held.toLocaleString()} from ${preview.counts.scanned.toLocaleString()} scanned candidate(s).`;
+}
+
+function localCandidateReviewSignalMiningResultMessage(
+  result: LocalCandidateReviewSignalMiningResponse
+) {
+  const parts = [
+    `${result.counts.scanned.toLocaleString()} scanned`,
+    `${result.counts.spotCheck.toLocaleString()} spot-check`,
+    `${result.counts.parkResearch.toLocaleString()} research`,
+    `${result.counts.identityMismatch.toLocaleString()} mismatch`,
+    `${result.counts.lowSignal.toLocaleString()} low signal`
+  ];
+
+  if (result.status === "stopped-at-limit") {
+    parts.push("stopped at safety limit");
+  }
+
+  return `Held signal mining finished: ${parts.join(", ")}.`;
+}
+
+function localCandidateReviewSignalApplyConfirmMessage(
+  signalAction: LocalCandidateReviewSignalApplyAction,
+  preview: LocalCandidateReviewSignalMiningResponse
+) {
+  if (signalAction === "reject-mismatches") {
+    return `Reject ${preview.counts.identityMismatch.toLocaleString()} mined mismatch row(s)? This removes source candidates where the captured source points at another intervention or context. No claims or public evidence scores will be created.`;
+  }
+
+  return `Park ${preview.counts.parkResearch.toLocaleString()} mined research row(s)? They will leave the active Maybe useful queue but remain pending as local research/backlog signals.`;
+}
+
+function localCandidateReviewSignalApplyProgressMessage(
+  signalAction: LocalCandidateReviewSignalApplyAction
+) {
+  return signalAction === "reject-mismatches"
+    ? "Rejecting mined mismatch rows."
+    : "Parking mined research rows.";
+}
+
+function localCandidateReviewSignalApplyResultMessage(
+  result: LocalCandidateReviewSignalApplyResponse
+) {
+  const parts = [
+    `${result.counts.scanned.toLocaleString()} scanned`,
+    `${result.counts.rejected.toLocaleString()} rejected`,
+    `${result.counts.parked.toLocaleString()} parked`,
+    `${result.counts.skipped.toLocaleString()} skipped`
+  ];
+
+  if (result.counts.errors > 0) {
+    parts.push(`${result.counts.errors.toLocaleString()} error(s)`);
+  }
+
+  if (result.status === "stopped-at-limit") {
+    parts.push("stopped at safety limit");
+  }
+
+  return `Mined signal cleanup finished: ${parts.join(", ")}.`;
+}
+
+function localCandidateReviewAutomationStrategyTooltip(
+  strategy: LocalCandidateReviewAutomationStrategy
+) {
+  switch (strategy) {
+    case "query-backed":
+      return "Pass 2 accepts priority review/trial rows when the search query clearly names the intervention and the source does not point elsewhere.";
+    case "strict":
+      return "Strict accepts only priority review/trial rows where captured source metadata visibly names the intervention.";
+  }
+}
+
+function localCandidateReviewAutomationActionLabel(
+  action: LocalCandidateReviewAutomationAction
+) {
+  switch (action) {
+    case "accept":
+      return "accept";
+    case "reject":
+      return "reject";
+    case "hold":
+      return "hold";
+  }
+}
+
+function localCandidateReviewAutomationTone(action: LocalCandidateReviewAutomationAction) {
+  switch (action) {
+    case "accept":
+      return "border-green-200 bg-green-50 text-green-700";
+    case "reject":
+      return "border-danger/20 bg-red-50 text-danger";
+    case "hold":
+      return "border-amberline/25 bg-amber-50 text-amberline";
+  }
+}
+
+function localCandidateReviewSignalKindLabel(kind: LocalCandidateReviewSignalKind) {
+  switch (kind) {
+    case "identity-mismatch":
+      return "mismatch";
+    case "low-signal":
+      return "low signal";
+    case "park-research":
+      return "research";
+    case "spot-check":
+      return "spot-check";
+  }
+}
+
+function localCandidateReviewSignalTone(kind: LocalCandidateReviewSignalKind) {
+  switch (kind) {
+    case "identity-mismatch":
+      return "border-danger/20 bg-red-50 text-danger";
+    case "low-signal":
+      return "border-slate-200 bg-slate-50 text-slate-600";
+    case "park-research":
+      return "border-amberline/25 bg-amber-50 text-amberline";
+    case "spot-check":
+      return "border-green-200 bg-green-50 text-green-700";
+  }
+}
+
+function localCandidateBulkConfirmMessage({
+  action,
+  bucket,
+  review
+}: {
+  action: LocalCandidateReviewBulkAction;
+  bucket: LocalCandidateReviewBucket;
+  review: LocalCandidateReviewResponse | null;
+}) {
+  const counts = review?.counts;
+
+  switch (action) {
+    case "accept-all":
+      return `Accept all pending candidates matching the current "${localCandidateBucketLabel(
+        bucket
+      )}" filters? This may create or reuse local references for up to ${(
+        localCandidateBucketCount(review, bucket)
+      ).toLocaleString()} candidate(s).`;
+    case "accept-likely-useful":
+      return `Accept all likely useful candidates matching the current source/search/study filters? This may create or reuse local references for up to ${(
+        counts?.likelyUseful ?? 0
+      ).toLocaleString()} candidate(s).`;
+    case "reject-not-useful":
+      return `Reject all likely-noise candidates matching the current source/search/study filters? This will remove up to ${(
+        counts?.likelyNoise ?? 0
+      ).toLocaleString()} candidate(s) from the review queue.`;
+  }
+}
+
+function localCandidateBulkReviewNote(action: LocalCandidateReviewBulkAction) {
+  switch (action) {
+    case "accept-all":
+      return "Bulk accepted all currently filtered candidates from local candidate review dashboard after user click.";
+    case "accept-likely-useful":
+      return "Bulk accepted likely useful candidates from local candidate review dashboard after user click.";
+    case "reject-not-useful":
+      return "Bulk rejected likely-noise candidates from local candidate review dashboard after user click.";
+  }
+}
+
+function localCandidateBulkActionProgressLabel(action: LocalCandidateReviewBulkAction) {
+  switch (action) {
+    case "accept-all":
+      return "Accepting filtered candidates";
+    case "accept-likely-useful":
+      return "Accepting likely useful candidates";
+    case "reject-not-useful":
+      return "Rejecting likely-noise candidates";
+  }
+}
+
+function localCandidateBucketLabel(bucket: LocalCandidateReviewBucket) {
+  return (
+    LOCAL_CANDIDATE_BUCKET_OPTIONS.find((option) => option.value === bucket)?.label ??
+    "current"
+  );
+}
+
+function localCandidateBucketCount(
+  review: LocalCandidateReviewResponse | null,
+  bucket: LocalCandidateReviewBucket
+) {
+  const counts = review?.counts;
+
+  if (!counts) {
+    return 0;
+  }
+
+  switch (bucket) {
+    case "all":
+      return counts.all;
+    case "all-useful":
+      return counts.allUseful;
+    case "likely-useful":
+      return counts.likelyUseful;
+    case "maybe-useful":
+      return counts.maybeUseful;
+    case "likely-noise":
+      return counts.likelyNoise;
+    case "unclassified":
+      return counts.unclassified;
+  }
+}
+
+function localAcceptedProcessorIdleMessage(
+  status: LocalAcceptedCandidateProcessingStatusResponse
+) {
+  if (status.counts.unprocessed > 0) {
+    return `${status.counts.unprocessed.toLocaleString()} accepted candidate(s) still need processing before moving to maybe-useful.`;
+  }
+
+  if (status.counts.acceptedWithReference === 0) {
+    return "No accepted candidates with references are ready to process yet.";
+  }
+
+  return `${status.counts.processed.toLocaleString()} accepted candidate(s) processed. Likely-useful accepted work is caught up.`;
+}
+
+function localBenefitDiscoveryQueueMessage(queue: LocalBenefitDiscoveryQueueResponse) {
+  if (queue.clusters.length === 0) {
+    return queue.counts.parkedClusters > 0
+      ? `No active benefit discovery clusters are ready. ${queue.counts.parkedClusters.toLocaleString()} lead(s) are parked for later review.`
+      : "No active benefit discovery clusters are ready.";
+  }
+
+  return `${queue.counts.activeClusters.toLocaleString()} active cluster(s), ${queue.counts.activeCandidates.toLocaleString()} candidate(s), ${queue.counts.mismatchCandidates.toLocaleString()} candidate(s) flagged for identity checks, ${queue.counts.parkedClusters.toLocaleString()} parked lead(s).`;
+}
+
+function localBenefitDiscoveryConfirmMessage(
+  cluster: LocalBenefitDiscoveryCluster,
+  action: LocalBenefitDiscoveryAction
+) {
+  switch (action) {
+    case "draft-claim":
+      return `Create an unreviewed local draft claim for ${cluster.interventionName} / ${cluster.topicLabel} and link ${cluster.usableCandidateCount.toLocaleString()} usable accepted reference(s)?`;
+    case "link-existing-claim":
+      return `Link ${cluster.usableCandidateCount.toLocaleString()} usable accepted reference(s) to the existing ${cluster.interventionName} / ${cluster.topicLabel} claim?`;
+    case "park-lead":
+      return `Park this ${cluster.interventionName} / ${cluster.topicLabel} discovery lead? It stays available for later source review, but no claim or public evidence score will be created.`;
+    case "reject-cluster":
+      return `Reject this ${cluster.interventionName} / ${cluster.topicLabel} discovery cluster from the local queue?`;
+  }
+}
+
+function localBenefitDiscoveryActionPendingMessage(
+  cluster: LocalBenefitDiscoveryCluster,
+  action: LocalBenefitDiscoveryAction
+) {
+  return `Confirm ${localBenefitDiscoveryActionLabel(action)} for ${cluster.interventionName} / ${cluster.topicLabel} below. Nothing has been written yet.`;
+}
+
+function localBenefitDiscoveryActionLabel(action: LocalBenefitDiscoveryAction) {
+  switch (action) {
+    case "draft-claim":
+      return "draft claim";
+    case "link-existing-claim":
+      return "link existing claim";
+    case "park-lead":
+      return "park lead";
+    case "reject-cluster":
+      return "reject cluster";
+  }
+}
+
+function localBenefitDiscoveryActionProgress(action: LocalBenefitDiscoveryAction) {
+  switch (action) {
+    case "draft-claim":
+      return "Creating local draft claim and linking accepted references.";
+    case "link-existing-claim":
+      return "Linking accepted references to existing claim.";
+    case "park-lead":
+      return "Parking benefit discovery lead.";
+    case "reject-cluster":
+      return "Rejecting benefit discovery cluster.";
+  }
+}
+
+function localIdentityResolutionQueueMessage(queue: LocalIdentityResolutionQueueResponse) {
+  if (queue.counts.blockedCandidates === 0) {
+    return "No blocked identity rows are waiting.";
+  }
+
+  return `${queue.counts.blockedCandidates.toLocaleString()} accepted source(s) need identity resolution.`;
+}
+
+function localIdentityResolutionConfirmMessage(
+  candidate: LocalIdentityResolutionCandidate,
+  action: LocalIdentityResolutionAction
+) {
+  switch (action) {
+    case "confirm-target":
+      return `Confirm this source belongs to ${candidate.interventionName}?`;
+    case "reassign-intervention":
+      return `Reassign this accepted source away from ${candidate.interventionName}?`;
+    case "reject-wrong-supplement":
+      return `Reject this source candidate as the wrong supplement for ${candidate.interventionName}?`;
+    case "add-synonym":
+      return `Add this alias to ${candidate.interventionName} and confirm the source identity?`;
+  }
+}
+
+function localIdentityResolutionProgressMessage(action: LocalIdentityResolutionAction) {
+  switch (action) {
+    case "confirm-target":
+      return "Confirming source identity.";
+    case "reassign-intervention":
+      return "Reassigning source identity.";
+    case "reject-wrong-supplement":
+      return "Rejecting wrong-supplement source.";
+    case "add-synonym":
+      return "Adding alias and confirming source identity.";
+  }
+}
+
+function localIdentityResolutionAutomationConfirmMessage(
+  preview: LocalIdentityResolutionAutomationResponse | null,
+  strategy: LocalIdentityResolutionAutomationStrategy,
+  scope: LocalIdentityResolutionAutomationScope
+) {
+  if (!preview) {
+    return `Run ${localIdentityResolutionAutomationStrategyLabel(strategy)} ${localIdentityResolutionAutomationScopeLabel(scope)} identity auto-resolve? Preview first when possible; ambiguous rows stay held for manual review.`;
+  }
+
+  return `Apply ${localIdentityResolutionAutomationStrategyLabel(preview.strategy)} ${localIdentityResolutionAutomationScopeLabel(preview.scope)} identity auto-resolve? This will confirm ${preview.counts.confirmTarget.toLocaleString()} source(s), reassign ${preview.counts.reassignIntervention.toLocaleString()}, reject ${preview.counts.rejectWrongSupplement.toLocaleString()}, and hold ${preview.counts.hold.toLocaleString()}.`;
+}
+
+function localIdentityResolutionAutomationActionLabel(
+  action: LocalIdentityResolutionAutomationAction
+) {
+  switch (action) {
+    case "confirm-target":
+      return "confirm";
+    case "reassign-intervention":
+      return "reassign";
+    case "reject-wrong-supplement":
+      return "reject";
+    case "hold":
+      return "hold";
+  }
+}
+
+function localIdentityResolutionAutomationTone(
+  action: LocalIdentityResolutionAutomationAction
+) {
+  switch (action) {
+    case "confirm-target":
+      return "border-green-200 bg-green-50 text-green-700";
+    case "reassign-intervention":
+      return "border-signal/20 bg-signal/10 text-signal";
+    case "reject-wrong-supplement":
+      return "border-danger/20 bg-red-50 text-danger";
+    case "hold":
+      return "border-amberline/25 bg-amber-50 text-amberline";
+  }
+}
+
+function localBenefitDiscoveryAutomationPendingMessage(
+  rejectThreshold: number,
+  strategy: LocalBenefitDiscoveryAutomationStrategy,
+  threshold: number
+) {
+  if (strategy === "park-backlog") {
+    return `Confirm below. Park backlog processes only score ${rejectThreshold}-${threshold - 1} leads; score ${threshold}+ clusters stay held for build/link review.`;
+  }
+
+  if (strategy === "link-existing") {
+    return "Confirm below. Link existing mode attaches sources only to claim areas that already exist; novel claim areas stay held.";
+  }
+
+  return "Confirm below. Build leads mode creates unreviewed local draft claims for high-confidence novel areas and links high-confidence existing areas.";
+}
+
+function localBenefitDiscoveryAutomationConfirmMessage(
+  preview: LocalBenefitDiscoveryAutomationResponse | null,
+  rejectThreshold: number,
+  scope: LocalBenefitDiscoveryAutomationScope,
+  strategy: LocalBenefitDiscoveryAutomationStrategy,
+  threshold: number
+) {
+  if (!preview) {
+    return `Run ${localBenefitDiscoveryAutomationStrategyLabel(strategy)} ${localBenefitDiscoveryAutomationScopeLabel(scope)} automation at score ${threshold}? ${localBenefitDiscoveryAutomationStrategyDescription(strategy, rejectThreshold, threshold)}`;
+  }
+
+  return `Apply ${localBenefitDiscoveryAutomationStrategyLabel(preview.strategy)} ${localBenefitDiscoveryAutomationScopeLabel(preview.scope)} automation at score ${preview.threshold}? This will draft ${preview.counts.draftClaims.toLocaleString()} claim(s), link ${preview.counts.linkExistingClaims.toLocaleString()} existing claim cluster(s), park ${preview.counts.parkLeadClusters.toLocaleString()} lead(s), and reject ${preview.counts.rejectClusters.toLocaleString()} low-confidence cluster(s).${preview.strategy === "park-backlog" ? ` Park ${preview.rejectThreshold}-${preview.threshold - 1}; reject below ${preview.rejectThreshold}.` : ""}`;
+}
+
+function localBenefitDiscoveryAutomationPreviewRows(
+  preview: LocalBenefitDiscoveryAutomationResponse
+) {
+  return [...preview.decisions]
+    .sort((left, right) => {
+      const leftPriority = localBenefitDiscoveryAutomationDecisionPriority(left);
+      const rightPriority = localBenefitDiscoveryAutomationDecisionPriority(right);
+
+      return leftPriority - rightPriority || right.leadScore - left.leadScore;
+    })
+    .slice(0, 6);
+}
+
+function localBenefitDiscoveryAutomationDecisionPriority(
+  decision: LocalBenefitDiscoveryAutomationDecision
+) {
+  if (decision.error) {
+    return 0;
+  }
+
+  if (decision.applied) {
+    return 1;
+  }
+
+  if (decision.action !== "hold") {
+    return 2;
+  }
+
+  return 3;
+}
+
+function localBenefitDiscoveryAutomationPreviewRowsMessage(
+  preview: LocalBenefitDiscoveryAutomationResponse
+) {
+  const actionable =
+    preview.counts.draftClaims +
+    preview.counts.linkExistingClaims +
+    preview.counts.parkLeadClusters +
+    preview.counts.rejectClusters;
+
+  if (actionable === 0) {
+    return `Showing held decisions because ${localBenefitDiscoveryAutomationStrategyLabel(preview.strategy)} found no actionable clusters at the current thresholds.`;
+  }
+
+  return `Showing actionable decisions first: ${actionable.toLocaleString()} cluster(s) would be processed and ${preview.counts.holdClusters.toLocaleString()} would stay held.`;
+}
+
+function localBenefitDiscoveryAutomationStrategyButtonLabel(
+  strategy: LocalBenefitDiscoveryAutomationStrategy
+) {
+  switch (strategy) {
+    case "build-leads":
+      return "Build leads";
+    case "link-existing":
+      return "Link existing";
+    case "park-backlog":
+      return "Park backlog";
+  }
+}
+
+function localBenefitDiscoveryAutomationStrategyDescription(
+  strategy: LocalBenefitDiscoveryAutomationStrategy,
+  rejectThreshold: number,
+  threshold: number
+) {
+  if (strategy === "link-existing") {
+    return "This only links sources into existing local claims, rejects very low-confidence clusters, and leaves novel claim areas for manual review.";
+  }
+
+  if (strategy === "park-backlog") {
+    return `This parks leads from ${rejectThreshold} to ${threshold - 1}, rejects leads below ${rejectThreshold}, and holds ${threshold}+ for build/link review without creating weak public evidence claims.`;
+  }
+
+  return "This will create unreviewed local draft claims, link existing local claims, and reject very low-confidence clusters from the local queue.";
+}
+
+function localBenefitDiscoveryAutomationActionLabel(
+  action: LocalBenefitDiscoveryAutomationAction
+) {
+  switch (action) {
+    case "draft-claim":
+      return "draft";
+    case "link-existing-claim":
+      return "link";
+    case "park-lead":
+      return "park";
+    case "reject-cluster":
+      return "reject";
+    case "hold":
+      return "hold";
+  }
+}
+
+function localBenefitDiscoveryAutomationTone(
+  action: LocalBenefitDiscoveryAutomationAction
+) {
+  switch (action) {
+    case "draft-claim":
+      return "border-signal/20 bg-signal/10 text-signal";
+    case "link-existing-claim":
+      return "border-green-200 bg-green-50 text-green-700";
+    case "park-lead":
+      return "border-amberline/25 bg-amber-50 text-amberline";
+    case "reject-cluster":
+      return "border-danger/20 bg-red-50 text-danger";
+    case "hold":
+      return "border-amberline/25 bg-amber-50 text-amberline";
+  }
+}
+
+async function postLocalIngestionStart() {
+  return localIngestionFetch<LocalIngestionStartResponse>("/api/local-ingestion/start", {
+    method: "POST"
+  });
+}
+
+async function postLocalIngestionSynonyms() {
+  return localIngestionFetch<LocalIngestionStartResponse>("/api/local-ingestion/synonyms", {
+    method: "POST"
+  });
+}
+
+async function postLocalIngestionRun(limit: number, minDelayMs: number) {
+  return localIngestionFetch<LocalIngestionRunResponse>("/api/local-ingestion/run", {
+    body: JSON.stringify({ limit, minDelayMs }),
+    headers: {
+      "Content-Type": "application/json"
+    },
+    method: "POST"
+  });
+}
+
+async function localIngestionFetch<T>(url: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  const method = init.method ?? "GET";
+
+  if (isLocalIngestionWriteMethod(method)) {
+    headers.set(LOCAL_INGESTION_WRITE_HEADER, LOCAL_INGESTION_WRITE_HEADER_VALUE);
+  }
+
+  const response = await fetch(url, {
+    ...init,
+    headers,
+    cache: "no-store"
+  });
+  const body = (await response.json().catch(() => ({}))) as T & { error?: string };
+
+  if (!response.ok) {
+    throw new Error(body.error ?? "Local ingestion request failed.");
+  }
+
+  return body;
+}
+
+function isLocalDashboardHost() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+}
+
+function localIngestionIdleMessage(status: LocalIngestionStatusReadout) {
+  const queued = localIngestionQueueCount(status, "QUEUED");
+  const running = localIngestionQueueCount(status, "RUNNING");
+
+  if (queued > 0 || running > 0) {
+    return `${queued.toLocaleString()} queued and ${running.toLocaleString()} running.`;
+  }
+
+  return `Idle. ${status.candidates.total.toLocaleString()} source candidate(s) are in the local database.`;
+}
+
+function localIngestionErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Local ingestion request failed.";
+}
+
+function clampNumberInput(value: string, fallback: number, min: number, max: number) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, Math.floor(parsed)));
+}
+
+function localIngestionStatusTone(status: LocalIngestionJobStatus) {
+  switch (status) {
+    case "FAILED":
+      return "border-danger/30 bg-red-50 text-danger";
+    case "QUEUED":
+      return "border-line bg-mist text-slate-700";
+    case "RUNNING":
+      return "border-signal/30 bg-blue-50 text-signal";
+    case "SKIPPED":
+      return "border-amberline/30 bg-amber-50 text-amberline";
+    case "SUCCEEDED":
+      return "border-green-200 bg-green-50 text-green-700";
+  }
+}
+
+function localIngestionClassificationTone(
+  bucket: LocalIngestionDiscoveryClassificationReadout["bucket"]
+) {
+  switch (bucket) {
+    case "likely-useful":
+      return "border-green-200 bg-green-50 text-green-700";
+    case "likely-noise":
+      return "border-slate-200 bg-slate-50 text-slate-600";
+    case "maybe-useful":
+      return "border-amberline/30 bg-amber-50 text-amberline";
+  }
+}
+
+function localIngestionClassificationSummary(
+  classification: LocalIngestionDiscoveryClassificationReadout
+) {
+  const reasons = classification.reasons.slice(0, 2);
+  const cautions = classification.cautions.slice(0, 2);
+  const parts = [
+    ...reasons,
+    ...cautions.map((caution) => `caution: ${caution}`)
+  ];
+
+  return parts.length > 0 ? parts.join("; ") : "needs manual review";
+}
+
+function formatLocalIngestionTime(value?: string) {
+  if (!value) {
+    return "not started";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "unknown";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit"
+  }).format(date);
+}
+
+type SourcePacketGapPriority = "High" | "Medium" | "Low";
+
+type SourcePacketGapRow = {
+  claim: Claim;
+  intervention?: Intervention;
+  packet: ClaimSourcePacket;
+  priority: number;
+  priorityLabel: SourcePacketGapPriority;
+  readinessRow?: ScoreReadinessRow;
+  reasons: string[];
+};
+
+type SourcePacketGapSummary = {
+  extractionPending: number;
+  highPriority: number;
+  humanReviewedAffected: number;
+  missingSources: number;
+  noCuratedSources: number;
+  pendingReferences: number;
+  totalGaps: number;
+};
+
+export function buildSourcePacketGapRows(data: EvidenceDashboardData): SourcePacketGapRow[] {
+  const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
+  const sourcePacketSnapshotsByClaimId = dashboardSourcePacketSnapshotMap(data);
+  const useSourcePacketSnapshots = shouldUseDashboardSourcePacketSnapshots({
+    references: data.references,
+    sourcePacketSnapshotsByClaimId,
+    studies: data.studies
+  });
+  const interventionsById = new Map(
+    data.interventions.map((intervention) => [intervention.id, intervention])
+  );
+  const readinessByClaimId = new Map(
+    buildScoreReadinessRows(data).map((row) => [row.claim.id, row])
+  );
+  const claimCountByIntervention = new Map<string, number>();
+
+  for (const claim of data.claims) {
+    claimCountByIntervention.set(
+      claim.interventionId,
+      (claimCountByIntervention.get(claim.interventionId) ?? 0) + 1
+    );
+  }
+
+  return data.claims
+    .map((claim) => {
+      const packet = buildDashboardClaimSourcePacket({
+        claim,
+        referencesById,
+        sourcePacketSnapshotsByClaimId,
+        studies: data.studies,
+        useSourcePacketSnapshots
+      });
+
+      return {
+        claim,
+        intervention: interventionsById.get(claim.interventionId),
+        packet
+      };
+    })
+    .filter(({ packet }) => packet.completeness.status !== "complete")
+    .map(({ claim, intervention, packet }) => {
+      const readinessRow = readinessByClaimId.get(claim.id);
+      const priority = sourcePacketGapPriorityScore({
+        claim,
+        interventionClaimCount: claimCountByIntervention.get(claim.interventionId) ?? 0,
+        packet,
+        readinessRow
+      });
+      const priorityLabel = sourcePacketGapPriorityLabel(priority);
+
+      return {
+        claim,
+        intervention,
+        packet,
+        priority,
+        priorityLabel,
+        readinessRow,
+        reasons: sourcePacketGapReasons({
+          claim,
+          interventionClaimCount: claimCountByIntervention.get(claim.interventionId) ?? 0,
+          packet,
+          readinessRow
+        })
+      };
+    })
+    .sort((left, right) => {
+      const priorityDelta = right.priority - left.priority;
+
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+
+      const leftName = left.intervention?.name ?? "";
+      const rightName = right.intervention?.name ?? "";
+      return leftName.localeCompare(rightName) || left.claim.outcome.localeCompare(right.claim.outcome);
+    });
+}
+
+function buildSourcePacketGapSummary(rows: SourcePacketGapRow[]): SourcePacketGapSummary {
+  return {
+    extractionPending: rows.filter((row) => row.packet.completeness.status === "extraction_pending").length,
+    highPriority: rows.filter((row) => row.priorityLabel === "High").length,
+    humanReviewedAffected: rows.filter((row) => isHumanReviewed(row.claim.reviewStatus)).length,
+    missingSources: rows.filter((row) => row.packet.completeness.status === "missing_sources").length,
+    noCuratedSources: rows.filter((row) => row.packet.completeness.status === "not_linked").length,
+    pendingReferences: rows.reduce(
+      (total, row) =>
+        total +
+        row.packet.completeness.pendingReferences +
+        row.packet.completeness.missingReferences,
+      0
+    ),
+    totalGaps: rows.length
+  };
+}
+
+function sourcePacketGapPriorityScore({
+  claim,
+  interventionClaimCount,
+  packet,
+  readinessRow
+}: {
+  claim: Claim;
+  interventionClaimCount: number;
+  packet: ClaimSourcePacket;
+  readinessRow?: ScoreReadinessRow;
+}) {
+  const statusScore: Record<ClaimSourcePacket["completeness"]["status"], number> = {
+    complete: 0,
+    extraction_pending: 70,
+    missing_sources: 90,
+    not_linked: 45
+  };
+  const score = evidenceMapSortableScore(claim, readinessRow);
+  const labelWeight = sourcePacketGapLabelWeight(claim.finalLabel);
+
+  return Math.round(
+    statusScore[packet.completeness.status] +
+      (isHumanReviewed(claim.reviewStatus) ? 30 : 10) +
+      labelWeight +
+      (score === null ? 0 : score * 3) +
+      Math.min(18, packet.completeness.totalReferences * 3) +
+      Math.min(18, packet.completeness.pendingReferences * 4) +
+      Math.min(14, interventionClaimCount)
+  );
+}
+
+function sourcePacketGapLabelWeight(label: EvidenceLabel) {
+  if (label === "Core Evidence-Based") {
+    return 22;
+  }
+
+  if (
+    label === "Conditional / Biomarker-Gated" ||
+    label === "Useful for Specific Use Case" ||
+    label === "Safety Concern" ||
+    label === "Requires Clinician Oversight" ||
+    label === "Regulatory Concern"
+  ) {
+    return 16;
+  }
+
+  if (label === "Reasonable N-of-1 Experiment" || label === "Speculative Watchlist") {
+    return 10;
+  }
+
+  return 4;
+}
+
+function sourcePacketGapPriorityLabel(priority: number): SourcePacketGapPriority {
+  if (priority >= 120) {
+    return "High";
+  }
+
+  if (priority >= 85) {
+    return "Medium";
+  }
+
+  return "Low";
+}
+
+function sourcePacketGapReasons({
+  claim,
+  interventionClaimCount,
+  packet,
+  readinessRow
+}: {
+  claim: Claim;
+  interventionClaimCount: number;
+  packet: ClaimSourcePacket;
+  readinessRow?: ScoreReadinessRow;
+}) {
+  const reasons = [packet.completeness.label];
+
+  if (isHumanReviewed(claim.reviewStatus)) {
+    reasons.push("human-reviewed claim affected");
+  } else {
+    reasons.push("pending human review");
+  }
+
+  if (packet.completeness.pendingReferences > 0) {
+    reasons.push(`${packet.completeness.pendingReferences} linked ref(s) need extraction`);
+  }
+
+  if (packet.completeness.missingReferences > 0) {
+    reasons.push(`${packet.completeness.missingReferences} missing ref record(s)`);
+  }
+
+  if (packet.completeness.totalReferences === 0) {
+    reasons.push("no curated references linked");
+  }
+
+  if (interventionClaimCount >= 6) {
+    reasons.push("high-coverage intervention");
+  }
+
+  if (!isEvidenceMapPlaceholderClaim(claim)) {
+    const displayScore = evidenceMapSortableScore(claim, readinessRow);
+
+    if (displayScore === null && readinessRow && readinessRow.state !== "scored") {
+      reasons.push(
+        `${compositeScore(claim.scores).toFixed(1)} stored composite hidden until ${scoreReadinessStateLabel(
+          readinessRow.state
+        ).toLowerCase()} is resolved`
+      );
+    } else if (displayScore !== null) {
+      reasons.push(`${displayScore.toFixed(1)} displayed composite`);
+    }
+  }
+
+  return reasons;
+}
+
+function ScoreReadinessWorklist({
+  rows,
+  summary
+}: {
+  rows: ScoreReadinessRow[];
+  summary: ScoreReadinessSummary;
+}) {
+  const workRows = rows.filter((row) => row.state !== "scored");
+  const visibleRows = workRows.slice(0, 12);
+  const hiddenCount = Math.max(workRows.length - visibleRows.length, 0);
+
+  return (
+    <section className="rounded-lg border border-line bg-white p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold text-ink">Score readiness inventory</h3>
+            <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+              {summary.workItems.toLocaleString()} scoring work item(s)
+            </span>
+            {summary.defaultLookingPublicScores > 0 ? (
+              <span className="rounded-md border border-danger/25 bg-red-50 px-2 py-1 text-xs font-semibold text-danger">
+                {summary.defaultLookingPublicScores.toLocaleString()} default-looking public score(s)
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
+            Local-only scoring inventory. It separates claims ready for score review from
+            source-blocked claims and flags starter-looking public scores before they read as final
+            evidence.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <MiniStat label="Ready to score" value={summary.readyToScore.toLocaleString()} />
+        <MiniStat
+          label="Default-looking scores"
+          value={summary.defaultLookingPublicScores.toLocaleString()}
+        />
+        <MiniStat label="Source-blocked" value={summary.sourceBlocked.toLocaleString()} />
+        <MiniStat label="Snapshot gaps" value={summary.snapshotGaps.toLocaleString()} />
+        <MiniStat label="Scored public cells" value={summary.scoredPublicClaims.toLocaleString()} />
+      </div>
+
+      {summary.sourceBlocked > 0 ? (
+        <p className="mt-2 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+          <span className="font-semibold text-slate-700">Source blockers:</span>{" "}
+          {formatScoreReadinessSourceBlockers(summary.sourceBlockers)}.
+        </p>
+      ) : null}
+
+      {visibleRows.length > 0 ? (
+        <div className="mt-3 grid gap-2">
+          {visibleRows.map((row) => (
+            <ScoreReadinessCard
+              key={row.claim.id}
+              row={row}
+            />
+          ))}
+          {hiddenCount > 0 ? (
+            <p className="rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+              Showing top {visibleRows.length.toLocaleString()} scoring work item(s);
+              {" "}
+              {hiddenCount.toLocaleString()} lower-priority item(s) remain below this cutoff.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-spruce/30 bg-teal-50 px-3 py-2 text-sm leading-6 text-spruce">
+          No immediate scoring work is visible in the current local catalog.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ScoreReadinessCard({ row }: { row: ScoreReadinessRow }) {
+  const claimUrl = row.intervention
+    ? `/interventions/${row.intervention.slug}#claim-${row.claim.id}`
+    : undefined;
+  const scoreLabel =
+    row.currentScore === null
+      ? "No final score"
+      : `${row.currentScore.toFixed(1)} ${scoreBand(row.currentScore)}`;
+
+  return (
+    <article className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-semibold",
+                scoreReadinessStateTone(row.state)
+              )}
+            >
+              {scoreReadinessStateLabel(row.state)}
+            </span>
+            <span
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-semibold",
+                scoreReadinessPriorityTone(row.priorityLabel)
+              )}
+              title={`Priority ${row.priority}`}
+            >
+              {row.priorityLabel} priority
+            </span>
+            <span
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-semibold",
+                sourcePacketCompletenessTone(row.packet.completeness.status)
+              )}
+            >
+              {row.packet.completeness.label}
+            </span>
+          </div>
+          <h4 className="mt-3 text-sm font-semibold text-ink">
+            {row.intervention?.name ?? "Unknown intervention"} - {shortOutcome(row.claim.outcome)}
+          </h4>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {scoreReadinessNextAction(row)}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {row.reasons.map((reason) => (
+              <span
+                className="rounded-md border border-line bg-white px-2 py-1 text-xs text-slate-600"
+                key={reason}
+              >
+                {reason}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col gap-2 text-xs lg:items-end">
+          <span className="rounded-md border border-line bg-white px-2 py-1 font-semibold text-slate-700">
+            {scoreLabel}
+          </span>
+          <span className={cn("rounded-md border px-2 py-1 font-semibold", labelTone(row.claim.finalLabel))}>
+            {row.claim.finalLabel}
+          </span>
+          <span className="rounded-md border border-line bg-white px-2 py-1 font-semibold text-slate-700">
+            {row.packet.completeness.extractedReferences}/
+            {row.packet.completeness.totalReferences} refs extracted
+          </span>
+          {claimUrl ? (
+            <a
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 font-semibold text-signal hover:border-signal"
+              href={claimUrl}
+            >
+              Open claim
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function scoreReadinessStateTone(state: ScoreReadinessState) {
+  switch (state) {
+    case "default_score_review":
+      return "border-danger/30 bg-red-50 text-danger";
+    case "ready_to_score":
+      return "border-signal/30 bg-blue-50 text-signal";
+    case "scored":
+      return "border-spruce/30 bg-teal-50 text-spruce";
+    case "snapshot_gap":
+      return "border-amberline/30 bg-amber-50 text-amberline";
+    case "source_blocked":
+      return "border-slate-300 bg-slate-50 text-slate-700";
+  }
+}
+
+function scoreReadinessPriorityTone(priority: ScoreReadinessPriority) {
+  if (priority === "High") {
+    return "border-danger/30 bg-red-50 text-danger";
+  }
+
+  if (priority === "Medium") {
+    return "border-amberline/30 bg-amber-50 text-amberline";
+  }
+
+  return "border-slate-300 bg-slate-50 text-slate-700";
+}
+
+function CatalogTrustPanel({
+  data,
+  summary
+}: {
+  data: EvidenceDashboardData;
+  summary: CatalogTrustSummary;
+}) {
+  const hasAttentionItems = summary.previewAttentionItems.length > 0;
+  const scoreReadinessRows = buildScoreReadinessRows(data);
+  const scoreReadinessSummary = buildScoreReadinessSummary(scoreReadinessRows);
+  const sourcePacketGapRows = buildSourcePacketGapRows(data);
+  const sourcePacketGapSummary = buildSourcePacketGapSummary(sourcePacketGapRows);
+
+  return (
+    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+      <div className="grid gap-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Local catalog trust
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-ink">
+              {summary.interventions.total} interventions, {summary.claims.total} scoped claims
+            </h2>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
+              This readout checks the local database catalog only. It separates source-packet
+              completeness, trial registry leads, and product-level AU/TGA evidence so generic
+              intervention evidence does not become product authorization.
+            </p>
+          </div>
+          <span
+            className={cn(
+              "w-fit rounded-md border px-2 py-1 text-xs font-semibold",
+              hasAttentionItems
+                ? "border-amberline/30 bg-amber-50 text-amberline"
+                : "border-spruce/30 bg-teal-50 text-spruce"
+            )}
+          >
+            {hasAttentionItems ? "Needs local attention" : "No automated local blockers"}
+          </span>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <MiniStat
+            label="Source packets"
+            value={`${summary.claims.sourcePacketsComplete}/${summary.claims.sourcePacketsTotal} complete`}
+          />
+          <MiniStat
+            label="Trial leads"
+            value={`${summary.trials.nctIdFormat} NCT IDs, ${summary.trials.searchOnly} search-only`}
+          />
+          <MiniStat
+            label="AU/TGA intervention rows"
+            value={summary.australia.interventionCoverage}
+          />
+          <MiniStat
+            label="Product AU/TGA"
+            value={`${summary.australia.productExactStatusCount}/${summary.products.total} exact product statuses`}
+          />
+        </div>
+
+        <ScoreReadinessWorklist
+          rows={scoreReadinessRows}
+          summary={scoreReadinessSummary}
+        />
+
+        <SourcePacketGapWorklist
+          rows={sourcePacketGapRows}
+          summary={sourcePacketGapSummary}
+        />
+
+        {hasAttentionItems ? (
+          <div className="rounded-md border border-amberline/30 bg-amber-50 px-3 py-2">
+            <p className="text-sm font-semibold text-amber-950">Before preview promotion</p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm leading-6 text-amber-950">
+              {summary.previewAttentionItems.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <p className="rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+          Next useful local work: {summary.nextActions[0]}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function SourcePacketGapWorklist({
+  rows,
+  summary
+}: {
+  rows: SourcePacketGapRow[];
+  summary: SourcePacketGapSummary;
+}) {
+  const visibleRows = rows.slice(0, 12);
+  const hiddenCount = Math.max(rows.length - visibleRows.length, 0);
+
+  return (
+    <section className="rounded-lg border border-line bg-white p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-base font-semibold text-ink">Source packet gap worklist</h3>
+            <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+              {summary.totalGaps.toLocaleString()} incomplete
+            </span>
+            {summary.highPriority > 0 ? (
+              <span className="rounded-md border border-danger/25 bg-red-50 px-2 py-1 text-xs font-semibold text-danger">
+                {summary.highPriority.toLocaleString()} high priority
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-700">
+            Ranked by source-packet severity, human-review status, linked-reference work, claim
+            score, and intervention visibility. Fix these first to make public evidence cards more
+            traceable.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <MiniStat label="No curated sources" value={summary.noCuratedSources.toLocaleString()} />
+        <MiniStat label="Extraction pending" value={summary.extractionPending.toLocaleString()} />
+        <MiniStat label="Missing source records" value={summary.missingSources.toLocaleString()} />
+        <MiniStat
+          label="Human-reviewed affected"
+          value={summary.humanReviewedAffected.toLocaleString()}
+        />
+        <MiniStat label="Pending references" value={summary.pendingReferences.toLocaleString()} />
+      </div>
+
+      {visibleRows.length > 0 ? (
+        <div className="mt-3 grid gap-2">
+          {visibleRows.map((row) => (
+            <SourcePacketGapCard
+              key={row.claim.id}
+              row={row}
+            />
+          ))}
+          {hiddenCount > 0 ? (
+            <p className="rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+              Showing top {visibleRows.length.toLocaleString()} source-packet gap(s);
+              {" "}
+              {hiddenCount.toLocaleString()} lower-priority gap(s) remain below this cutoff.
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-md border border-spruce/30 bg-teal-50 px-3 py-2 text-sm leading-6 text-spruce">
+          No incomplete source packets are visible in the current local catalog.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function SourcePacketGapCard({ row }: { row: SourcePacketGapRow }) {
+  const claimUrl = row.intervention
+    ? `/interventions/${row.intervention.slug}#claim-${row.claim.id}`
+    : undefined;
+
+  return (
+    <article className="rounded-md border border-line bg-mist p-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-semibold",
+                sourcePacketGapPriorityTone(row.priorityLabel)
+              )}
+              title={`Priority ${row.priority}`}
+            >
+              {row.priorityLabel} priority
+            </span>
+            <span
+              className={cn(
+                "rounded-md border px-2 py-1 text-xs font-semibold",
+                sourcePacketCompletenessTone(row.packet.completeness.status)
+              )}
+            >
+              {row.packet.completeness.label}
+            </span>
+            <ReviewStatusBadge status={row.claim.reviewStatus} />
+          </div>
+          <h4 className="mt-3 text-sm font-semibold text-ink">
+            {row.intervention?.name ?? "Unknown intervention"} - {shortOutcome(row.claim.outcome)}
+          </h4>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {row.packet.completeness.nextStep}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {row.reasons.map((reason) => (
+              <span
+                className="rounded-md border border-line bg-white px-2 py-1 text-xs text-slate-600"
+                key={reason}
+              >
+                {reason}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col gap-2 text-xs lg:items-end">
+          <span className="rounded-md border border-line bg-white px-2 py-1 font-semibold text-slate-700">
+            {row.packet.completeness.extractedReferences}/
+            {row.packet.completeness.totalReferences} refs extracted
+          </span>
+          <span className={cn("rounded-md border px-2 py-1 font-semibold", labelTone(row.claim.finalLabel))}>
+            {row.claim.finalLabel}
+          </span>
+          {claimUrl ? (
+            <a
+              className="rounded-md border border-slate-300 bg-white px-2 py-1 font-semibold text-signal hover:border-signal"
+              href={claimUrl}
+            >
+              Open claim
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function sourcePacketGapPriorityTone(priority: SourcePacketGapPriority) {
+  if (priority === "High") {
+    return "border-danger/30 bg-red-50 text-danger";
+  }
+
+  if (priority === "Medium") {
+    return "border-amberline/30 bg-amber-50 text-amberline";
+  }
+
+  return "border-slate-300 bg-slate-50 text-slate-700";
+}
+
+function FilteredClaimDetailEmptyState({
+  detail,
+  embedded,
+  title
+}: {
+  detail: string;
+  embedded?: boolean;
+  title: string;
+}) {
+  return (
+    <section className={dashboardPanelShellClassName(embedded)}>
       <h2 className="text-base font-semibold text-ink">{title}</h2>
       <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-        {detail} Clear the search or category filter to return to the full local evidence set.
+        {detail} Clear the search, category, label, or outcome filter to return to the full local evidence set.
       </p>
     </section>
   );
+}
+
+function ScoreWithExplainer({
+  children,
+  explanationKind,
+  value
+}: {
+  children: ReactNode;
+  explanationKind: ScoreExplanationKind;
+  value?: string;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1"
+      title={scoreExplanationTitle(explanationKind, value)}
+    >
+      <span>{children}</span>
+      <ScoreExplainer explanationKind={explanationKind} value={value} />
+    </span>
+  );
+}
+
+function ScoreExplainer({
+  explanationKind,
+  value
+}: {
+  explanationKind: ScoreExplanationKind;
+  value?: string;
+}) {
+  const explanation = scoreExplanations[explanationKind];
+  const label = scoreExplanationTitle(explanationKind, value);
+
+  return (
+    <span
+      className="group relative inline-flex"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        aria-label={label}
+        className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-signal/25 bg-white text-signal outline-none transition hover:border-signal hover:bg-blue-50 focus:border-signal focus:ring-4 focus:ring-signal/20"
+        title={label}
+      >
+        <CircleHelp aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute right-0 top-full z-30 mt-2 hidden w-72 rounded-md border border-line bg-white p-3 text-left text-xs leading-5 text-slate-700 shadow-panel group-focus-within:block group-hover:block"
+      >
+        <span className="block font-semibold text-ink">{explanation.title}</span>
+        {value ? <span className="mt-1 block font-semibold text-signal">{value}</span> : null}
+        {explanation.formula ? (
+          <span className="mt-1 block font-semibold text-slate-700">
+            {explanation.formula}
+          </span>
+        ) : null}
+        <span className="mt-1 block">{explanation.detail}</span>
+      </span>
+    </span>
+  );
+}
+
+function ReviewStatusBadge({
+  className,
+  status
+}: {
+  className?: string;
+  status: Claim["reviewStatus"];
+}) {
+  const tooltip = isHumanReviewed(status)
+    ? HUMAN_REVIEWED_TOOLTIP
+    : "Pending human review means this remains an unreviewed AI draft. A human reviewer has not yet checked the source packet against the scoped claim.";
+
+  return (
+    <span
+      aria-label={`${reviewStatusLabel(status)}: ${tooltip}`}
+      className={cn(
+        "rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700",
+        className
+      )}
+      title={tooltip}
+    >
+      {reviewStatusLabel(status)}
+    </span>
+  );
+}
+
+function isHumanReviewed(status: Claim["reviewStatus"]) {
+  return status === "Human reviewed";
+}
+
+function reviewStatusLabel(status: Claim["reviewStatus"]) {
+  return isHumanReviewed(status) ? "Human reviewed" : "Pending human review";
+}
+
+function classificationLabel(claim: Claim, readinessRow?: ScoreReadinessRow) {
+  if (readinessRow?.state === "ready_to_score") {
+    return "Ready-to-score classification";
+  }
+
+  if (readinessRow?.state === "snapshot_gap") {
+    return "Score-audit classification";
+  }
+
+  if (readinessRow?.state === "source_blocked") {
+    return "Source-work classification";
+  }
+
+  if (readinessRow?.state === "default_score_review") {
+    return "Scoring-review classification";
+  }
+
+  if (isDraftLeadClaim(claim) || isEvidenceMapPlaceholderClaim(claim)) {
+    return "Review-needed classification";
+  }
+
+  return isHumanReviewed(claim.reviewStatus)
+    ? "Human-reviewed classification"
+    : "AI Draft Classification";
+}
+
+function compositeLabel(claim: Claim) {
+  if (isEvidenceMapPlaceholderClaim(claim)) {
+    return "Composite pending";
+  }
+
+  return isHumanReviewed(claim.reviewStatus) ? "Reviewed composite" : "Draft composite";
+}
+
+function scoreExplanationTitle(explanationKind: ScoreExplanationKind, value?: string) {
+  const explanation = scoreExplanations[explanationKind];
+  return [explanation.title, value, explanation.formula, explanation.detail]
+    .filter(Boolean)
+    .join(": ");
+}
+
+function NonProofBox({
+  claim,
+  compact = false,
+  intervention
+}: {
+  claim: Claim;
+  compact?: boolean;
+  intervention?: Intervention;
+}) {
+  const statements = claimNonProofStatements(claim);
+  const cardLabel = [
+    intervention?.name ?? "Selected intervention",
+    shortOutcome(claim.outcome)
+  ].join(" - ");
+
+  return (
+    <section
+      aria-label={`What this evidence card does not prove for ${cardLabel}`}
+      className={cn(
+        "mt-3 rounded-md border border-amberline/30 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950",
+        compact ? "max-w-3xl" : "w-full"
+      )}
+      role="note"
+    >
+      <div className="flex items-start gap-2">
+        <AlertTriangle aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-amberline" />
+        <div className="min-w-0">
+          <p className="font-semibold text-ink">What this does not prove</p>
+          <ul className="mt-1 list-disc space-y-1 pl-4">
+            {statements.map((statement) => (
+              <li key={statement}>{statement}</li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function claimNonProofStatements(claim: Claim) {
+  const curatedStatements = claim.doesNotProve
+    ?.map((statement) => normaliseSentence(statement))
+    .filter((statement) => statement.length > 0);
+
+  if (curatedStatements && curatedStatements.length > 0) {
+    return curatedStatements;
+  }
+
+  const statements: string[] = [];
+
+  if (claim.outcome !== "Mortality/lifespan") {
+    statements.push("Does not prove direct lifespan extension.");
+  } else {
+    statements.push("Does not prove a direct lifespan benefit outside the scoped evidence.");
+  }
+
+  if (claim.applicabilityNotes.trim().length > 0) {
+    statements.push(
+      `Does not override applicability limits: ${normaliseSentence(claim.applicabilityNotes)}`
+    );
+  }
+
+  if (claim.safetyNotes.trim().length > 0) {
+    statements.push(`Does not override safety caveats: ${normaliseSentence(claim.safetyNotes)}`);
+  }
+
+  if (statements.length < 3) {
+    statements.push("Does not provide individualized medical advice.");
+  }
+
+  return statements.slice(0, 3);
+}
+
+function normaliseSentence(value: string) {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
 function Header({ data }: { data: EvidenceDashboardData }) {
@@ -418,31 +7984,36 @@ function Header({ data }: { data: EvidenceDashboardData }) {
               Apex Lifespan
             </h1>
             <span className="rounded-md border border-signal/25 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
-              Evidence Intelligence
+              Evidence Translator
             </span>
           </div>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            General public evidence dashboard. Draft evidence must stay citation-linked, uncertainty-aware,
-            and separate from individualized medical advice.
+            Plain-language supplement evidence briefs for normal readers. Apex keeps dense study
+            findings citation-linked, uncertainty-aware, and separate from individualized medical
+            advice.
           </p>
           <div
-            aria-label="Prototype and seed dataset status"
+            aria-label={
+              data.dataSource === "database"
+                ? "Local database catalog status"
+                : "Prototype and seed dataset status"
+            }
             className="mt-3 max-w-4xl border-l-4 border-signal bg-mist px-3 py-2"
             role="note"
           >
             <p className="text-xs font-semibold uppercase tracking-wide text-signal">
-              Prototype / seed dataset
+              {data.dataSource === "database" ? "Local database catalog" : "Prototype / seed dataset"}
             </p>
             <p className="mt-1 text-sm leading-6 text-slate-700">
-              Apex Lifespan is in early public prototype. Current scores are based on a small
-              curated seed dataset and live source-search previews. Scores are review aids, not
-              medical advice.
+              {data.dataSource === "database"
+                ? `Apex Lifespan is running against your local catalog (${data.interventions.length} interventions, ${data.claims.length} scoped claims). Evidence briefs are the main product; scores and packets are supporting audit aids, not medical advice.`
+                : "Apex Lifespan is in early public prototype. The seed dataset and live source-search previews support plain-language evidence briefs; scores are audit aids, not medical advice."}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-medium">
           <span className="rounded-md border border-spruce/25 bg-teal-50 px-2 py-1 text-spruce">
-            Score claims
+            Translate evidence
           </span>
           <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-amberline">
             {projectConfig.defaultRegion} / {projectConfig.defaultRegulatoryAgency}
@@ -455,6 +8026,24 @@ function Header({ data }: { data: EvidenceDashboardData }) {
             className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:border-signal hover:text-signal"
           >
             Privacy
+          </a>
+          <a
+            href="/methodology"
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:border-signal hover:text-signal"
+          >
+            Methodology
+          </a>
+          <a
+            href="/changelog"
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:border-signal hover:text-signal"
+          >
+            Changelog
+          </a>
+          <a
+            href="/feedback"
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-700 hover:border-signal hover:text-signal"
+          >
+            Feedback
           </a>
           <a
             href="/terms"
@@ -483,11 +8072,23 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
     CODEX_REVIEW_SIDECAR_URL_KEY,
     DEFAULT_CODEX_REVIEW_SIDECAR_URL
   ));
-  const [operatorToken, setOperatorToken] = useState(() => readBrowserStorage(
-    CODEX_REVIEW_TOKEN_KEY,
-    ""
-  ));
+  const [operatorToken, setOperatorToken] = useState("");
+  const [isPublicBrowser, setIsPublicBrowser] = useState(false);
   const packet = useMemo(() => buildCodexReviewPacket(data), [data]);
+  const hasLocalOperatorConfig =
+    isLocalOperatorSidecarUrl(sidecarUrl) && operatorToken.trim().length > 0;
+  const publicOperatorDisabled = isPublicBrowser && !hasLocalOperatorConfig;
+  const operatorButtonTitle = publicOperatorDisabled
+    ? "Operator mode is disabled on public deployments unless this browser has local sidecar configuration."
+    : "Open local operator mode.";
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    setIsPublicBrowser(isPublicHost(window.location.hostname));
+  }, []);
 
   const resetStatus = () => {
     setCopyStatus("idle");
@@ -518,8 +8119,19 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
       return;
     }
 
+    if (!isLocalOperatorSidecarUrl(nextSidecarUrl)) {
+      setSendStatus("error");
+      setSendError("Operator mode requires a local localhost or 127.0.0.1 sidecar URL.");
+      return;
+    }
+
+    if (isPublicBrowser && !hasLocalOperatorConfig) {
+      setSendStatus("error");
+      setSendError("Operator mode is disabled on public deployments unless local operator configuration exists in this browser.");
+      return;
+    }
+
     writeBrowserStorage(CODEX_REVIEW_SIDECAR_URL_KEY, nextSidecarUrl);
-    writeBrowserStorage(CODEX_REVIEW_TOKEN_KEY, nextToken);
     setSendStatus("sending");
     setSendError(null);
 
@@ -547,24 +8159,43 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
   };
 
   return (
-    <div className="relative">
+    <div className="relative flex flex-wrap items-center gap-1">
       <button
         type="button"
         onClick={() => {
           setIsApproving((current) => !current);
           resetStatus();
         }}
-        className="inline-flex h-7 items-center gap-1 rounded-md border border-signal/25 bg-blue-50 px-2 text-xs font-semibold text-signal hover:border-signal"
+        className={cn(
+          "inline-flex h-7 items-center gap-1 rounded-md border border-signal/25 bg-blue-50 px-2 text-xs font-semibold text-signal hover:border-signal disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-50 disabled:text-slate-500",
+          publicOperatorDisabled && "opacity-80"
+        )}
+        disabled={publicOperatorDisabled}
+        title={operatorButtonTitle}
       >
         <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
-        Ask Codex
+        Operator mode
       </button>
+      <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+        local only
+      </span>
+      <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+        token stays in tab
+      </span>
       {isApproving ? (
         <div className="absolute right-0 z-20 mt-2 w-[min(88vw,440px)] rounded-lg border border-line bg-white p-3 text-left shadow-panel">
-          <p className="text-xs font-semibold text-ink">Approve Codex review packet</p>
+          <p className="text-xs font-semibold text-ink">Operator mode review packet</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+              local only
+            </span>
+            <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+              token stays in tab
+            </span>
+          </div>
           <p className="mt-1 text-xs leading-5 text-slate-600">
-            Sends a read-only packet through the local operator sidecar. Source-candidate decisions
-            and public evidence promotion stay human-owned.
+            Sends a read-only packet through the local operator sidecar. Paste the token for this
+            tab only; source-candidate decisions and public evidence promotion stay human-owned.
           </p>
           <div className="mt-3 grid gap-2">
             <label className="grid gap-1 text-xs font-semibold text-slate-600">
@@ -589,11 +8220,11 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
             <button
               type="button"
               onClick={sendPacket}
-              disabled={sendStatus === "sending"}
+              disabled={sendStatus === "sending" || publicOperatorDisabled}
               className="inline-flex h-8 items-center gap-2 rounded-md border border-signal/30 bg-blue-50 px-2 text-xs font-semibold text-signal hover:border-signal disabled:cursor-wait disabled:opacity-60"
             >
               <ClipboardCheck aria-hidden="true" className="h-3.5 w-3.5" />
-              {sendStatus === "sending" ? "Sending" : "Approve and send"}
+              {sendStatus === "sending" ? "Sending" : "Send packet"}
             </button>
             <button
               type="button"
@@ -645,48 +8276,6 @@ function CodexReviewPacketButton({ data }: { data: EvidenceDashboardData }) {
   );
 }
 
-function MetricPanel({
-  icon,
-  label,
-  value,
-  detail
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: React.ReactNode;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-lg border border-line bg-white p-4 shadow-panel">
-      <div className="flex items-center justify-between gap-3">
-        <div className="rounded-md border border-line bg-mist p-2 text-signal">{icon}</div>
-        <span className="text-2xl font-semibold text-ink">{value}</span>
-      </div>
-      <div className="mt-3">
-        <p className="text-sm font-semibold text-ink">{label}</p>
-        <p className="mt-1 text-xs text-slate-600">{detail}</p>
-      </div>
-    </div>
-  );
-}
-
-function sourcePacketSummaryDetail(summary: ClaimSourcePacketSummary) {
-  if (summary.totalClaims === 0) {
-    return "No scored claims yet";
-  }
-
-  const needsWork =
-    summary.extractionPendingClaims +
-    summary.missingSourceClaims +
-    summary.unlinkedClaims;
-
-  if (needsWork === 0) {
-    return `${summary.extractedReferences}/${summary.totalReferences} linked refs extracted`;
-  }
-
-  return `${needsWork} need source work: ${summary.extractionPendingClaims} pending, ${summary.missingSourceClaims} missing, ${summary.unlinkedClaims} unlinked`;
-}
-
 function readBrowserStorage(key: string, fallback: string) {
   if (typeof window === "undefined") {
     return fallback;
@@ -696,6 +8285,19 @@ function readBrowserStorage(key: string, fallback: string) {
     return window.localStorage.getItem(key) ?? fallback;
   } catch {
     return fallback;
+  }
+}
+
+function isPublicHost(hostname: string) {
+  return hostname !== "localhost" && hostname !== "127.0.0.1";
+}
+
+function isLocalOperatorSidecarUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  } catch {
+    return false;
   }
 }
 
@@ -713,30 +8315,48 @@ function writeBrowserStorage(key: string, value: string) {
 
 export function buildCodexReviewPacket(data: EvidenceDashboardData) {
   const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
+  const sourcePacketSnapshotsByClaimId = dashboardSourcePacketSnapshotMap(data);
+  const useSourcePacketSnapshots = shouldUseDashboardSourcePacketSnapshots({
+    references: data.references,
+    sourcePacketSnapshotsByClaimId,
+    studies: data.studies
+  });
   const interventionsById = new Map(
     data.interventions.map((intervention) => [intervention.id, intervention])
   );
   const reviewSummary = summarizeReviewStatus(data.claims);
-  const sourcePacketSummary = summarizeClaimSourcePackets({
+  const sourcePacketSummary = summarizeDashboardClaimSourcePackets({
     claims: data.claims,
     referencesById,
-    studies: data.studies
+    sourcePacketSnapshotsByClaimId,
+    studies: data.studies,
+    useSourcePacketSnapshots
   });
-  const sourceWorkClaims = data.claims
-    .map((claim) => ({
-      claim,
-      intervention: interventionsById.get(claim.interventionId),
-      packet: buildClaimSourcePacket({ claim, referencesById, studies: data.studies })
-    }))
-    .filter(({ packet }) => packet.completeness.status !== "complete")
+  const scoreWorkClaims = buildScoreReadinessRows(data)
+    .filter((row) => row.state !== "scored")
     .slice(0, 5);
+  const sourceWorkClaims = buildSourcePacketGapRows(data).slice(0, 5);
 
+  const scoreWorkLines =
+    scoreWorkClaims.length > 0
+      ? scoreWorkClaims.map(({ claim, currentScore, intervention, packet, state }) => {
+          const scoreLabel =
+            currentScore === null ? "no final score" : `${currentScore.toFixed(1)}/10`;
+          return `- ${claim.id} (${intervention?.name ?? "Unknown intervention"} / ${claim.outcome}): ${scoreReadinessStateLabel(state)}; ${scoreLabel}; ${packet.completeness.label}; ${scoreReadinessNextAction({ claim, currentScore, intervention, packet, priority: 0, priorityLabel: "Low", reasons: [], state })}`;
+        })
+      : ["- No immediate local scoring work items in the current dashboard data."];
   const sourceWorkLines =
     sourceWorkClaims.length > 0
-      ? sourceWorkClaims.map(({ claim, intervention, packet }) => {
-          return `- ${claim.id} (${intervention?.name ?? "Unknown intervention"} / ${claim.outcome}): ${packet.completeness.label}; ${packet.completeness.nextStep}`;
+      ? sourceWorkClaims.map(({ claim, intervention, packet, priorityLabel }) => {
+          return `- ${claim.id} (${intervention?.name ?? "Unknown intervention"} / ${claim.outcome}): ${priorityLabel} priority; ${packet.completeness.label}; ${packet.completeness.nextStep}`;
         })
       : ["- No incomplete local source packets in the current dashboard data."];
+  const claimBoundaryLines = data.claims.map((claim) => {
+    const intervention = interventionsById.get(claim.interventionId);
+    const statements = claimNonProofStatements(claim).join(" ");
+
+    return `- ${claim.id} (${intervention?.name ?? "Unknown intervention"} / ${claim.outcome}): ${statements}`;
+  });
 
   return [
     "Analyze this Apex Lifespan dashboard state.",
@@ -759,7 +8379,13 @@ export function buildCodexReviewPacket(data: EvidenceDashboardData) {
     `- Safety alerts: ${data.safetyAlerts.length}`,
     `- Source packets: ${sourcePacketSummary.completeClaims}/${sourcePacketSummary.totalClaims} complete; ${sourcePacketSummary.extractedReferences}/${sourcePacketSummary.totalReferences} linked refs extracted`,
     "",
-    "Top local source-packet gaps:",
+    "Claim boundaries (what this does not prove):",
+    ...claimBoundaryLines,
+    "",
+    "Priority scoring work:",
+    ...scoreWorkLines,
+    "",
+    "Priority source-packet work:",
     ...sourceWorkLines,
     "",
     "Requested Codex output:",
@@ -770,63 +8396,1310 @@ export function buildCodexReviewPacket(data: EvidenceDashboardData) {
   ].join("\n");
 }
 
-function EvidenceMap({
-  claims: visibleClaims,
-  interventions: visibleInterventions,
-  activeClaimId,
-  onSelectClaim
+type EvidenceMapStatusFilter = "all" | "scored" | "review-work" | "source-work";
+
+type EvidenceMapReadinessSummary = {
+  completeSourcePackets: number;
+  draftClaims: number;
+  draftLeadClaims: number;
+  extractedReferences: number;
+  humanReviewedClaims: number;
+  incompleteSourcePackets: number;
+  pendingReferences: number;
+  readyToScoreClaims: number;
+  scoreWorkClaims: number;
+  sourceBlockedClaims: number;
+  scoreReviewClaims: number;
+  sourceBlockedScoredClaims: number;
+  sourceBlockers: ScoreReadinessSummary["sourceBlockers"];
+  scoredClaims: number;
+  sourcePacketScaffoldClaims: number;
+  snapshotGapClaims: number;
+  totalClaims: number;
+  totalReferences: number;
+};
+
+const EVIDENCE_MAP_STATUS_FILTERS: Array<{
+  id: EvidenceMapStatusFilter;
+  label: string;
+  title: string;
+}> = [
+  {
+    id: "all",
+    label: "All",
+    title: "Show every scoped evidence-map cell matching the current filters."
+  },
+  {
+    id: "scored",
+    label: "Scored",
+    title: "Show cells with composite scores assigned from the evidence."
+  },
+  {
+    id: "review-work",
+    label: "Score work",
+    title: "Show complete source packets that still need scoring, score review, or score-audit cleanup."
+  },
+  {
+    id: "source-work",
+    label: "Source work",
+    title: "Show cells blocked by missing source links, missing source records, or extraction gaps."
+  }
+];
+
+type EvidenceMapSort =
+  | {
+      direction: "asc" | "desc";
+      outcome: OutcomeArea;
+    }
+  | null;
+
+type RankedEvidenceMapTileModel = {
+  claim: Claim;
+  claimCount: number;
+  confidenceRank: number;
+  intervention: Intervention;
+  rankGroup: number;
+  score: number | null;
+  sourceLabel: string;
+  statusLabel: string;
+  statusTone: string;
+};
+
+type RankedEvidenceMapLimit = 3 | 5 | 10 | "all";
+
+function isDraftLeadClaim(claim: Claim) {
+  return claim.evidenceGrade === DRAFT_LEAD_EVIDENCE_GRADE;
+}
+
+function isSourcePacketScaffoldClaim(claim: Claim) {
+  return claim.evidenceGrade === SOURCE_PACKET_REVIEW_EVIDENCE_GRADE;
+}
+
+function isEvidenceMapPlaceholderClaim(claim: Claim) {
+  return isScorePlaceholderClaim(claim);
+}
+
+function claimMatchesEvidenceMapStatusFilter(
+  claim: Claim,
+  statusFilter: EvidenceMapStatusFilter,
+  readinessRow?: ScoreReadinessRow
+) {
+  if (statusFilter === "scored") {
+    return !isEvidenceMapPlaceholderClaim(claim) && readinessRow?.state === "scored";
+  }
+
+  if (statusFilter === "review-work") {
+    return isEvidenceMapReviewWorkRow(readinessRow);
+  }
+
+  if (statusFilter === "source-work") {
+    return isEvidenceMapSourceWorkRow(readinessRow);
+  }
+
+  return true;
+}
+
+function isEvidenceMapReviewWorkRow(row: ScoreReadinessRow | undefined) {
+  return (
+    row?.state === "default_score_review" ||
+    row?.state === "ready_to_score" ||
+    row?.state === "snapshot_gap"
+  );
+}
+
+function isEvidenceMapSourceWorkRow(row: ScoreReadinessRow | undefined) {
+  return row?.state === "source_blocked";
+}
+
+function buildEvidenceMapReadinessSummary({
+  claims,
+  readinessRows,
+  referencesById,
+  sourcePacketSnapshotsByClaimId,
+  studies,
+  useSourcePacketSnapshots
+}: {
+  claims: Claim[];
+  readinessRows: ScoreReadinessRow[];
+  referencesById: Map<string, Reference>;
+  sourcePacketSnapshotsByClaimId: Map<string, NormalizedSourcePacketRow>;
+  studies: Study[];
+  useSourcePacketSnapshots: boolean;
+}): EvidenceMapReadinessSummary {
+  const packetSummary = summarizeDashboardClaimSourcePackets({
+    claims,
+    referencesById,
+    sourcePacketSnapshotsByClaimId,
+    studies,
+    useSourcePacketSnapshots
+  });
+  const scoreSummary = buildScoreReadinessSummary(readinessRows);
+  const draftLeadClaims = claims.filter(isDraftLeadClaim).length;
+  const sourcePacketScaffoldClaims = claims.filter(isSourcePacketScaffoldClaim).length;
+  const sourceBlockedScoredClaims = readinessRows.filter(
+    (row) => row.state === "source_blocked" && !isEvidenceMapPlaceholderClaim(row.claim)
+  ).length;
+  const readyToScoreClaims = readinessRows.filter((row) => row.state === "ready_to_score").length;
+  const scoreReviewClaims = readinessRows.filter(
+    (row) => row.state === "default_score_review"
+  ).length;
+  const snapshotGapClaims = readinessRows.filter((row) => row.state === "snapshot_gap").length;
+  const sourceBlockedClaims = readinessRows.filter((row) => row.state === "source_blocked").length;
+  const scoreWorkClaims = readyToScoreClaims + scoreReviewClaims + snapshotGapClaims;
+
+  return {
+    completeSourcePackets: packetSummary.completeClaims,
+    draftClaims: claims.filter((claim) => !isHumanReviewed(claim.reviewStatus)).length,
+    draftLeadClaims,
+    extractedReferences: packetSummary.extractedReferences,
+    humanReviewedClaims: claims.filter((claim) => isHumanReviewed(claim.reviewStatus)).length,
+    incompleteSourcePackets:
+      packetSummary.extractionPendingClaims +
+      packetSummary.missingSourceClaims +
+      packetSummary.unlinkedClaims,
+    pendingReferences: packetSummary.pendingReferences + packetSummary.missingReferences,
+    readyToScoreClaims,
+    scoreWorkClaims,
+    scoreReviewClaims,
+    sourceBlockedClaims,
+    sourceBlockedScoredClaims,
+    sourceBlockers: scoreSummary.sourceBlockers,
+    scoredClaims: readinessRows.filter((row) => row.state === "scored").length,
+    sourcePacketScaffoldClaims,
+    snapshotGapClaims,
+    totalClaims: claims.length,
+    totalReferences: packetSummary.totalReferences
+  };
+}
+
+function evidenceMapSortableScore(
+  claim: Claim | undefined,
+  readinessRow?: ScoreReadinessRow
+) {
+  if (!claim || isEvidenceMapPlaceholderClaim(claim)) {
+    return null;
+  }
+
+  if (readinessRow && readinessRow.state !== "scored") {
+    return null;
+  }
+
+  return compositeScore(claim.scores);
+}
+
+function evidenceMapScoreStatusLabel(
+  claim: Claim,
+  readinessRow?: ScoreReadinessRow
+) {
+  if (isDraftLeadClaim(claim)) {
+    return "Discovery lead pending source review";
+  }
+
+  if (isSourcePacketScaffoldClaim(claim)) {
+    return "Source-packet review pending";
+  }
+
+  if (readinessRow?.state === "source_blocked") {
+    return sourceWorkStatusText(readinessRow).statusLabel;
+  }
+
+  if (readinessRow?.state === "default_score_review") {
+    return "Score review pending";
+  }
+
+  if (readinessRow?.state === "ready_to_score") {
+    return "Ready to score";
+  }
+
+  if (readinessRow?.state === "snapshot_gap") {
+    return "Score audit pending";
+  }
+
+  return "Composite pending source review";
+}
+
+function sourceWorkStatusText(readinessRow: ScoreReadinessRow) {
+  const { completeness } = readinessRow.packet;
+
+  switch (completeness.status) {
+    case "not_linked":
+      return {
+        ariaSummary:
+          "no curated source is linked to this claim; source work is blocked before scoring",
+        detail: "No article or registry reference is linked to this claim yet.",
+        primary: "No",
+        secondary: "Sources",
+        statusLabel: "No curated sources"
+      };
+    case "missing_sources":
+      return {
+        ariaSummary:
+          "a linked source record is missing from the local source table; source repair is required before scoring",
+        detail: "The claim points to a reference ID that is missing from the curated source records.",
+        primary: "Source",
+        secondary: "Missing",
+        statusLabel: "Source record missing"
+      };
+    case "extraction_pending":
+      return {
+        ariaSummary:
+          "curated sources are linked but structured extraction is still pending",
+        detail: `${completeness.extractedReferences}/${completeness.totalReferences} linked references have structured extraction.`,
+        primary: "Extract",
+        secondary: "Refs",
+        statusLabel: "Extraction pending"
+      };
+    case "complete":
+      return {
+        ariaSummary: "source packet is complete",
+        detail: "Every linked curated reference has structured extraction.",
+        primary: "Source",
+        secondary: "Backed",
+        statusLabel: "Source-backed"
+      };
+  }
+}
+
+function evidenceMapCellPresentation(
+  claim: Claim,
+  score: number,
+  readinessRow?: ScoreReadinessRow
+) {
+  if (readinessRow?.state === "source_blocked") {
+    const sourceWork = sourceWorkStatusText(readinessRow);
+
+    return {
+      ariaSummary: `${sourceWork.ariaSummary}; no final evidence score is shown until this source-work blocker clears`,
+      primary: sourceWork.primary,
+      secondary: sourceWork.secondary,
+      title: `${sourceWork.statusLabel}. ${sourceWork.detail} ${scoreReadinessNextAction(readinessRow)}`,
+      tone:
+        "border-dashed border-amberline/35 bg-amber-50 text-amberline hover:border-amberline hover:bg-amber-50"
+    };
+  }
+
+  if (isDraftLeadClaim(claim)) {
+    return {
+      ariaSummary:
+        "discovery lead awaiting source review; no final evidence score has been assigned",
+      primary: "Lead",
+      secondary: "Draft",
+      title:
+        "Discovery lead awaiting source review. The stored starter score is hidden because it is not a final evidence score.",
+      tone:
+        "border-dashed border-amberline/35 bg-amber-50 text-amberline hover:border-amberline hover:bg-amber-50"
+    };
+  }
+
+  if (readinessRow?.state === "ready_to_score") {
+    return {
+      ariaSummary:
+        "complete source packet awaiting score assignment; no final evidence score has been assigned",
+      primary: "Ready",
+      secondary: "Score",
+      title:
+        "Complete source packet awaiting score assignment. The stored placeholder score is hidden until a claim-specific score is assigned from the extracted evidence.",
+      tone:
+        "border-dashed border-spruce/35 bg-teal-50 text-spruce hover:border-spruce hover:bg-teal-50"
+    };
+  }
+
+  if (readinessRow?.state === "default_score_review") {
+    return {
+      ariaSummary:
+        "starter-looking stored score awaiting claim-specific scoring review; no final evidence score has been assigned",
+      primary: "Score",
+      secondary: "Review",
+      title:
+        "This cell has a starter-looking stored score. The number is hidden until the linked source packet supports a claim-specific score and rationale.",
+      tone:
+        "border-dashed border-danger/30 bg-red-50 text-danger hover:border-danger hover:bg-red-50"
+    };
+  }
+
+  if (isSourcePacketScaffoldClaim(claim)) {
+    return {
+      ariaSummary:
+        "source-packet scaffold awaiting evidence review; no final evidence score has been assigned",
+      primary: "Needs",
+      secondary: "Review",
+      title:
+        "Source-packet scaffold awaiting evidence review. The stored placeholder score is hidden because it is not a final evidence score.",
+      tone:
+        "border-dashed border-slate-300 bg-slate-50 text-slate-600 hover:border-signal hover:bg-blue-50"
+    };
+  }
+
+  if (readinessRow?.state === "snapshot_gap") {
+    return {
+      ariaSummary:
+        "scored draft needs a score snapshot before future score changes are auditable",
+      primary: score.toFixed(1),
+      secondary: "Audit",
+      title:
+        "This claim has a score, but no score snapshot is recorded. Capture a snapshot before treating future changes as auditable.",
+      tone:
+        "border-dashed border-signal/35 bg-blue-50 text-signal hover:border-signal hover:bg-blue-50"
+    };
+  }
+
+  return {
+    ariaSummary: `${compositeLabel(claim)} ${score.toFixed(1)} out of 10, ${scoreBand(score)} band`,
+    primary: score.toFixed(1),
+    secondary: scoreBand(score),
+    title: scoreExplanationTitle("composite", `${score.toFixed(1)}/10`),
+    tone: labelTone(claim.finalLabel)
+  };
+}
+
+function cycleEvidenceMapSort(
+  current: EvidenceMapSort,
+  outcome: OutcomeArea
+): EvidenceMapSort {
+  if (current?.outcome !== outcome) {
+    return { direction: "desc", outcome };
+  }
+
+  if (current.direction === "desc") {
+    return { direction: "asc", outcome };
+  }
+
+  return null;
+}
+
+function sortEvidenceMapInterventions({
+  claims,
+  interventions,
+  readinessByClaimId,
+  sort
 }: {
   claims: Claim[];
   interventions: Intervention[];
-  activeClaimId: string;
-  onSelectClaim: (claimId: string) => void;
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
+  sort: EvidenceMapSort;
 }) {
+  const sorted = [...interventions];
+
+  if (!sort) {
+    return sorted.sort((left, right) => left.name.localeCompare(right.name));
+  }
+
+  const scoreFor = (interventionId: string) => {
+    const claim = claims.find(
+      (item) => item.interventionId === interventionId && item.outcome === sort.outcome
+    );
+
+    if (!claim) {
+      return null;
+    }
+
+    return evidenceMapSortableScore(claim, readinessByClaimId.get(claim.id));
+  };
+
+  return sorted.sort((left, right) => {
+    const leftScore = scoreFor(left.id);
+    const rightScore = scoreFor(right.id);
+
+    if (leftScore === null && rightScore === null) {
+      return left.name.localeCompare(right.name);
+    }
+
+    if (leftScore === null) {
+      return 1;
+    }
+
+    if (rightScore === null) {
+      return -1;
+    }
+
+    const scoreDelta =
+      sort.direction === "desc" ? rightScore - leftScore : leftScore - rightScore;
+
+    return scoreDelta !== 0 ? scoreDelta : left.name.localeCompare(right.name);
+  });
+}
+
+function evidenceMapSortAriaLabel(sort: EvidenceMapSort, outcome: OutcomeArea) {
+  if (sort?.outcome !== outcome) {
+    return `Sort supplements by ${outcome}, highest score first`;
+  }
+
+  if (sort.direction === "desc") {
+    return `Sort supplements by ${outcome}, lowest score first`;
+  }
+
+  return `Clear ${outcome} sort and return to alphabetical order`;
+}
+
+function evidenceMapConfidenceRank(confidence: Claim["confidenceLevel"]) {
+  switch (confidence) {
+    case "High":
+      return 4;
+    case "Moderate":
+      return 3;
+    case "Low":
+      return 2;
+    case "Very low":
+      return 1;
+  }
+}
+
+function evidenceMapConfidenceScoreLabel(confidence: Claim["confidenceLevel"]) {
+  return `Confidence ${evidenceMapConfidenceRank(confidence)}/4 (${confidence})`;
+}
+
+function rankedEvidenceMapStatus(
+  claim: Claim,
+  readinessRow?: ScoreReadinessRow
+) {
+  if (readinessRow?.state === "scored" && !isEvidenceMapPlaceholderClaim(claim)) {
+    return {
+      rankGroup: 0,
+      statusLabel: "Scored",
+      statusTone: labelTone(claim.finalLabel)
+    };
+  }
+
+  if (readinessRow?.state === "snapshot_gap" && !isEvidenceMapPlaceholderClaim(claim)) {
+    return {
+      rankGroup: 1,
+      statusLabel: "Audit gap",
+      statusTone: "border-dashed border-signal/35 bg-blue-50 text-signal"
+    };
+  }
+
+  if (readinessRow?.state === "ready_to_score") {
+    return {
+      rankGroup: 2,
+      statusLabel: "Ready to score",
+      statusTone: "border-dashed border-spruce/35 bg-teal-50 text-spruce"
+    };
+  }
+
+  if (readinessRow?.state === "default_score_review") {
+    return {
+      rankGroup: 3,
+      statusLabel: "Score work",
+      statusTone: "border-dashed border-danger/30 bg-red-50 text-danger"
+    };
+  }
+
+  if (readinessRow?.state === "source_blocked") {
+    return {
+      rankGroup: 4,
+      statusLabel: "Source work",
+      statusTone: "border-dashed border-amberline/35 bg-amber-50 text-amberline"
+    };
+  }
+
+  if (isDraftLeadClaim(claim)) {
+    return {
+      rankGroup: 5,
+      statusLabel: "Lead draft",
+      statusTone: "border-dashed border-amberline/35 bg-amber-50 text-amberline"
+    };
+  }
+
+  if (isSourcePacketScaffoldClaim(claim)) {
+    return {
+      rankGroup: 6,
+      statusLabel: "Needs review",
+      statusTone: "border-dashed border-slate-300 bg-slate-50 text-slate-600"
+    };
+  }
+
+  return {
+    rankGroup: 7,
+    statusLabel: "Unsorted",
+    statusTone: "border-line bg-mist text-slate-600"
+  };
+}
+
+function buildRankedEvidenceMapTiles({
+  claims,
+  interventionsById,
+  outcome,
+  readinessByClaimId
+}: {
+  claims: Claim[];
+  interventionsById: Map<string, Intervention>;
+  outcome: OutcomeArea;
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
+}) {
+  const candidateTiles = claims
+    .filter((claim) => claim.outcome === outcome)
+    .map((claim): RankedEvidenceMapTileModel | null => {
+      const intervention = interventionsById.get(claim.interventionId);
+
+      if (!intervention) {
+        return null;
+      }
+
+      const readinessRow = readinessByClaimId.get(claim.id);
+      const status = rankedEvidenceMapStatus(claim, readinessRow);
+
+      return {
+        claim,
+        claimCount: 1,
+        confidenceRank: evidenceMapConfidenceRank(claim.confidenceLevel),
+        intervention,
+        rankGroup: status.rankGroup,
+        score: evidenceMapSortableScore(claim, readinessRow),
+        sourceLabel: readinessRow?.packet.completeness.label ?? "Source status unknown",
+        statusLabel: status.statusLabel,
+        statusTone: status.statusTone
+      };
+    })
+    .filter((tile): tile is RankedEvidenceMapTileModel => Boolean(tile))
+    .sort(sortRankedEvidenceMapTiles);
+
+  const claimCountsByInterventionId = new Map<string, number>();
+
+  for (const tile of candidateTiles) {
+    claimCountsByInterventionId.set(
+      tile.intervention.id,
+      (claimCountsByInterventionId.get(tile.intervention.id) ?? 0) + 1
+    );
+  }
+
+  const bestTileByInterventionId = new Map<string, RankedEvidenceMapTileModel>();
+
+  for (const tile of candidateTiles) {
+    if (!bestTileByInterventionId.has(tile.intervention.id)) {
+      bestTileByInterventionId.set(tile.intervention.id, {
+        ...tile,
+        claimCount: claimCountsByInterventionId.get(tile.intervention.id) ?? 1
+      });
+    }
+  }
+
+  return Array.from(bestTileByInterventionId.values());
+}
+
+function sortRankedEvidenceMapTiles(
+  left: RankedEvidenceMapTileModel,
+  right: RankedEvidenceMapTileModel
+) {
+  if (left.rankGroup !== right.rankGroup) {
+    return left.rankGroup - right.rankGroup;
+  }
+
+  const leftScore = left.score ?? -1;
+  const rightScore = right.score ?? -1;
+  const scoreDelta = rightScore - leftScore;
+
+  if (Math.abs(scoreDelta) >= 0.3) {
+    return scoreDelta;
+  }
+
+  const confidenceDelta = right.confidenceRank - left.confidenceRank;
+
+  if (confidenceDelta !== 0) {
+    return confidenceDelta;
+  }
+
+  if (scoreDelta !== 0) {
+    return scoreDelta;
+  }
+
+  return left.intervention.name.localeCompare(right.intervention.name);
+}
+
+function EvidenceMapReadinessStrip({
+  onStatusFilterChange,
+  statusFilter,
+  summary
+}: {
+  onStatusFilterChange: (statusFilter: EvidenceMapStatusFilter) => void;
+  statusFilter: EvidenceMapStatusFilter;
+  summary: EvidenceMapReadinessSummary;
+}) {
+  const totalClaimsLabel = summary.totalClaims.toLocaleString();
+  const scoredLabel = `${summary.scoredClaims.toLocaleString()}/${totalClaimsLabel}`;
+  const humanReviewedLabel = `${summary.humanReviewedClaims.toLocaleString()}/${totalClaimsLabel}`;
+  const sourcePacketLabel = `${summary.completeSourcePackets.toLocaleString()}/${totalClaimsLabel}`;
+  const scoreWorkDetail =
+    summary.scoreWorkClaims === 0
+      ? "No ready-to-score, score-review, or score-audit cells in the current filters"
+      : `${summary.readyToScoreClaims.toLocaleString()} ready, ${summary.scoreReviewClaims.toLocaleString()} score review, ${summary.snapshotGapClaims.toLocaleString()} audit`;
+  const sourceWorkDetail =
+    summary.sourceBlockedClaims === 0
+      ? "No source-link or extraction blockers in the current filters"
+      : `${summary.sourceBlockedClaims.toLocaleString()} blocked (${formatScoreReadinessSourceBlockers(
+          summary.sourceBlockers
+        )})`;
+
+  return (
+    <section aria-label="Evidence map readiness" className="mt-4 border-t border-line pt-3">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-ink">Evidence readiness</h3>
+            <span className="rounded-md border border-spruce/25 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
+              {summary.scoredClaims.toLocaleString()} scored
+            </span>
+            <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+              {summary.sourceBlockedClaims.toLocaleString()} need sources
+            </span>
+            <span className="rounded-md border border-signal/25 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
+              {summary.scoreWorkClaims.toLocaleString()} score work
+            </span>
+          </div>
+          <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-600">
+            Scored cells are local AI-draft review aids from complete source packets, not treatment
+            advice. Score-work cells need score review; source-work cells need curated references or
+            extraction before a number can be shown.
+          </p>
+        </div>
+        <div
+          aria-label="Evidence map cell status"
+          className="inline-flex w-fit overflow-hidden rounded-md border border-line bg-white p-0.5 text-xs font-semibold"
+          role="group"
+        >
+          {EVIDENCE_MAP_STATUS_FILTERS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={cn(
+                "px-3 py-1.5 transition hover:text-signal focus:outline-none focus:ring-4 focus:ring-signal/20",
+                statusFilter === item.id
+                  ? "rounded bg-signal text-white hover:text-white"
+                  : "text-slate-700"
+              )}
+              onClick={() => onStatusFilterChange(item.id)}
+              title={item.title}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+        <EvidenceReadinessBadge label="Scored cells" value={scoredLabel} />
+        <EvidenceReadinessBadge
+          label="Source-backed cells"
+          value={sourcePacketLabel}
+          title={`${summary.incompleteSourcePackets.toLocaleString()} claim(s) still need source-packet linking or extraction.`}
+        />
+        <EvidenceReadinessBadge
+          label="Score work"
+          value={scoreWorkDetail}
+          title="Complete source packets that still need claim-specific scoring, starter-score review, or snapshot repair."
+        />
+        <EvidenceReadinessBadge
+          label="Source work"
+          value={sourceWorkDetail}
+          title="Claims blocked by missing curated source links, missing source records, or extraction gaps."
+        />
+        {summary.sourceBlockedClaims > 0 ? (
+          <EvidenceReadinessBadge
+            label="Source blockers"
+            value={formatScoreReadinessSourceBlockers(summary.sourceBlockers)}
+            title="Why source-work cells are blocked before a score can be treated as current evidence."
+          />
+        ) : null}
+        <EvidenceReadinessBadge
+          label="References extracted"
+          value={`${summary.extractedReferences.toLocaleString()}/${summary.totalReferences.toLocaleString()}`}
+          title={`${summary.pendingReferences.toLocaleString()} linked reference(s) still need extraction or repair.`}
+        />
+        <EvidenceReadinessBadge label="Human reviewed" value={humanReviewedLabel} />
+        <EvidenceReadinessBadge
+          label="Pending human review"
+          value={summary.draftClaims.toLocaleString()}
+          title="AI-draft claims remain pending until a human checks the source packet against the scoped claim."
+        />
+      </div>
+    </section>
+  );
+}
+
+function EvidenceReadinessBadge({
+  label,
+  title,
+  value
+}: {
+  label: string;
+  title?: string;
+  value: string;
+}) {
+  return (
+    <span
+      className="rounded-md border border-line bg-mist px-2 py-1 text-slate-600"
+      title={title}
+    >
+      <span className="font-semibold text-ink">{label}:</span> {value}
+    </span>
+  );
+}
+
+function EvidenceMap({
+  claims: visibleClaims,
+  interventions: visibleInterventions,
+  readinessByClaimId,
+  activeClaimId
+}: {
+  claims: Claim[];
+  interventions: Intervention[];
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
+  activeClaimId: string;
+}) {
+  const [sort, setSort] = useState<EvidenceMapSort>(null);
+  const [matrixOpen, setMatrixOpen] = useState(false);
+  const [rankedLimit, setRankedLimit] = useState<RankedEvidenceMapLimit>(3);
+  const [showRankedWorkRows, setShowRankedWorkRows] = useState(false);
   const outcomes = useMemo(
     () => Array.from(new Set(visibleClaims.map((claim) => claim.outcome))),
     [visibleClaims]
+  );
+  const interventionsById = useMemo(
+    () => new Map(visibleInterventions.map((intervention) => [intervention.id, intervention])),
+    [visibleInterventions]
+  );
+  const rankedOutcomeColumns = useMemo(
+    () =>
+      outcomes.map((outcome) => ({
+        outcome,
+        tiles: buildRankedEvidenceMapTiles({
+          claims: visibleClaims,
+          interventionsById,
+          outcome,
+          readinessByClaimId
+        })
+      })),
+    [interventionsById, outcomes, readinessByClaimId, visibleClaims]
+  );
+  const sortedInterventions = useMemo(
+    () => {
+      if (!matrixOpen) {
+        return [];
+      }
+
+      return sortEvidenceMapInterventions({
+        claims: visibleClaims,
+        interventions: visibleInterventions,
+        readinessByClaimId,
+        sort
+      });
+    },
+    [matrixOpen, readinessByClaimId, sort, visibleClaims, visibleInterventions]
   );
 
   if (visibleClaims.length === 0) {
     return (
       <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-        No local scored claims match the current filters. Clear the search or category filter to
-        rebuild the evidence map.
+        No evidence-browser cells match the current filters and map mode. Clear the search,
+        category, label, outcome, or map-mode filter to rebuild the evidence browser.
       </p>
     );
   }
 
   return (
-    <div className="mt-4 overflow-x-auto">
-      <div
-        className="grid min-w-[880px] gap-1"
-        style={{
-          gridTemplateColumns: `220px repeat(${outcomes.length}, minmax(112px, 1fr))`
-        }}
-      >
-        <div className="rounded-md border border-transparent px-2 py-2 text-xs font-semibold text-slate-600">
-          Intervention
-        </div>
-        {outcomes.map((outcome) => (
-          <div
-            key={outcome}
-            className="rounded-md border border-line bg-mist px-2 py-2 text-xs font-semibold text-slate-700"
-          >
-            {shortOutcome(outcome)}
-          </div>
-        ))}
+    <div className="mt-4">
+      <RankedEvidenceMapBoard
+        activeClaimId={activeClaimId}
+        columns={rankedOutcomeColumns}
+        rankedLimit={rankedLimit}
+        readinessByClaimId={readinessByClaimId}
+        setRankedLimit={setRankedLimit}
+        setShowWorkRows={setShowRankedWorkRows}
+        showWorkRows={showRankedWorkRows}
+      />
 
-        {visibleInterventions.map((intervention) => (
-          <EvidenceMapRow
-            key={intervention.id}
-            intervention={intervention}
-            outcomes={outcomes}
-            claims={visibleClaims}
-            activeClaimId={activeClaimId}
-            onSelectClaim={onSelectClaim}
+      <section className="mt-4 rounded-lg border border-line bg-mist p-3">
+        <button
+          aria-expanded={matrixOpen}
+          className="flex w-full items-center justify-between gap-3 text-left text-sm font-semibold text-ink outline-none transition hover:text-signal focus:ring-4 focus:ring-signal/20"
+          onClick={() => setMatrixOpen((current) => !current)}
+          type="button"
+        >
+          <span>
+            Coverage matrix and source-work gaps
+          </span>
+          <ChevronDown
+            aria-hidden="true"
+            className={cn("h-4 w-4 shrink-0 transition", matrixOpen && "rotate-180")}
           />
-        ))}
-      </div>
+        </button>
+        <p className="mt-2 max-w-4xl text-xs leading-5 text-slate-600">
+          This secondary matrix keeps the old coverage view for spotting unassessed cells and
+          source-work gaps. The ranked board above is the faster way to compare supplements within
+          each outcome. It renders only when opened to keep the initial board lighter.
+        </p>
+        {matrixOpen ? (
+          <div className="mt-3 max-w-full overflow-x-auto">
+            <table
+              aria-describedby="evidence-map-legend"
+              className="w-full min-w-0 border-separate border-spacing-1 text-sm"
+            >
+              <caption className="sr-only">
+                Evidence browser. Rows are interventions and columns are outcomes. It is a
+                navigation aid for evidence briefs, not a supplement ranking table. Unassessed cells
+                do not imply absence of evidence.
+              </caption>
+              <thead>
+                <tr>
+                  <th
+                    className="sticky left-0 z-20 w-[220px] rounded-md border border-transparent bg-mist px-2 py-2 text-left text-xs font-semibold text-slate-600"
+                    scope="col"
+                  >
+                    <button
+                      type="button"
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-left outline-none transition hover:text-signal focus:ring-4 focus:ring-signal/20",
+                        sort === null && "text-signal"
+                      )}
+                      onClick={() => setSort(null)}
+                      aria-label="Sort supplements alphabetically by name"
+                      title="Sort alphabetically by intervention name"
+                    >
+                      Intervention
+                      {sort === null ? (
+                        <ArrowUpDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
+                      ) : null}
+                    </button>
+                  </th>
+                  {outcomes.map((outcome) => {
+                    const isActive = sort?.outcome === outcome;
+
+                    return (
+                      <th
+                        key={outcome}
+                        aria-sort={
+                          isActive
+                            ? sort.direction === "desc"
+                              ? "descending"
+                              : "ascending"
+                            : "none"
+                        }
+                        className="w-[4.25rem] min-w-[4.25rem] max-w-[4.75rem] rounded-md border border-line bg-mist px-0.5 py-1 text-center text-xs font-semibold text-slate-700"
+                        scope="col"
+                      >
+                        <div className="flex flex-col items-center gap-1 py-0.5">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <button
+                              type="button"
+                              className={cn(
+                                "inline-flex h-5 w-5 items-center justify-center rounded-md outline-none transition hover:bg-white focus:ring-4 focus:ring-signal/20",
+                                isActive && "bg-white text-signal"
+                              )}
+                              onClick={() =>
+                                setSort((current) => cycleEvidenceMapSort(current, outcome))
+                              }
+                              aria-label={evidenceMapSortAriaLabel(sort, outcome)}
+                              title={evidenceMapSortAriaLabel(sort, outcome)}
+                            >
+                              <EvidenceMapSortIndicator
+                                direction={isActive ? sort.direction : null}
+                              />
+                            </button>
+                            <OutcomeColumnTooltip outcome={outcome} />
+                          </div>
+                          <button
+                            type="button"
+                            className={cn(
+                              "w-full rounded-md px-0.5 py-0.5 text-center text-[11px] leading-tight outline-none transition hover:bg-white hover:text-signal focus:ring-4 focus:ring-signal/20",
+                              isActive && "text-signal"
+                            )}
+                            onClick={() =>
+                              setSort((current) => cycleEvidenceMapSort(current, outcome))
+                            }
+                            aria-label={evidenceMapSortAriaLabel(sort, outcome)}
+                            title={evidenceMapSortAriaLabel(sort, outcome)}
+                          >
+                            {shortOutcome(outcome)}
+                          </button>
+                        </div>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedInterventions.map((intervention) => (
+                  <EvidenceMapRow
+                    key={intervention.id}
+                    intervention={intervention}
+                    outcomes={outcomes}
+                    claims={visibleClaims}
+                    readinessByClaimId={readinessByClaimId}
+                    activeClaimId={activeClaimId}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </section>
+      {matrixOpen ? <EvidenceMapLegend /> : null}
     </div>
+  );
+}
+
+function RankedEvidenceMapBoard({
+  activeClaimId,
+  columns,
+  rankedLimit,
+  readinessByClaimId,
+  setRankedLimit,
+  setShowWorkRows,
+  showWorkRows
+}: {
+  activeClaimId: string;
+  columns: Array<{ outcome: OutcomeArea; tiles: RankedEvidenceMapTileModel[] }>;
+  rankedLimit: RankedEvidenceMapLimit;
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
+  setRankedLimit: (limit: RankedEvidenceMapLimit) => void;
+  setShowWorkRows: (showWorkRows: boolean) => void;
+  showWorkRows: boolean;
+}) {
+  return (
+    <section aria-label="Ranked evidence by outcome">
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-ink">Ranked evidence signals by outcome</h3>
+          <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-600">
+            Each card ranks supplements for one outcome. The default view keeps the top three
+            scored entries visible so more outcomes fit on the first screen; this remains a browse
+            aid for evidence briefs, not a supplement recommendation.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2 text-xs sm:items-end">
+          <div className="inline-flex w-fit overflow-hidden rounded-md border border-line bg-white p-0.5 font-semibold">
+            {([3, 5, 10, "all"] as const).map((limit) => (
+              <button
+                className={cn(
+                  "px-2.5 py-1 transition hover:text-signal focus:outline-none focus:ring-4 focus:ring-signal/20",
+                  rankedLimit === limit
+                    ? "rounded bg-signal text-white hover:text-white"
+                    : "text-slate-700"
+                )}
+                key={limit}
+                onClick={() => setRankedLimit(limit)}
+                type="button"
+              >
+                {limit === "all" ? "All" : `Top ${limit}`}
+              </button>
+            ))}
+          </div>
+          <label className="inline-flex w-fit items-center gap-2 rounded-md border border-line bg-mist px-2 py-1 font-semibold text-slate-700">
+            <input
+              checked={showWorkRows}
+              className="h-3.5 w-3.5 rounded border-line text-signal focus:ring-signal/20"
+              onChange={(event) => setShowWorkRows(event.target.checked)}
+              type="checkbox"
+            />
+            Show source/score work
+          </label>
+        </div>
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+        <span className="rounded-md border border-spruce/25 bg-teal-50 px-2 py-1 font-semibold text-spruce">
+          Top scored first
+        </span>
+        <span className="rounded-md border border-signal/25 bg-blue-50 px-2 py-1 font-semibold text-signal">
+          Confidence tie-breaker
+        </span>
+        <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 font-semibold text-amberline">
+          Work hidden by default
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        {columns.map(({ outcome, tiles }) => {
+          const scoredTiles = tiles.filter((tile) => tile.rankGroup === 0);
+          const workTileCount = tiles.length - scoredTiles.length;
+          const filteredTiles = showWorkRows ? tiles : scoredTiles;
+          const visibleTiles =
+            rankedLimit === "all" ? filteredTiles : filteredTiles.slice(0, rankedLimit);
+          const hiddenRankedCount = Math.max(filteredTiles.length - visibleTiles.length, 0);
+
+          return (
+            <section
+              className="min-h-[150px] rounded-md border border-line bg-white p-2.5"
+              key={outcome}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <h4 className="text-sm font-semibold leading-tight text-ink">
+                    {shortOutcome(outcome)}
+                  </h4>
+                  <p className="mt-0.5 text-[11px] leading-4 text-slate-600">
+                    {scoredTiles.length.toLocaleString()} scored supplement
+                    {scoredTiles.length === 1 ? "" : "s"}
+                    {workTileCount > 0
+                      ? `, ${workTileCount.toLocaleString()} work row${
+                          workTileCount === 1 ? "" : "s"
+                        }`
+                      : ""}
+                  </p>
+                </div>
+                <OutcomeColumnTooltip outcome={outcome} />
+              </div>
+
+              {visibleTiles.length > 0 ? (
+                <ol className="mt-2 grid gap-1.5">
+                  {visibleTiles.map((tile, index) => (
+                    <RankedEvidenceMapTile
+                      active={activeClaimId === tile.claim.id}
+                      key={tile.claim.id}
+                      rank={index + 1}
+                      readinessRow={readinessByClaimId.get(tile.claim.id)}
+                      tile={tile}
+                    />
+                  ))}
+                </ol>
+              ) : (
+                <p className="mt-2 rounded-md border border-dashed border-line bg-slate-50 p-2 text-xs leading-5 text-slate-500">
+                  {workTileCount > 0 && !showWorkRows
+                    ? "No scored supplements yet. Enable source/score work to audit unfinished rows."
+                    : "No local claim rows match this outcome under the current filters."}
+                </p>
+              )}
+              {hiddenRankedCount > 0 ? (
+                <p className="mt-1.5 text-[11px] text-slate-500">
+                  {hiddenRankedCount.toLocaleString()} more ranked supplement
+                  {hiddenRankedCount === 1 ? "" : "s"} hidden by the current limit.
+                </p>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function RankedEvidenceMapTile({
+  active,
+  rank,
+  readinessRow,
+  tile
+}: {
+  active: boolean;
+  rank: number;
+  readinessRow?: ScoreReadinessRow;
+  tile: RankedEvidenceMapTileModel;
+}) {
+  const scoreLabel =
+    tile.score === null ? tile.statusLabel : `${tile.score.toFixed(1)} ${scoreBand(tile.score)}`;
+  const confidenceScoreLabel = evidenceMapConfidenceScoreLabel(tile.claim.confidenceLevel);
+  const claimCountLabel =
+    tile.claimCount > 1 ? `${tile.claimCount.toLocaleString()} scoped claim rows` : null;
+  const takeaway = rankedEvidenceMapTileTakeaway(tile.claim, readinessRow);
+  const directionLabel = claimEvidenceDirectionLabel(tile.claim);
+  const confidenceTone =
+    tile.claim.confidenceLevel === "High" || tile.claim.confidenceLevel === "Moderate"
+      ? "border-spruce/25 bg-teal-50 text-spruce"
+      : "border-amberline/25 bg-amber-50 text-amberline";
+
+  return (
+    <li>
+      <a
+        aria-label={`${rank}. ${tile.intervention.name}, ${tile.claim.outcome}: ${scoreLabel}, ${confidenceScoreLabel}, ${tile.sourceLabel}${
+          claimCountLabel ? `, representative of ${claimCountLabel}` : ""
+        }, ${classificationLabel(
+          tile.claim,
+          readinessRow
+        )} ${tile.claim.finalLabel}.`}
+        className={cn(
+          "block rounded-md border p-1.5 text-left transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20",
+          tile.statusTone,
+          active && "border-signal ring-2 ring-signal/25"
+        )}
+        href={`/interventions/${tile.intervention.slug}?tab=claims#claim-${tile.claim.id}`}
+        title={`${tile.intervention.name} - ${tile.claim.outcome}. ${scoreLabel}; ${confidenceScoreLabel}; ${tile.sourceLabel}${
+          claimCountLabel ? `; representative of ${claimCountLabel}` : ""
+        }.`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 truncate text-sm font-semibold leading-5 text-ink">
+            <span className="mr-1 text-[11px] font-semibold text-slate-500">#{rank}</span>
+            {tile.intervention.name}
+          </p>
+          <span className="shrink-0 rounded-md border border-white/70 bg-white/80 px-1.5 py-0.5 text-xs font-semibold">
+            {tile.score === null ? tile.statusLabel : tile.score.toFixed(1)}
+          </span>
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-1 text-[10px] leading-4">
+          <span className={cn("rounded-md border px-1.5 py-0.5 font-semibold", confidenceTone)}>
+            {confidenceScoreLabel}
+          </span>
+          <span
+            className={cn(
+              "rounded-md border px-1.5 py-0.5 font-semibold",
+              sourcePacketCompletenessTone(
+                readinessRow?.packet.completeness.status ?? "not_linked"
+              )
+            )}
+          >
+            {tile.sourceLabel}
+          </span>
+          {directionLabel ? (
+            <span className="rounded-md border border-amberline/25 bg-amber-50 px-1.5 py-0.5 font-semibold text-amberline">
+              {directionLabel}
+            </span>
+          ) : null}
+          {claimCountLabel ? (
+            <span className="rounded-md border border-line bg-white px-1.5 py-0.5 font-semibold text-slate-600">
+              {claimCountLabel}
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 opacity-90">
+          {takeaway}
+        </p>
+      </a>
+    </li>
+  );
+}
+
+function rankedEvidenceMapTileTakeaway(claim: Claim, readinessRow?: ScoreReadinessRow) {
+  const summary = normaliseSentence(claim.summary ?? "");
+
+  if (summary) {
+    return `Takeaway: ${summary}`;
+  }
+
+  return `${classificationLabel(claim, readinessRow)}: ${claim.finalLabel}`;
+}
+
+function EvidenceMapLegend() {
+  return (
+    <div
+      aria-label="Evidence browser legend"
+      className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600"
+      id="evidence-map-legend"
+    >
+      <span className="rounded-md border border-line bg-mist px-2 py-1">
+        <strong className="text-ink">—</strong> = not yet assessed
+      </span>
+      <span className="rounded-md border border-line bg-mist px-2 py-1">
+        <strong className="text-ink">N/A</strong> = not applicable
+      </span>
+      <span className="rounded-md border border-line bg-mist px-2 py-1">
+        <strong className="text-ink">No evidence found</strong> = searched and no credible evidence found
+      </span>
+      <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-amberline">
+        <strong>Lead / Draft</strong> = discovery lead; no final score yet
+      </span>
+      <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1">
+        <strong className="text-ink">Needs / Review</strong> = scaffold awaiting source-packet scoring
+      </span>
+      <span className="rounded-md border border-danger/25 bg-red-50 px-2 py-1 text-danger">
+        <strong>Score / Review</strong> = starter-looking score hidden until reviewed
+      </span>
+      <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-amberline">
+        <strong>Source / Work</strong> = source links or extraction are incomplete; no score shown
+      </span>
+      <span className="rounded-md border border-signal/25 bg-blue-50 px-2 py-1 text-signal">
+        <strong>Score / Audit</strong> = scored cell needs a score snapshot
+      </span>
+      <span className="rounded-md border border-amberline/25 bg-amber-50 px-2 py-1 text-amberline">
+        Unassessed cells do not imply absence of evidence.
+      </span>
+      <span className="rounded-md border border-line bg-mist px-2 py-1">
+        Click an outcome column to sort rows high to low, then low to high, then alphabetical again.
+      </span>
+    </div>
+  );
+}
+
+function OutcomeColumnTooltip({ outcome }: { outcome: OutcomeArea }) {
+  const label = `About ${outcome} column`;
+  const template = SUPPLEMENT_ONBOARDING_CLAIM_TEMPLATES.find((item) => item.outcome === outcome);
+  const detail =
+    template?.claimText ??
+    "Each cell summarizes a scoped draft claim for this outcome when one exists in the catalog.";
+
+  return (
+    <span
+      className="group relative inline-flex shrink-0"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        aria-label={label}
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-signal/25 bg-white text-signal outline-none transition hover:border-signal hover:bg-blue-50 focus:border-signal focus:ring-4 focus:ring-signal/20"
+        title={label}
+      >
+        <CircleHelp aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 hidden w-72 -translate-x-1/2 rounded-md border border-line bg-white p-3 text-left text-xs font-normal leading-5 text-slate-700 shadow-panel group-focus-within:block group-hover:block"
+      >
+        <span className="block font-semibold text-ink">{outcome}</span>
+        <span className="mt-2 block">{detail}</span>
+        <span className="mt-2 block text-slate-600">
+          Source-backed scored cells can show a composite score as an audit aid. Source-work and
+          score-work cells show status instead of placeholder numbers.
+        </span>
+      </span>
+    </span>
+  );
+}
+
+function EvidenceMapSortIndicator({
+  direction
+}: {
+  direction: "asc" | "desc" | null;
+}) {
+  if (direction === "desc") {
+    return <ArrowDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />;
+  }
+
+  if (direction === "asc") {
+    return <ArrowUp aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />;
+  }
+
+  return <ArrowUpDown aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-slate-400" />;
+}
+
+function InterventionRowTooltip({ intervention }: { intervention: Intervention }) {
+  const label = `About ${intervention.name}`;
+
+  return (
+    <span
+      className="group relative inline-flex shrink-0"
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        aria-label={label}
+        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-signal/25 bg-white text-signal outline-none transition hover:border-signal hover:bg-blue-50 focus:border-signal focus:ring-4 focus:ring-signal/20"
+        title={label}
+      >
+        <CircleHelp aria-hidden="true" className="h-3.5 w-3.5" />
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-80 rounded-md border border-line bg-white p-3 text-left text-xs font-normal leading-5 text-slate-700 shadow-panel group-focus-within:block group-hover:block"
+      >
+        <span className="block font-semibold text-ink">{intervention.name}</span>
+        <span className="mt-2 block">
+          <span className="font-semibold text-slate-600">Category:</span> {intervention.category}
+        </span>
+        {intervention.synonyms.length > 0 ? (
+          <span className="mt-1 block">
+            <span className="font-semibold text-slate-600">Also known as:</span>{" "}
+            {shortList(intervention.synonyms)}
+          </span>
+        ) : null}
+        <span className="mt-1 block">
+          <span className="font-semibold text-slate-600">Common forms:</span>{" "}
+          {shortList(intervention.commonForms)}
+        </span>
+        <span className="mt-2 block">{intervention.evidenceSummary}</span>
+        <span className="mt-2 block text-slate-600">{intervention.safetySummary}</span>
+        <span className="mt-2 block text-slate-600">
+          Open the intervention name link for claim-level evidence cards and source packets.
+        </span>
+      </span>
+    </span>
   );
 }
 
@@ -834,20 +9707,31 @@ function EvidenceMapRow({
   intervention,
   outcomes,
   claims: visibleClaims,
-  activeClaimId,
-  onSelectClaim
+  readinessByClaimId,
+  activeClaimId
 }: {
   intervention: Intervention;
   outcomes: OutcomeArea[];
   claims: Claim[];
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
   activeClaimId: string;
-  onSelectClaim: (claimId: string) => void;
 }) {
   return (
-    <>
-      <div className="flex h-14 items-center rounded-md border border-line bg-white px-2 text-sm font-semibold text-ink">
-        {intervention.name}
-      </div>
+    <tr>
+      <th
+        className="sticky left-0 z-10 h-14 rounded-md border border-line bg-white px-2 text-left text-sm font-semibold text-ink"
+        scope="row"
+      >
+        <div className="flex items-start gap-1.5">
+          <a
+            className="min-w-0 text-ink underline decoration-slate-300 underline-offset-2 hover:text-signal hover:decoration-signal"
+            href={`/interventions/${intervention.slug}`}
+          >
+            {intervention.name}
+          </a>
+          <InterventionRowTooltip intervention={intervention} />
+        </div>
+      </th>
       {outcomes.map((outcome) => {
         const claim = visibleClaims.find(
           (item) => item.interventionId === intervention.id && item.outcome === outcome
@@ -855,229 +9739,63 @@ function EvidenceMapRow({
 
         if (!claim) {
           return (
-            <div
+            <td
               key={`${intervention.id}-${outcome}`}
-              className="flex h-14 items-center justify-center rounded-md border border-dashed border-line bg-slate-50 text-xs text-slate-400"
+              aria-label={`${intervention.name}, ${outcome}: not yet assessed; this does not mean no evidence exists.`}
+              className="h-14 w-[4.25rem] min-w-[4.25rem] max-w-[4.75rem] rounded-md border border-dashed border-line bg-slate-50 px-1 text-center text-xs text-slate-400"
+              title="Not yet assessed; this does not mean no evidence exists."
             >
-              -
-            </div>
+              <span aria-hidden="true">—</span>
+              <span className="sr-only">
+                Not yet assessed; this does not mean no evidence exists.
+              </span>
+            </td>
           );
         }
 
+        const readinessRow = readinessByClaimId.get(claim.id);
         const score = compositeScore(claim.scores);
+        const cell = evidenceMapCellPresentation(
+          claim,
+          score,
+          readinessRow
+        );
 
         return (
-          <button
-            key={claim.id}
-            type="button"
-            onClick={() => onSelectClaim(claim.id)}
-            className={cn(
-              "flex h-14 flex-col items-start justify-center rounded-md border px-2 text-left text-xs transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20",
-              labelTone(claim.finalLabel),
-              activeClaimId === claim.id && "border-signal ring-2 ring-signal/25"
-            )}
-            title={`${intervention.name}: ${claim.outcome}`}
-          >
-            <span className="font-semibold">{score.toFixed(1)}</span>
-            <span className="max-w-full truncate">{scoreBand(score)}</span>
-          </button>
+          <td key={claim.id} className="h-14 w-[4.25rem] min-w-[4.25rem] max-w-[4.75rem] p-0 align-middle">
+            <a
+              href={`/interventions/${intervention.slug}#claim-${claim.id}`}
+              className={cn(
+                "flex h-14 w-full flex-col items-center justify-center rounded-md border px-1 text-center text-[11px] leading-tight transition hover:border-signal hover:bg-blue-50 focus:outline-none focus:ring-4 focus:ring-signal/20",
+                cell.tone,
+                activeClaimId === claim.id && "border-signal ring-2 ring-signal/25"
+              )}
+              aria-label={`${intervention.name}, ${claim.outcome}: ${cell.ariaSummary}, ${classificationLabel(
+                claim,
+                readinessRow
+              )} ${claim.finalLabel}, review status ${reviewStatusLabel(claim.reviewStatus)}.`}
+              title={cell.title}
+            >
+              <span className="font-semibold">{cell.primary}</span>
+              <span className="max-w-full truncate">{cell.secondary}</span>
+            </a>
+          </td>
         );
       })}
-    </>
-  );
-}
-
-function ScorePanel({
-  australiaStatus,
-  claim,
-  intervention
-}: {
-  australiaStatus?: AustraliaRegulatoryStatus;
-  claim: Claim;
-  intervention?: Intervention;
-}) {
-  const chartRef = useRef<HTMLDivElement>(null);
-  const [chartReady, setChartReady] = useState(false);
-  const [chartWidth, setChartWidth] = useState(0);
-  const scoreRows = getClaimScoreRows(claim);
-  const composite = compositeScore(claim.scores);
-
-  useEffect(() => {
-    setChartReady(true);
-  }, []);
-
-  useEffect(() => {
-    const node = chartRef.current;
-
-    if (!node) {
-      return;
-    }
-
-    const updateWidth = () => {
-      setChartWidth(Math.max(0, Math.floor(node.getBoundingClientRect().width)));
-    };
-
-    updateWidth();
-
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(node);
-
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Active evidence card
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-ink">{intervention?.name}</h2>
-          <p className="mt-1 text-sm text-slate-600">{claim.claimText}</p>
-        </div>
-        <div className="rounded-md border border-line bg-mist px-3 py-2 text-right">
-          <p className="text-xs text-slate-600">Composite</p>
-          <p className="text-2xl font-semibold text-ink">{composite.toFixed(1)}</p>
-        </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", labelTone(claim.finalLabel))}>
-          {claim.finalLabel}
-        </span>
-        <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
-          {claim.reviewStatus}
-        </span>
-      </div>
-
-      <div ref={chartRef} className="mt-4 h-64">
-        {chartReady && chartWidth > 0 ? (
-            <BarChart
-              data={scoreRows}
-              height={250}
-              layout="vertical"
-              margin={{ left: 8, right: 16, top: 8, bottom: 8 }}
-              width={chartWidth}
-            >
-              <CartesianGrid stroke="#e2e8f0" horizontal={false} />
-              <XAxis type="number" domain={[0, 10]} hide />
-              <YAxis
-                dataKey="label"
-                type="category"
-                width={92}
-                tick={{ fill: "#475569", fontSize: 12 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <Tooltip
-                cursor={{ fill: "rgba(29, 78, 216, 0.08)" }}
-                formatter={(value) => [`${value}/10`, "Score"]}
-              />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]} isAnimationActive={false}>
-                {scoreRows.map((row, index) => (
-                  <Cell key={row.label} fill={scoreColors[index % scoreColors.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-        ) : (
-          <div className="grid h-full content-center gap-3">
-            {scoreRows.map((row, index) => (
-              <div key={row.label} className="grid grid-cols-[92px_1fr_34px] items-center gap-2 text-xs">
-                <span className="text-slate-600">{row.label}</span>
-                <span className="h-3 overflow-hidden rounded-full bg-slate-100">
-                  <span
-                    className="block h-full rounded-full"
-                    style={{
-                      width: `${row.value * 10}%`,
-                      backgroundColor: scoreColors[index % scoreColors.length]
-                    }}
-                  />
-                </span>
-                <span className="text-right font-semibold text-slate-700">{row.value}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <dl className="grid gap-2 text-sm">
-        <DetailRow label="Population" value={claim.populationStudied} />
-        <AustraliaRegulatoryDetail status={australiaStatus} />
-        <DetailRow label="Dose/form" value={claim.doseFormStudied} />
-        <DetailRow label="Safety" value={claim.safetyNotes} />
-        <DetailRow label="Score mover" value={claim.whatWouldChangeScore} />
-      </dl>
-    </section>
-  );
-}
-
-function AustraliaRegulatoryDetail({
-  status
-}: {
-  status?: AustraliaRegulatoryStatus;
-}) {
-  if (!status) {
-    return (
-      <DetailRow
-        label="AU/TGA"
-        value="Australian regulatory status has not been captured for this intervention yet."
-      />
-    );
-  }
-
-  return (
-    <div className="grid gap-2 rounded-md border border-line bg-mist p-3 sm:grid-cols-[120px_1fr]">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-600">AU/TGA</dt>
-      <dd className="text-sm text-slate-700">
-        <span
-          className={cn(
-            "mb-2 inline-flex rounded-md border px-2 py-1 text-xs font-semibold",
-            australiaRegulatoryTone(status.kind)
-          )}
-        >
-          {status.kind}
-        </span>
-        <p className="leading-6">{status.status}</p>
-        <p className="mt-1 leading-6 text-slate-600">{status.supplySummary}</p>
-        <details className="mt-2">
-          <summary className="cursor-pointer text-xs font-semibold text-signal">
-            Research detail
-          </summary>
-          <p className="mt-2 leading-6 text-slate-600">
-            {australiaRegulatoryKindDescription(status.kind)}
-          </p>
-          <p className="mt-2 leading-6 text-slate-600">{status.evidenceRequirement}</p>
-          <a
-            href={status.sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
-          >
-            TGA source <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-          </a>
-        </details>
-      </dd>
-    </div>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid gap-1 rounded-md border border-line bg-mist p-3 sm:grid-cols-[120px_1fr]">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-600">{label}</dt>
-      <dd className="text-sm text-slate-700">{value}</dd>
-    </div>
+    </tr>
   );
 }
 
 function ClaimTable({
-  rows,
   activeClaimId,
-  onSelectClaim
+  embedded,
+  onSelectClaim,
+  rows
 }: {
-  rows: ClaimTableRow[];
   activeClaimId: string;
-  onSelectClaim: (claimId: string) => void;
+  embedded?: boolean;
+  onSelectClaim: SelectClaimHandler;
+  rows: ClaimTableRow[];
 }) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "composite", desc: true }]);
 
@@ -1112,15 +9830,43 @@ function ClaimTable({
       {
         accessorKey: "composite",
         header: "Score",
-        cell: ({ row }) => row.original.composite.toFixed(1)
+        cell: ({ row }) =>
+          row.original.composite === null ? (
+            <span
+              className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600"
+              title={row.original.scoreStatusLabel}
+            >
+              {row.original.scoreStatusLabel}
+            </span>
+          ) : (
+            <ScoreWithExplainer
+              explanationKind="composite"
+              value={`${row.original.composite.toFixed(1)}/10`}
+            >
+              {row.original.composite.toFixed(1)}
+            </ScoreWithExplainer>
+          )
       },
       {
         accessorKey: "safety",
-        header: "Safety"
+        header: "Safety",
+        cell: ({ row }) => (
+          <ScoreWithExplainer explanationKind="safety" value={`${row.original.safety}/10`}>
+            {row.original.safety}
+          </ScoreWithExplainer>
+        )
       },
       {
         accessorKey: "regulatoryRisk",
-        header: "Reg risk"
+        header: "Reg risk",
+        cell: ({ row }) => (
+          <ScoreWithExplainer
+            explanationKind="regulatoryRisk"
+            value={`${row.original.regulatoryRisk}/10`}
+          >
+            {row.original.regulatoryRisk}
+          </ScoreWithExplainer>
+        )
       },
       {
         accessorKey: "confidence",
@@ -1140,15 +9886,18 @@ function ClaimTable({
   });
 
   return (
-    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+    <section className={dashboardPanelShellClassName(embedded)}>
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-ink">Claim Scores</h2>
-          <p className="mt-1 text-sm text-slate-600">Each row is an intervention-outcome pair.</p>
+          <h2 className="text-base font-semibold text-ink">Score index</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Sortable audit fields for intervention-outcome pairs. Use linked evidence notes for
+            interpretation.
+          </p>
         </div>
       </div>
       {rows.length > 0 ? (
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-4 max-w-full overflow-x-auto">
           <table className="w-full min-w-[960px] border-separate border-spacing-0 text-sm">
             <thead>
               {table.getHeaderGroups().map((headerGroup) => (
@@ -1206,7 +9955,7 @@ function ClaimTable({
         </div>
       ) : (
         <p className="mt-4 rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-          No local scored claims match the current filters. Clear the search or category filter to
+          No claim rows match the current filters. Clear the search, category, label, or outcome filter to
           return to the full local evidence set.
         </p>
       )}
@@ -1215,14 +9964,16 @@ function ClaimTable({
 }
 
 function SafetyPanel({
+  embedded,
   interventionsById,
   safetyAlerts
 }: {
+  embedded?: boolean;
   interventionsById: Map<string, Intervention>;
   safetyAlerts: SafetyAlert[];
 }) {
   return (
-    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+    <section className={dashboardPanelShellClassName(embedded)}>
       <h2 className="text-base font-semibold text-ink">Safety Center</h2>
       <div className="mt-4 grid gap-3">
         {safetyAlerts.length > 0 ? (
@@ -1264,27 +10015,59 @@ function SafetyPanel({
 }
 
 function EvidenceCards({
-  claims: visibleClaims,
-  interventionsById,
-  referencesById,
-  studies,
   activeClaimId,
-  onSelectClaim
+  claims: visibleClaims,
+  embedded,
+  interventionsById,
+  onSelectClaim,
+  readinessByClaimId,
+  referencesById,
+  studies
 }: {
+  activeClaimId: string;
   claims: Claim[];
+  embedded?: boolean;
   interventionsById: Map<string, Intervention>;
+  onSelectClaim: SelectClaimHandler;
+  readinessByClaimId: Map<string, ScoreReadinessRow>;
   referencesById: Map<string, Reference>;
   studies: Study[];
-  activeClaimId: string;
-  onSelectClaim: (claimId: string) => void;
 }) {
+  const [showAllEvidenceCards, setShowAllEvidenceCards] = useState(false);
+  const orderedClaims = useMemo(() => {
+    const activeClaim = visibleClaims.find((claim) => claim.id === activeClaimId);
+    const remainingClaims = visibleClaims.filter((claim) => claim.id !== activeClaimId);
+
+    return activeClaim ? [activeClaim, ...remainingClaims] : remainingClaims;
+  }, [activeClaimId, visibleClaims]);
+  const displayClaims = showAllEvidenceCards
+    ? orderedClaims
+    : orderedClaims.slice(0, EVIDENCE_CARD_PREVIEW_LIMIT);
+  const hiddenEvidenceCardCount = Math.max(
+    orderedClaims.length - EVIDENCE_CARD_PREVIEW_LIMIT,
+    0
+  );
+
+  useEffect(() => {
+    setShowAllEvidenceCards(false);
+  }, [activeClaimId, visibleClaims.length]);
+
   return (
-    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-      <h2 className="text-base font-semibold text-ink">Evidence Cards</h2>
+    <section className={dashboardPanelShellClassName(embedded)}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold text-ink">Evidence notes</h2>
+        {visibleClaims.length > 0 ? (
+          <p className="text-xs text-slate-600">
+            {visibleClaims.length} local evidence card{visibleClaims.length === 1 ? "" : "s"}
+          </p>
+        ) : null}
+      </div>
       <div className="mt-4 grid gap-3">
         {visibleClaims.length > 0 ? (
-          visibleClaims.map((claim) => {
+          <>
+            {displayClaims.map((claim) => {
             const intervention = interventionsById.get(claim.interventionId);
+            const readinessRow = readinessByClaimId.get(claim.id);
             const claimReferences = claim.keyReferenceIds
               .map((referenceId) => referencesById.get(referenceId))
               .filter((reference): reference is Reference => Boolean(reference));
@@ -1313,20 +10096,28 @@ function EvidenceCards({
                         {intervention?.name} - {shortOutcome(claim.outcome)}
                       </button>
                     </h3>
+                    {intervention ? (
+                      <a
+                        className="mt-2 inline-flex rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-signal hover:border-signal"
+                        href={`/interventions/${intervention.slug}`}
+                      >
+                        Intervention detail
+                      </a>
+                    ) : null}
                     <p className="mt-1 text-sm leading-6 text-slate-700">{claim.claimText}</p>
                   </div>
                   <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", labelTone(claim.finalLabel))}>
-                    {claim.finalLabel}
+                    {classificationLabel(claim, readinessRow)}: {claim.finalLabel}
                   </span>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-slate-600">{claim.clinicalRelevance}</p>
+                <NonProofBox claim={claim} intervention={intervention} compact />
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
-                    {claim.reviewStatus}
-                  </span>
+                  <ReviewStatusBadge status={claim.reviewStatus} />
                   <span className={cn("rounded-md border px-2 py-1 text-xs font-semibold", sourcePacketCompletenessTone(sourcePacket.completeness.status))}>
                     Source packet: {sourcePacket.completeness.label}
                   </span>
+                  <EvidenceDepthBadges badges={sourcePacket.evidenceDepth.badges} />
                   <span className="rounded-md border border-line bg-mist px-2 py-1 text-xs text-slate-600">
                     Confidence: {claim.confidenceLevel}
                   </span>
@@ -1352,7 +10143,10 @@ function EvidenceCards({
                     <MiniStat label="Duration" value={claim.durationStudied} />
                     <MiniStat label="Applicability" value={claim.applicabilityNotes} />
                     <MiniStat label="Score mover" value={claim.whatWouldChangeScore} />
-                    <MiniStat label="Last reviewed" value={claim.lastUpdated} />
+                    <MiniStat
+                      label={isEvidenceMapPlaceholderClaim(claim) ? "Last updated" : "Last reviewed"}
+                      value={claim.lastUpdated}
+                    />
                   </div>
                   <div className="mt-3 grid gap-2">
                     {claimReferences.length > 0 ? (
@@ -1376,10 +10170,24 @@ function EvidenceCards({
                 </details>
               </article>
             );
-          })
+          })}
+            {hiddenEvidenceCardCount > 0 ? (
+              <button
+                type="button"
+                className="rounded-md border border-line bg-mist px-3 py-2 text-left text-xs font-semibold text-signal hover:bg-white"
+                onClick={() => setShowAllEvidenceCards((current) => !current)}
+              >
+                {showAllEvidenceCards
+                  ? "Show fewer evidence cards"
+                  : `Show ${hiddenEvidenceCardCount} more evidence card${
+                      hiddenEvidenceCardCount === 1 ? "" : "s"
+                    }`}
+              </button>
+            ) : null}
+          </>
         ) : (
           <p className="rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
-            No evidence cards match the current filters. Clear the search or category filter to
+            No evidence cards match the current filters. Clear the search, category, or label filter to
             review the full local evidence set.
           </p>
         )}
@@ -1389,24 +10197,41 @@ function EvidenceCards({
 }
 
 function LabelAnalyzer({
-  labelText,
-  setLabelText,
+  embedded,
   findings,
+  labelText,
   productAustraliaVerificationById,
-  productSignals
+  productSignals,
+  setLabelText
 }: {
-  labelText: string;
-  setLabelText: (value: string) => void;
+  embedded?: boolean;
   findings: ReturnType<typeof analyzeLabel>;
+  labelText: string;
   productAustraliaVerificationById: Map<string, ProductAustraliaRegulatoryVerification>;
   productSignals: ProductSignal[];
+  setLabelText: (value: string) => void;
 }) {
+  const exactProductStatusCount = productSignals.filter((product) => {
+    const verification = productAustraliaVerificationById.get(product.id);
+    return (
+      verification?.state === "Verified" &&
+      Boolean(verification.status?.austNumber || verification.status?.artgId)
+    );
+  }).length;
+  const unknownProductStatusCount = productSignals.filter((product) => {
+    const verification = productAustraliaVerificationById.get(product.id);
+    return verification?.state === "Unknown" || verification?.state === "Missing";
+  }).length;
+
   return (
-    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+    <section className={dashboardPanelShellClassName(embedded)}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-ink">Product Label Analyzer</h2>
-          <p className="mt-1 text-sm text-slate-600">Ingredient text is checked for quality and safety signals.</p>
+          <p className="mt-1 text-sm text-slate-600">
+            Ingredient text is checked for quality and safety signals. Demo profiles are not
+            verified product recommendations.
+          </p>
         </div>
         <ClipboardCheck aria-hidden="true" className="h-5 w-5 text-spruce" />
       </div>
@@ -1458,10 +10283,27 @@ function LabelAnalyzer({
         )}
       </div>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-line bg-white p-3 sm:col-span-2">
+          <p className="text-sm font-semibold text-ink">Product-level AU/TGA status</p>
+          <p className="mt-1 text-sm leading-6 text-slate-700">
+            {exactProductStatusCount}/{productSignals.length} product profiles have exact
+            AUST/ARTG identifiers captured. {unknownProductStatusCount} remain unknown or missing;
+            do not infer product authorization from intervention evidence or quality scores.
+          </p>
+        </div>
         {productSignals.map((product) => (
           <div key={product.id} className="rounded-lg border border-line bg-mist p-3">
-            <h3 className="text-sm font-semibold text-ink">{product.name}</h3>
-            <p className="mt-1 text-xs text-slate-600">{product.brand}</p>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h3 className="text-sm font-semibold text-ink">{product.name}</h3>
+                <p className="mt-1 text-xs text-slate-600">{product.brand}</p>
+              </div>
+              {isDemoProductSignal(product) ? (
+                <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 text-xs font-semibold text-amberline">
+                  Demo only - not a verified product recommendation
+                </span>
+              ) : null}
+            </div>
             <div className="mt-2 flex flex-wrap gap-2 text-xs">
               <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-700">
                 Market context: {formatProductRegionLabel(product.region)}
@@ -1480,12 +10322,26 @@ function LabelAnalyzer({
                 ? `Certifications: ${product.certifications.join(", ")}`
                 : "No product certifications captured."}
             </p>
+            <p className="mt-2 rounded-md border border-line bg-white px-2 py-1 text-xs leading-5 text-slate-600">
+              Product quality, efficacy evidence, and AU/TGA/ARTG status are separate. Certification
+              does not imply medical proof or Australian authorization.
+            </p>
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
               <span className="rounded-md bg-white px-2 py-1 text-slate-700">
-                Quality {product.qualityScore}/10
+                <ScoreWithExplainer
+                  explanationKind="productQuality"
+                  value={`${product.qualityScore}/10`}
+                >
+                  Product quality {product.qualityScore}/10
+                </ScoreWithExplainer>
               </span>
               <span className="rounded-md bg-white px-2 py-1 text-slate-700">
-                Claim risk {product.labelClaimRiskScore}/10
+                <ScoreWithExplainer
+                  explanationKind="claimRisk"
+                  value={`${product.labelClaimRiskScore}/10`}
+                >
+                  Claim risk {product.labelClaimRiskScore}/10
+                </ScoreWithExplainer>
               </span>
             </div>
           </div>
@@ -1493,6 +10349,10 @@ function LabelAnalyzer({
       </div>
     </section>
   );
+}
+
+function isDemoProductSignal(product: ProductSignal) {
+  return product.brand.toLowerCase() === "demo profile";
 }
 
 function ProductAustraliaRegulatoryChip({
@@ -1609,45 +10469,116 @@ function australiaVerificationStateTone(state: ProductAustraliaRegulatoryVerific
 }
 
 function TrialWatcher({
+  embedded,
   interventionsById,
   trialWatchItems
 }: {
+  embedded?: boolean;
   interventionsById: Map<string, Intervention>;
   trialWatchItems: TrialWatchItem[];
 }) {
+  const [showAllTrials, setShowAllTrials] = useState(false);
+  const trialPreviewLimit = 6;
+  const visibleTrials = showAllTrials
+    ? trialWatchItems
+    : trialWatchItems.slice(0, trialPreviewLimit);
+  const hiddenTrialCount = Math.max(trialWatchItems.length - trialPreviewLimit, 0);
+  const nctIdFormatCount = trialWatchItems.filter((item) => isNctIdFormat(item.nctId)).length;
+  const searchOnlyCount = trialWatchItems.length - nctIdFormatCount;
+  const resultsPostedCount = trialWatchItems.filter((item) => item.resultsPosted).length;
+
   return (
-    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
-      <h2 className="text-base font-semibold text-ink">Trial Watcher</h2>
+    <section className={dashboardPanelShellClassName(embedded)}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-base font-semibold text-ink">Trial Watcher</h2>
+        {trialWatchItems.length > 0 ? (
+          <div className="flex flex-wrap gap-2 text-xs font-semibold">
+            <span className="rounded-md border border-line bg-mist px-2 py-1 text-slate-700">
+              {trialWatchItems.length} local leads
+            </span>
+            <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 text-spruce">
+              {nctIdFormatCount} NCT IDs
+            </span>
+            {searchOnlyCount > 0 ? (
+              <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 text-amberline">
+                {searchOnlyCount} search-only
+              </span>
+            ) : null}
+            <span className="rounded-md border border-line bg-white px-2 py-1 text-slate-700">
+              {resultsPostedCount} results posted
+            </span>
+          </div>
+        ) : null}
+      </div>
       <div className="mt-4 grid gap-3">
         {trialWatchItems.length > 0 ? (
-          trialWatchItems.map((item) => (
-            <article key={item.id} className="rounded-lg border border-line bg-white p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <h3 className="text-sm font-semibold text-ink">{item.title}</h3>
-                  <p className="mt-1 text-xs text-slate-600">
-                    {interventionsById.get(item.interventionId)?.name} - {item.lastUpdateDate}
+          <>
+            {visibleTrials.map((item) => {
+              const intervention = interventionsById.get(item.interventionId);
+              const labels = labelTrialWatchItem(item, intervention);
+
+              return (
+                <article key={item.id} className="rounded-lg border border-line bg-white p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-ink">{item.title}</h3>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {intervention?.name ?? "Unknown intervention"} - {item.lastUpdateDate}
+                      </p>
+                    </div>
+                    <span className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
+                      {item.evidenceImpact}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <TrialClassificationBadge
+                      detail={labels.trialRelevanceDetail}
+                      label={labels.trialRelevanceLabel}
+                    />
+                    <TrialClassificationBadge
+                      detail={labels.trialResultDetail}
+                      label={labels.trialResultLabel}
+                    />
+                  </div>
+                  <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+                    <MiniStat label="Status" value={item.status} />
+                    <MiniStat label="Phase" value={item.phase} />
+                    <MiniStat label="Scope" value={item.enrollment} />
+                  </div>
+                  {!isNctIdFormat(item.nctId) ? (
+                    <p className="mt-3 rounded-md border border-amberline/30 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
+                      This is a search-only registry lead. Pick an NCT record before using it
+                      as curated trial context.
+                    </p>
+                  ) : null}
+                  <p className="mt-3 rounded-md border border-line bg-mist px-3 py-2 text-xs leading-5 text-slate-600">
+                    Registry records are review leads only; relevance labels do not prove benefit or
+                    safety.
                   </p>
-                </div>
-                <span className="rounded-md border border-signal/30 bg-blue-50 px-2 py-1 text-xs font-semibold text-signal">
-                  {item.evidenceImpact}
-                </span>
-              </div>
-              <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
-                <MiniStat label="Status" value={item.status} />
-                <MiniStat label="Phase" value={item.phase} />
-                <MiniStat label="Scope" value={item.enrollment} />
-              </div>
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-signal hover:underline"
+                  >
+                    {item.nctId ?? "Source"}{" "}
+                    <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
+                  </a>
+                </article>
+              );
+            })}
+            {hiddenTrialCount > 0 ? (
+              <button
+                type="button"
+                className="rounded-md border border-line bg-mist px-3 py-2 text-left text-xs font-semibold text-signal hover:bg-white"
+                onClick={() => setShowAllTrials((current) => !current)}
               >
-                Source <ExternalLink aria-hidden="true" className="h-3.5 w-3.5" />
-              </a>
-            </article>
-          ))
+                {showAllTrials
+                  ? "Show fewer trial records"
+                  : `Show ${hiddenTrialCount} more trial record${hiddenTrialCount === 1 ? "" : "s"}`}
+              </button>
+            ) : null}
+          </>
         ) : (
           <p className="rounded-lg border border-line bg-mist p-3 text-sm leading-6 text-slate-600">
             No local trial-watch records were captured for this dataset. Check current
@@ -1663,11 +10594,13 @@ function TrialWatcher({
 function SourceAndStudyPanel({
   activeClaim,
   activeIntervention,
+  embedded,
   referencesById,
   studies
 }: {
   activeClaim: Claim;
   activeIntervention?: Intervention;
+  embedded?: boolean;
   referencesById: Map<string, Reference>;
   studies: Study[];
 }) {
@@ -1863,7 +10796,7 @@ function SourceAndStudyPanel({
   };
 
   return (
-    <section className="rounded-lg border border-line bg-white p-4 shadow-panel">
+    <section className={dashboardPanelShellClassName(embedded)}>
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h2 className="text-base font-semibold text-ink">Sources and Review Queue</h2>
@@ -2045,23 +10978,20 @@ function ActiveSourcePacketPanel({
             {intervention?.name ?? "Selected intervention"} - {shortOutcome(claim.outcome)}
           </p>
           <p className="mt-1 text-sm leading-6 text-slate-700">{claim.claimText}</p>
+          <NonProofBox claim={claim} intervention={intervention} compact />
         </div>
         <div className="flex flex-wrap gap-2 text-xs">
           <span className={cn("rounded-md border px-2 py-1 font-semibold", labelTone(claim.finalLabel))}>
-            {claim.finalLabel}
+            {classificationLabel(claim)}: {claim.finalLabel}
           </span>
-          <span className="rounded-md border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-700">
-            {claim.reviewStatus}
-          </span>
+          <ReviewStatusBadge className="bg-white" status={claim.reviewStatus} />
           <span className={cn("rounded-md border px-2 py-1 font-semibold", sourcePacketCompletenessTone(completeness.status))}>
             {completeness.label}
           </span>
           <span className="rounded-md border border-signal/25 bg-white px-2 py-1 font-semibold text-signal">
             {completeness.extractedReferences}/{completeness.totalReferences} refs extracted
           </span>
-          <span className="rounded-md border border-signal/25 bg-white px-2 py-1 font-semibold text-signal">
-            {packet.studies.length} extracted studies
-          </span>
+          <EvidenceDepthBadges badges={packet.evidenceDepth.badges} />
           {completeness.pendingReferences > 0 ? (
             <span className="rounded-md border border-amberline/30 bg-amber-50 px-2 py-1 font-semibold text-amberline">
               {completeness.pendingReferences} pending
@@ -2160,7 +11090,7 @@ function CuratedStudyCard({
         </div>
         <div className="flex flex-wrap gap-2">
           <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
-            {study.studyType}
+            {sourceTypeLabel(study)}
           </span>
           <span className="rounded-md border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700">
             {sourceContextLabel(reference)}
@@ -2213,6 +11143,59 @@ function sourceContextLabel(reference?: Reference) {
   }
 
   return "Evidence source";
+}
+
+function sourceTypeLabel(study: Study) {
+  return study.sourceTypeTaxonomy ?? study.studyType;
+}
+
+function EvidenceDepthBadges({ badges }: { badges: EvidenceDepthBadge[] }) {
+  return (
+    <>
+      {badges.map((badge) => (
+        <span
+          key={`${badge.kind}-${badge.label}`}
+          aria-label={`${badge.label}: ${badge.detail}`}
+          className={cn(
+            "rounded-md border px-2 py-1 text-xs font-semibold outline-none transition focus:ring-4 focus:ring-signal/20",
+            evidenceDepthBadgeTone(badge.kind)
+          )}
+          tabIndex={0}
+          title={badge.detail}
+        >
+          {badge.label}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function evidenceDepthBadgeTone(kind: EvidenceDepthBadge["kind"]) {
+  if (kind === "rct" || kind === "meta-analysis") {
+    return "border-spruce/30 bg-teal-50 text-spruce";
+  }
+
+  if (
+    kind === "systematic-review" ||
+    kind === "review-position-stand" ||
+    kind === "clinical-trial-record"
+  ) {
+    return "border-signal/25 bg-blue-50 text-signal";
+  }
+
+  if (
+    kind === "regulatory-only" ||
+    kind === "regulatory-warning-source" ||
+    kind === "animal-mechanistic-only"
+  ) {
+    return "border-amberline/30 bg-amber-50 text-amberline";
+  }
+
+  if (kind === "human-trials-none") {
+    return "border-slate-300 bg-slate-50 text-slate-700";
+  }
+
+  return "border-line bg-mist text-slate-600";
 }
 
 function sourcePacketCompletenessTone(status: ClaimSourcePacket["completeness"]["status"]) {
@@ -2338,7 +11321,12 @@ function PubMedTriageArticle({ article }: { article: PubMedArticleSummary }) {
           <p className="mt-1 text-xs text-slate-600">{meta.join(" - ") || "Metadata pending"}</p>
         </div>
         <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
-          Review priority {article.relevanceScore}/100
+          <ScoreWithExplainer
+            explanationKind="reviewPriority"
+            value={`${article.relevanceScore}/100`}
+          >
+            Review priority {article.relevanceScore}/100
+          </ScoreWithExplainer>
         </span>
       </div>
 
@@ -2453,11 +11441,21 @@ function ClinicalTrialsPreviewCard({ study }: { study: ClinicalTrialSearchItem }
           </p>
         </div>
         <span className="rounded-md border border-spruce/30 bg-teal-50 px-2 py-1 text-xs font-semibold text-spruce">
-          Review priority {study.triageScore}/100
+          <ScoreWithExplainer explanationKind="reviewPriority" value={`${study.triageScore}/100`}>
+            Review priority {study.triageScore}/100
+          </ScoreWithExplainer>
         </span>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
+        <TrialClassificationBadge
+          detail={study.trialRelevanceDetail}
+          label={study.trialRelevanceLabel}
+        />
+        <TrialClassificationBadge
+          detail={study.trialResultDetail}
+          label={study.trialResultLabel}
+        />
         {study.triageReasons.map((reason) => (
           <span
             key={reason}
@@ -2471,7 +11469,7 @@ function ClinicalTrialsPreviewCard({ study }: { study: ClinicalTrialSearchItem }
       <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
         <MiniStat label="Enrollment" value={study.enrollment} />
         <MiniStat label="Study type" value={study.studyType} />
-        <MiniStat label="Results" value={study.hasResults ? "Posted" : "Not posted"} />
+        <MiniStat label="Results" value={study.trialResultLabel} />
       </div>
 
       <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">

@@ -53,6 +53,23 @@ export interface EvidenceCoverageReviewSampleItem {
   studyIds: string[];
 }
 
+export type EvidenceCoverageClaimReviewStatus =
+  | "already-reviewed"
+  | "incomplete-source-packet"
+  | "not-found"
+  | "ready-for-human-review";
+
+export interface EvidenceCoverageClaimReviewPacket {
+  claimId: string;
+  found: boolean;
+  humanOwned: true;
+  nextAction: string;
+  readOnly: true;
+  reviewBacklogItem: EvidenceCoverageReviewBacklogItem | null;
+  reviewContext: EvidenceCoverageReviewSampleItem | null;
+  status: EvidenceCoverageClaimReviewStatus;
+}
+
 export interface EvidenceCoverageReviewBoundary {
   confidenceLevel: ConfidenceLevel;
   doseFormStudied: string;
@@ -71,11 +88,20 @@ export interface EvidenceCoverageReviewSamplingPlan {
 
 export interface EvidenceCoverageWorksheet {
   coverageGaps: EvidenceCoverageInterventionGap[];
+  copySafeCommands: EvidenceCoverageCommand[];
   humanOwned: true;
   nextHumanAction: string;
   readyReviewBatch: EvidenceCoverageReviewSampleItem[];
   readySourcePackets: EvidenceCoverageWorksheetClaimItem[];
   remainingBacklog: EvidenceCoverageWorksheetClaimItem[];
+}
+
+export interface EvidenceCoverageCommand {
+  command: string;
+  id: string;
+  label: string;
+  mode: "read-only";
+  purpose: string;
 }
 
 export interface EvidenceCoverageWorksheetClaimItem {
@@ -103,6 +129,41 @@ export interface EvidenceCoverageSummary {
   totalInterventions: number;
   unreviewedClaims: number;
   worksheet: EvidenceCoverageWorksheet;
+}
+
+export interface EvidenceCoverageReviewReportSummary {
+  counts: EvidenceCoverageReviewReportSummaryCounts;
+  coverageGaps: EvidenceCoverageInterventionGap[];
+  humanOwned: true;
+  nextAction: string;
+  readOnly: true;
+  readyReviewClaims: EvidenceCoverageWorksheetClaimItem[];
+  sampledReviewClaims: EvidenceCoverageReviewReportSampleItem[];
+}
+
+export interface EvidenceCoverageReviewReportSummaryCounts {
+  completeSourcePackets: number;
+  coverageGaps: number;
+  humanReviewedClaims: number;
+  incompleteClaims: number;
+  interventionsWithClaims: number;
+  interventionsWithoutClaims: number;
+  readyReviewBatch: number;
+  readySourcePackets: number;
+  totalClaims: number;
+  totalInterventions: number;
+  unreviewedClaims: number;
+}
+
+export interface EvidenceCoverageReviewReportSampleItem {
+  claimId: string;
+  interventionId: string;
+  outcome: Claim["outcome"];
+  priority: number;
+  priorityReasons: string[];
+  referenceIds: string[];
+  sourcePacketStatus: ClaimSourcePacketCompletenessStatus;
+  studyIds: string[];
 }
 
 export function summarizeEvidenceCoverage(data: EvidenceDashboardData): EvidenceCoverageSummary {
@@ -183,6 +244,103 @@ export function summarizeEvidenceCoverage(data: EvidenceDashboardData): Evidence
   };
 }
 
+export function summarizeEvidenceCoverageReviewReport(
+  summary: EvidenceCoverageSummary
+): EvidenceCoverageReviewReportSummary {
+  return {
+    counts: {
+      completeSourcePackets: summary.completeSourcePackets,
+      coverageGaps: summary.interventionGaps.length,
+      humanReviewedClaims: summary.humanReviewedClaims,
+      incompleteClaims: summary.incompleteClaims.length,
+      interventionsWithClaims: summary.interventionsWithClaims,
+      interventionsWithoutClaims: summary.interventionsWithoutClaims.length,
+      readyReviewBatch: summary.worksheet.readyReviewBatch.length,
+      readySourcePackets: summary.worksheet.readySourcePackets.length,
+      totalClaims: summary.totalClaims,
+      totalInterventions: summary.totalInterventions,
+      unreviewedClaims: summary.unreviewedClaims
+    },
+    coverageGaps: summary.worksheet.coverageGaps,
+    humanOwned: true,
+    nextAction: summary.worksheet.nextHumanAction,
+    readOnly: true,
+    readyReviewClaims: summary.worksheet.readySourcePackets,
+    sampledReviewClaims: summary.worksheet.readyReviewBatch.map(
+      evidenceCoverageReviewReportSampleItem
+    )
+  };
+}
+
+export function summarizeEvidenceCoverageClaimReview(
+  data: EvidenceDashboardData,
+  claimId: string
+): EvidenceCoverageClaimReviewPacket {
+  const claim = data.claims.find((item) => item.id === claimId);
+
+  if (!claim) {
+    return {
+      claimId,
+      found: false,
+      humanOwned: true,
+      nextAction: `No claim found for ${claimId}; rerun npm run coverage:review to inspect valid claim IDs.`,
+      readOnly: true,
+      reviewBacklogItem: null,
+      reviewContext: null,
+      status: "not-found"
+    };
+  }
+
+  const referencesById = new Map(data.references.map((reference) => [reference.id, reference]));
+  const packet = buildClaimSourcePacket({
+    claim,
+    referencesById,
+    studies: data.studies
+  });
+  const reviewBacklogItem = evidenceCoverageReviewBacklogItem({ claim, packet });
+
+  if (!reviewBacklogItem) {
+    return {
+      claimId,
+      found: true,
+      humanOwned: true,
+      nextAction:
+        "Claim already has a complete human-reviewed source packet; rerun aggregate launch readiness before changing scope.",
+      readOnly: true,
+      reviewBacklogItem: null,
+      reviewContext: evidenceCoverageReviewSampleItem({
+        claim,
+        packet,
+        priority: 0,
+        priorityReasons: ["Human reviewed claim"]
+      }),
+      status: "already-reviewed"
+    };
+  }
+
+  return {
+    claimId,
+    found: true,
+    humanOwned: true,
+    nextAction:
+      reviewBacklogItem.packetStatus === "complete" && claim.reviewStatus !== "Human reviewed"
+        ? "Human review this claim packet; do not update review status until cited references and structured extraction are checked."
+        : reviewBacklogItem.nextAction,
+    readOnly: true,
+    reviewBacklogItem,
+    reviewContext: evidenceCoverageReviewSampleItem({
+      claim,
+      packet,
+      priority: reviewBacklogItem.priority,
+      priorityReasons: reviewBacklogItem.priorityReasons
+    }),
+    status:
+      reviewBacklogItem.packetStatus === "complete"
+        ? "ready-for-human-review"
+        : "incomplete-source-packet"
+  };
+}
+
 function evidenceCoverageWorksheet({
   claimReviewBacklog,
   interventionGaps,
@@ -207,6 +365,7 @@ function evidenceCoverageWorksheet({
 
   return {
     coverageGaps: interventionGaps,
+    copySafeCommands: evidenceCoverageCopySafeCommands(),
     humanOwned: true,
     nextHumanAction:
       reviewSamplingPlan.items.length > 0
@@ -217,6 +376,97 @@ function evidenceCoverageWorksheet({
     readyReviewBatch: reviewSamplingPlan.items,
     readySourcePackets,
     remainingBacklog
+  };
+}
+
+function evidenceCoverageCopySafeCommands(): EvidenceCoverageCommand[] {
+  return [
+    {
+      command: "npm run coverage:review",
+      id: "coverage-review",
+      label: "Refresh coverage review",
+      mode: "read-only",
+      purpose:
+        "Recheck source-packet coverage, review backlog, sampled review batch, and intervention gaps without changing review status."
+    },
+    {
+      command: "npm run coverage:review -- --summary",
+      id: "coverage-review-summary",
+      label: "Refresh compact coverage summary",
+      mode: "read-only",
+      purpose:
+        "Print coverage counts, sampled review claims, ready review claims, gaps, and next action without dumping the full review report."
+    },
+    {
+      command: "npm run coverage:review -- --env-file <non-production-env-file> --summary",
+      id: "coverage-review-env-file-summary",
+      label: "Refresh compact coverage summary from env file",
+      mode: "read-only",
+      purpose:
+        "Print coverage counts from an approved non-production env file without dumping secrets or changing review status."
+    },
+    {
+      command: "npm run coverage:review -- --claim <claim-id>",
+      id: "coverage-claim-review",
+      label: "Focus one claim review packet",
+      mode: "read-only",
+      purpose:
+        "Print one claim's source-packet boundary, checklist, references, and structured study IDs for human review."
+    },
+    {
+      command: "npm run regulatory:review",
+      id: "regulatory-review",
+      label: "Refresh AU/TGA review",
+      mode: "read-only",
+      purpose:
+        "Recheck product-level AU/TGA unknown/stale states before updating coverage decisions."
+    },
+    {
+      command: "npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10",
+      id: "candidate-review-overview",
+      label: "Review pending source candidates",
+      mode: "read-only",
+      purpose:
+        "Inspect pending source-candidate groups that may support future curated coverage expansion."
+    },
+    {
+      command: "npm run ingest:sources -- --candidate-review-flags --candidate-review-flags-limit 10",
+      id: "candidate-review-flags",
+      label: "Review flagged source candidates",
+      mode: "read-only",
+      purpose:
+        "Inspect broad safety or low-overlap candidate groups before any human curation decision."
+    },
+    {
+      command: "npm run ingest:sources -- --candidate-curation-handoff --candidate-curation-handoff-limit 10",
+      id: "candidate-curation-handoff",
+      label: "Review accepted candidate curation",
+      mode: "read-only",
+      purpose:
+        "Inspect accepted source candidates that still need claim linking or structured extraction before public source-packet use."
+    },
+    {
+      command: "npm run launch:readiness",
+      id: "launch-readiness",
+      label: "Refresh aggregate launch readiness",
+      mode: "read-only",
+      purpose: "Recheck fully-live launch gates after evidence coverage review changes."
+    }
+  ];
+}
+
+function evidenceCoverageReviewReportSampleItem(
+  item: EvidenceCoverageReviewSampleItem
+): EvidenceCoverageReviewReportSampleItem {
+  return {
+    claimId: item.claimId,
+    interventionId: item.interventionId,
+    outcome: item.outcome,
+    priority: item.priority,
+    priorityReasons: item.priorityReasons,
+    referenceIds: item.referenceIds,
+    sourcePacketStatus: item.sourcePacketStatus,
+    studyIds: item.studyIds
   };
 }
 
@@ -267,25 +517,12 @@ function evidenceCoverageReviewSamplingPlan({
     });
 
     return [
-      {
-        claimBoundary: evidenceCoverageReviewBoundary(claim),
-        claimId: item.claimId,
-        interventionId: item.interventionId,
-        nextAction:
-          "Review the linked references and structured study extraction before changing this claim's review status.",
-        outcome: item.outcome,
+      evidenceCoverageReviewSampleItem({
+        claim,
+        packet,
         priority: item.priority,
-        priorityReasons: item.priorityReasons,
-        referenceIds: packet.referenceIds,
-        reviewChecklist: evidenceCoverageReviewChecklist({ claim, packet }),
-        sourcePacketStatus: packet.completeness.status,
-        studyIds: packet.referenceIds.flatMap((referenceId) =>
-          packet.studies
-            .filter((study) => study.referenceId === referenceId)
-            .map((study) => study.id)
-            .sort()
-        )
-      }
+        priorityReasons: item.priorityReasons
+      })
     ];
   });
 
@@ -297,6 +534,38 @@ function evidenceCoverageReviewSamplingPlan({
         ? "Human review this sampled batch first; do not update review status until the cited packet and extraction are checked."
         : "No complete unreviewed source packets are ready for sampling.",
     readyClaims: readyBacklog.length
+  };
+}
+
+function evidenceCoverageReviewSampleItem({
+  claim,
+  packet,
+  priority,
+  priorityReasons
+}: {
+  claim: Claim;
+  packet: ReturnType<typeof buildClaimSourcePacket>;
+  priority: number;
+  priorityReasons: string[];
+}): EvidenceCoverageReviewSampleItem {
+  return {
+    claimBoundary: evidenceCoverageReviewBoundary(claim),
+    claimId: claim.id,
+    interventionId: claim.interventionId,
+    nextAction:
+      "Review the linked references and structured study extraction before changing this claim's review status.",
+    outcome: claim.outcome,
+    priority,
+    priorityReasons,
+    referenceIds: packet.referenceIds,
+    reviewChecklist: evidenceCoverageReviewChecklist({ claim, packet }),
+    sourcePacketStatus: packet.completeness.status,
+    studyIds: packet.referenceIds.flatMap((referenceId) =>
+      packet.studies
+        .filter((study) => study.referenceId === referenceId)
+        .map((study) => study.id)
+        .sort()
+    )
   };
 }
 

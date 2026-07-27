@@ -20,6 +20,7 @@ export interface ScheduledIngestionDryRunOptions {
 
 export interface ScheduledIngestionBatchOptions extends ScheduledIngestionDryRunOptions {
   apply?: boolean;
+  requireHostedRunReadiness?: boolean;
   runNextJob?: ScheduledIngestionJobRunner;
 }
 
@@ -27,6 +28,7 @@ export interface ScheduledIngestionDryRun {
   dedupeReview: ScheduledIngestionDedupeReview;
   dryRun: true;
   failureReview: ScheduledIngestionFailureReview;
+  hostedRunGate: ScheduledIngestionHostedRunGateReview;
   maxJobsPerRun: number;
   nextAction: string;
   noAutoPromotion: true;
@@ -36,6 +38,26 @@ export interface ScheduledIngestionDryRun {
   runningJobs: number;
   worksheet: ScheduledIngestionWorksheet;
   wouldRunJobs: number;
+}
+
+export interface ScheduledIngestionDryRunSummary {
+  blockedChecks: ScheduledIngestionWorksheetItem[];
+  counts: {
+    duplicateIdentityGroups: number;
+    queuedJobs: number;
+    recentFailures: number;
+    runningJobs: number;
+    wouldRunJobs: number;
+  };
+  hostedCronReady: boolean;
+  hostedRunGateReady: boolean;
+  humanOwned: true;
+  nextAction: string;
+  noAutoPromotion: true;
+  readOnly: true;
+  readyChecks: ScheduledIngestionWorksheetItem[];
+  retryAutomationReady: boolean;
+  warningChecks: ScheduledIngestionWorksheetItem[];
 }
 
 export interface ScheduledIngestionBatchResult {
@@ -73,6 +95,16 @@ export interface ScheduledIngestionHostedCronReview {
   missingEnv: string[];
   ready: boolean;
   scheduledWritesEnabled: boolean;
+}
+
+export interface ScheduledIngestionHostedRunGateReview {
+  localCliUnchanged: true;
+  ready: true;
+  routeExposed: false;
+  runOption: "requireHostedRunReadiness";
+  requiresExplicitApply: true;
+  requiresHostedCronReady: true;
+  requiresRetryAutomationReady: true;
 }
 
 export interface ScheduledIngestionFailureReview {
@@ -122,11 +154,20 @@ export interface ScheduledIngestionDedupeReviewItem {
 
 export interface ScheduledIngestionWorksheet {
   blocked: ScheduledIngestionWorksheetItem[];
+  copySafeCommands: ScheduledIngestionCommand[];
   humanOwned: true;
   nextOperatorAction: string;
   queuedWork: ScheduledIngestionWorksheetItem[];
   ready: ScheduledIngestionWorksheetItem[];
   warnings: ScheduledIngestionWorksheetItem[];
+}
+
+export interface ScheduledIngestionCommand {
+  command: string;
+  id: string;
+  label: string;
+  mode: "read-only" | "dry-run";
+  purpose: string;
 }
 
 export interface ScheduledIngestionWorksheetItem {
@@ -200,6 +241,7 @@ export async function planScheduledSourceIngestionDryRun(
   const retryPolicy = scheduledIngestionRetryPolicyReview(options.env);
   const failureReview = scheduledIngestionFailureReview(failedJobs, retryPolicy);
   const dedupeReview = scheduledIngestionDedupeReview(duplicateIdentityGroups);
+  const hostedRunGate = scheduledIngestionHostedRunGateReview();
   const nextAction = scheduledIngestionNextAction({
     failedCount,
     queuedCount,
@@ -212,6 +254,7 @@ export async function planScheduledSourceIngestionDryRun(
     dedupeReview,
     dryRun: true,
     failureReview,
+    hostedRunGate,
     maxJobsPerRun,
     nextAction,
     noAutoPromotion: true,
@@ -231,6 +274,30 @@ export async function planScheduledSourceIngestionDryRun(
       wouldRunJobs
     }),
     wouldRunJobs
+  };
+}
+
+export function summarizeScheduledSourceIngestionDryRun(
+  plan: ScheduledIngestionDryRun
+): ScheduledIngestionDryRunSummary {
+  return {
+    blockedChecks: plan.worksheet.blocked,
+    counts: {
+      duplicateIdentityGroups: plan.dedupeReview.duplicateIdentityGroups,
+      queuedJobs: plan.queuedJobs,
+      recentFailures: plan.recentFailures,
+      runningJobs: plan.runningJobs,
+      wouldRunJobs: plan.wouldRunJobs
+    },
+    hostedCronReady: plan.policy.hostedCronReady,
+    hostedRunGateReady: plan.hostedRunGate.ready,
+    humanOwned: true,
+    nextAction: plan.worksheet.nextOperatorAction,
+    noAutoPromotion: true,
+    readOnly: true,
+    readyChecks: plan.worksheet.ready,
+    retryAutomationReady: plan.failureReview.retryAutomationReady,
+    warningChecks: plan.worksheet.warnings
   };
 }
 
@@ -258,7 +325,9 @@ export async function runScheduledSourceIngestionBatch(
     return dryRunResult;
   }
 
-  const blocker = scheduledIngestionApplyBlocker(plan, env);
+  const blocker = scheduledIngestionApplyBlocker(plan, env, {
+    requireHostedRunReadiness: options.requireHostedRunReadiness
+  });
 
   if (blocker) {
     return {
@@ -495,6 +564,18 @@ function scheduledIngestionDedupeReviewItem(
   };
 }
 
+function scheduledIngestionHostedRunGateReview(): ScheduledIngestionHostedRunGateReview {
+  return {
+    localCliUnchanged: true,
+    ready: true,
+    routeExposed: false,
+    runOption: "requireHostedRunReadiness",
+    requiresExplicitApply: true,
+    requiresHostedCronReady: true,
+    requiresRetryAutomationReady: true
+  };
+}
+
 function scheduledIngestionWorksheet({
   dedupeReview,
   failureReview,
@@ -536,6 +617,11 @@ function scheduledIngestionWorksheet({
       id: "automatic-retries-disabled",
       label: "Automatic retries disabled",
       detail: "Failed jobs stay human-reviewed until an explicit retry policy is approved."
+    },
+    {
+      id: "hosted-run-gate",
+      label: "Hosted-run gate",
+      detail: "Future hosted runs can require hosted cron and retry-policy readiness before processing queued jobs; no hosted write route is exposed."
     }
   ];
   const blocked: ScheduledIngestionWorksheetItem[] = [];
@@ -650,6 +736,7 @@ function scheduledIngestionWorksheet({
 
   return {
     blocked,
+    copySafeCommands: scheduledIngestionCopySafeCommands(),
     humanOwned: true,
     nextOperatorAction:
       blocked[0]?.nextAction ??
@@ -660,6 +747,78 @@ function scheduledIngestionWorksheet({
     ready,
     warnings
   };
+}
+
+function scheduledIngestionCopySafeCommands(): ScheduledIngestionCommand[] {
+  return [
+    {
+      command: "npm run ingest:scheduled-dry-run",
+      id: "scheduled-ingestion-dry-run",
+      label: "Refresh scheduled ingestion dry run",
+      mode: "dry-run",
+      purpose:
+        "Recheck queue state, hosted-cron evidence, retry policy, dedupe review, and no-auto-promotion controls without running writes."
+    },
+    {
+      command: "npm run ingest:scheduled-dry-run -- --summary",
+      id: "scheduled-ingestion-summary",
+      label: "Summarize scheduled ingestion readiness",
+      mode: "read-only",
+      purpose:
+        "Print compact scheduler counts, readiness gates, warnings, and next action without dumping full queue details."
+    },
+    {
+      command: "npm run ingest:scheduled-dry-run -- --env-file <operations-env-file> --summary",
+      id: "scheduled-ingestion-env-file-summary",
+      label: "Summarize scheduled ingestion from env file",
+      mode: "read-only",
+      purpose:
+        "Recheck scheduler evidence from an approved ignored env file without printing secret values."
+    },
+    {
+      command: "npm run ingest:sources -- --db-status",
+      id: "source-candidate-db-status",
+      label: "Check source-candidate database",
+      mode: "read-only",
+      purpose: "Confirm local source-candidate storage connectivity without reading review data."
+    },
+    {
+      command: "npm run ingest:sources -- --jobs --jobs-status queued",
+      id: "queued-ingestion-jobs",
+      label: "Review queued ingestion jobs",
+      mode: "read-only",
+      purpose: "Inspect queued source-candidate jobs before any scheduled batch is enabled."
+    },
+    {
+      command: "npm run ingest:sources -- --jobs --jobs-status failed",
+      id: "failed-ingestion-jobs",
+      label: "Review failed ingestion jobs",
+      mode: "read-only",
+      purpose: "Inspect failed source-candidate jobs before any manual retry decision."
+    },
+    {
+      command: "npm run ingest:sources -- --candidates --candidate-duplicates",
+      id: "duplicate-source-candidates",
+      label: "Review duplicate source identities",
+      mode: "read-only",
+      purpose: "Inspect duplicate source/external-id groups before unattended scheduled ingestion."
+    },
+    {
+      command: "npm run ingest:sources -- --candidate-review-overview --candidate-review-overview-limit 10",
+      id: "candidate-review-overview",
+      label: "Review pending candidate overview",
+      mode: "read-only",
+      purpose: "Inspect the next human review groups without changing candidate decisions."
+    },
+    {
+      command: "npm run launch:readiness -- --env-file <operations-env-file> --summary",
+      id: "launch-readiness",
+      label: "Refresh aggregate launch readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck fully-live launch gates after scheduled-ingestion evidence changes without printing secret values."
+    }
+  ];
 }
 
 function scheduledIngestionHostedCronReview(
@@ -702,7 +861,10 @@ function sourceCandidateSourceCommandValue(source: SourceCandidateIdentityGroup[
 
 function scheduledIngestionApplyBlocker(
   plan: ScheduledIngestionDryRun,
-  env: Record<string, string | undefined>
+  env: Record<string, string | undefined>,
+  options: {
+    requireHostedRunReadiness?: boolean;
+  } = {}
 ) {
   if (env[SCHEDULED_INGESTION_WRITES_ENV] !== "true") {
     return `${SCHEDULED_INGESTION_WRITES_ENV}=true is required when --apply is used.`;
@@ -714,6 +876,16 @@ function scheduledIngestionApplyBlocker(
 
   if (plan.runningJobs > 0) {
     return plan.nextAction;
+  }
+
+  if (options.requireHostedRunReadiness && !plan.policy.hostedCronReady) {
+    return `Hosted scheduled ingestion readiness is required when hosted-run mode is used: ${plan.policy.hostedCron.missingEnv.join(", ")}.`;
+  }
+
+  if (options.requireHostedRunReadiness && !plan.failureReview.retryAutomationReady) {
+    return plan.failureReview.failedJobsReviewed > 0
+      ? plan.failureReview.nextAction
+      : `Scheduled ingestion retry policy must be ready when hosted-run mode is used: ${plan.failureReview.retryPolicy.missingEnv.join(", ")}.`;
   }
 
   return undefined;

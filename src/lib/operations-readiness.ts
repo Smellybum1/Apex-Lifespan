@@ -34,12 +34,47 @@ export interface OperationsReadinessReport {
   worksheet: OperationsReadinessWorksheet;
 }
 
+export interface OperationsReadinessSummary {
+  counts: Record<OperationsReadinessStatus, number>;
+  generatedAt: string;
+  humanOwned: true;
+  missingExternalEvidence: OperationsEvidenceWorksheetItem[];
+  nextAction: string;
+  overall: "ready" | "blocked";
+  readOnly: true;
+  readyExternalEvidence: OperationsEvidenceWorksheetItem[];
+  readyLocalArtifacts: OperationsEvidenceWorksheetItem[];
+}
+
+export type OperationsEvidenceReviewStatus = "blocked" | "not-found" | "ready";
+
+export interface OperationsEvidenceReviewPacket {
+  availableEvidenceIds: string[];
+  check: OperationsReadinessCheck | null;
+  evidenceId: string;
+  found: boolean;
+  humanOwned: true;
+  nextAction: string;
+  readOnly: true;
+  relatedCommand: OperationsReadinessCommand | null;
+  status: OperationsEvidenceReviewStatus;
+}
+
 export interface OperationsReadinessWorksheet {
+  copySafeCommands: OperationsReadinessCommand[];
   humanOwned: true;
   missingExternalEvidence: OperationsEvidenceWorksheetItem[];
   nextEvidenceAction: string;
   readyExternalEvidence: OperationsEvidenceWorksheetItem[];
   readyLocalArtifacts: OperationsEvidenceWorksheetItem[];
+}
+
+export interface OperationsReadinessCommand {
+  command: string;
+  id: string;
+  label: string;
+  mode: "read-only";
+  purpose: string;
 }
 
 export interface OperationsEvidenceWorksheetItem {
@@ -169,6 +204,63 @@ export function buildOperationsReadinessReport(
     generatedAt: (context.generatedAt ?? new Date()).toISOString(),
     overall: counts.blocked > 0 ? "blocked" : "ready",
     worksheet: operationsReadinessWorksheet(checks)
+  };
+}
+
+export function summarizeOperationsEvidenceReview(
+  context: OperationsReadinessContext,
+  evidenceId: string
+): OperationsEvidenceReviewPacket {
+  const report = buildOperationsReadinessReport(context);
+  const check = report.checks.find((item) => item.id === evidenceId) ?? null;
+  const availableEvidenceIds = report.checks.map((item) => item.id);
+
+  if (!check) {
+    return {
+      availableEvidenceIds,
+      check: null,
+      evidenceId,
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No operations evidence item matched this id; rerun npm run operations:readiness to inspect valid evidence ids.",
+      readOnly: true,
+      relatedCommand: null,
+      status: "not-found"
+    };
+  }
+
+  return {
+    availableEvidenceIds,
+    check,
+    evidenceId,
+    found: true,
+    humanOwned: true,
+    nextAction:
+      check.nextAction ??
+      "This operations evidence item is ready; rerun aggregate launch readiness before changing scope.",
+    readOnly: true,
+    relatedCommand:
+      report.worksheet.copySafeCommands.find(
+        (command) => command.id === "operations-readiness"
+      ) ?? null,
+    status: check.status
+  };
+}
+
+export function summarizeOperationsReadinessReport(
+  report: OperationsReadinessReport
+): OperationsReadinessSummary {
+  return {
+    counts: report.counts,
+    generatedAt: report.generatedAt,
+    humanOwned: true,
+    missingExternalEvidence: report.worksheet.missingExternalEvidence,
+    nextAction: report.worksheet.nextEvidenceAction,
+    overall: report.overall,
+    readOnly: true,
+    readyExternalEvidence: report.worksheet.readyExternalEvidence,
+    readyLocalArtifacts: report.worksheet.readyLocalArtifacts
   };
 }
 
@@ -377,6 +469,7 @@ function operationsReadinessWorksheet(
     .map(operationsEvidenceWorksheetItem);
 
   return {
+    copySafeCommands: operationsReadinessCopySafeCommands(),
     humanOwned: true,
     missingExternalEvidence,
     nextEvidenceAction:
@@ -385,6 +478,91 @@ function operationsReadinessWorksheet(
     readyExternalEvidence,
     readyLocalArtifacts
   };
+}
+
+function operationsReadinessCopySafeCommands(): OperationsReadinessCommand[] {
+  return [
+    {
+      command: "npm run operations:readiness",
+      id: "operations-readiness",
+      label: "Refresh operations readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck local operations artifacts and external evidence variables without printing secret values."
+    },
+    {
+      command: "npm run operations:readiness -- --summary",
+      id: "operations-readiness-summary",
+      label: "Refresh compact operations summary",
+      mode: "read-only",
+      purpose:
+        "Print operations readiness counts, ready artifacts, missing evidence, and next action without dumping all checks."
+    },
+    {
+      command: "npm run operations:readiness -- --env-file <operations-env-file> --summary",
+      id: "operations-readiness-env-file-summary",
+      label: "Refresh operations summary from env file",
+      mode: "read-only",
+      purpose:
+        "Recheck operations evidence from an approved ignored env file without printing secret values."
+    },
+    {
+      command: "npm run operations:readiness -- --evidence <evidence-id>",
+      id: "operations-evidence-review",
+      label: "Focus one operations evidence item",
+      mode: "read-only",
+      purpose:
+        "Print one operations evidence check with its required key and next action for human setup."
+    },
+    {
+      command:
+        "npm run operations:readiness -- --env-file <operations-env-file> --evidence <evidence-id>",
+      id: "operations-evidence-env-file-review",
+      label: "Focus operations evidence from env file",
+      mode: "read-only",
+      purpose:
+        "Inspect one operations evidence check using approved env-file evidence without printing values."
+    },
+    {
+      command: "npm run smoke:public-mvp -- <base-url>",
+      id: "public-smoke",
+      label: "Smoke public routes and health",
+      mode: "read-only",
+      purpose:
+        "Verify public routes, security headers, anonymous operator boundary, live previews, and /api/health."
+    },
+    {
+      command: "npm run production:readiness",
+      id: "production-readiness",
+      label: "Refresh production readiness",
+      mode: "read-only",
+      purpose:
+        "Recheck production database, migration, Vercel, and secret evidence before backup or rollback drills."
+    },
+    {
+      command: "npm run ingest:scheduled-dry-run",
+      id: "scheduled-ingestion-dry-run",
+      label: "Refresh scheduled ingestion dry run",
+      mode: "read-only",
+      purpose:
+        "Recheck hosted-cron, scheduled-ingestion alert, retry policy, and no-auto-promotion readiness."
+    },
+    {
+      command: "npm run launch:readiness",
+      id: "launch-readiness",
+      label: "Refresh aggregate launch readiness",
+      mode: "read-only",
+      purpose: "Recheck fully-live launch gates after operations evidence changes."
+    },
+    {
+      command: "npm run launch:readiness -- --env-file <operations-env-file> --summary",
+      id: "launch-readiness-env-file-summary",
+      label: "Refresh aggregate launch summary from env file",
+      mode: "read-only",
+      purpose:
+        "Recheck launch gates with approved operations evidence without printing secret values."
+    }
+  ];
 }
 
 function operationsEvidenceWorksheetItem(

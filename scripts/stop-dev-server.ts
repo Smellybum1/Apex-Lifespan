@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 
-const DEFAULT_PORT = 3000;
+const DEFAULT_PORT = 3001;
 const SAFE_PROCESS_NAMES = new Set(["node", "node.exe"]);
 
 function main() {
@@ -16,7 +16,7 @@ function main() {
 }
 
 function readPort(args: string[]) {
-  const portArg = args[0] ?? process.env.PORT;
+  const portArg = args[0] ?? process.env.APEX_DEV_PORT ?? process.env.PORT;
   const port = portArg ? Number(portArg) : DEFAULT_PORT;
 
   if (!Number.isInteger(port) || port < 1 || port > 65535) {

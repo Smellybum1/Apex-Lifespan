@@ -37,6 +37,7 @@ describe("source candidate ingestion helpers", () => {
       query: "creatine strength",
       ids: ["28615996"],
       count: 1,
+      retstart: 20,
       source: "NCBI E-utilities",
       articles: [
         {
@@ -48,6 +49,8 @@ describe("source candidate ingestion helpers", () => {
           publicationTypes: ["Review"],
           doi: "10.1186/s12970-017-0173-z",
           hasAbstract: true,
+          abstractText:
+            "Creatine source abstract available for private curation draft prefill.",
           authors: ["Kreider RB"],
           relevanceScore: 80,
           relevanceReasons: ["Title matches query"],
@@ -59,12 +62,16 @@ describe("source candidate ingestion helpers", () => {
     const result = await ingestPubMedSourceCandidates({
       term: "creatine strength",
       retmax: 5,
+      retstart: 20,
       interventionId: "creatine",
       claimId: "creatine-strength",
       ingestionJobId: "job-pubmed"
     });
 
-    expect(mocks.searchPubMed).toHaveBeenCalledWith("creatine strength", 5);
+    expect(mocks.searchPubMed).toHaveBeenCalledWith("creatine strength", 5, {
+      includeAbstractText: true,
+      retstart: 20
+    });
     expect(mocks.upsertSourceCandidateDrafts).toHaveBeenCalledWith([
       expect.objectContaining({
         dedupeKey:
@@ -74,12 +81,18 @@ describe("source candidate ingestion helpers", () => {
         triageScore: 80,
         decision: "Pending review",
         reviewStatus: "Unreviewed AI draft",
-        ingestionJobId: "job-pubmed"
+        ingestionJobId: "job-pubmed",
+        metadata: expect.objectContaining({
+          abstractText:
+            "Creatine source abstract available for private curation draft prefill."
+        })
       })
     ]);
     expect(result).toMatchObject({
       source: "PubMed",
       query: "creatine strength",
+      totalCount: 1,
+      pageStart: 20,
       upsert: {
         received: 1,
         upserted: 1

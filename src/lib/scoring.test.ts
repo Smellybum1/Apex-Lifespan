@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { analyzeLabel, compositeScore, scoreBand } from "@/lib/scoring";
+import {
+  COMPOSITE_SCORE_WEIGHTS,
+  SCORE_COMPONENT_GUIDE,
+  analyzeLabel,
+  compositeScore,
+  FINAL_LABEL_LEGEND,
+  getClaimScoreRows,
+  SCORE_BAND_LEGEND,
+  scoreBand
+} from "@/lib/scoring";
+import { EVIDENCE_LABEL_OPTIONS } from "@/lib/score-fields";
 import { references } from "@/lib/seed-data";
 import type { ScoreSet } from "@/lib/types";
 
@@ -35,6 +45,74 @@ describe("compositeScore", () => {
 
     expect(compositeScore(speculativeScores)).toBe(1.8);
     expect(scoreBand(compositeScore(speculativeScores))).toBe("Weak");
+  });
+});
+
+describe("score legends", () => {
+  it("keeps public score band legend aligned with scoreBand", () => {
+    const sampleScores = [9, 6.5, 4.5, 1.5];
+
+    expect(SCORE_BAND_LEGEND.map((row) => row.band)).toEqual(
+      sampleScores.map((score) => scoreBand(score))
+    );
+  });
+
+  it("documents every selectable final label", () => {
+    expect(FINAL_LABEL_LEGEND.map((row) => row.label)).toEqual(EVIDENCE_LABEL_OPTIONS);
+  });
+
+  it("exposes the operator scoring contract used by the formula", () => {
+    expect(COMPOSITE_SCORE_WEIGHTS.map((row) => [row.label, row.displayWeight])).toEqual([
+      ["Directness", "22%"],
+      ["Rigor", "22%"],
+      ["Impact", "18%"],
+      ["Safety", "14%"],
+      ["Low regulatory risk", "10%"],
+      ["Low hype risk", "8%"],
+      ["Measurability", "6%"]
+    ]);
+    expect(COMPOSITE_SCORE_WEIGHTS.reduce((total, row) => total + row.weight, 0)).toBe(1);
+    expect(SCORE_COMPONENT_GUIDE.map((row) => row.name)).toContain("Product caveat context");
+  });
+});
+
+describe("getClaimScoreRows", () => {
+  it("keeps the visible score breakdown aligned with the composite formula", () => {
+    const rows = getClaimScoreRows({
+      id: "claim",
+      interventionId: "intervention",
+      outcome: "Muscle/strength",
+      claimText: "Claim.",
+      finalLabel: "Insufficient Evidence",
+      evidenceGrade: "Draft",
+      confidenceLevel: "Low",
+      scores: strongScores,
+      keyReferenceIds: [],
+      momentum: "Stable",
+      effectSize: "Effect.",
+      populationStudied: "Population.",
+      doseFormStudied: "Dose.",
+      durationStudied: "Duration.",
+      comparator: "Comparator.",
+      safetyNotes: "Safety.",
+      applicabilityNotes: "Applicability.",
+      clinicalRelevance: "Relevance.",
+      whatWouldChangeScore: "More evidence.",
+      reviewStatus: "Unreviewed AI draft",
+      lastUpdated: "2026-06-13"
+    });
+
+    expect(rows.map((row) => row.label)).toEqual([
+      "Directness",
+      "Rigor",
+      "Impact",
+      "Safety",
+      "Measurability",
+      "Low regulatory risk",
+      "Low hype risk"
+    ]);
+    expect(rows.find((row) => row.label === "Low regulatory risk")?.value).toBe(9);
+    expect(rows.find((row) => row.label === "Low hype risk")?.value).toBe(8);
   });
 });
 

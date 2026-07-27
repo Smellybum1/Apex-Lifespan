@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildOperationsReadinessReport } from "@/lib/operations-readiness";
+import {
+  buildOperationsReadinessReport,
+  summarizeOperationsEvidenceReview,
+  summarizeOperationsReadinessReport
+} from "@/lib/operations-readiness";
 
 const localFilesReady = {
   healthEndpoint: true,
@@ -20,6 +24,88 @@ describe("operations readiness report", () => {
 
     expect(report.overall).toBe("blocked");
     expect(report.counts.ready).toBe(5);
+    expect(report.worksheet.copySafeCommands).toEqual([
+      {
+        command: "npm run operations:readiness",
+        id: "operations-readiness",
+        label: "Refresh operations readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck local operations artifacts and external evidence variables without printing secret values."
+      },
+      {
+        command: "npm run operations:readiness -- --summary",
+        id: "operations-readiness-summary",
+        label: "Refresh compact operations summary",
+        mode: "read-only",
+        purpose:
+          "Print operations readiness counts, ready artifacts, missing evidence, and next action without dumping all checks."
+      },
+      {
+        command: "npm run operations:readiness -- --env-file <operations-env-file> --summary",
+        id: "operations-readiness-env-file-summary",
+        label: "Refresh operations summary from env file",
+        mode: "read-only",
+        purpose:
+          "Recheck operations evidence from an approved ignored env file without printing secret values."
+      },
+      {
+        command: "npm run operations:readiness -- --evidence <evidence-id>",
+        id: "operations-evidence-review",
+        label: "Focus one operations evidence item",
+        mode: "read-only",
+        purpose:
+          "Print one operations evidence check with its required key and next action for human setup."
+      },
+      {
+        command:
+          "npm run operations:readiness -- --env-file <operations-env-file> --evidence <evidence-id>",
+        id: "operations-evidence-env-file-review",
+        label: "Focus operations evidence from env file",
+        mode: "read-only",
+        purpose:
+          "Inspect one operations evidence check using approved env-file evidence without printing values."
+      },
+      {
+        command: "npm run smoke:public-mvp -- <base-url>",
+        id: "public-smoke",
+        label: "Smoke public routes and health",
+        mode: "read-only",
+        purpose:
+          "Verify public routes, security headers, anonymous operator boundary, live previews, and /api/health."
+      },
+      {
+        command: "npm run production:readiness",
+        id: "production-readiness",
+        label: "Refresh production readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck production database, migration, Vercel, and secret evidence before backup or rollback drills."
+      },
+      {
+        command: "npm run ingest:scheduled-dry-run",
+        id: "scheduled-ingestion-dry-run",
+        label: "Refresh scheduled ingestion dry run",
+        mode: "read-only",
+        purpose:
+          "Recheck hosted-cron, scheduled-ingestion alert, retry policy, and no-auto-promotion readiness."
+      },
+      {
+        command: "npm run launch:readiness",
+        id: "launch-readiness",
+        label: "Refresh aggregate launch readiness",
+        mode: "read-only",
+        purpose: "Recheck fully-live launch gates after operations evidence changes."
+      },
+      {
+        command: "npm run launch:readiness -- --env-file <operations-env-file> --summary",
+        id: "launch-readiness-env-file-summary",
+        label: "Refresh aggregate launch summary from env file",
+        mode: "read-only",
+        purpose:
+          "Recheck launch gates with approved operations evidence without printing secret values."
+      }
+    ]);
     expect(report.worksheet.readyLocalArtifacts.map((item) => item.id)).toEqual([
       "privacy-page",
       "terms-page",
@@ -59,6 +145,98 @@ describe("operations readiness report", () => {
         })
       ])
     );
+  });
+
+  it("builds a compact operations readiness summary without full check detail", () => {
+    const report = buildOperationsReadinessReport({
+      env: {},
+      files: localFilesReady,
+      generatedAt: new Date("2026-06-11T00:00:00.000Z")
+    });
+
+    const summary = summarizeOperationsReadinessReport(report);
+
+    expect(summary).toEqual({
+      counts: {
+        blocked: 8,
+        ready: 5
+      },
+      generatedAt: "2026-06-11T00:00:00.000Z",
+      humanOwned: true,
+      missingExternalEvidence: expect.arrayContaining([
+        {
+          evidenceKeys: ["APEX_UPTIME_MONITORING_URL"],
+          id: "uptime-monitoring",
+          label: "Uptime monitoring",
+          nextAction:
+            "Configure uptime monitoring for /api/health and record its URL in APEX_UPTIME_MONITORING_URL."
+        },
+        {
+          evidenceKeys: ["APEX_ALERT_TESTED_AT"],
+          id: "alert-test",
+          label: "Alert test",
+          nextAction:
+            "Send or trigger a launch alert test and record the timestamp in APEX_ALERT_TESTED_AT."
+        }
+      ]),
+      nextAction:
+        "Configure uptime monitoring for /api/health and record its URL in APEX_UPTIME_MONITORING_URL.",
+      overall: "blocked",
+      readOnly: true,
+      readyExternalEvidence: [],
+      readyLocalArtifacts: [
+        {
+          id: "privacy-page",
+          label: "Privacy page"
+        },
+        {
+          id: "terms-page",
+          label: "Terms page"
+        },
+        {
+          id: "operations-runbook",
+          label: "Operations runbook"
+        },
+        {
+          id: "operations-drill-checklist",
+          label: "Operations drill checklist"
+        },
+        {
+          id: "health-endpoint",
+          label: "Public health endpoint"
+        }
+      ]
+    });
+    expect(summary.missingExternalEvidence).toHaveLength(8);
+    expect(JSON.stringify(summary)).not.toContain("copySafeCommands");
+    expect(JSON.stringify(summary)).not.toContain('"checks"');
+  });
+
+  it("emits only read-only commands for operations handoff", () => {
+    const report = buildOperationsReadinessReport({
+      env: {},
+      files: localFilesReady,
+      generatedAt: new Date("2026-06-11T00:00:00.000Z")
+    });
+    const blockedWriteTokens = [
+      "--apply",
+      "--queue-",
+      "--run-next",
+      "--accept-candidate",
+      "--reject-candidate",
+      "--link-candidate-claim",
+      "--extract-candidate-study"
+    ];
+
+    expect(report.worksheet.copySafeCommands).toHaveLength(10);
+    expect(report.worksheet.copySafeCommands.every((item) => item.mode === "read-only")).toBe(
+      true
+    );
+    expect(
+      report.worksheet.copySafeCommands.some((item) =>
+        blockedWriteTokens.some((token) => item.command.includes(token))
+      )
+    ).toBe(false);
   });
 
   it("reports ready when local artifacts and external proof placeholders are configured", () => {
@@ -138,6 +316,97 @@ describe("operations readiness report", () => {
       ])
     );
     expect(serialized).not.toContain("private-token");
+  });
+
+  it("builds a focused read-only packet for one missing operations evidence item", () => {
+    expect(
+      summarizeOperationsEvidenceReview(
+        {
+          env: {},
+          files: localFilesReady,
+          generatedAt: new Date("2026-06-11T00:00:00.000Z")
+        },
+        "uptime-monitoring"
+      )
+    ).toEqual({
+      availableEvidenceIds: [
+        "privacy-page",
+        "terms-page",
+        "operations-runbook",
+        "operations-drill-checklist",
+        "health-endpoint",
+        "uptime-monitoring",
+        "error-monitoring",
+        "deployment-alerts",
+        "scheduled-ingestion-alerts",
+        "database-backups",
+        "backup-restore-rehearsal",
+        "rollback-drill",
+        "alert-test"
+      ],
+      check: {
+        detail: "Missing operations evidence variable: APEX_UPTIME_MONITORING_URL.",
+        evidenceKeys: ["APEX_UPTIME_MONITORING_URL"],
+        id: "uptime-monitoring",
+        label: "Uptime monitoring",
+        nextAction:
+          "Configure uptime monitoring for /api/health and record its URL in APEX_UPTIME_MONITORING_URL.",
+        status: "blocked"
+      },
+      evidenceId: "uptime-monitoring",
+      found: true,
+      humanOwned: true,
+      nextAction:
+        "Configure uptime monitoring for /api/health and record its URL in APEX_UPTIME_MONITORING_URL.",
+      readOnly: true,
+      relatedCommand: {
+        command: "npm run operations:readiness",
+        id: "operations-readiness",
+        label: "Refresh operations readiness",
+        mode: "read-only",
+        purpose:
+          "Recheck local operations artifacts and external evidence variables without printing secret values."
+      },
+      status: "blocked"
+    });
+  });
+
+  it("reports missing focused operations evidence packets without writes", () => {
+    expect(
+      summarizeOperationsEvidenceReview(
+        {
+          env: {},
+          files: localFilesReady,
+          generatedAt: new Date("2026-06-11T00:00:00.000Z")
+        },
+        "missing-evidence"
+      )
+    ).toEqual({
+      availableEvidenceIds: [
+        "privacy-page",
+        "terms-page",
+        "operations-runbook",
+        "operations-drill-checklist",
+        "health-endpoint",
+        "uptime-monitoring",
+        "error-monitoring",
+        "deployment-alerts",
+        "scheduled-ingestion-alerts",
+        "database-backups",
+        "backup-restore-rehearsal",
+        "rollback-drill",
+        "alert-test"
+      ],
+      check: null,
+      evidenceId: "missing-evidence",
+      found: false,
+      humanOwned: true,
+      nextAction:
+        "No operations evidence item matched this id; rerun npm run operations:readiness to inspect valid evidence ids.",
+      readOnly: true,
+      relatedCommand: null,
+      status: "not-found"
+    });
   });
 
   it("blocks launch evidence when required local operations artifacts are missing", () => {
