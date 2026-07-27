@@ -1,3 +1,4 @@
+import { assessClaimOutcomeAlignment } from "@/lib/claim-outcome-alignment";
 import { classifyClaim } from "@/lib/evidence-brief";
 import type { ClaimSourcePacket } from "@/lib/source-packet";
 import type { Claim, ConfidenceLevel } from "@/lib/types";
@@ -118,6 +119,25 @@ export function deriveClaimConfidence({
     return {
       confidenceLevel: "Very low",
       reason: "No source packet is linked, so nothing has been extracted for this claim."
+    };
+  }
+
+  // Design mix and volume say how good the linked studies are, never what they
+  // measured. A claim can be linked to genuinely on-target papers about the
+  // right supplement that studied something else entirely — which is how
+  // Whey protein / Mortality-lifespan nearly reached Moderate on a
+  // refeeding-syndrome trial, a diarrhea trial and a strength meta-analysis.
+  //
+  // `unknown` deliberately does not block: a study that records nothing about
+  // what it measured is thin extraction, not off-topic evidence, and treating
+  // the two the same would punish the catalog's gaps rather than its mistakes.
+  const alignment = assessClaimOutcomeAlignment({ claim, packet });
+
+  if (alignment.verdict === "unaligned") {
+    return {
+      blockedReason: `${alignment.reason} Confidence would be describing evidence for a different question.`,
+      confidenceLevel: "Very low",
+      reason: alignment.reason
     };
   }
 

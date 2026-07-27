@@ -256,11 +256,29 @@ const REJECTED_DESIGNS = new Set<StudySourceTypeCommandHint>([
 ]);
 
 /**
- * Keywords per outcome area. Only used to answer "does this paper report an
- * outcome the catalog tracks" — never to decide direction or effect.
+ * Keywords per outcome area. Used to answer "does this paper report an outcome
+ * the catalog tracks" — never to decide direction or effect.
+ *
+ * These started as a coarse gate signal, where missing a synonym only meant a
+ * candidate went `undecided`. `textMentionsOutcome` asks a sharper question —
+ * did *this* study measure *this* outcome — and a gap there reads as a genuine
+ * mismatch, so the standard instrument names and endpoint phrasings papers
+ * actually use are listed too (PSQI for sleep, WOMAC for joints, 1RM for
+ * strength). An outcome missing its instrument name looked like off-topic
+ * evidence rather than a thin keyword list.
  */
 const OUTCOME_KEYWORDS: Record<OutcomeArea, string[]> = {
-  "Mortality/lifespan": ["mortality", "all cause death", "survival", "lifespan", "longevity"],
+  "Mortality/lifespan": [
+    "mortality",
+    "all cause mortality",
+    "all cause death",
+    "survival",
+    "lifespan",
+    "life expectancy",
+    "longevity",
+    "fatal",
+    "death rate"
+  ],
   "Cardiovascular events": [
     "cardiovascular event",
     "myocardial infarction",
@@ -309,28 +327,72 @@ const OUTCOME_KEYWORDS: Record<OutcomeArea, string[]> = {
     "cognition",
     "cognitive function",
     "cognitive performance",
+    "cognitive decline",
     "memory",
     "executive function",
     "dementia",
-    "alzheimer"
+    "alzheimer",
+    "mmse",
+    "moca",
+    "adas cog",
+    "reaction time",
+    "working memory",
+    "processing speed",
+    "attention"
   ],
-  Sleep: ["sleep quality", "sleep onset", "insomnia", "sleep efficiency", "sleep duration"],
+  Sleep: [
+    "sleep quality",
+    "sleep onset",
+    "insomnia",
+    "sleep efficiency",
+    "sleep duration",
+    "sleep latency",
+    "total sleep time",
+    "psqi",
+    "pittsburgh sleep",
+    "insomnia severity index",
+    "actigraphy",
+    "wake after sleep onset",
+    "daytime sleepiness"
+  ],
   "Mood/stress": [
     "depression",
     "depressive symptom",
     "anxiety",
     "mood",
     "perceived stress",
-    "cortisol"
+    "cortisol",
+    "hamilton depression",
+    "hamd",
+    "phq 9",
+    "gad 7",
+    "beck depression",
+    "dass",
+    "hads",
+    "state trait anxiety",
+    "stress scale",
+    "wellbeing"
   ],
   "Muscle/strength": [
     "lean mass",
+    "lean body mass",
+    "fat free mass",
     "muscle mass",
     "muscle strength",
+    "muscle thickness",
+    "muscle size",
+    "cross sectional area",
     "resistance training",
     "sarcopenia",
     "grip strength",
-    "hypertrophy"
+    "hypertrophy",
+    "1 rm",
+    "one repetition maximum",
+    "repetition maximum",
+    "isometric strength",
+    "isokinetic",
+    "peak power",
+    "muscular strength"
   ],
   "VO2 max/endurance": [
     "vo 2 max",
@@ -338,32 +400,66 @@ const OUTCOME_KEYWORDS: Record<OutcomeArea, string[]> = {
     "aerobic capacity",
     "endurance performance",
     "time to exhaustion",
-    "exercise capacity"
+    "exercise capacity",
+    "time trial",
+    "6 minute walk",
+    "six minute walk",
+    "maximal oxygen uptake",
+    "anaerobic threshold",
+    "exercise tolerance"
   ],
   "Joint/tendon/skin": [
     "osteoarthritis",
     "joint pain",
+    "joint stiffness",
+    "joint function",
+    "knee pain",
+    "womac",
+    "koos",
     "tendon",
+    "tendinopathy",
     "skin elasticity",
+    "skin hydration",
     "wrinkle",
     "wound healing",
-    "cartilage"
+    "cartilage",
+    "dermal",
+    "collagen density"
   ],
   "Eye health": [
     "macular",
     "visual acuity",
     "retina",
+    "retinal",
     "age related macular degeneration",
     "dry eye",
-    "contrast sensitivity"
+    "contrast sensitivity",
+    "eye fatigue",
+    "eye strain",
+    "visual function",
+    "intraocular pressure",
+    "accommodation amplitude",
+    "glare recovery"
   ],
   "Immune/respiratory": [
     "respiratory tract infection",
     "common cold",
     "immune function",
+    "immune response",
     "influenza",
     "pneumonia",
-    "covid 19"
+    "covid 19",
+    "exacerbation",
+    "copd",
+    "chronic obstructive pulmonary",
+    "bronchitis",
+    "cold duration",
+    "sick days",
+    "antibody titre",
+    "antibody titer",
+    "lymphocyte",
+    "natural killer cell",
+    "immunoglobulin"
   ],
   "Fertility/hormones": [
     "testosterone",
@@ -376,10 +472,17 @@ const OUTCOME_KEYWORDS: Record<OutcomeArea, string[]> = {
   ],
   "Biological aging clocks": [
     "epigenetic age",
+    "epigenetic clock",
     "dna methylation age",
+    "methylation clock",
+    "horvath clock",
+    "grimage",
+    "phenoage",
     "telomere",
+    "telomere length",
     "biological age",
-    "senescence"
+    "senescence",
+    "senescent cell"
   ],
   "Safety/adverse effects": [
     "adverse event",
@@ -448,11 +551,34 @@ export function detectStudyDesign(
   return source === "CLINICALTRIALS_GOV" ? "clinical-trial-record" : undefined;
 }
 
+/**
+ * The outcome area's own label, plus its parts. Extraction writes the area name
+ * straight into `Study.outcomes` — three magnesium studies record exactly
+ * `Sleep` — so the label is the single most reliable term, and matching only
+ * hand-written synonyms ("sleep quality", "insomnia") missed it entirely.
+ * `Glucose/insulin/HbA1c` splits into three usable terms this way.
+ */
+function outcomeLabelTerms(outcome: OutcomeArea): string[] {
+  return [outcome, ...outcome.split("/")]
+    .map(normaliseForMatch)
+    .filter((term) => term.length >= 3);
+}
+
+/**
+ * Whether the text names a specific outcome area. Distinct from
+ * `detectOutcomeArea`, which answers "any tracked outcome?" and stops at the
+ * first hit — useless for asking whether a study measured the one outcome a
+ * claim is filed under.
+ */
+export function textMentionsOutcome(haystack: string, outcome: OutcomeArea): boolean {
+  return [...outcomeLabelTerms(outcome), ...OUTCOME_KEYWORDS[outcome].map(normaliseForMatch)].some(
+    (term) => containsIdentityTerm(haystack, term)
+  );
+}
+
 export function detectOutcomeArea(haystack: string): OutcomeArea | undefined {
-  for (const [outcome, keywords] of Object.entries(OUTCOME_KEYWORDS) as Array<
-    [OutcomeArea, string[]]
-  >) {
-    if (keywords.map(normaliseForMatch).some((term) => containsIdentityTerm(haystack, term))) {
+  for (const outcome of Object.keys(OUTCOME_KEYWORDS) as OutcomeArea[]) {
+    if (textMentionsOutcome(haystack, outcome)) {
       return outcome;
     }
   }
