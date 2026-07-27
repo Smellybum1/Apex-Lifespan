@@ -92,6 +92,28 @@ export function deriveClaimConfidence({
     };
   }
 
+  // A claim already labelled "Insufficient Evidence" cannot become something the
+  // catalog is confident in. Deriving a confidence level from design mix alone
+  // will contradict the label, because this function counts what the linked
+  // studies *are* and never checks what they *measured*.
+  //
+  // Caught on Whey protein / Mortality-lifespan, which this would have raised to
+  // Moderate. Its claimText reads "Direct lifespan extension." while its own
+  // effect size says "No lifespan or mortality effect established" and its
+  // uncertainty warns against converting protein and body-composition findings
+  // into a mortality conclusion. The three studies behind it were a
+  // refeeding-syndrome trial in critically ill patients, a whey-and-E.coli
+  // diarrhea trial, and a resistance-training strength meta-analysis — none
+  // measuring mortality at all.
+  if (claim.finalLabel === "Insufficient Evidence") {
+    return {
+      blockedReason:
+        "The claim is labelled Insufficient Evidence. Raising confidence in it would contradict the label the curation process already assigned.",
+      confidenceLevel: "Very low",
+      reason: "Labelled Insufficient Evidence; confidence stays at the floor."
+    };
+  }
+
   if (!packet) {
     return {
       confidenceLevel: "Very low",

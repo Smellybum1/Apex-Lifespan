@@ -89,6 +89,28 @@ describe("deriveClaimConfidence", () => {
     expect(result.blockedReason).toContain("effect size");
   });
 
+  it("will not raise a claim already labelled Insufficient Evidence", () => {
+    // Regression: Whey protein / Mortality-lifespan reached Moderate off a
+    // refeeding-syndrome trial, a diarrhea trial and a strength meta-analysis —
+    // none of which measured mortality. This function counts what the linked
+    // studies are, never what they measured, so the label is the backstop.
+    const result = deriveClaimConfidence({
+      claim: claim({
+        claimText: "Direct lifespan extension.",
+        effectSize: "No lifespan or mortality effect established in this row.",
+        finalLabel: "Insufficient Evidence"
+      }),
+      packet: packet({
+        metaAnalyses: 1,
+        randomizedControlledTrials: 1,
+        totalExtractedStudies: 3
+      })
+    });
+
+    expect(result.confidenceLevel).toBe("Very low");
+    expect(result.blockedReason).toContain("Insufficient Evidence");
+  });
+
   it("stays at the floor when references are linked but nothing is extracted", () => {
     const result = deriveClaimConfidence({
       claim: claim(),
