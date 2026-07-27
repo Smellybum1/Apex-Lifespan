@@ -231,8 +231,23 @@ export function classifySourceCandidateForDiscovery(
     cautions.push("weak title/query overlap");
   }
 
+  // A human harm report about this supplement is never noise, whatever the
+  // design penalties above did to its score. Preclinical harm still is — a
+  // mouse liver study is not a signal about people — so the preclinical caution
+  // still wins.
+  // Title only. Nearly every trial abstract contains "no adverse events were
+  // reported", so matching the abstract flagged cement chemistry and a
+  // melatonin-for-venepuncture trial as harm reports. A paper that is *about* a
+  // harm says so in its title.
+  const protectedSafetyReport =
+    hasSafetySignal(candidate.title) && !hasPreclinicalNoiseSignal(combinedText);
+
+  if (protectedSafetyReport) {
+    reasons.push("reports a possible harm from this intervention in a person");
+  }
+
   const cappedScore = clampClassificationScore(score);
-  const bucket = discoveryBucket(cappedScore, cautions);
+  const bucket = discoveryBucket(cappedScore, cautions, protectedSafetyReport);
 
   return {
     bucket,
@@ -307,6 +322,26 @@ function hasReviewOrTrialIntent(value: string) {
   return /meta[- ]analysis|systematic review|randomi[sz]ed|placebo|clinical trial/i.test(value);
 }
 
+/**
+ * A report that this supplement harmed someone.
+ *
+ * These are almost always case reports, which the scoring below penalises twice
+ * — no review/trial bonus, and a deduction for the query having asked for
+ * randomised evidence — so they land in `likely-noise` and get bulk-rejected.
+ * Observed in the catalog: "A Rare Case of Tongkat Ali-Induced Liver Injury",
+ * "Recurrent Drug-Induced Autoimmune-like Hepatitis due to Turmeric
+ * Supplementation", "Acute kidney injury following creatine loading".
+ *
+ * Case reports are how supplement harms reach the literature at all. Discarding
+ * them strips the harm signal while leaving the benefit signal untouched, which
+ * is the worst bias a supplement catalog can have.
+ */
+export function hasSafetySignal(value: string) {
+  return /\b(?:induced|toxicity|hepatotoxic\w*|nephrotoxic\w*|cardiotoxic\w*|adverse (?:effect|reaction)s?|side effects?|liver injury|kidney injury|renal failure|anaphyla\w+|rhabdomyolysis|overdose|intoxication|poisoning)\b/i.test(
+    value
+  );
+}
+
 function hasPreclinicalNoiseSignal(value: string) {
   return /\b(?:animal|animals|mouse|mice|rat|rats|murine|zebrafish|in vitro|cell line|cells|cultured cells)\b/i.test(
     value
@@ -365,14 +400,17 @@ function clampClassificationScore(value: number) {
 
 function discoveryBucket(
   score: number,
-  cautions: string[]
+  cautions: string[],
+  protectedSafetyReport = false
 ): SourceCandidateDiscoveryBucket {
   if (score >= 68 && !cautions.some((caution) => caution.includes("preclinical"))) {
     return "likely-useful";
   }
 
   if (score <= 34 || cautions.some((caution) => caution.includes("preclinical"))) {
-    return "likely-noise";
+    // Floored at maybe-useful rather than promoted: a harm report still deserves
+    // a read, it just must not be swept out as noise unseen.
+    return protectedSafetyReport ? "maybe-useful" : "likely-noise";
   }
 
   return "maybe-useful";

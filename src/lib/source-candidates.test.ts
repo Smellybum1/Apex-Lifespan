@@ -183,6 +183,60 @@ describe("source candidate mapping", () => {
     });
   });
 
+  it("never buckets a human harm report as noise", () => {
+    // Observed in the catalog and bulk-rejected as "likely noise": case reports
+    // are how supplement harms reach the literature, and the scoring penalises
+    // them twice for not being a trial.
+    expect(
+      classifySourceCandidateForDiscovery({
+        dedupeKey: "pubmed|au|tongkat|2||",
+        source: "PubMed",
+        externalId: "2",
+        query: "Tongkat Ali safety randomized placebo trial",
+        region: "AU",
+        title: "A Rare Case of Tongkat Ali-Induced Liver Injury: A Case Report.",
+        url: "https://pubmed.ncbi.nlm.nih.gov/2/",
+        publishedYear: 2024,
+        sourceType: "Case Reports",
+        abstractAvailable: true,
+        triageScore: 30,
+        triageReasons: [],
+        decision: "Pending review",
+        reviewStatus: "Unreviewed AI draft",
+        metadata: {
+          abstractText: "A patient developed acute liver injury after taking Tongkat Ali."
+        }
+      })
+    ).toMatchObject({
+      bucket: "maybe-useful",
+      reasons: expect.arrayContaining([
+        "reports a possible harm from this intervention in a person"
+      ])
+    });
+  });
+
+  it("still calls preclinical harm noise, because a mouse liver is not a person", () => {
+    expect(
+      classifySourceCandidateForDiscovery({
+        dedupeKey: "pubmed|au|creatine|3||",
+        source: "PubMed",
+        externalId: "3",
+        query: "Creatine safety randomized placebo trial",
+        region: "AU",
+        title: "Creatine-induced hepatotoxicity in mice",
+        url: "https://pubmed.ncbi.nlm.nih.gov/3/",
+        publishedYear: 2024,
+        sourceType: "Journal Article",
+        abstractAvailable: true,
+        triageScore: 30,
+        triageReasons: [],
+        decision: "Pending review",
+        reviewStatus: "Unreviewed AI draft",
+        metadata: { abstractText: "Mice were dosed and liver enzymes measured." }
+      })
+    ).toMatchObject({ bucket: "likely-noise" });
+  });
+
   it("builds stable keys from normalized candidate identity context", () => {
     expect(
       buildSourceCandidateDedupeKey({
